@@ -185,7 +185,7 @@ impl Node<Option<cst::Policy>> {
         // `SlotsInConditionClause`, we can report that as `UnexpectedTemplate`
         let new_errs = errs
             .iter()
-            .flat_map(|err| match err {
+            .filter_map(|err| match err {
                 ParseError::ToAST(err) => match err.kind() {
                     ToASTErrorKind::SlotsInConditionClause { slot, .. } => Some(ToASTError::new(
                         ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
@@ -202,9 +202,12 @@ impl Node<Option<cst::Policy>> {
         // report that as `UnexpectedTemplate`
         match policy {
             Some(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::UnexpectedTemplate { slot: slot.into() }),
-                );
+                errs.push(ToASTError::new(
+                    ToASTErrorKind::UnexpectedTemplate {
+                        slot: slot.id.into(),
+                    },
+                    slot.loc.unwrap_or_else(|| self.loc.clone()),
+                ));
                 None
             }
             // in other cases, we're done reporting errors, so we can return the policy, if we have one
@@ -242,10 +245,13 @@ impl Node<Option<cst::Policy>> {
             .filter_map(|c| {
                 let (e, is_when) = c.to_expr(errs)?;
                 for slot in e.slots() {
-                    errs.push(c.to_ast_err(ToASTErrorKind::SlotsInConditionClause {
-                        slot: (*slot).into(),
-                        clausetype: if is_when { "when" } else { "unless" },
-                    }));
+                    errs.push(ToASTError::new(
+                        ToASTErrorKind::SlotsInConditionClause {
+                            slot: slot.id.into(),
+                            clausetype: if is_when { "when" } else { "unless" },
+                        },
+                        slot.loc.unwrap_or_else(|| c.loc.clone()),
+                    ));
                 }
                 Some(e)
             })
@@ -2787,9 +2793,9 @@ mod tests {
         let parse = text_to_cst::parse_expr(src).expect("failed parse");
 
         assert_matches!(parse.to_expr(&mut errs), None => {
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `if`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
-            assert_eq!(errs.len(), 3, "{:?}", miette::Report::new(errs)); // the `if` error occurs twice in that expression, so the total number of errors is 3
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `if`").exactly_one_underline("if: true").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `if`").exactly_one_underline("if").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("record literal has invalid attributes").exactly_one_underline("{if: true}").build());
         });
     }
 
@@ -2802,13 +2808,13 @@ mod tests {
         let parse = text_to_cst::parse_expr(src).expect("failed parse");
 
         assert_matches!(parse.to_expr(&mut errs), None => {
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `has`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `like`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `in`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `then`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `else`"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
-            assert_eq!(errs.len(), 7, "{:?}", miette::Report::new(errs)); // the "record literal has invalid attributes" error occurs twice in that expression
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `has`").exactly_one_underline("has").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `like`").exactly_one_underline("like").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `in`").exactly_one_underline("in").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `then`").exactly_one_underline("then").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `else`").exactly_one_underline("else").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("record literal has invalid attributes").exactly_one_underline("{has:false}").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("record literal has invalid attributes").exactly_one_underline("{then:true}").build());
         });
     }
 
@@ -2821,13 +2827,12 @@ mod tests {
         let parse = text_to_cst::parse_policy(src).expect("failed parse");
         println!("{:#}", parse.as_inner().expect("internal parse error"));
         assert_matches!(parse.to_policy(ast::PolicyID::from_string("id"), &mut errs), None => {
-            // TODO: check the source snippet pointed to in each of these three errors is `p`, `a`, and `r` respectively
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`", "did you mean to enclose `w` in quotes to make a string?"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`", "did you mean to enclose `u` in quotes to make a string?"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("not a valid policy condition: `advice`", "condition must be either `when` or `unless`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported").help("try using `is` instead").exactly_one_underline("p").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported").help("try using `is` instead").exactly_one_underline("a").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported").help("try using `is` instead").exactly_one_underline("r").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`").help("did you mean to enclose `w` in quotes to make a string?").exactly_one_underline("w").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`").help("did you mean to enclose `u` in quotes to make a string?").exactly_one_underline("u").build());
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("not a valid policy condition: `advice`").help("condition must be either `when` or `unless`").exactly_one_underline("advice").build());
         });
     }
 
@@ -3968,24 +3973,51 @@ mod tests {
 
     #[test]
     fn unescape_err_positions() {
-        let assert_invalid_escape = |p_src| {
+        let assert_invalid_escape = |p_src, underline| {
             assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-                expect_err(p_src, &e, &ExpectedErrorMessage::error("the input `\\q` is not a valid escape: InvalidEscape"));
+                expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the input `\\q` is not a valid escape: InvalidEscape").exactly_one_underline(underline).build());
             });
         };
-        assert_invalid_escape(r#"@foo("\q")permit(principal, action, resource);"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q" };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".contains(0) };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".bar };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q"["a"] };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "" like "\q" };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { {}["\q"] };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { {"\q": 0} };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { User::"\q" };"#);
+        assert_invalid_escape(
+            r#"@foo("\q")permit(principal, action, resource);"#,
+            r#"@foo("\q")"#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { "\q" };"#,
+            r#""\q""#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { "\q".contains(0) };"#,
+            r#""\q".contains(0)"#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { "\q".bar };"#,
+            r#""\q".bar"#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { "\q"["a"] };"#,
+            r#""\q"["a"]"#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { "" like "\q" };"#,
+            r#""\q""#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { {}["\q"] };"#,
+            r#""\q""#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { {"\q": 0} };"#,
+            r#""\q""#,
+        );
+        assert_invalid_escape(
+            r#"permit(principal, action, resource) when { User::"\q" };"#,
+            r#"User::"\q""#,
+        );
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn expect_action_error(test: &str, euid_strs: Vec<&str>) {
+    fn expect_action_error(test: &str, euid_strs: Vec<&str>, underlines: Vec<&str>) {
         let euids = euid_strs
             .iter()
             .map(|euid_str| {
@@ -3999,14 +4031,13 @@ mod tests {
                 es.len(),
                 miette::Report::new(es)
             );
-            for euid in euids {
+            for (euid, underline) in euids.into_iter().zip(underlines.into_iter()) {
                 expect_some_error_matches(
                     test,
                     &es,
-                    &ExpectedErrorMessage::error_and_help(
-                        &format!("expected an entity uid with the type `Action` but got `{euid}`"),
+                    &ExpectedErrorMessageBuilder::error(&format!("expected an entity uid with the type `Action` but got `{euid}`")).help(
                         "action entities must have type `Action`, optionally in a namespace",
-                    ),
+                    ).exactly_one_underline(underline).build(),
                 );
             }
         });
@@ -4043,30 +4074,37 @@ mod tests {
         expect_action_error(
             r#"permit(principal, action == Foo::"view", resource);"#,
             vec!["Foo::\"view\""],
+            vec!["action == Foo::\"view\""], // TODO: don't underline the `action ==` part
         );
         expect_action_error(
             r#"permit(principal, action == Action::Foo::"view", resource);"#,
             vec!["Action::Foo::\"view\""],
+            vec!["action == Action::Foo::\"view\""], // TODO: don't underline the `action ==` part
         );
         expect_action_error(
             r#"permit(principal, action == Bar::Action::Foo::"view", resource);"#,
             vec!["Bar::Action::Foo::\"view\""],
+            vec!["action == Bar::Action::Foo::\"view\""], // TODO: don't underline the `action ==` part
         );
         expect_action_error(
             r#"permit(principal, action in Bar::Action::Foo::"view", resource);"#,
             vec!["Bar::Action::Foo::\"view\""],
+            vec!["action in Bar::Action::Foo::\"view\""], // TODO: don't underline the `action in` part
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view"], resource);"#,
             vec!["Bar::Action::Foo::\"view\""],
+            vec!["action in [Bar::Action::Foo::\"view\"]"], // TODO: don't underline the `action in` part
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view", Action::"check"], resource);"#,
             vec!["Bar::Action::Foo::\"view\""],
+            vec!["action in [Bar::Action::Foo::\"view\", Action::\"check\"]"], // TODO: don't underline the `action in` part
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view", Foo::"delete", Action::"check"], resource);"#,
             vec!["Bar::Action::Foo::\"view\"", "Foo::\"delete\""],
+            vec!["action in [Bar::Action::Foo::\"view\", Foo::\"delete\", Action::\"check\"]"], // TODO: don't underline the `action in` part
         );
     }
 
@@ -4075,10 +4113,11 @@ mod tests {
         let src = r#"permit(principal, action, resource)
             when { contains(true) < 1 };"#;
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error(
                 "`contains` is a method, not a function",
+            ).help(
                 "use a method-style call: `e.contains(..)`",
-            ));
+            ).exactly_one_underline("contains(true)").build());
         });
     }
 
@@ -4288,10 +4327,12 @@ mod tests {
         for (es, em) in [
             (
                 "-9223372036854775809",
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "integer literal `9223372036854775809` is too large",
-                    "maximum allowed integer literal is `9223372036854775807`",
-                ),
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("-9223372036854775809")
+                .build(),
             ),
             // This test doesn't fail with an internal representation of i128:
             // Contrary to Rust, this expression is not valid because the
@@ -4299,10 +4340,12 @@ mod tests {
             // (9223372036854775808) is too large.
             (
                 "-(9223372036854775808)",
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "integer literal `9223372036854775808` is too large",
-                    "maximum allowed integer literal is `9223372036854775807`",
-                ),
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("9223372036854775808")
+                .build(),
             ),
         ] {
             let mut errs = ParseErrors::new();
@@ -4310,7 +4353,7 @@ mod tests {
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert_matches!(e, None => {
-                expect_err(es, &errs, &em);
+                expect_err(es, &miette::Report::new(errs), &em);
             });
         }
     }
@@ -4588,207 +4631,228 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Group::"friends" is User"#).build(),
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Folder::"folder" is File"#).build(),
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the scope at the same time as `==`",
+                ).help(
                     "try moving `is` into a `when` condition"
-                ),
+                ).exactly_one_underline("principal is User == User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the scope at the same time as `==`",
+                ).help(
                     "try moving `is` into a `when` condition"
-                ),
+                ).exactly_one_underline("resource is Doc == Doc::\"a\"").build(),
             ),
             (
                 r#"permit(principal is User::"alice", action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("File::\"f\"").build(),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found literal `1`",
-                ),
+                ).exactly_one_underline("1").build(),
             ),
             (
                 r#"permit(principal, action, resource is File in 1);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found literal `1`",
-                ),
+                ).exactly_one_underline("1").build(),
             ),
             (
                 r#"permit(principal is User in User, action, resource);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found name `User`",
-                ),
+                ).exactly_one_underline("User").build(),
             ),
             (
                 r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File in File);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found name `File`",
-                ),
+                ).exactly_one_underline("File").build(),
             ),
             (
                 r#"permit(principal, action, resource is File::"file" in Folder::"folder");"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("File::\"file\"").build(),
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("1").build(),
             ),
             (
                 r#"permit(principal, action, resource is 1);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("1").build(),
             ),
             (
                 r#"permit(principal, action is Action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action").build(),
             ),
             (
                 r#"permit(principal, action is Action::"a", resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action::\"a\"").build(),
             ),
             (
                 r#"permit(principal, action is Action in Action::"A", resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action in Action::\"A\"").build(),
             ),
             (
                 r#"permit(principal, action is Action in Action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action in Action").build(),
             ),
             (
                 r#"permit(principal, action is Action::"a" in Action::"b", resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action::\"a\" in Action::\"b\"").build(),
             ),
             (
                 r#"permit(principal, action is Action in ?action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is Action in ?action").build(),
             ),
             (
                 r#"permit(principal, action is ?action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`is` cannot appear in the action scope",
+                ).help(
                     "try moving `action is ..` into a `when` condition"
-                ),
+                ).exactly_one_underline("action is ?action").build(),
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action, resource is Folder in ?principal);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal is ?principal, action, resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?principal`",
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action, resource is ?resource);"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?resource`",
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("1").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("! User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User::"alice" + User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
+                ).help(
                     "try using `==` to test for equality"
-                ),
+                ).exactly_one_underline("User::\"alice\" + User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "unexpected token `in`"
-                ),
+                ).exactly_one_underline("in").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "unexpected token `==`"
-                ),
+                ).exactly_one_underline("==").build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
             assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-                expect_err(p_src, &e, &expected);
+                expect_err(p_src, &miette::Report::new(e), &expected);
             });
         }
     }
@@ -4805,10 +4869,11 @@ mod tests {
         assert_matches!(
             parse_policy(None, policy),
             Err(e) => {
-                expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error_and_help(
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found a `+/-` expression",
+                ).help(
                     "entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?",
-                ));
+                ).exactly_one_underline("name-with-dashes::\"Alice\"").build());
             }
         );
     }
@@ -4818,92 +4883,112 @@ mod tests {
         let invalid_exprs = [
             (
                 r#"contains([], 1)"#,
-                ExpectedErrorMessage::error_and_help(
-                    "`contains` is a method, not a function",
-                    "use a method-style call: `e.contains(..)`",
-                ),
+                ExpectedErrorMessageBuilder::error("`contains` is a method, not a function")
+                    .help("use a method-style call: `e.contains(..)`")
+                    .exactly_one_underline("contains([], 1)")
+                    .build(),
             ),
             (
                 r#"[].contains()"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `contains` requires exactly 1 argument, but got 0 arguments",
-                ),
+                )
+                .exactly_one_underline("[].contains()")
+                .build(),
             ),
             (
                 r#"[].contains(1, 2)"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `contains` requires exactly 1 argument, but got 2 arguments",
-                ),
+                )
+                .exactly_one_underline("[].contains(1, 2)")
+                .build(),
             ),
             (
                 r#"[].containsAll()"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `containsAll` requires exactly 1 argument, but got 0 arguments",
-                ),
+                )
+                .exactly_one_underline("[].containsAll()")
+                .build(),
             ),
             (
                 r#"[].containsAll(1, 2)"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `containsAll` requires exactly 1 argument, but got 2 arguments",
-                ),
+                )
+                .exactly_one_underline("[].containsAll(1, 2)")
+                .build(),
             ),
             (
                 r#"[].containsAny()"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `containsAny` requires exactly 1 argument, but got 0 arguments",
-                ),
+                )
+                .exactly_one_underline("[].containsAny()")
+                .build(),
             ),
             (
                 r#"[].containsAny(1, 2)"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "call to `containsAny` requires exactly 1 argument, but got 2 arguments",
-                ),
+                )
+                .exactly_one_underline("[].containsAny(1, 2)")
+                .build(),
             ),
             (
                 r#""1.1.1.1".ip()"#,
-                ExpectedErrorMessage::error_and_help(
-                    "`ip` is a function, not a method",
-                    "use a function-style call: `ip(..)`",
-                ),
+                ExpectedErrorMessageBuilder::error("`ip` is a function, not a method")
+                    .help("use a function-style call: `ip(..)`")
+                    .exactly_one_underline(r#""1.1.1.1".ip()"#)
+                    .build(),
             ),
             (
                 r#"greaterThan(1, 2)"#,
-                ExpectedErrorMessage::error_and_help(
-                    "`greaterThan` is a method, not a function",
-                    "use a method-style call: `e.greaterThan(..)`",
-                ),
+                ExpectedErrorMessageBuilder::error("`greaterThan` is a method, not a function")
+                    .help("use a method-style call: `e.greaterThan(..)`")
+                    .exactly_one_underline("greaterThan(1, 2)")
+                    .build(),
             ),
             (
                 "[].bar()",
-                ExpectedErrorMessage::error("not a valid method name: `bar`"),
+                ExpectedErrorMessageBuilder::error("not a valid method name: `bar`")
+                    .exactly_one_underline("[].bar()")
+                    .build(),
             ),
             (
                 "bar([])",
-                ExpectedErrorMessage::error("`bar` is not a function"),
+                ExpectedErrorMessageBuilder::error("`bar` is not a function")
+                    .exactly_one_underline("bar([])")
+                    .build(),
             ),
             (
                 "principal()",
-                ExpectedErrorMessage::error_and_help(
-                    "`principal(...)` is not a valid function call",
-                    "variables cannot be called as functions",
-                ),
+                ExpectedErrorMessageBuilder::error("`principal(...)` is not a valid function call")
+                    .help("variables cannot be called as functions")
+                    .exactly_one_underline("principal()")
+                    .build(),
             ),
             (
                 "(1+1)()",
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "function calls must be of the form: `<name>(arg1, arg2, ...)`",
-                ),
+                )
+                .exactly_one_underline("(1+1)()")
+                .build(),
             ),
             (
                 "foo.bar()",
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessageBuilder::error(
                     "attempted to call `foo.bar`, but `foo` does not have any methods",
-                ),
+                )
+                .exactly_one_underline("foo.bar()")
+                .build(),
             ),
         ];
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
-                expect_err(src, &e, &expected);
+                expect_err(src, &miette::Report::new(e), &expected);
             });
         }
     }
@@ -4913,82 +4998,83 @@ mod tests {
         let invalid_policies = [
             (
                 r#"permit(principal == ?resource, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal in ?resource, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal == ?foo, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
             ),
             (
                 r#"permit(principal in ?foo, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action, resource == ?principal);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action, resource in ?principal);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action, resource == ?baz);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
             ),
             (
                 r#"permit(principal, action, resource in ?baz);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
-                ExpectedErrorMessage::error_and_help(
+                ExpectedErrorMessageBuilder::error(
                     "`?foo` is not a valid template slot",
+                ).help(
                     "a template slot may only be `?principal` or `?resource`",
-                )
+                ).exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action in ?principal, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action == ?resource, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in ?resource, resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in [?bar], resource);"#,
-                ExpectedErrorMessage::error("expected single entity uid, got: template slot"),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?bar").build(),
             ),
         ];
 
         for (p_src, expected) in invalid_policies {
             assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-                expect_err(p_src, &e, &expected);
+                expect_err(p_src, &miette::Report::new(e), &expected);
             });
             let forbid_src = format!("forbid{}", &p_src[6..]);
             assert_matches!(parse_policy_template(None, &forbid_src), Err(e) => {
-                expect_err(forbid_src.as_str(), &e, &expected);
+                expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
             });
         }
     }
@@ -4997,15 +5083,15 @@ mod tests {
     fn missing_scope_constraint() {
         let p_src = "permit();";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `principal` variable in the scope"));
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `principal` variable in the scope").exactly_one_underline("").build());
         });
         let p_src = "permit(principal);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `action` variable in the scope"));
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `action` variable in the scope").exactly_one_underline("").build());
         });
         let p_src = "permit(principal, action);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `resource` variable in the scope"));
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `resource` variable in the scope").exactly_one_underline("").build());
         });
     }
 
@@ -5013,68 +5099,67 @@ mod tests {
     fn invalid_scope_constraint() {
         let p_src = "permit(foo, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected a variable that is valid in the policy scope; found: `foo`",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "foo");
+            ).exactly_one_underline("foo").build());
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "unexpected token `::`",
-            ));
-            expect_source_snippet(p_src, &e, "::");
+            ).exactly_one_underline("::").build());
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `resource` where the variable `principal` must be used",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "resource");
+            ).exactly_one_underline("resource").build());
         });
 
         let p_src = "permit(principal, principal, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `action` must be used",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "principal");
+            ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, if, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected a variable that is valid in the policy scope; found: `if`",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "if");
+            ).exactly_one_underline("if").build());
         });
 
         let p_src = "permit(principal, action, like);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected a variable that is valid in the policy scope; found: `like`",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "like");
+            ).exactly_one_underline("like").build());
         });
         let p_src = "permit(principal, action, principal);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `resource` must be used",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "principal");
+            ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, action, action);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `action` where the variable `resource` must be used",
+                ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
-            ));
-            expect_source_snippet(p_src, &e, "action");
+            ).exactly_one_underline("action").build());
         });
     }
 
@@ -5082,31 +5167,35 @@ mod tests {
     fn invalid_scope_operator() {
         let p_src = r#"permit(principal > User::"alice", action, resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "not a valid policy scope constraint: >",
+                ).help(
                 "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
-            ));
+            ).exactly_one_underline("principal > User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "not a valid policy scope constraint: !=",
+                ).help(
                 "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
-            ));
+            ).exactly_one_underline("action != Action::\"view\"").build());
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "not a valid policy scope constraint: <=",
+                ).help(
                 "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
-            ));
+            ).exactly_one_underline("resource <= Folder::\"things\"").build());
         });
         let p_src = r#"permit(principal = User::"alice", action, resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
+                ).help(
                 "try using '==' instead",
-            ));
+            ).exactly_one_underline("principal = User::\"alice\"").build());
         });
     }
 
@@ -5114,7 +5203,7 @@ mod tests {
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot"));
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
 
@@ -5122,7 +5211,7 @@ mod tests {
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("expected single entity uid, got: set of entity uids"));
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
     }
 
@@ -5130,11 +5219,11 @@ mod tests {
     fn unsupported_ops() {
         let src = "1/2";
         assert_matches!(parse_expr(src), Err(e) => {
-            expect_err(src, &e, &ExpectedErrorMessage::error("division is not supported"));
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("division is not supported").exactly_one_underline("1/2").build());
         });
         let src = "7 % 3";
         assert_matches!(parse_expr(src), Err(e) => {
-            expect_err(src, &e, &ExpectedErrorMessage::error("remainder/modulo is not supported"));
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("remainder/modulo is not supported").exactly_one_underline("7 % 3").build());
         });
     }
 
@@ -5142,17 +5231,19 @@ mod tests {
     fn over_unary() {
         let src = "!!!!!!false";
         assert_matches!(parse_expr(src), Err(e) => {
-            expect_err(src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "too many occurrences of `!_`",
+                ).help(
                 "cannot chain more the 4 applications of a unary operator"
-            ));
+            ).exactly_one_underline("!!!!!!false").build());
         });
         let src = "-------0";
         assert_matches!(parse_expr(src), Err(e) => {
-            expect_err(src, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "too many occurrences of `-_`",
+                ).help(
                 "cannot chain more the 4 applications of a unary operator"
-            ));
+            ).exactly_one_underline("-------0").build());
         });
     }
 
@@ -5161,10 +5252,11 @@ mod tests {
         #[track_caller]
         fn expect_arbitrary_var(name: &str) {
             assert_matches!(parse_expr(name), Err(e) => {
-                expect_err(name, &e, &ExpectedErrorMessage::error_and_help(
+                expect_err(name, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     "arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`",
+                ).help(
                     &format!("did you mean to enclose `{name}` in quotes to make a string?"),
-                ));
+                ).exactly_one_underline(name).build());
             })
         }
         expect_arbitrary_var("foo::principal");
@@ -5186,9 +5278,9 @@ mod tests {
         #[track_caller]
         fn expect_empty_clause(policy: &str, clause: &str) {
             assert_matches!(parse_policy_template(None, policy), Err(e) => {
-                expect_err(policy, &e, &ExpectedErrorMessage::error(
+                expect_err(policy, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     &format!("`{clause}` condition clause cannot be empty")
-                ));
+                ).exactly_one_underline(&format!("{clause} {{}}")).build());
             })
         }
 
@@ -5217,9 +5309,9 @@ mod tests {
         #[track_caller]
         fn expect_namespaced_attr(expr: &str, name: &str) {
             assert_matches!(parse_expr(expr), Err(e) => {
-                expect_err(expr, &e, &ExpectedErrorMessage::error(
+                expect_err(expr, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     &format!("`{name}` cannot be used as an attribute as it contains a namespace")
-                ));
+                ).exactly_one_underline(name).build());
             })
         }
 
@@ -5230,9 +5322,9 @@ mod tests {
 
         let expr = "principal has if::foo";
         assert_matches!(parse_expr(expr), Err(e) => {
-            expect_err(expr, &e, &ExpectedErrorMessage::error(
+            expect_err(expr, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "this identifier is reserved and cannot be used: `if`"
-            ));
+            ).exactly_one_underline("if").build());
         })
     }
 
@@ -5241,9 +5333,9 @@ mod tests {
         #[track_caller]
         fn expect_reserved_ident(name: &str, reserved: &str) {
             assert_matches!(parse_expr(name), Err(e) => {
-                expect_err(name, &e, &ExpectedErrorMessage::error(
+                expect_err(name, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     &format!("this identifier is reserved and cannot be used: `{reserved}`"),
-                ));
+                ).exactly_one_underline(reserved).build());
             })
         }
         expect_reserved_ident("if::principal", "if");

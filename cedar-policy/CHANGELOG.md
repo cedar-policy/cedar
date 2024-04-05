@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
   now include multiplication of arbitrary expressions, not just multiplication of
   an expression and a constant.
+- for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
@@ -30,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
+- Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737) 
+
+## [3.1.2] - 2024-03-29
+
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
 
 ## [3.1.1] - 2024-03-14
 
@@ -237,6 +245,14 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.5] - 2023-04-01
+
+### Changed
+
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
+
 ## [2.4.4] - 2023-03-08
 
 Cedar Language Version: 2.1.3
@@ -441,11 +457,13 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.2...main
+[3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v3.0.0
+[2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5
 [2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2

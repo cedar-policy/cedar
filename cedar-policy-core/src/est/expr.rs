@@ -51,6 +51,8 @@ pub enum Expr {
 
 /// Represent an element of a pattern literal
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PatternElem {
     /// The wildcard asterisk
     Wildcard,
@@ -1481,6 +1483,10 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
                 }
             }
             write!(f, "}}")?;
+            Ok(())
+        }
+        CedarValueJson::Null => {
+            write!(f, "null")?;
             Ok(())
         }
     }

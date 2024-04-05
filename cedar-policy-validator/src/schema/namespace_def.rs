@@ -11,10 +11,9 @@ use cedar_policy_core::{
     entities::{CedarValueJson, JsonDeserializationErrorContext},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
-    parser::err::ParseErrors,
     FromNormalizedStr,
 };
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 
 use super::ValidatorApplySpec;
 use crate::types::OpenTag;
@@ -191,13 +190,13 @@ impl ValidatorNamespaceDef {
     // the file format. However, our fuzzing library currently needs it to be public.
     /// Construct a new `ValidatorSchema` from the underlying `SchemaFragment`.
     pub fn from_namespace_definition(
-        namespace: Option<SmolStr>,
+        namespace: Option<Name>,
         namespace_def: NamespaceDefinition,
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorNamespaceDef> {
         // Check that each entity types and action is only declared once.
-        let mut e_types_ids: HashSet<SmolStr> = HashSet::new();
+        let mut e_types_ids: HashSet<Id> = HashSet::new();
         for name in namespace_def.entity_types.keys() {
             if !e_types_ids.insert(name.clone()) {
                 // insert returns false for duplicates
@@ -212,27 +211,20 @@ impl ValidatorNamespaceDef {
             }
         }
 
-        let schema_namespace = match namespace.as_deref() {
-            None => None,
-            Some("") => None, // we consider "" to be the same as the empty namespace for this purpose
-            Some(ns) => Some(Name::from_normalized_str(ns).map_err(SchemaError::ParseNamespace)?),
-        };
-
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
         Self::check_action_behavior(&namespace_def, action_behavior)?;
 
         // Convert the type defs, actions and entity types from the schema file
         // into the representation used by the validator.
-        let type_defs =
-            Self::build_type_defs(namespace_def.common_types, schema_namespace.as_ref())?;
+        let type_defs = Self::build_type_defs(namespace_def.common_types, namespace.as_ref())?;
         let actions =
-            Self::build_action_ids(namespace_def.actions, schema_namespace.as_ref(), extensions)?;
+            Self::build_action_ids(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
-            Self::build_entity_types(namespace_def.entity_types, schema_namespace.as_ref())?;
+            Self::build_entity_types(namespace_def.entity_types, namespace.as_ref())?;
 
         Ok(ValidatorNamespaceDef {
-            namespace: schema_namespace,
+            namespace,
             type_defs,
             entity_types,
             actions,
@@ -246,20 +238,18 @@ impl ValidatorNamespaceDef {
     }
 
     fn build_type_defs(
-        schema_file_type_def: HashMap<SmolStr, SchemaType>,
+        schema_file_type_def: HashMap<Id, SchemaType>,
         schema_namespace: Option<&Name>,
     ) -> Result<TypeDefs> {
         let type_defs = schema_file_type_def
             .into_iter()
-            .map(|(name_str, schema_ty)| -> Result<_> {
+            .map(|(name, schema_ty)| -> Result<_> {
+                let name_str = name.clone().into_smolstr();
                 if Self::is_builtin_type_name(&name_str) {
                     return Err(SchemaError::DuplicateCommonType(name_str.to_string()));
                 }
-                let name = Self::parse_unqualified_name_with_namespace(
-                    &name_str,
-                    schema_namespace.cloned(),
-                )
-                .map_err(SchemaError::ParseCommonType)?;
+                let name =
+                    Name::from(name).prefix_namespace_if_unqualified(schema_namespace.cloned());
                 let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
                     .resolve_type_defs(&HashMap::new())?;
                 Ok((name, ty))
@@ -272,30 +262,21 @@ impl ValidatorNamespaceDef {
     // used internally by the validator. This is mostly accomplished by directly
     // copying data between fields.
     fn build_entity_types(
-        schema_files_types: HashMap<SmolStr, schema_file_format::EntityType>,
+        schema_files_types: HashMap<Id, schema_file_format::EntityType>,
         schema_namespace: Option<&Name>,
     ) -> Result<EntityTypesDef> {
         Ok(EntityTypesDef {
             entity_types: schema_files_types
                 .into_iter()
-                .map(|(name_str, entity_type)| -> Result<_> {
-                    let name = Self::parse_unqualified_name_with_namespace(
-                        &name_str,
-                        schema_namespace.cloned(),
-                    )
-                    .map_err(SchemaError::ParseEntityType)?;
+                .map(|(id, entity_type)| -> Result<_> {
+                    let name =
+                        Name::from(id).prefix_namespace_if_unqualified(schema_namespace.cloned());
 
                     let parents = entity_type
                         .member_of_types
-                        .iter()
-                        .map(|parent| -> Result<_> {
-                            Self::parse_possibly_qualified_name_with_default_namespace(
-                                parent,
-                                schema_namespace,
-                            )
-                            .map_err(SchemaError::ParseEntityType)
-                        })
-                        .collect::<Result<HashSet<_>>>()?;
+                        .into_iter()
+                        .map(|ty| ty.prefix_namespace_if_unqualified(schema_namespace.cloned()))
+                        .collect();
 
                     let attributes = Self::try_schema_type_into_validator_type(
                         schema_namespace,
@@ -371,6 +352,10 @@ impl ValidatorNamespaceDef {
                     "extension function escape (`__extn`)".to_owned(),
                 ))
             }
+            CedarValueJson::Null => Err(SchemaError::UnsupportedActionAttribute(
+                action_id.clone(),
+                "null".to_owned(),
+            )),
         }
     }
 
@@ -434,7 +419,7 @@ impl ValidatorNamespaceDef {
                     let action_id = Self::parse_action_id_with_namespace(
                         &ActionEntityUID::default_type(action_id_str),
                         schema_namespace,
-                    )?;
+                    );
 
                     let (principal_types, resource_types, context) = action_type
                         .applies_to
@@ -451,8 +436,8 @@ impl ValidatorNamespaceDef {
                     // `EntityTypes`. If one of the lists is `None` (absent from the
                     // schema), then the specification is undefined.
                     let applies_to = ValidatorApplySpec::new(
-                        Self::parse_apply_spec_type_list(principal_types, schema_namespace)?,
-                        Self::parse_apply_spec_type_list(resource_types, schema_namespace)?,
+                        Self::parse_apply_spec_type_list(principal_types, schema_namespace),
+                        Self::parse_apply_spec_type_list(resource_types, schema_namespace),
                     );
 
                     let context = Self::try_schema_type_into_validator_type(
@@ -464,10 +449,10 @@ impl ValidatorNamespaceDef {
                         .member_of
                         .unwrap_or_default()
                         .iter()
-                        .map(|parent| -> Result<_> {
+                        .map(|parent| {
                             Self::parse_action_id_with_namespace(parent, schema_namespace)
                         })
-                        .collect::<Result<HashSet<_>>>()?;
+                        .collect::<HashSet<_>>();
 
                     let (attribute_types, attributes) =
                         Self::convert_attr_jsonval_map_to_attributes(
@@ -506,7 +491,7 @@ impl ValidatorNamespaceDef {
             // The `name` in an entity type declaration cannot be qualified
             // with a namespace (it always implicitly takes the schema
             // namespace), so we do this comparison directly.
-            .any(|(name, _)| name == ACTION_ENTITY_TYPE)
+            .any(|(name, _)| name.to_smolstr() == ACTION_ENTITY_TYPE)
         {
             return Err(SchemaError::ActionEntityTypeDeclared);
         }
@@ -565,9 +550,9 @@ impl ValidatorNamespaceDef {
     /// of the entity type names cannot be parsed, then the `Err` case is
     /// returned, and it will indicate which name did not parse.
     fn parse_apply_spec_type_list(
-        types: Option<Vec<SmolStr>>,
+        types: Option<Vec<Name>>,
         namespace: Option<&Name>,
-    ) -> Result<HashSet<EntityType>> {
+    ) -> HashSet<EntityType> {
         types
             .map(|types| {
                 types
@@ -575,59 +560,15 @@ impl ValidatorNamespaceDef {
                     // Parse each type name string into a `Name`, generating an
                     // `EntityTypeParseError` when the string is not a valid
                     // name.
-                    .map(|ty_str| {
-                        Ok(EntityType::Specified(
-                            Self::parse_possibly_qualified_name_with_default_namespace(
-                                ty_str, namespace,
-                            )
-                            .map_err(SchemaError::ParseEntityType)?,
-                        ))
+                    .map(|ty| {
+                        EntityType::Specified(
+                            ty.prefix_namespace_if_unqualified(namespace.cloned()),
+                        )
                     })
                     // Fail if any of the types failed.
-                    .collect::<Result<HashSet<_>>>()
+                    .collect::<HashSet<_>>()
             })
-            .unwrap_or_else(|| Ok(HashSet::from([EntityType::Unspecified])))
-    }
-
-    // Parse a `Name` from a string (possibly including namespaces). If it is
-    // not qualified with any namespace, then apply the  default namespace to
-    // create a qualified name.  Do not modify any existing namespace on the
-    // type.
-    pub(crate) fn parse_possibly_qualified_name_with_default_namespace(
-        name_str: &SmolStr,
-        default_namespace: Option<&Name>,
-    ) -> std::result::Result<Name, ParseErrors> {
-        let name = Name::from_normalized_str(name_str)?;
-
-        let qualified_name = if name.namespace_components().next().is_some() {
-            // The name is already qualified. Don't touch it.
-            name
-        } else {
-            // The name does not have a namespace, so qualify the type to
-            // use the default.
-            match default_namespace {
-                Some(namespace) => {
-                    Name::type_in_namespace(name.basename().clone(), namespace.clone())
-                }
-                None => name,
-            }
-        };
-
-        Ok(qualified_name)
-    }
-
-    /// Parse a name from a string into the `Id` (basename only).  Then
-    /// initialize the namespace for this type with the provided namespace vec
-    /// to create the qualified `Name`.
-    fn parse_unqualified_name_with_namespace(
-        type_name: impl AsRef<str>,
-        namespace: Option<Name>,
-    ) -> std::result::Result<Name, ParseErrors> {
-        let type_name = Id::from_normalized_str(type_name.as_ref())?;
-        match namespace {
-            Some(namespace) => Ok(Name::type_in_namespace(type_name, namespace)),
-            None => Ok(Name::unqualified_name(type_name)),
-        }
+            .unwrap_or_else(|| HashSet::from([EntityType::Unspecified]))
     }
 
     /// Take an action identifier as a string and use it to construct an
@@ -638,10 +579,9 @@ impl ValidatorNamespaceDef {
     fn parse_action_id_with_namespace(
         action_id: &ActionEntityUID,
         namespace: Option<&Name>,
-    ) -> Result<EntityUID> {
+    ) -> EntityUID {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
-                .map_err(SchemaError::ParseEntityType)?
+            action_ty.prefix_namespace_if_unqualified(namespace.cloned())
         } else {
             // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
             #[allow(clippy::expect_used)]
@@ -653,10 +593,7 @@ impl ValidatorNamespaceDef {
                 None => Name::unqualified_name(id),
             }
         };
-        Ok(EntityUID::from_components(
-            namespaced_action_type,
-            Eid::new(action_id.id.clone()),
-        ))
+        EntityUID::from_components(namespaced_action_type, Eid::new(action_id.id.clone()))
     }
 
     /// Implemented to convert a type as written in the schema json format into the
@@ -702,24 +639,18 @@ impl ValidatorNamespaceDef {
                 }
             }
             SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
-                let entity_type_name = Self::parse_possibly_qualified_name_with_default_namespace(
-                    &name,
-                    default_namespace,
+                Ok(Type::named_entity_reference(
+                    name.prefix_namespace_if_unqualified(default_namespace.cloned()),
                 )
-                .map_err(SchemaError::ParseEntityType)?;
-                Ok(Type::named_entity_reference(entity_type_name).into())
+                .into())
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
-                let extension_type_name =
-                    Name::from_normalized_str(&name).map_err(SchemaError::ParseExtensionType)?;
+                let extension_type_name = Name::unqualified_name(name);
                 Ok(Type::extension(extension_type_name).into())
             }
             SchemaType::TypeDef { type_name } => {
-                let defined_type_name = Self::parse_possibly_qualified_name_with_default_namespace(
-                    &type_name,
-                    default_namespace,
-                )
-                .map_err(SchemaError::ParseCommonType)?;
+                let defined_type_name =
+                    type_name.prefix_namespace_if_unqualified(default_namespace.cloned());
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
                         SchemaError::UndeclaredCommonTypes(HashSet::from([

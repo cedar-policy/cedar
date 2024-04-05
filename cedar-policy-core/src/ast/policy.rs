@@ -40,7 +40,7 @@ pub struct Template {
     /// This is maintained by the only two public constructors, `new` and `instantiate_inline_policy`
     ///
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
-    slots: Vec<SlotId>,
+    slots: Vec<Slot>,
 }
 
 impl From<Template> for TemplateBody {
@@ -53,13 +53,11 @@ impl Template {
     /// Checks the invariant (slot cache correctness)
     #[cfg(test)]
     pub fn check_invariant(&self) {
-        let cond = self.body.condition();
-        let slots = cond.slots().collect::<Vec<_>>();
-        for slot in slots.iter() {
-            assert!(self.slots.contains(slot));
+        for slot in self.body.condition().slots() {
+            assert!(self.slots.contains(&slot));
         }
         for slot in self.slots() {
-            assert!(slots.contains(&slot));
+            assert!(self.body.condition().slots().contains(slot));
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -79,6 +77,30 @@ impl Template {
         non_head_constraint: Expr,
     ) -> Self {
         let body = TemplateBody::new(
+            id,
+            annotations,
+            effect,
+            principal_constraint,
+            action_constraint,
+            resource_constraint,
+            non_head_constraint,
+        );
+        // INVARIANT (slot cache correctness)
+        // This invariant is maintained in the body of the From impl
+        Template::from(body)
+    }
+
+    /// Construct a template from an expression/annotations that are already [`std::sync::Arc`] allocated
+    pub fn new_shared(
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+        effect: Effect,
+        principal_constraint: PrincipalConstraint,
+        action_constraint: ActionConstraint,
+        resource_constraint: ResourceConstraint,
+        non_head_constraint: Arc<Expr>,
+    ) -> Self {
+        let body = TemplateBody::new_shared(
             id,
             annotations,
             effect,
@@ -112,6 +134,11 @@ impl Template {
         self.body.non_head_constraints()
     }
 
+    /// Get Arc to non-head constraint on the body
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        self.body.non_head_constraints_arc()
+    }
+
     /// Get the PolicyID of this template
     pub fn id(&self) -> &PolicyID {
         self.body.id()
@@ -140,6 +167,11 @@ impl Template {
         self.body.annotations()
     }
 
+    /// Get [`Arc`] owning the annotation data.
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        self.body.annotations_arc()
+    }
+
     /// Get the condition expression of this template.
     ///
     /// This will be a conjunction of the template's head constraints (on
@@ -150,7 +182,7 @@ impl Template {
     }
 
     /// List of open slots in this template
-    pub fn slots(&self) -> impl Iterator<Item = &SlotId> {
+    pub fn slots(&self) -> impl Iterator<Item = &Slot> {
         self.slots.iter()
     }
 
@@ -173,13 +205,17 @@ impl Template {
         let unbound = template
             .slots
             .iter()
-            .filter(|slot| !values.contains_key(slot))
+            .filter(|slot| !values.contains_key(&slot.id))
             .collect::<Vec<_>>();
 
         let extra = values
             .iter()
             .filter_map(|(slot, _)| {
-                if !template.slots.contains(slot) {
+                if !template
+                    .slots
+                    .iter()
+                    .any(|template_slot| template_slot.id == *slot)
+                {
                     Some(slot)
                 } else {
                     None
@@ -191,8 +227,8 @@ impl Template {
             Ok(())
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(SlotId::clone),
-                extra.into_iter().map(SlotId::clone),
+                unbound.into_iter().map(|slot| slot.id),
+                extra.into_iter().copied(),
             ))
         }
     }
@@ -239,7 +275,7 @@ impl From<TemplateBody> for Template {
     fn from(body: TemplateBody) -> Self {
         // INVARIANT: (slot cache correctness)
         // Pull all the slots out of the template body's condition.
-        let slots = body.condition().slots().copied().collect::<Vec<_>>();
+        let slots = body.condition().slots().collect::<Vec<_>>();
         Self { body, slots }
     }
 }
@@ -279,10 +315,10 @@ pub enum LinkingError {
 }
 
 impl LinkingError {
-    fn from_unbound_and_extras<T>(unbound: T, extra: T) -> Self
-    where
-        T: Iterator<Item = SlotId>,
-    {
+    fn from_unbound_and_extras(
+        unbound: impl Iterator<Item = SlotId>,
+        extra: impl Iterator<Item = SlotId>,
+    ) -> Self {
         Self::ArityError {
             unbound_values: unbound.collect(),
             extra_values: extra.collect(),
@@ -346,9 +382,19 @@ impl Policy {
 
     /// Build a policy with a given effect, given when clause, and unconstrained head variables
     pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID) -> Self {
-        let t = Template::new(
+        Self::from_when_clause_annos(effect, Arc::new(when), id, Arc::new(Annotations::default()))
+    }
+
+    /// Build a policy with a given effect, given when clause, and unconstrained head variables
+    pub fn from_when_clause_annos(
+        effect: Effect,
+        when: Arc<Expr>,
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+    ) -> Self {
+        let t = Template::new_shared(
             id,
-            Annotations::new(),
+            annotations,
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -381,6 +427,11 @@ impl Policy {
     /// Get all annotation data.
     pub fn annotations(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
         self.template.annotations()
+    }
+
+    /// Get [`Arc`] owning annotation data.
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        self.template.annotations_arc()
     }
 
     /// Get the principal constraint for this policy.
@@ -417,6 +468,11 @@ impl Policy {
     /// Get the non-head constraints for the policy
     pub fn non_head_constraints(&self) -> &Expr {
         self.template.non_head_constraints()
+    }
+
+    /// Get the [`Arc`] owning non-head constraints for the policy
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        self.template.non_head_constraints_arc()
     }
 
     /// Get the expression that represents this policy.
@@ -761,10 +817,10 @@ impl StaticPolicy {
             resource_constraint,
             non_head_constraints,
         );
-        let num_slots = body.condition().slots().next().map(SlotId::clone);
+        let first_slot = body.condition().slots().next();
         // INVARIANT (inline policy correctness), checks that no slots exists
-        match num_slots {
-            Some(slot_id) => Err(UnexpectedSlotError::FoundSlot(slot_id))?,
+        match first_slot {
+            Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot))?,
             None => Ok(Self(body)),
         }
     }
@@ -775,7 +831,7 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let o = value.slots().next().map(SlotId::clone);
+        let o = value.slots().next().cloned();
         match o {
             Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
             None => Ok(Self(value.body)),
@@ -806,7 +862,7 @@ pub struct TemplateBody {
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
-    annotations: Annotations,
+    annotations: Arc<Annotations>,
     /// `Effect` of this policy
     effect: Effect,
     /// Head constraint for principal. This will be a boolean-valued expression:
@@ -825,7 +881,7 @@ pub struct TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    non_head_constraints: Expr,
+    non_head_constraints: Arc<Expr>,
 }
 
 impl TemplateBody {
@@ -849,6 +905,11 @@ impl TemplateBody {
     /// Get data from an annotation.
     pub fn annotation(&self, key: &AnyId) -> Option<&Annotation> {
         self.annotations.get(key)
+    }
+
+    /// Get shared ref to annotations
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        &self.annotations
     }
 
     /// Get all annotation data.
@@ -900,6 +961,11 @@ impl TemplateBody {
         &self.non_head_constraints
     }
 
+    /// Get the Arc owning the non head constraints
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        &self.non_head_constraints
+    }
+
     /// Get the condition expression of this policy.
     ///
     /// This will be a conjunction of the policy's head constraints (on
@@ -914,8 +980,29 @@ impl TemplateBody {
                 ),
                 self.resource_constraint_expr(),
             ),
-            self.non_head_constraints.clone(),
+            self.non_head_constraints.as_ref().clone(),
         )
+    }
+
+    /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
+    pub fn new_shared(
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+        effect: Effect,
+        principal_constraint: PrincipalConstraint,
+        action_constraint: ActionConstraint,
+        resource_constraint: ResourceConstraint,
+        non_head_constraints: Arc<Expr>,
+    ) -> Self {
+        Self {
+            id,
+            annotations,
+            effect,
+            principal_constraint,
+            action_constraint,
+            resource_constraint,
+            non_head_constraints,
+        }
     }
 
     /// Construct a `Policy` from its components
@@ -930,12 +1017,12 @@ impl TemplateBody {
     ) -> Self {
         Self {
             id,
-            annotations,
+            annotations: Arc::new(annotations),
             effect,
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraints,
+            non_head_constraints: Arc::new(non_head_constraints),
         }
     }
 }
@@ -964,7 +1051,7 @@ impl std::fmt::Display for TemplateBody {
 }
 
 /// Struct which holds the annotations for a policy
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct Annotations(BTreeMap<AnyId, Annotation>);
 
 impl Annotations {
@@ -1025,7 +1112,7 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 }
 
 /// Struct which holds the value of a particular annotation
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug, PartialOrd, Ord)]
 pub struct Annotation {
     /// Annotation value
     pub val: SmolStr,
@@ -1041,7 +1128,7 @@ impl AsRef<str> for Annotation {
 }
 
 /// Template constraint on principal head variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1148,7 +1235,7 @@ impl std::fmt::Display for PrincipalConstraint {
 }
 
 /// Template constraint on resource head variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1255,7 +1342,7 @@ impl std::fmt::Display for ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
@@ -1267,19 +1354,6 @@ impl EntityReference {
     /// Create an entity reference to a specific EntityUID
     pub fn euid(euid: EntityUID) -> Self {
         Self::EUID(Arc::new(euid))
-    }
-
-    /// Get the entity reference as an `EntityUID`, returning an error if it is
-    /// a slot rather than an `EntityUID`.
-    ///
-    /// `slot` indicates what `SlotId` would be implied by
-    /// `EntityReference::Slot`, which is always clear from the caller's
-    /// context. It is only used for error reporting
-    pub fn into_euid(self, slot: SlotId) -> Result<Arc<EntityUID>, UnexpectedSlotError> {
-        match self {
-            EntityReference::EUID(euid) => Ok(euid),
-            EntityReference::Slot => Err(UnexpectedSlotError::FoundSlot(slot)),
-        }
     }
 
     /// Transform into an expression AST
@@ -1296,11 +1370,22 @@ impl EntityReference {
 }
 
 /// Error for unexpected slots
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum UnexpectedSlotError {
     /// Found this slot where slots are not allowed
-    #[error("found slot `{0}` where slots are not allowed")]
-    FoundSlot(SlotId),
+    #[error("found slot `{}` where slots are not allowed", .0.id)]
+    FoundSlot(Slot),
+}
+
+impl Diagnostic for UnexpectedSlotError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        match self {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
+                let label = miette::LabeledSpan::underline(loc.span);
+                Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
+            }),
+        }
+    }
 }
 
 impl From<EntityUID> for EntityReference {
@@ -1341,7 +1426,7 @@ impl TryFrom<Var> for PrincipalOrResource {
 
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum PrincipalOrResourceConstraint {
     /// Unconstrained
     Any,
@@ -1478,7 +1563,7 @@ impl PrincipalOrResourceConstraint {
 
 /// Constraint for action head variables.
 /// Action variables can be constrained to be in any variable in a list.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ActionConstraint {
     /// Unconstrained
     Any,
@@ -1577,7 +1662,7 @@ impl std::fmt::Display for StaticPolicy {
 }
 
 /// A unique identifier for a policy statement
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PolicyID(SmolStr);
 
 impl PolicyID {
@@ -1616,7 +1701,7 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 }
 
 /// the Effect of a policy
-#[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -1740,15 +1825,16 @@ pub mod test_generators {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
+    use cool_asserts::assert_matches;
     use std::collections::HashSet;
 
     use super::{test_generators::*, *};
     use crate::{
-        ast::{entity, id, name, EntityUID},
         parser::{
-            err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
-            parse_policy, Loc,
+            parse_policy,
+            test_utils::{expect_exactly_one_error, expect_some_error_matches},
         },
+        test_utils::ExpectedErrorMessageBuilder,
     };
 
     #[test]
@@ -1757,7 +1843,7 @@ mod test {
             let t = Arc::new(template);
             let env = t
                 .slots()
-                .map(|slotid| (*slotid, EntityUID::with_eid("eid")))
+                .map(|slot| (slot.id, EntityUID::with_eid("eid")))
                 .collect();
             let p =
                 Template::link(t, PolicyID::from_string("id"), env).expect("Instantiation Failed");
@@ -1836,19 +1922,10 @@ mod test {
         ));
         let mut m = HashMap::new();
         m.insert(SlotId::resource(), EntityUID::with_eid("eid"));
-        match Template::link(t, iid, m) {
-            Ok(_) => panic!("Should fail!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 1);
-                assert!(unbound_values.contains(&SlotId::principal()));
-                assert_eq!(extra_values.len(), 1);
-                assert!(extra_values.contains(&SlotId::resource()));
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::principal()]);
+            assert_eq!(extra_values, vec![SlotId::resource()]);
+        });
     }
 
     #[test]
@@ -1864,31 +1941,16 @@ mod test {
             ResourceConstraint::is_in_slot(),
             Expr::val(true),
         ));
-        match Template::link(t.clone(), iid.clone(), HashMap::new()) {
-            Ok(_) => panic!("should have failed!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 2);
-                assert_eq!(extra_values.len(), 0);
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::resource(), SlotId::principal()]);
+            assert_eq!(extra_values, vec![]);
+        });
         let mut m = HashMap::new();
         m.insert(SlotId::principal(), EntityUID::with_eid("eid"));
-        match Template::link(t, iid, m) {
-            Ok(_) => panic!("should have failed!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 1);
-                assert!(unbound_values.contains(&SlotId::resource()));
-                assert_eq!(extra_values.len(), 0);
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::resource()]);
+            assert_eq!(extra_values, vec![]);
+        });
     }
 
     #[test]
@@ -2088,26 +2150,27 @@ mod test {
     #[test]
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
-        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert_eq!(
-            &errs[0],
-            &ParseError::ToAST(ToASTError::new(
-                ToASTErrorKind::UnexpectedTemplate {
-                    slot: crate::parser::cst::Slot::Principal
-                },
-                Loc::new(0..50, Arc::from(policy_str)),
-            ))
-        );
-        assert_eq!(errs.len(), 1);
+        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+            expect_exactly_one_error(policy_str, &e, &ExpectedErrorMessageBuilder::error(
+                "expected a static policy, got a template containing the slot ?principal"
+                )
+                .help("try removing the template slot(s) from this policy")
+                .exactly_one_underline("permit(principal == ?principal, action, resource);")
+                .build()
+            );
+        });
+
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
-        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert!(errs.contains(&ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::UnexpectedTemplate {
-                slot: crate::parser::cst::Slot::Principal
-            },
-            Loc::new(50..74, Arc::from(policy_str)),
-        ))));
-        assert_eq!(errs.len(), 2);
+        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+            expect_some_error_matches(policy_str, &e, &ExpectedErrorMessageBuilder::error(
+                "expected a static policy, got a template containing the slot ?principal"
+                )
+                .help("try removing the template slot(s) from this policy")
+                .exactly_one_underline("?principal")
+                .build()
+            );
+            assert_eq!(e.len(), 2);
+        });
     }
 }

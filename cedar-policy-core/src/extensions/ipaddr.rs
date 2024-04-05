@@ -566,6 +566,7 @@ mod tests {
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::String],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -580,6 +581,7 @@ mod tests {
                         name: Name::parse_unqualified_name("ipaddr")
                             .expect("should be a valid identifier")
                     },
+                    advice: None,
                 }
             )
         );
@@ -598,9 +600,9 @@ mod tests {
                                 .expect("should be a valid identifier")
                         }],
                         actual: Type::String,
+                        advice: Some(ADVICE_MSG.into()),
                     },
                 );
-                assert_eq!(e.advice(), Some(ADVICE_MSG));
             }
         );
 

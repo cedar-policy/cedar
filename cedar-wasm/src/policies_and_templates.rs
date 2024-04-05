@@ -8,14 +8,17 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(untagged)]
 #[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum JsonToPolicyResult {
-    #[serde(rename = "true")]
-    Success { policy_text: String },
-    #[serde(rename = "false")]
-    Error { errors: Vec<String> },
+    #[serde(rename_all = "camelCase")]
+    Success {
+        policy_text: String,
+    },
+    Error {
+        errors: Vec<String>,
+    },
 }
 
 #[wasm_bindgen(js_name = "policyTextFromJson")]
@@ -40,15 +43,15 @@ pub fn policy_text_from_json(json_str: &str) -> JsonToPolicyResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "success")]
+#[serde(untagged)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum PolicyToJsonResult {
-    #[serde(rename = "true")]
     Success {
         policy: cedar_policy_core::est::Policy,
     },
-    #[serde(rename = "false")]
-    Error { errors: Vec<String> },
+    Error {
+        errors: Vec<String>,
+    },
 }
 
 #[wasm_bindgen(js_name = "policyTextToJson")]
@@ -62,14 +65,12 @@ pub fn policy_text_to_json(cedar_str: &str) -> PolicyToJsonResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(untagged)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result for the syntax validation function
 pub enum CheckParsePolicySetResult {
-    #[serde(rename = "true")]
     /// represents successful syntax validation
     Success { policies: i32, templates: i32 },
-    #[serde(rename = "false")]
     /// represents a syntax error and encloses a vector of the errors
     SyntaxError { errors: Vec<String> },
 }
@@ -99,13 +100,11 @@ pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetRe
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(untagged)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum CheckParseTemplateResult {
-    #[serde(rename = "true")]
     /// represents successful template validation
     Success { slots: Vec<String> },
-    #[serde(rename = "false")]
     /// represents errors in the template validation and encloses a vector of the errors
     Error { errors: Vec<String> },
 }
