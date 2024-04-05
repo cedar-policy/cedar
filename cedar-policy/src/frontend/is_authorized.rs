@@ -82,9 +82,7 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
             #[allow(clippy::map_unwrap_or)]
             response
                 .try_into()
-                .map(|response| PartialAuthorizationAnswer::Residuals {
-                    response: Box::new(response),
-                })
+                .map(|response| PartialAuthorizationAnswer::Residuals { response })
                 .unwrap_or_else(|e| PartialAuthorizationAnswer::ParseFailed {
                     errors: vec![e.to_string()],
                 })
@@ -1836,9 +1834,9 @@ mod partial_test {
     fn assert_is_authorized_json_partial(call: serde_json::Value) {
         let ans_val = is_authorized_json_partial(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(PartialAuthorizationAnswer::Concrete { response }) => {
-            assert_eq!(response.decision(), Decision::Allow);
-            let errors: Vec<&str> = response.diagnostics().errors().collect();
+        assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
+            assert_eq!(response.decision(), Some(Decision::Allow));
+            let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
         });
     }
@@ -1847,26 +1845,27 @@ mod partial_test {
     fn assert_is_not_authorized_json_partial(call: serde_json::Value) {
         let ans_val = is_authorized_json_partial(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(PartialAuthorizationAnswer::Concrete { response }) => {
-            assert_eq!(response.decision(), Decision::Deny);
-            let errors: Vec<&str> = response.diagnostics().errors().collect();
+        assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
+            assert_eq!(response.decision(), Some(Decision::Deny));
+            let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
         });
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_is_residual(call: serde_json::Value, residual_ids: HashSet<&str>) {
+    fn assert_is_residual(call: serde_json::Value, expected_residuals: HashSet<&str>) {
         let ans_val = is_authorized_json_partial(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
-            let errors: Vec<&str> = response.diagnostics.errors().collect();
+            assert_eq!(response.decision(), None);
+            let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
-            let residuals = response.residuals;
-            for id in &residual_ids {
-                assert!(residuals.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
+            let actual_residuals: HashSet<_> = response.nontrivial_residual_ids().collect();
+            for id in &expected_residuals {
+                assert!(actual_residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected nontrivial residual for {id}, but it's missing")
             }
-            for key in residuals.keys() {
-                assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
+            for id in &actual_residuals {
+                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}")
             }
         });
     }
