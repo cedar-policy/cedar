@@ -103,7 +103,7 @@ pub fn is_authorized_partial_json(
 }
 
 /// Input and output are strings containing serialized JSON, in the shapes
-/// expected by [`is_authorized_json_partial()`]
+/// expected by [`is_authorized_partial_json()`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::Error> {
