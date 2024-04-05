@@ -95,7 +95,7 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
 /// encoding of [`PartialAuthorizationAnswer`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-pub fn is_authorized_json_partial(
+pub fn is_authorized_partial_json(
     json: serde_json::Value,
 ) -> Result<serde_json::Value, serde_json::Error> {
     let ans = is_authorized_partial(serde_json::from_value(json)?);
@@ -106,7 +106,7 @@ pub fn is_authorized_json_partial(
 /// expected by [`is_authorized_json_partial()`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-pub fn is_authorized_json_str_partial(json: &str) -> Result<String, serde_json::Error> {
+pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = is_authorized_partial(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
 }
@@ -1832,7 +1832,7 @@ mod partial_test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_is_authorized_json_partial(call: serde_json::Value) {
-        let ans_val = is_authorized_json_partial(call).unwrap();
+        let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
             assert_eq!(response.decision(), Some(Decision::Allow));
@@ -1843,7 +1843,7 @@ mod partial_test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_is_not_authorized_json_partial(call: serde_json::Value) {
-        let ans_val = is_authorized_json_partial(call).unwrap();
+        let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
             assert_eq!(response.decision(), Some(Decision::Deny));
@@ -1854,7 +1854,7 @@ mod partial_test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_is_residual(call: serde_json::Value, expected_residuals: HashSet<&str>) {
-        let ans_val = is_authorized_json_partial(call).unwrap();
+        let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response }) => {
             assert_eq!(response.decision(), None);
