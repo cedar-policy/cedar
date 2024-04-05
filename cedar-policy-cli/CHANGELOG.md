@@ -7,6 +7,8 @@
 - The default `--schema-format` is now `human` for all subcommands that take
   `--schema-format`.
 
+## 3.1.2
+
 ## 3.1.1
 
 ## 3.1.0
@@ -57,6 +59,10 @@ Now uses Cedar language version 3.0.0.
   long form of the flag is also now accepted across all subcommands.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
 - The `format` subcommand no longer takes a positional file argument.
+
+## 2.4.5
+
+## 2.4.4
 
 ## 2.4.3
 

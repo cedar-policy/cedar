@@ -16,10 +16,12 @@
 
 use super::id::Id;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use smol_str::ToSmolStr;
 use std::sync::Arc;
 
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
 use super::PrincipalOrResource;
@@ -27,13 +29,34 @@ use super::PrincipalOrResource;
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
     pub(crate) path: Arc<Vec<Id>>,
+}
+
+/// A shortcut for `Name::unqualified_name`
+impl From<Id> for Name {
+    fn from(value: Id) -> Self {
+        Self::unqualified_name(value)
+    }
+}
+
+/// Convert a `Name` to an `Id`
+/// The error type is the unit type because the reason the conversion fails
+/// is obvious
+impl TryFrom<Name> for Id {
+    type Error = ();
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.is_unqualified() {
+            Ok(value.id)
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl Name {
@@ -89,6 +112,35 @@ impl Name {
     pub fn namespace(&self) -> String {
         self.path.iter().join("::")
     }
+
+    /// Prefix the name with a optional namespace
+    /// When the name is not an `Id`, it doesn't make sense to prefix any
+    /// namespace and hence this method returns a copy of `self`
+    /// When the name is an `Id`, prefix it with the optional namespace
+    /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
+    /// prefix `A` with `Some(B::C)` yields `B::C::A`
+    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<Name>) -> Name {
+        if self.is_unqualified() {
+            // Ideally, we want to implement `IntoIterator` for `Name`
+            match namespace {
+                Some(namespace) => Self::new(
+                    self.basename().clone(),
+                    namespace
+                        .namespace_components()
+                        .chain(std::iter::once(namespace.basename()))
+                        .cloned(),
+                ),
+                None => self.clone(),
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Test if a `Name` is an `Id`
+    pub fn is_unqualified(&self) -> bool {
+        self.path.is_empty()
+    }
 }
 
 impl std::fmt::Display for Name {
@@ -98,6 +150,17 @@ impl std::fmt::Display for Name {
         }
         write!(f, "{}", self.id)?;
         Ok(())
+    }
+}
+
+/// Serialize a `Name` using its `Display` implementation
+/// This serialization implementation is used in the JSON schema format.
+impl Serialize for Name {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_smolstr().serialize(serializer)
     }
 }
 
@@ -113,6 +176,35 @@ impl std::str::FromStr for Name {
 impl FromNormalizedStr for Name {
     fn describe_self() -> &'static str {
         "Name"
+    }
+}
+
+struct NameVisitor;
+
+impl<'de> serde::de::Visitor<'de> for NameVisitor {
+    type Value = Name;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a name consisting of an optional namespace and id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Name::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
+    }
+}
+
+/// Deserialize a `Name` using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(NameVisitor)
     }
 }
 
@@ -180,6 +272,32 @@ impl std::fmt::Display for ValidSlotId {
     }
 }
 
+/// [`SlotId`] plus a source location
+#[derive(Debug, Clone)]
+pub struct Slot {
+    /// [`SlotId`]
+    pub id: SlotId,
+    /// Source location, if available
+    pub loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
+/// are equal.
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Slot {}
+
+impl std::hash::Hash for Slot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash only the id, in line with the `PartialEq` impl which compares
+        // only the id
+        self.id.hash(state);
+    }
+}
+
 #[cfg(test)]
 mod vars_test {
     use super::*;
@@ -198,7 +316,6 @@ mod vars_test {
 
 #[cfg(test)]
 mod test {
-
     use super::*;
 
     #[test]
@@ -210,5 +327,37 @@ mod test {
         Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn prefix_namespace() {
+        assert_eq!(
+            "foo::bar::baz",
+            Name::from_normalized_str("baz")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("foo::bar".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "C::D",
+            Name::from_normalized_str("C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A::B".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A::B::C".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "B::C::D",
+            Name::from_normalized_str("B::C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A".parse().unwrap()))
+                .to_smolstr()
+        );
     }
 }

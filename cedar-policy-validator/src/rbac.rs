@@ -482,28 +482,28 @@ mod test {
         let schema_file = NamespaceDefinition::new(
             [
                 (
-                    user_type.into(),
+                    user_type.parse().unwrap(),
                     EntityType {
-                        member_of_types: vec![group_type.into()],
+                        member_of_types: vec![group_type.parse().unwrap()],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    group_type.into(),
+                    group_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    widget_type.into(),
+                    widget_type.parse().unwrap(),
                     EntityType {
-                        member_of_types: vec![bin_type.into()],
+                        member_of_types: vec![bin_type.parse().unwrap()],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    bin_type.into(),
+                    bin_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
@@ -514,8 +514,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: Some(vec![widget_type.into()]),
-                        principal_types: Some(vec![user_type.into()]),
+                        resource_types: Some(vec![widget_type.parse().unwrap()]),
+                        principal_types: Some(vec![user_type.parse().unwrap()]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
@@ -558,7 +558,7 @@ mod test {
         let foo_type = "foo_type";
         let schema_file = NamespaceDefinition::new(
             [(
-                foo_type.into(),
+                foo_type.parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -593,7 +593,7 @@ mod test {
     fn validate_entity_type_not_in_singleton_schema() -> Result<()> {
         let schema_file = NamespaceDefinition::new(
             [(
-                "foo_type".into(),
+                "foo_type".parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -714,7 +714,7 @@ mod test {
         let p_name = "User";
         let schema_file = NamespaceDefinition::new(
             [(
-                p_name.into(),
+                p_name.parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -738,7 +738,7 @@ mod test {
         let p_name = "Package";
         let schema_file = NamespaceDefinition::new(
             [(
-                p_name.into(),
+                p_name.parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -762,7 +762,7 @@ mod test {
         let p_name = "User";
         let schema_file = NamespaceDefinition::new(
             [(
-                p_name.into(),
+                p_name.parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -1082,7 +1082,7 @@ mod test {
 
         let schema_file = NamespaceDefinition::new(
             [(
-                foo_type.into(),
+                foo_type.parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -1118,14 +1118,14 @@ mod test {
         let schema = NamespaceDefinition::new(
             [
                 (
-                    principal_type.into(),
+                    principal_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    resource_type.into(),
+                    resource_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
@@ -1136,8 +1136,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: Some(vec![resource_type.into()]),
-                        principal_types: Some(vec![principal_type.into()]),
+                        resource_types: Some(vec![resource_type.parse().unwrap()]),
+                        principal_types: Some(vec![principal_type.parse().unwrap()]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
@@ -1518,28 +1518,28 @@ mod test {
         let schema_file = NamespaceDefinition::new(
             [
                 (
-                    principal_type.into(),
+                    principal_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    resource_type.into(),
+                    resource_type.parse().unwrap(),
                     EntityType {
-                        member_of_types: vec![resource_parent_type.into()],
+                        member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    resource_parent_type.into(),
+                    resource_parent_type.parse().unwrap(),
                     EntityType {
-                        member_of_types: vec![resource_grandparent_type.into()],
+                        member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    resource_grandparent_type.into(),
+                    resource_grandparent_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
@@ -1551,8 +1551,8 @@ mod test {
                     action_name.into(),
                     ActionType {
                         applies_to: Some(ApplySpec {
-                            resource_types: Some(vec![resource_type.into()]),
-                            principal_types: Some(vec![principal_type.into()]),
+                            resource_types: Some(vec![resource_type.parse().unwrap()]),
+                            principal_types: Some(vec![principal_type.parse().unwrap()]),
                             context: AttributesOrContext::default(),
                         }),
                         member_of: Some(vec![ActionEntityUID {

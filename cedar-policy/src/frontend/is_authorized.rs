@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::MapPreventDuplicates;
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "partial-eval")]
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -50,7 +52,7 @@ pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
                     .into(),
             })
         }
-        Err(errors) => AuthorizationAnswer::Failure { errors },
+        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
     }
 }
 
@@ -75,22 +77,19 @@ pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
 pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
     match call.get_components_partial() {
         Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
-            match authorizer.is_authorized_partial(&request, &policies, &entities) {
-                concrete_response @ crate::PartialResponse::Concrete(_) => {
-                    match concrete_response.try_into() {
-                        Ok(response) => PartialAuthorizationAnswer::Concrete { response },
-                        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
-                    }
-                }
-                residual_response @ crate::PartialResponse::Residual(_) => {
-                    match residual_response.try_into() {
-                        Ok(response) => PartialAuthorizationAnswer::Residuals { response },
-                        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
-                    }
-                }
-            }
+            let response = authorizer.is_authorized_partial(&request, &policies, &entities);
+            // Allowing this lint warning because the suggestion causes type inference to break
+            #[allow(clippy::map_unwrap_or)]
+            response
+                .try_into()
+                .map(|response| PartialAuthorizationAnswer::Residuals {
+                    response: Box::new(response),
+                })
+                .unwrap_or_else(|e| PartialAuthorizationAnswer::ParseFailed {
+                    errors: vec![e.to_string()],
+                })
         }),
-        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
+        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
     }
 }
 
@@ -174,21 +173,19 @@ impl From<crate::Response> for Response {
 
 #[cfg(feature = "partial-eval")]
 impl TryFrom<crate::PartialResponse> for Response {
-    type Error = Vec<String>;
+    type Error = Infallible;
 
     fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
-        match partial_response {
-            crate::PartialResponse::Concrete(concrete) => Ok(Self::new(
-                concrete.decision(),
-                concrete.diagnostics().reason().cloned().collect(),
-                concrete
-                    .diagnostics()
-                    .errors()
-                    .map(ToString::to_string)
-                    .collect(),
-            )),
-            crate::PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
-        }
+        let concrete = partial_response.concretize();
+        Ok(Self::new(
+            concrete.decision(),
+            concrete.diagnostics().reason().cloned().collect(),
+            concrete
+                .diagnostics()
+                .errors()
+                .map(ToString::to_string)
+                .collect(),
+        ))
     }
 }
 
@@ -209,55 +206,96 @@ impl Diagnostics {
 /// (de)serialization
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResidualResponse {
-    /// A residual set of policies. Determining the concrete response requires further processing.
+    decision: Option<Decision>,
+    satisfied: HashSet<PolicyId>,
+    errored: HashSet<PolicyId>,
+    may_be_determining: HashSet<PolicyId>,
+    must_be_determining: HashSet<PolicyId>,
     residuals: HashMap<PolicyId, serde_json::Value>,
-    /// Diagnostics providing more information on how this decision was reached
-    diagnostics: Diagnostics,
+    nontrivial_residuals: HashSet<PolicyId>,
 }
 
 #[cfg(feature = "partial-eval")]
 impl ResidualResponse {
-    /// Construct a `ResidualResponse`
-    pub fn new(
-        residuals: HashMap<PolicyId, serde_json::Value>,
-        reason: HashSet<PolicyId>,
-        errors: HashSet<String>,
-    ) -> Self {
-        Self {
-            residuals,
-            diagnostics: Diagnostics { reason, errors },
-        }
+    /// Tri-state decision
+    pub fn decision(&self) -> Option<Decision> {
+        self.decision
+    }
+
+    /// Set of all satisfied policy Ids
+    pub fn satisfied(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied.iter()
+    }
+
+    /// Set of all policy ids for policies that errored
+    pub fn errored(&self) -> impl Iterator<Item = &PolicyId> {
+        self.errored.iter()
+    }
+
+    /// Over approximation of policies that determine the auth decision
+    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+        self.may_be_determining.iter()
+    }
+
+    /// Under approximation of policies that determine the auth decision
+    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+        self.must_be_determining.iter()
+    }
+
+    /// (Borrowed) Iterator over the set of residual policies
+    pub fn residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+        self.residuals.values()
+    }
+
+    /// (Owned) Iterator over the set of residual policies
+    pub fn into_residuals(self) -> impl Iterator<Item = serde_json::Value> {
+        self.residuals.into_values()
+    }
+
+    /// Get the residual policy for a specified [`PolicyId`] if it exists
+    pub fn residual(&self, p: &PolicyId) -> Option<&serde_json::Value> {
+        self.residuals.get(p)
+    }
+
+    /// (Borrowed) Iterator over the set of non-trivial residual policies
+    pub fn nontrivial_residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+        self.residuals.iter().filter_map(|(id, policy)| {
+            if self.nontrivial_residuals.contains(id) {
+                Some(policy)
+            } else {
+                None
+            }
+        })
+    }
+
+    ///  Iterator over the set of non-trivial residual policy ids
+    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.nontrivial_residuals.iter()
     }
 }
 
 #[cfg(feature = "partial-eval")]
 impl TryFrom<crate::PartialResponse> for ResidualResponse {
-    type Error = Vec<String>;
+    type Error = Box<dyn miette::Diagnostic>;
 
     fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
-        match partial_response {
-            crate::PartialResponse::Residual(residual) => Ok(Self::new(
-                residual
-                    .residuals()
-                    .policies()
-                    .map(|policy| match policy.to_json() {
-                        Ok(json) => Ok((policy.id().clone(), json)),
-                        Err(errors) => Err(vec![errors.to_string()]),
-                    })
-                    .collect::<Result<Vec<(PolicyId, serde_json::Value)>, Self::Error>>()?
-                    .into_iter()
-                    .collect(),
-                residual.diagnostics().reason().cloned().collect(),
-                residual
-                    .diagnostics()
-                    .errors()
-                    .map(ToString::to_string)
-                    .collect(),
-            )),
-            crate::PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
-        }
+        Ok(Self {
+            decision: partial_response.decision(),
+            satisfied: partial_response.definitely_satisfied().cloned().collect(),
+            errored: partial_response.definitely_errored().cloned().collect(),
+            may_be_determining: partial_response.may_be_determining().cloned().collect(),
+            must_be_determining: partial_response.must_be_determining().cloned().collect(),
+            nontrivial_residuals: partial_response
+                .nontrivial_residual_ids()
+                .cloned()
+                .collect(),
+            residuals: partial_response
+                .all_residuals()
+                .map(|e| e.to_json().map(|json| (e.id().clone(), json)))
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
@@ -268,7 +306,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
-    Failure {
+    ParseFailed {
         /// Errors encountered
         errors: Vec<String>,
     },
@@ -287,18 +325,12 @@ pub enum AuthorizationAnswer {
 #[serde(untagged)]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
-    Failure {
+    ParseFailed {
         /// Errors encountered
         errors: Vec<String>,
     },
-    /// Represents a successful authorization call with a concrete answer (although
-    /// individual policy evaluation may still have errors)
-    Concrete {
-        /// Authorization decision and diagnostics, which may include policy
-        /// evaluation errors
-        response: Response,
-    },
-    /// Represents a successful authorization call resulting in residuals
+    /// Represents a successful authorization call with either a partial or
+    /// concrete answer.  Individual policy evaluation may still have errors.
     Residuals {
         /// Information about the authorization decision and residuals
         response: ResidualResponse,
@@ -322,16 +354,14 @@ pub struct AuthorizationCall {
     resource: Option<JsonValueWithNoDuplicateKeys>,
     /// The context details specific to the request
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
-    #[cfg_attr(
-        feature = "wasm",
-        tsify(optional, type = "Record<string, CedarValueJson>")
-    )]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    /// The context details specific to the request
     context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
-    #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "Schema"))]
     schema: Option<Schema>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
@@ -814,7 +844,7 @@ mod test {
         let ans_val =
             is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors }) => {
+        assert_matches!(result, Ok(AuthorizationAnswer::ParseFailed { errors }) => {
             assert!(
                 errors.iter().any(|e| e.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}");
