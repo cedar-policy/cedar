@@ -18,6 +18,6 @@ pub enum AuthorizationResult {
 pub fn wasm_is_authorized(call: AuthorizationCall) -> AuthorizationResult {
     match is_authorized(call) {
         AuthorizationAnswer::Success { response } => AuthorizationResult::Success { response },
-        AuthorizationAnswer::ParseFailed { errors } => AuthorizationResult::Error { errors },
+        AuthorizationAnswer::Failure { errors } => AuthorizationResult::Error { errors },
     }
 }

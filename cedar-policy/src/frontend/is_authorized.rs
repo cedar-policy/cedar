@@ -52,7 +52,7 @@ pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
                     .into(),
             })
         }
-        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
+        Err(errors) => AuthorizationAnswer::Failure { errors },
     }
 }
 
@@ -83,11 +83,11 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
             response
                 .try_into()
                 .map(|response| PartialAuthorizationAnswer::Residuals { response })
-                .unwrap_or_else(|e| PartialAuthorizationAnswer::ParseFailed {
+                .unwrap_or_else(|e| PartialAuthorizationAnswer::Failure {
                     errors: vec![e.to_string()],
                 })
         }),
-        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
     }
 }
 
@@ -304,7 +304,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
-    ParseFailed {
+    Failure {
         /// Errors encountered
         errors: Vec<String>,
     },
@@ -323,7 +323,7 @@ pub enum AuthorizationAnswer {
 #[serde(untagged)]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
-    ParseFailed {
+    Failure {
         /// Errors encountered
         errors: Vec<String>,
     },
@@ -836,7 +836,7 @@ mod test {
         let ans_val =
             is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(AuthorizationAnswer::ParseFailed { errors }) => {
+        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors }) => {
             assert!(
                 errors.iter().any(|e| e.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}");
