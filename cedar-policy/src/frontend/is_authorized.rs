@@ -511,21 +511,15 @@ impl AuthorizationCall {
             }
         };
 
-        if errs.is_empty() {
-            // TODO: this ignores warnings
-            let Some(q) = request else {
-                return Err(errs);
-            };
-            let Some(policies) = policies else {
-                return Err(errs);
-            };
-            let Some(entities) = entities else {
-                return Err(errs);
-            };
-            Ok((q, policies, entities))
-        } else {
-            // TODO: this ignores warnings
-            Err(errs)
+        match (errs.is_empty(), request, policies, entities) {
+            (true, Some(req), Some(policies), Some(entities)) => {
+                // TODO: this ignores warnings
+                Ok((req, policies, entities))
+            }
+            _ => {
+                // TODO: this ignores warnings
+                Err(errs)
+            }
         }
     }
 
