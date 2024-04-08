@@ -309,7 +309,8 @@ mod demo_tests {
         let namespace = NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment = SchemaFragment(HashMap::from([("bar".to_smolstr(), namespace)]));
         let as_src = fragment.as_natural_schema().unwrap();
-        let expected = r#"action "foo" appliesTo {  context: {}
+        let expected = r#"action "foo" appliesTo {
+  context: {}
 };"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
     }
@@ -397,7 +398,7 @@ namespace Baz {action "Foo" appliesTo {
         };
         let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
         let src = fragment.as_natural_schema().unwrap();
-        assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+        assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 
     #[test]

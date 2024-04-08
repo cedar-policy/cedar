@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
+- Improved `Display` implementation for Cedar schemas, both JSON and human syntax. (#780)
 
 ## [3.1.2] - 2024-03-29
 
