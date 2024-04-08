@@ -34,6 +34,8 @@ Copyright (c) 2018 Akash Kurdekar
 Copyright (c) 2016 Martin Geisler
 ** typed-arena
 Copyright (c) 2018 The typed-arena developers
+** serde-wasm-bindgen
+Copyright (c) 2019 Cloudflare, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
