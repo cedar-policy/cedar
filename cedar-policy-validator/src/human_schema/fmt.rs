@@ -16,7 +16,7 @@ impl Display for SchemaFragment {
         for (ns, def) in &self.0 {
             match ns {
                 None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{{def}}}")?,
+                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}")?,
             }
         }
         Ok(())
@@ -29,10 +29,10 @@ impl Display for NamespaceDefinition {
             writeln!(f, "type {n} = {ty};")?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n} {ty};")?
+            writeln!(f, "entity {n}{ty};")?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\" {a};", n.escape_debug())?
+            writeln!(f, "action \"{}\"{a};", n.escape_debug())?
         }
         Ok(())
     }
@@ -50,17 +50,20 @@ impl Display for SchemaType {
                     attributes,
                     additional_attributes: _,
                 } => {
-                    write!(f, "{{ ")?;
-                    for (n, ty) in attributes {
-                        writeln!(
+                    write!(f, "{{")?;
+                    for (i, (n, ty)) in attributes.iter().enumerate() {
+                        write!(
                             f,
-                            "\"{}\"{}: {},",
+                            "\"{}\"{}: {}",
                             n.escape_debug(),
                             if ty.required { "" } else { "?" },
                             ty.ty
                         )?;
+                        if i < (attributes.len() - 1) {
+                            write!(f, ", ")?;
+                        }
                     }
-                    write!(f, " }}")?;
+                    write!(f, "}}")?;
                     Ok(())
                 }
                 SchemaTypeVariant::Set { element } => write!(f, "Set < {element} >"),
@@ -85,12 +88,16 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
-            write!(f, "in ")?;
+            write!(f, " in ")?;
             fmt_vec(f, non_empty)?;
         }
 
         let ty = &self.shape.0;
-        write!(f, " = {ty}")?;
+        // Don't print `= { }`
+        if !ty.is_empty_record() {
+            write!(f, " = {ty}")?;
+        }
+
         Ok(())
     }
 }
@@ -102,7 +109,7 @@ impl Display for ActionType {
             .as_ref()
             .and_then(|refs| non_empty_slice(refs.as_slice()))
         {
-            write!(f, "in ")?;
+            write!(f, " in ")?;
             fmt_vec(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
@@ -122,42 +129,42 @@ impl Display for ActionType {
                 }
                 // Both list are present and non empty
                 (Some(Some(ps)), Some(Some(rs))) => {
-                    write!(f, "appliesTo {{")?;
-                    write!(f, "  principal: ")?;
+                    write!(f, " appliesTo {{")?;
+                    write!(f, "\n  principal: ")?;
                     fmt_vec(f, ps)?;
-                    write!(f, ", \n  resource: ")?;
+                    write!(f, ",\n  resource: ")?;
                     fmt_vec(f, rs)?;
-                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
                 // Only principals are present, resource is unspecified
                 (Some(Some(ps)), None) => {
-                    write!(f, "appliesTo {{")?;
-                    write!(f, "  principal: ")?;
+                    write!(f, " appliesTo {{")?;
+                    write!(f, "\n  principal: ")?;
                     fmt_vec(f, ps)?;
-                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
                 // Only resources is present, principal is unspecified
                 (None, Some(Some(rs))) => {
-                    write!(f, "appliesTo {{")?;
-                    write!(f, "  resource: ")?;
+                    write!(f, " appliesTo {{")?;
+                    write!(f, "\n  resource: ")?;
                     fmt_vec(f, rs)?;
-                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
                 // Neither are present, both principal and resource are unspecified
                 (None, None) => {
-                    write!(f, "appliesTo {{")?;
-                    write!(f, "  context: {}", &spec.context.0)?;
+                    write!(f, " appliesTo {{")?;
+                    write!(f, "\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
             }
         } else {
             // No `appliesTo` key: both principal and resource must be unspecified entities
-            write!(f, "appliesTo {{")?;
+            write!(f, " appliesTo {{")?;
             // context is an empty record
-            write!(f, "  context: {{}}")?;
+            write!(f, "\n  context: {{}}")?;
             write!(f, "\n}}")?;
         }
         Ok(())
