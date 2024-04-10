@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
 - Improved `Display` implementation for Cedar schemas, both JSON and human syntax. (#780)
 - Changed policy validation to reject comparisons and conditionals between
-  record type that differ in whether an attribute is required or optional.
+  record types that differ in whether an attribute is required or optional.
 
 ## [3.1.2] - 2024-03-29
 
