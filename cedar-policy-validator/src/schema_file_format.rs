@@ -207,11 +207,9 @@ impl<'a> CommonTypeResolver<'a> {
             }
         }
 
-        while !work_set.is_empty() {
-            // Pop a node
-            let name = work_set.iter().next().cloned().unwrap();
+        // Pop a node
+        while let Some(name) = work_set.iter().next().cloned() {
             work_set.remove(name);
-
             if let Some(deps) = self.graph.get(name) {
                 for dep in deps {
                     if let Some(degree) = indegrees.get_mut(dep) {
@@ -314,12 +312,18 @@ impl<'a> CommonTypeResolver<'a> {
             let ns: Option<Name> = if name.is_unqualified() {
                 None
             } else {
+                // PANIC SAFETY: The namespace of qualified names should be a valid name
+                #[allow(clippy::unwrap_used)]
                 Some(name.namespace().parse().unwrap())
             };
 
+            // PANIC SAFETY: `ns` should be an existing namespace name
+            #[allow(clippy::unwrap_used)]
             let common_types = &mut self.schema.0.get_mut(&ns).unwrap().common_types;
 
-            let ty = &common_types[name.basename()];
+            // PANIC SAFETY: `name.basename()` should be an existing common type id
+            #[allow(clippy::unwrap_used)]
+            let ty = common_types.get(name.basename()).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &ns)?;
             resolve_table.insert(name, substituted_ty.clone());
             common_types.insert(name.basename().clone(), substituted_ty);
