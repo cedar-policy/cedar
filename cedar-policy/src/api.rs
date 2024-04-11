@@ -23,6 +23,8 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
+#[cfg(feature = "partial-eval")]
+use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
@@ -33,6 +35,8 @@ use cedar_policy_core::entities::{
 };
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::Evaluator;
+#[cfg(feature = "partial-eval")]
+use cedar_policy_core::evaluator::RestrictedEvaluator;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
@@ -796,38 +800,7 @@ impl Authorizer {
         let response = self
             .0
             .is_authorized_core(query.0.clone(), &policy_set.ast, &entities.0);
-        match response {
-            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(a.into()),
-            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
-        }
-    }
-
-    /// Evaluate an authorization request and respond with results that always includes
-    /// residuals even if the [`Authorizer`] already reached a decision.
-    #[doc = include_str!("../experimental_warning.md")]
-    #[cfg(feature = "partial-eval")]
-    pub fn evaluate_policies_partial(
-        &self,
-        query: &Request,
-        policy_set: &PolicySet,
-        entities: &Entities,
-    ) -> EvaluationResponse {
-        let authorizer::EvaluationResponse {
-            satisfied_permits,
-            satisfied_forbids,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        } = self
-            .0
-            .evaluate_policies(&policy_set.ast, query.0.clone(), &entities.0);
-        EvaluationResponse {
-            satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
-            satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
-            errors: errors.into_iter().map(Into::into).collect(),
-            permit_residuals: PolicySet::from_ast(permit_residuals),
-            forbid_residuals: PolicySet::from_ast(forbid_residuals),
-        }
+        PartialResponse(response)
     }
 }
 
@@ -875,44 +848,121 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Authorization response returned from `is_authorized_partial`.
-/// It can either be a full concrete response, or a residual response.
+/// A partially evaluated authorization response.
+/// Splits the results into several categories: satisfied, false, and residual for each policy effect.
+/// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum PartialResponse {
-    /// A full, concrete response.
-    Concrete(Response),
-    /// A residual response. Determining the concrete response requires further processing.
-    Residual(ResidualResponse),
+#[repr(transparent)]
+#[derive(Debug, PartialEq, Eq, Clone, RefCast)]
+pub struct PartialResponse(cedar_policy_core::authorizer::PartialResponse);
+
+#[cfg(feature = "partial-eval")]
+impl PartialResponse {
+    /// Attempt to reach a partial decision; the presence of residuals may result in returning [`None`],
+    /// indicating that a decision could not be reached given the unknowns
+    pub fn decision(&self) -> Option<Decision> {
+        self.0.decision()
+    }
+
+    /// Convert this response into a concrete evaluation response.
+    /// All residuals are treated as errors
+    pub fn concretize(self) -> Response {
+        self.0.concretize().into()
+    }
+
+    /// Returns the set of [`PolicyId`]s that were definitely satisfied
+    pub fn definitely_satisfied(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.definitely_satisfied().map(PolicyId::ref_cast)
+    }
+
+    /// Returns the set of [`PolicyId`]s that encountered errors
+    pub fn definitely_errored(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.definitely_errored().map(PolicyId::ref_cast)
+    }
+
+    /// Returns an over-approximation of the set of determining policies
+    ///
+    /// This is all policies that may be determining for any substitution of the unknowns
+    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.may_be_determining().map(PolicyId::ref_cast)
+    }
+
+    /// Returns an under-approximation of the set of determining policies
+    ///
+    /// This is all policies that must be determining for all possible substitutions of the unknowns
+    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.must_be_determining().map(PolicyId::ref_cast)
+    }
+
+    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
+    pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.nontrivial_residuals().map(Policy::from_ast)
+    }
+
+    /// Returns the set of [`PolicyId`]s of non-trivial (meaning more than just `true` or `false`) residuals expressions
+    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.nontrivial_residual_ids().map(RefCast::ref_cast)
+    }
+
+    /// Returns every policy as a residual expression
+    pub fn all_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.all_residuals().map(Policy::from_ast)
+    }
+
+    /// Return the residual for a given [`PolicyId`], if it exists in the response
+    pub fn get(&self, id: &PolicyId) -> Option<est::Expr> {
+        self.0.get(&id.0).map(|e| est::Expr::from(e.clone()))
+    }
+
+    /// Attempt to re-authorize this response given a mapping from unknowns to values
+    pub fn reauthorize(
+        &self,
+        mapping: HashMap<SmolStr, RestrictedExpression>,
+        auth: &Authorizer,
+        r: Request,
+        es: &Entities,
+    ) -> Result<Self, ReAuthorizeError> {
+        let exts = Extensions::all_available();
+        let evaluator = RestrictedEvaluator::new(&exts);
+        let mapping = mapping
+            .into_iter()
+            .map(|(name, expr)| {
+                evaluator
+                    .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
+                    .map(|v| (name, v))
+            })
+            .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
+        let r = self.0.reauthorize(&mapping, &auth.0, r.0, &es.0)?;
+        Ok(Self(r))
+    }
 }
 
-/// A residual response obtained from `is_authorized_partial`.
-#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ResidualResponse {
-    /// Residual policies
-    residuals: PolicySet,
-    /// Diagnostics
-    diagnostics: Diagnostics,
+#[doc(hidden)]
+impl From<cedar_policy_core::authorizer::PartialResponse> for PartialResponse {
+    fn from(pr: cedar_policy_core::authorizer::PartialResponse) -> Self {
+        Self(pr)
+    }
 }
 
-/// A policy evaluation response obtained from `evaluate_policies_partial`.
-#[doc = include_str!("../experimental_warning.md")]
-#[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct EvaluationResponse {
-    /// `PolicyId`s of fully evaluated policies with a permit [`Effect`]
-    satisfied_permits: HashSet<PolicyId>,
-    /// `PolicyId`s of fully evaluated policies with a forbid [`Effect`]
-    satisfied_forbids: HashSet<PolicyId>,
-    /// Errors that occurred during policy evaluation.
-    errors: Vec<AuthorizationError>,
-    /// Partially evaluated policies with a permit [`Effect`]
-    permit_residuals: PolicySet,
-    /// Partially evaluated policies with a forbid [`Effect`]
-    forbid_residuals: PolicySet,
+/// Errors that can be encountered when re-evaluating a partial response
+#[derive(Debug, Error)]
+pub enum ReAuthorizeError {
+    /// An evaluation error was encountered
+    #[error("{err}")]
+    Evaluation {
+        /// The evaluation error
+        #[from]
+        err: EvaluationError,
+    },
+    /// A policy id conflict was found
+    #[error("{err}")]
+    PolicySet {
+        /// The conflicting ids
+        #[from]
+        err: cedar_policy_core::ast::PolicySetError,
+    },
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
@@ -1086,86 +1136,6 @@ impl From<authorizer::Response> for Response {
             decision: a.decision,
             diagnostics: a.diagnostics.into(),
         }
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl ResidualResponse {
-    /// Create a new `ResidualResponse`
-    pub fn new(
-        residuals: PolicySet,
-        reason: HashSet<PolicyId>,
-        errors: Vec<AuthorizationError>,
-    ) -> Self {
-        Self {
-            residuals,
-            diagnostics: Diagnostics { reason, errors },
-        }
-    }
-
-    /// Get the residual policies needed to reach an authorization decision.
-    pub fn residuals(&self) -> &PolicySet {
-        &self.residuals
-    }
-
-    /// Get the authorization diagnostics
-    pub fn diagnostics(&self) -> &Diagnostics {
-        &self.diagnostics
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl From<authorizer::PartialResponse> for ResidualResponse {
-    fn from(p: authorizer::PartialResponse) -> Self {
-        Self {
-            residuals: PolicySet::from_ast(p.residuals),
-            diagnostics: p.diagnostics.into(),
-        }
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl EvaluationResponse {
-    /// Create a new `EvaluationResponse`.
-    pub fn new(
-        satisfied_permits: HashSet<PolicyId>,
-        satisfied_forbids: HashSet<PolicyId>,
-        errors: Vec<AuthorizationError>,
-        permit_residuals: PolicySet,
-        forbid_residuals: PolicySet,
-    ) -> Self {
-        Self {
-            satisfied_permits,
-            satisfied_forbids,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        }
-    }
-
-    /// Get the `PolicyId`s of fully evaluated policies with a permit [`Effect`].
-    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
-        self.satisfied_permits.iter()
-    }
-
-    /// Get the `PolicyId`s of fully evaluated policies with a forbid [`Effect`].
-    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
-        self.satisfied_forbids.iter()
-    }
-
-    /// Get the redisual policies with a permit [`Effect`].
-    pub fn permit_residuals(&self) -> &PolicySet {
-        &self.permit_residuals
-    }
-
-    /// Get the redisual policies with a permit [`Effect`].
-    pub fn forbid_residuals(&self) -> &PolicySet {
-        &self.forbid_residuals
-    }
-
-    /// Get the evaluation errors.
-    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> {
-        self.errors.iter()
     }
 }
 
@@ -2649,28 +2619,6 @@ impl PolicySet {
             }
         }
     }
-
-    /// Create a `PolicySet` from its AST representation only. The EST will
-    /// reflect the AST structure. When possible, don't use this method and
-    /// create the ESTs from the policy text or CST instead, as the conversion
-    /// to AST is lossy. ESTs generated by this method will reflect the AST and
-    /// not the original policy syntax.
-    #[cfg_attr(not(feature = "partial-eval"), allow(unused))]
-    fn from_ast(ast: ast::PolicySet) -> Self {
-        let policies = ast
-            .policies()
-            .map(|p| (PolicyId(p.id().clone()), Policy::from_ast(p.clone())))
-            .collect();
-        let templates = ast
-            .templates()
-            .map(|t| (PolicyId(t.id().clone()), Template::from_ast(t.clone())))
-            .collect();
-        Self {
-            ast,
-            policies,
-            templates,
-        }
-    }
 }
 
 impl std::fmt::Display for PolicySet {
@@ -2852,24 +2800,9 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
-        let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
-    }
-
-    /// Create a `Template` from its AST representation only. The EST will
-    /// reflect the AST structure. When possible, don't use this method and
-    /// create the EST from the policy text or CST instead, as the conversion
-    /// to AST is lossy. ESTs generated by this method will reflect the AST and
-    /// not the original policy syntax.
-    #[cfg_attr(not(feature = "partial-eval"), allow(unused))]
-    fn from_ast(ast: ast::Template) -> Self {
-        let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
-        Self {
-            ast,
-            lossless: LosslessPolicy::policy_or_template_text(text),
-        }
+        serde_json::to_value(est).map_err(Into::into)
     }
 }
 
@@ -2893,13 +2826,13 @@ impl FromStr for Template {
 pub enum PrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid`]
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given [`EntityTypeName`]
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`]
     IsIn(EntityTypeName, EntityUid),
 }
 
@@ -2908,16 +2841,16 @@ pub enum PrincipalConstraint {
 pub enum TemplatePrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given [`EntityTypeName`].
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`].
+    /// If the [`EntityUid`] is [`Option::None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 
@@ -2936,9 +2869,9 @@ impl TemplatePrincipalConstraint {
 pub enum ActionConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(Vec<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid]`
     Eq(EntityUid),
 }
 
@@ -2947,13 +2880,13 @@ pub enum ActionConstraint {
 pub enum ResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid`]
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given [`EntityTypeName`]
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`]
     IsIn(EntityTypeName, EntityUid),
 }
 
@@ -2962,16 +2895,16 @@ pub enum ResourceConstraint {
 pub enum TemplateResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given [`EntityTypeName`].
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`].
+    /// If the [`EntityUid`] is [`Option::None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 
@@ -3312,10 +3245,9 @@ impl Policy {
     /// println!("{}", json);
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
-        let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
+        serde_json::to_value(est).map_err(Into::into)
     }
 
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
@@ -3454,10 +3386,48 @@ pub enum PolicyToJsonError {
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Link(#[from] est::InstantiationError),
+    Link(#[from] json_errors::JsonLinkError),
     /// Error in the JSON serialization
     #[error(transparent)]
-    Serde(#[from] serde_json::Error),
+    JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
+}
+
+impl From<est::InstantiationError> for PolicyToJsonError {
+    fn from(e: est::InstantiationError) -> Self {
+        json_errors::JsonLinkError::from(e).into()
+    }
+}
+
+impl From<serde_json::Error> for PolicyToJsonError {
+    fn from(e: serde_json::Error) -> Self {
+        json_errors::PolicyJsonSerializationError::from(e).into()
+    }
+}
+
+/// Error types related to JSON processing
+pub mod json_errors {
+    use cedar_policy_core::est;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Error linking the JSON representation of a linked policy
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct JsonLinkError {
+        /// Underlying error
+        #[from]
+        err: est::InstantiationError,
+    }
+
+    /// Error serializing a policy as JSON
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    pub struct PolicyJsonSerializationError {
+        /// Underlying error
+        #[from]
+        err: serde_json::Error,
+    }
 }
 
 /// Expressions to be evaluated
@@ -4267,25 +4237,6 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
-}
-
-#[cfg(test)]
-#[cfg(feature = "partial-eval")]
-mod partial_eval_test {
-    use std::collections::HashSet;
-
-    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
-
-    #[test]
-    fn test_pe_response_constructor() {
-        let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
-        let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
-        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
-        assert_eq!(a.diagnostics().errors, errors);
-        assert_eq!(a.diagnostics().reason, reason);
-        assert_eq!(a.residuals(), &p);
-    }
 }
 
 #[cfg(test)]

@@ -90,6 +90,30 @@ impl Template {
         Template::from(body)
     }
 
+    /// Construct a template from an expression/annotations that are already [`std::sync::Arc`] allocated
+    pub fn new_shared(
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+        effect: Effect,
+        principal_constraint: PrincipalConstraint,
+        action_constraint: ActionConstraint,
+        resource_constraint: ResourceConstraint,
+        non_head_constraint: Arc<Expr>,
+    ) -> Self {
+        let body = TemplateBody::new_shared(
+            id,
+            annotations,
+            effect,
+            principal_constraint,
+            action_constraint,
+            resource_constraint,
+            non_head_constraint,
+        );
+        // INVARIANT (slot cache correctness)
+        // This invariant is maintained in the body of the From impl
+        Template::from(body)
+    }
+
     /// Get the principal constraint on the body
     pub fn principal_constraint(&self) -> &PrincipalConstraint {
         self.body.principal_constraint()
@@ -108,6 +132,11 @@ impl Template {
     /// Get the non-head constraint on the body
     pub fn non_head_constraints(&self) -> &Expr {
         self.body.non_head_constraints()
+    }
+
+    /// Get Arc to non-head constraint on the body
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        self.body.non_head_constraints_arc()
     }
 
     /// Get the PolicyID of this template
@@ -136,6 +165,11 @@ impl Template {
     /// Get all annotation data.
     pub fn annotations(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
         self.body.annotations()
+    }
+
+    /// Get [`Arc`] owning the annotation data.
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        self.body.annotations_arc()
     }
 
     /// Get the condition expression of this template.
@@ -194,7 +228,7 @@ impl Template {
         } else {
             Err(LinkingError::from_unbound_and_extras(
                 unbound.into_iter().map(|slot| slot.id),
-                extra.into_iter().map(|slotid| *slotid),
+                extra.into_iter().copied(),
             ))
         }
     }
@@ -348,9 +382,19 @@ impl Policy {
 
     /// Build a policy with a given effect, given when clause, and unconstrained head variables
     pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID) -> Self {
-        let t = Template::new(
+        Self::from_when_clause_annos(effect, Arc::new(when), id, Arc::new(Annotations::default()))
+    }
+
+    /// Build a policy with a given effect, given when clause, and unconstrained head variables
+    pub fn from_when_clause_annos(
+        effect: Effect,
+        when: Arc<Expr>,
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+    ) -> Self {
+        let t = Template::new_shared(
             id,
-            Annotations::new(),
+            annotations,
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -383,6 +427,11 @@ impl Policy {
     /// Get all annotation data.
     pub fn annotations(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
         self.template.annotations()
+    }
+
+    /// Get [`Arc`] owning annotation data.
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        self.template.annotations_arc()
     }
 
     /// Get the principal constraint for this policy.
@@ -419,6 +468,11 @@ impl Policy {
     /// Get the non-head constraints for the policy
     pub fn non_head_constraints(&self) -> &Expr {
         self.template.non_head_constraints()
+    }
+
+    /// Get the [`Arc`] owning non-head constraints for the policy
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        self.template.non_head_constraints_arc()
     }
 
     /// Get the expression that represents this policy.
@@ -777,9 +831,9 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let first_slot = value.slots().next();
-        match first_slot {
-            Some(slot) => Err(Self::Error::FoundSlot(slot.clone())),
+        let o = value.slots().next().cloned();
+        match o {
+            Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
             None => Ok(Self(value.body)),
         }
     }
@@ -808,7 +862,7 @@ pub struct TemplateBody {
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
-    annotations: Annotations,
+    annotations: Arc<Annotations>,
     /// `Effect` of this policy
     effect: Effect,
     /// Head constraint for principal. This will be a boolean-valued expression:
@@ -827,7 +881,7 @@ pub struct TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    non_head_constraints: Expr,
+    non_head_constraints: Arc<Expr>,
 }
 
 impl TemplateBody {
@@ -851,6 +905,11 @@ impl TemplateBody {
     /// Get data from an annotation.
     pub fn annotation(&self, key: &AnyId) -> Option<&Annotation> {
         self.annotations.get(key)
+    }
+
+    /// Get shared ref to annotations
+    pub fn annotations_arc(&self) -> &Arc<Annotations> {
+        &self.annotations
     }
 
     /// Get all annotation data.
@@ -902,6 +961,11 @@ impl TemplateBody {
         &self.non_head_constraints
     }
 
+    /// Get the Arc owning the non head constraints
+    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
+        &self.non_head_constraints
+    }
+
     /// Get the condition expression of this policy.
     ///
     /// This will be a conjunction of the policy's head constraints (on
@@ -916,8 +980,29 @@ impl TemplateBody {
                 ),
                 self.resource_constraint_expr(),
             ),
-            self.non_head_constraints.clone(),
+            self.non_head_constraints.as_ref().clone(),
         )
+    }
+
+    /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
+    pub fn new_shared(
+        id: PolicyID,
+        annotations: Arc<Annotations>,
+        effect: Effect,
+        principal_constraint: PrincipalConstraint,
+        action_constraint: ActionConstraint,
+        resource_constraint: ResourceConstraint,
+        non_head_constraints: Arc<Expr>,
+    ) -> Self {
+        Self {
+            id,
+            annotations,
+            effect,
+            principal_constraint,
+            action_constraint,
+            resource_constraint,
+            non_head_constraints,
+        }
     }
 
     /// Construct a `Policy` from its components
@@ -932,12 +1017,12 @@ impl TemplateBody {
     ) -> Self {
         Self {
             id,
-            annotations,
+            annotations: Arc::new(annotations),
             effect,
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraints,
+            non_head_constraints: Arc::new(non_head_constraints),
         }
     }
 }
@@ -966,7 +1051,7 @@ impl std::fmt::Display for TemplateBody {
 }
 
 /// Struct which holds the annotations for a policy
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct Annotations(BTreeMap<AnyId, Annotation>);
 
 impl Annotations {
@@ -1027,7 +1112,7 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 }
 
 /// Struct which holds the value of a particular annotation
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug, PartialOrd, Ord)]
 pub struct Annotation {
     /// Annotation value
     pub val: SmolStr,
@@ -1043,7 +1128,7 @@ impl AsRef<str> for Annotation {
 }
 
 /// Template constraint on principal head variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1150,7 +1235,7 @@ impl std::fmt::Display for PrincipalConstraint {
 }
 
 /// Template constraint on resource head variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1257,7 +1342,7 @@ impl std::fmt::Display for ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
@@ -1341,7 +1426,7 @@ impl TryFrom<Var> for PrincipalOrResource {
 
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum PrincipalOrResourceConstraint {
     /// Unconstrained
     Any,
@@ -1478,7 +1563,7 @@ impl PrincipalOrResourceConstraint {
 
 /// Constraint for action head variables.
 /// Action variables can be constrained to be in any variable in a list.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ActionConstraint {
     /// Unconstrained
     Any,
@@ -1577,7 +1662,7 @@ impl std::fmt::Display for StaticPolicy {
 }
 
 /// A unique identifier for a policy statement
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PolicyID(SmolStr);
 
 impl PolicyID {
@@ -1616,7 +1701,7 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 }
 
 /// the Effect of a policy
-#[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -1745,9 +1830,11 @@ mod test {
 
     use super::{test_generators::*, *};
     use crate::{
-        ast::{entity, id, name, EntityUID},
-        parser::{parse_policy, test_utils::*},
-        test_utils::*,
+        parser::{
+            parse_policy,
+            test_utils::{expect_exactly_one_error, expect_some_error_matches},
+        },
+        test_utils::ExpectedErrorMessageBuilder,
     };
 
     #[test]

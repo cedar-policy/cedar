@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 extern crate tsify;
 
 /// Parse a policy set and optionally validate it against a provided schema
-fn validate(call: ValidationCall) -> ValidationAnswer {
+pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         Ok((policies, schema)) => {
             let validator = Validator::new(schema);
@@ -66,14 +66,15 @@ pub fn json_validate(input: &str) -> InterfaceResult {
 }
 
 /// Struct containing the input data for validation
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct ValidationCall {
+pub struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
     validation_settings: ValidationSettings,
     /// Schema in JSON format
+    #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
     schema: JsonValueWithNoDuplicateKeys,
     #[serde(rename = "policySet")]
     policy_set: PolicySpecification,
@@ -92,20 +93,25 @@ impl ValidationCall {
 }
 
 /// Configuration for the validation call
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct ValidationSettings {
+/// Configuration for the validation call
+pub struct ValidationSettings {
+    /// Whether validation is enabled
     enabled: ValidationEnabled,
 }
 
-#[derive(Serialize, Deserialize)]
+/// String enum for validation mode
+#[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-enum ValidationEnabled {
+pub enum ValidationEnabled {
+    /// Setting for which policies will be validated against the schema
     #[serde(rename = "on")]
     #[serde(alias = "regular")]
     On,
+    /// Setting for which no validation will be done
     #[serde(rename = "off")]
     Off,
 }
@@ -116,15 +122,21 @@ impl Default for ValidationEnabled {
     }
 }
 
+/// Error for a specified policy after validation
 #[derive(Debug, Serialize, Deserialize)]
-struct ValidationError {
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct ValidationError {
     #[serde(rename = "policyId")]
     policy_id: String,
     error: String,
 }
 
+/// Warning for a specified policy after validation
 #[derive(Debug, Serialize, Deserialize)]
-struct ValidationWarning {
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct ValidationWarning {
     #[serde(rename = "policyId")]
     policy_id: String,
     warning: String,
@@ -133,12 +145,17 @@ struct ValidationWarning {
 /// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ValidationAnswer {
+pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
-    Failure { errors: Vec<String> },
+    Failure {
+        /// Parsing errors
+        errors: Vec<String>,
+    },
     /// Represents a successful validation call
     Success {
+        /// Errors from any issues found during validation
         validation_errors: Vec<ValidationError>,
+        /// Warnings from any issues found during validation
         validation_warnings: Vec<ValidationWarning>,
     },
 }
