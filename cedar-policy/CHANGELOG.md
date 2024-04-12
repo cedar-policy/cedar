@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improve parser errors on unexpected tokens. (#698, partially resolving #176)
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
 - Improved error messages when `null` occurs in entity json data. (#751, resolving #530)
