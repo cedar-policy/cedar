@@ -86,6 +86,9 @@ pub enum CedarValueJson {
     /// JSON object => Cedar record; must have string keys, but values
     /// can be any `CedarValueJson`s, even heterogeneously
     Record(JsonRecord),
+    /// JSON null, which is never valid, but we put this here in order to
+    /// provide a better error message.
+    Null,
 }
 
 /// Structure representing a Cedar record in JSON
@@ -243,6 +246,7 @@ impl CedarValueJson {
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
             Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
+            Self::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
         }
     }
 

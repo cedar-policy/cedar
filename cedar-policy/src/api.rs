@@ -2720,7 +2720,7 @@ impl Template {
 
     /// Iterate over the open slots in this `Template`
     pub fn slots(&self) -> impl Iterator<Item = &SlotId> {
-        self.ast.slots().map(SlotId::ref_cast)
+        self.ast.slots().map(|slot| SlotId::ref_cast(&slot.id))
     }
 
     /// Get the head constraint on this policy's principal
@@ -4241,10 +4241,10 @@ mod test {
 
     #[test]
     fn json_bignum_1a() {
-        let src = r#"
+        let src = r"
         permit(principal, action, resource) when {
             (true && (-90071992547409921)) && principal
-        };"#;
+        };";
         let p: Policy = src.parse().unwrap();
         let v = p.to_json().unwrap();
         let s = serde_json::to_string(&v).unwrap();

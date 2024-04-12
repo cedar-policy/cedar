@@ -260,10 +260,10 @@ impl Policy {
 
 impl Clause {
     fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next().cloned();
+        let first_slot = e.slots().next();
         if let Some(slot) = first_slot {
             Err(FromJsonError::SlotsInConditionClause {
-                slot,
+                slot: slot.id,
                 clausetype: if is_when { "when" } else { "unless" },
             })
         } else {
@@ -349,13 +349,14 @@ impl std::fmt::Display for Clause {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::parser;
-    use crate::test_utils::ExpectedErrorMessage;
+    use crate::test_utils::ExpectedErrorMessageBuilder;
     use cool_asserts::assert_matches;
-    use miette::Diagnostic;
     use serde_json::json;
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
@@ -683,10 +684,7 @@ mod test {
             .node
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
-            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&policy[expected_span.clone()], r#"@foo("2")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("2")"#).build());
         });
 
         let policy = r#"
@@ -699,10 +697,7 @@ mod test {
             .node
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
-            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&policy[expected_span.clone()], r#"@foo("1")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("1")"#).build());
         });
 
         let policy = r#"
@@ -720,12 +715,9 @@ mod test {
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
             assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
-            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @bar"));
-            for ((err, expected_span), expected_snippet) in e.iter().zip([62..73, 116..127, 140..151]).zip([r#"@foo("abc")"#, r#"@bar("123")"#, r#"@foo("def")"#]) {
-                assert_eq!(&policy[expected_span.clone()], expected_snippet);
-                itertools::assert_equal(err.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
-            }
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("abc")"#).build());
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("def")"#).build());
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @bar").exactly_one_underline(r#"@bar("123")"#).build());
         });
 
         // the above tests ensure that we give the correct errors for CSTs
@@ -2902,7 +2894,7 @@ mod test {
             ast,
             Err(FromJsonError::TemplateToPolicy(
                 ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s, ast::SlotId::principal())
+            )) => assert_eq!(s.id, ast::SlotId::principal())
         );
     }
 

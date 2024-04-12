@@ -17,6 +17,9 @@ mod demo_tests {
         NamespaceDefinition, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
+    use itertools::Itertools;
+    use miette::Diagnostic;
+
     #[test]
     fn no_applies_to() {
         let src = r#"
@@ -309,9 +312,67 @@ mod demo_tests {
         let namespace = NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment = SchemaFragment(HashMap::from([("bar".to_smolstr(), namespace)]));
         let as_src = fragment.as_natural_schema().unwrap();
-        let expected = r#"action "foo" appliesTo {  context: {}
+        let expected = r#"action "foo" appliesTo {
+  context: {}
 };"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
+    }
+
+    #[test]
+    fn context_is_common_type() {
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type empty = {};
+        action "Foo" appliesTo {
+            context: empty,
+        };
+    "#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+    type flag = { value: __cedar::Bool };
+    action "Foo" appliesTo {
+        context: flag
+    };
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type empty = {}; }
+action "Foo" appliesTo {
+    context: Bar::empty
+};
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type flag = { value: Bool }; }
+namespace Baz {action "Foo" appliesTo {
+    context: Bar::flag
+};}
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type authcontext = {
+            ip: ipaddr,
+            is_authenticated: Bool,
+            timestamp: Long
+        };
+        entity Ticket {
+          who: String,
+          operation: Long,
+          request: authcontext
+        };
+        action view appliesTo { context: authcontext };
+        action upload appliesTo { context: authcontext };
+"#
+        )
+        .is_ok());
     }
 
     #[test]
@@ -340,7 +401,7 @@ mod demo_tests {
         };
         let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
         let src = fragment.as_natural_schema().unwrap();
-        assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+        assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 
     #[test]
@@ -755,6 +816,34 @@ mod demo_tests {
             }
             _ => panic!("Wrong type for shape"),
         }
+    }
+
+    #[test]
+    fn expected_tokens() {
+        #[track_caller]
+        fn assert_labeled_span(src: &str, label: impl Into<String>) {
+            assert_matches!(SchemaFragment::from_str_natural(src).map(|(s, _)| s), Err(e) => {
+                let actual_label = e.labels().and_then(|l| {
+                    l.exactly_one()
+                        .ok()
+                        .expect("Assumed that there would be exactly one label if labels are present")
+                        .label()
+                        .map(|l| l.to_string())
+                });
+                assert_eq!(Some(label.into()), actual_label, "Did not see expected labeled span.");
+            });
+        }
+
+        assert_labeled_span("namespace", "expected identifier");
+        assert_labeled_span("type", "expected identifier");
+        assert_labeled_span("entity", "expected identifier");
+        assert_labeled_span("action", "expected identifier or string literal");
+        assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
+        assert_labeled_span(
+            "entity User {",
+            "expected `}`, identifier, or string literal",
+        );
+        assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
 }
 

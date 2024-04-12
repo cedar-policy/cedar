@@ -114,9 +114,8 @@ mod entity_uid_tests {
             r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
         )
         .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
+        let PrincipalConstraint::Eq(euid) = policy.principal_constraint() else {
+            panic!("expected `Eq` constraint");
         };
         assert_eq!(euid.id().as_ref(), " hi there are spaces ");
         assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
@@ -134,9 +133,8 @@ permit(principal ==  A :: B
     newlines ", action, resource);"#,
         )
         .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
+        let PrincipalConstraint::Eq(euid) = policy.principal_constraint() else {
+            panic!("expected `Eq` constraint")
         };
         assert_eq!(
             euid.id().as_ref(),

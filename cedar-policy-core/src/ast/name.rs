@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
 use super::PrincipalOrResource;
@@ -177,6 +178,32 @@ impl std::fmt::Display for ValidSlotId {
             ValidSlotId::Resource => "resource",
         };
         write!(f, "?{s}")
+    }
+}
+
+/// [`SlotId`] plus a source location
+#[derive(Debug, Clone)]
+pub struct Slot {
+    /// [`SlotId`]
+    pub id: SlotId,
+    /// Source location, if available
+    pub loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
+/// are equal.
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Slot {}
+
+impl std::hash::Hash for Slot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash only the id, in line with the `PartialEq` impl which compares
+        // only the id
+        self.id.hash(state);
     }
 }
 
