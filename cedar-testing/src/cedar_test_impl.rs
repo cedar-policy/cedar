@@ -19,7 +19,7 @@
 //! running the integration tests and for performing randomized differential
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
-pub use cedar_policy::frontend::is_authorized::Response;
+pub use cedar_policy::frontend;
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::Entities;
@@ -65,12 +65,12 @@ impl<T> TestResult<T> {
 #[derive(Debug, Deserialize)]
 pub struct Micros(pub u128);
 
-/// Version of `Response` used for testing. Includes an `InterfaceResponse` and
-/// a map with timing information.
+/// Version of `Response` used for testing. Includes a
+/// `frontend::is_authorized::Response` and a map with timing information.
 #[derive(Debug, Deserialize)]
 pub struct TestResponse {
     /// Actual response
-    pub response: Response,
+    pub response: frontend::is_authorized::Response,
     /// Timing info in microseconds. This field is a `HashMap` to allow timing
     /// multiple components (or none at all).
     pub timing_info: HashMap<String, Micros>,

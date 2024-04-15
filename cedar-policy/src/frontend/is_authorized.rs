@@ -136,7 +136,7 @@ pub struct Diagnostics {
 }
 
 impl Response {
-    /// Construct an `InterfaceResponse`
+    /// Construct a `Response`
     pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
