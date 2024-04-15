@@ -5,20 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.3] -
+## [3.1.3] - 2024-04-15
 
 ### Changed
 
 - Improve parser errors on unexpected tokens. (#698, partially resolving #176)
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
-- Improved error messages when `null` occurs in entity json data. (#751, resolving #530)
-- Improved source location reporting for error `found template slot in a when clause`. (#758, resolving #736)
-- Improved `Display` implementation for Cedar schemas, both JSON and human syntax. (#780)
+- Improved error messages when `null` occurs in entity json data. (#751,
+  resolving #530)
+- Improved source location reporting for error `found template slot in a when clause`.
+  (#758, resolving #736)
+- Improved `Display` implementation for Cedar schemas, both JSON and human
+  syntax. (#780)
 
 ### Fixed
 
-- Support identifiers in context declarations in the human-readable schema format. (#734, resolving #681)
+- Support identifiers in context declarations in the human-readable schema
+  format. (#734, resolving #681)
 
 ## [3.1.2] - 2024-03-29
 
