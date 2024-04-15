@@ -400,7 +400,7 @@ fn constant_true() -> bool {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Schema {
-    /// Schema in Cedar's default, human-readable schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
+    /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     #[serde(rename = "human")]
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
