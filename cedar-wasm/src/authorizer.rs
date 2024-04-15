@@ -17,7 +17,10 @@ pub enum AuthorizationResult {
 #[wasm_bindgen(js_name = "isAuthorized")]
 pub fn wasm_is_authorized(call: AuthorizationCall) -> AuthorizationResult {
     match is_authorized(call) {
-        AuthorizationAnswer::Success { response } => AuthorizationResult::Success { response },
+        AuthorizationAnswer::Success {
+            response,
+            warnings: _,
+        } => AuthorizationResult::Success { response },
         AuthorizationAnswer::Failure {
             errors,
             warnings: _,
