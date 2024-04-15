@@ -829,7 +829,7 @@ mod test {
     use serde_json::json;
 
     /// Assert that `is_authorized_json()` returns Allow with no errors
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_authorized_json(json: serde_json::Value) {
         let ans_val = is_authorized_json(json).unwrap();
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
@@ -841,7 +841,7 @@ mod test {
     }
 
     /// Assert that `is_authorized_json()` returns Deny with no errors
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_not_authorized_json(json: serde_json::Value) {
         let ans_val = is_authorized_json(json).unwrap();
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
@@ -855,7 +855,7 @@ mod test {
     /// Assert that `is_authorized_json()` returns
     /// `AuthorizationAnswer::Failure` where some error contains the expected
     /// string `err`
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_authorized_json_is_failure(json: serde_json::Value, err: &str) {
         let ans_val =
             is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
@@ -1854,7 +1854,7 @@ mod partial_test {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_authorized_json_partial(call: serde_json::Value) {
         let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
@@ -1865,7 +1865,7 @@ mod partial_test {
         });
     }
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_not_authorized_json_partial(call: serde_json::Value) {
         let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
@@ -1876,7 +1876,7 @@ mod partial_test {
         });
     }
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    #[track_caller]
     fn assert_is_residual(call: serde_json::Value, expected_residuals: HashSet<&str>) {
         let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
