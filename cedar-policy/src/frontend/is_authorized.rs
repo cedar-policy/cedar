@@ -45,14 +45,20 @@ thread_local!(
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
-        Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
-                response: authorizer
-                    .is_authorized(&request, &policies, &entities)
-                    .into(),
-            })
-        }
-        Err(errors) => AuthorizationAnswer::Failure { errors },
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings,
+        } => AUTHORIZER.with(|authorizer| {
+            let mut response: Response = authorizer
+                .is_authorized(&request, &policies, &entities)
+                .into();
+            response.diagnostics.warnings.extend(warnings);
+            AuthorizationAnswer::Success { response }
+        }),
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => AuthorizationAnswer::Failure { errors, warnings },
     }
 }
 
@@ -76,18 +82,26 @@ pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[cfg(feature = "partial-eval")]
 pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
     match call.get_components_partial() {
-        Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings,
+        } => AUTHORIZER.with(|authorizer| {
             let response = authorizer.is_authorized_partial(&request, &policies, &entities);
-            // Allowing this lint warning because the suggestion causes type inference to break
-            #[allow(clippy::map_unwrap_or)]
-            response
-                .try_into()
-                .map(|response| PartialAuthorizationAnswer::Residuals { response })
-                .unwrap_or_else(|e| PartialAuthorizationAnswer::Failure {
+            match ResidualResponse::try_from(response) {
+                Ok(mut response) => {
+                    response.warnings.extend(warnings);
+                    PartialAuthorizationAnswer::Residuals { response }
+                }
+                Err(e) => PartialAuthorizationAnswer::Failure {
                     errors: vec![e.to_string()],
-                })
+                    warnings,
+                },
+            }
         }),
-        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => PartialAuthorizationAnswer::Failure { errors, warnings },
     }
 }
 
@@ -122,7 +136,8 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Interface version of `Diagnostics` that stores error messages as strings for simpler (de)serialization
+/// Interface version of `Diagnostics` that stores error messages and warnings
+/// as strings for simpler (de)serialization
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -133,14 +148,25 @@ pub struct Diagnostics {
     reason: HashSet<PolicyId>,
     /// Set of error messages that occurred
     errors: HashSet<String>,
+    /// Set of warnings that occurred
+    warnings: HashSet<String>,
 }
 
 impl Response {
     /// Construct a `Response`
-    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        decision: Decision,
+        reason: HashSet<PolicyId>,
+        errors: HashSet<String>,
+        warnings: HashSet<String>,
+    ) -> Self {
         Self {
             decision,
-            diagnostics: Diagnostics { reason, errors },
+            diagnostics: Diagnostics {
+                reason,
+                errors,
+                warnings,
+            },
         }
     }
 
@@ -165,6 +191,7 @@ impl From<crate::Response> for Response {
                 .errors()
                 .map(ToString::to_string)
                 .collect(),
+            HashSet::new(),
         )
     }
 }
@@ -183,6 +210,7 @@ impl TryFrom<crate::PartialResponse> for Response {
                 .errors()
                 .map(ToString::to_string)
                 .collect(),
+            HashSet::new(),
         ))
     }
 }
@@ -199,9 +227,7 @@ impl Diagnostics {
     }
 }
 
-/// FFI version of a [`crate::PartialResponse`] that uses the above
-/// [`Diagnostics`] instead of [`crate::Diagnostics`] for simpler
-/// (de)serialization
+/// FFI version of a [`crate::PartialResponse`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,6 +239,7 @@ pub struct ResidualResponse {
     must_be_determining: HashSet<PolicyId>,
     residuals: HashMap<PolicyId, serde_json::Value>,
     nontrivial_residuals: HashSet<PolicyId>,
+    warnings: HashSet<String>,
 }
 
 #[cfg(feature = "partial-eval")]
@@ -293,6 +320,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
                 .all_residuals()
                 .map(|e| e.to_json().map(|json| (e.id().clone(), json)))
                 .collect::<Result<_, _>>()?,
+            warnings: HashSet::new(),
         })
     }
 }
@@ -307,6 +335,8 @@ pub enum AuthorizationAnswer {
     Failure {
         /// Errors encountered
         errors: Vec<String>,
+        /// Warnings encountered
+        warnings: Vec<String>,
     },
     /// Represents a successful authorization call (although individual policy
     /// evaluation may still have errors)
@@ -326,6 +356,8 @@ pub enum PartialAuthorizationAnswer {
     Failure {
         /// Errors encountered
         errors: Vec<String>,
+        /// Warnings encountered
+        warnings: Vec<String>,
     },
     /// Represents a successful authorization call with either a partial or
     /// concrete answer.  Individual policy evaluation may still have errors.
@@ -458,14 +490,19 @@ fn parse_context(
     }
 }
 
+struct WithWarnings<T> {
+    t: T,
+    warnings: Vec<String>,
+}
+
 impl AuthorizationCall {
-    fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
+    fn get_components(self) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
             Ok(None) => None,
             Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings);
+                warnings.extend(new_warnings.map(|w| w.to_string()));
                 Some(schema)
             }
             Err(e) => {
@@ -510,25 +547,27 @@ impl AuthorizationCall {
         };
 
         match (errs.is_empty(), request, policies, entities) {
-            (true, Some(req), Some(policies), Some(entities)) => {
-                // TODO: this ignores warnings
-                Ok((req, policies, entities))
-            }
-            _ => {
-                // TODO: this ignores warnings
-                Err(errs)
-            }
+            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
+                t: Ok((req, policies, entities)),
+                warnings,
+            },
+            _ => WithWarnings {
+                t: Err(errs),
+                warnings,
+            },
         }
     }
 
     #[cfg(feature = "partial-eval")]
-    fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
+    fn get_components_partial(
+        self,
+    ) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
             Ok(None) => None,
             Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings);
+                warnings.extend(new_warnings.map(|w| w.to_string()));
                 Some(schema)
             }
             Err(e) => {
@@ -578,21 +617,15 @@ impl AuthorizationCall {
             }
         };
 
-        if errs.is_empty() {
-            // TODO: this ignores warnings
-            let Some(q) = request else {
-                return Err(errs);
-            };
-            let Some(policies) = policies else {
-                return Err(errs);
-            };
-            let Some(entities) = entities else {
-                return Err(errs);
-            };
-            Ok((q, policies, entities.partial()))
-        } else {
-            // TODO: this ignores warnings
-            Err(errs)
+        match (errs.is_empty(), request, policies, entities) {
+            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
+                t: Ok((req, policies, entities.partial())),
+                warnings,
+            },
+            _ => WithWarnings {
+                t: Err(errs),
+                warnings,
+            },
         }
     }
 }
@@ -836,7 +869,7 @@ mod test {
         let ans_val =
             is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors }) => {
+        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => {
             assert!(
                 errors.iter().any(|e| e.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}");

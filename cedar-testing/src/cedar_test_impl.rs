@@ -27,7 +27,7 @@ use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 /// Return type for `CedarTestImplementation` methods
@@ -200,7 +200,7 @@ impl CedarTestImplementation for RustEngine {
         // Error messages should only include the policy id to use the
         // `ErrorComparisonMode::PolicyIds` mode.
         let response = cedar_policy::Response::from(response);
-        let response = Response::new(
+        let response = frontend::is_authorized::Response::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
             response
@@ -209,6 +209,7 @@ impl CedarTestImplementation for RustEngine {
                 .map(cedar_policy::AuthorizationError::id)
                 .map(ToString::to_string)
                 .collect(),
+            HashSet::new(),
         );
         let response = TestResponse {
             response,
