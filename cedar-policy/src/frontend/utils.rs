@@ -85,7 +85,8 @@ fn parse_policy_set_from_individual_policies(
 }
 
 impl PolicySet {
-    pub(super) fn try_into(
+    /// Parse the `PolicySet` into a `crate::PolicySet`.
+    pub(super) fn parse(
         self,
         templates: Option<HashMap<String, String>>,
     ) -> Result<crate::PolicySet, Vec<String>> {

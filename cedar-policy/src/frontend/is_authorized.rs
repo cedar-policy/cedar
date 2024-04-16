@@ -743,7 +743,7 @@ impl RecvdSlice {
             template_instantiations,
         } = self;
 
-        let policy_set: Result<crate::PolicySet, Vec<String>> = policies.try_into(templates);
+        let policy_set: Result<crate::PolicySet, Vec<String>> = policies.parse(templates);
 
         let mut errs = Vec::new();
 

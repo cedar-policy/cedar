@@ -95,7 +95,7 @@ impl ValidationCall {
     fn get_components(
         self,
     ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<String>>> {
-        let policies = match self.policy_set.try_into(None) {
+        let policies = match self.policy_set.parse(None) {
             Ok(policies) => policies,
             Err(errs) => {
                 return WithWarnings {
