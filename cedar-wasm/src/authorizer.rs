@@ -15,7 +15,7 @@
  */
 
 //! This module contains the entry point to the wasm isAuthorized functionality.
-use cedar_policy::frontend::is_authorized::{
+use cedar_policy::ffi::{
     is_authorized, AuthorizationAnswer, AuthorizationCall, Response,
 };
 use serde::{Deserialize, Serialize};
