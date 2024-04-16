@@ -16,13 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
-  now include multiplication of arbitrary expressions, not just multiplication of
-  an expression and a constant.
 - for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Improved "unexpected token" parse errors when the schema or policy parsers
-  expect an identifier. (#698)
 - Overhauled the FFI interface in the `frontend` module; see #757.
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
@@ -31,11 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
 - Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
-- Improved `Display` implementation for Cedar schemas, both JSON and human syntax. (#780)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
 
 ## [3.1.3] - 2024-04-15
+
+### Changed
 
 - Improve parser errors on unexpected tokens. (#698, partially resolving #176)
 - Validation error messages render types in the new, more readable, schema
