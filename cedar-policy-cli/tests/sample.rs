@@ -905,3 +905,41 @@ fn test_format_samples() {
     let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
     ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
 }
+
+#[test]
+fn test_format_write() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    // See https://doc.rust-lang.org/cargo/reference/environment-variables.html for the
+    // CARGO_TARGET_TMPDIR environment variable.
+    let tmp_dir = env!("CARGO_TARGET_TMPDIR");
+    let unformatted_file = format!("{}/unformatted.cedar", tmp_dir);
+    std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
+    let original = std::fs::read_to_string(&unformatted_file).unwrap();
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_eq!(
+        original, formatted,
+        "original and formatted should be the same without -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .arg("-w")
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_ne!(
+        original, formatted,
+        "original and formatted should differ under -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+}

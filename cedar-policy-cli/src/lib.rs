@@ -22,6 +22,7 @@
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::{
     collections::HashMap,
     fmt::{self, Display},
@@ -398,6 +399,10 @@ pub struct FormatArgs {
     /// Custom indentation width (default: 2).
     #[arg(short, long, value_name = "INT", default_value_t = 2)]
     pub indent_width: isize,
+
+    /// Automatically write back the formatted policies to the input file.
+    #[arg(short, long)]
+    pub write: bool,
 }
 
 #[derive(Args, Debug)]
@@ -625,7 +630,22 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
         line_width: args.line_width,
         indent_width: args.indent_width,
     };
-    println!("{}", policies_str_to_pretty(&policies_str, &config)?);
+    let formatted_policy = policies_str_to_pretty(&policies_str, &config)?;
+    match &args.policies_file {
+        Some(policies_file) if args.write => {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .open(policies_file)
+                .into_diagnostic()
+                .wrap_err(format!("failed to open {policies_file} for writing"))?;
+            file.write_all(formatted_policy.as_bytes())
+                .into_diagnostic()
+                .wrap_err(format!(
+                    "failed to write formatted policies to {policies_file}"
+                ))?;
+        }
+        _ => println!("{}", formatted_policy),
+    }
     Ok(())
 }
 

@@ -6,6 +6,8 @@
 
 - The default `--schema-format` is now `human` for all subcommands that take
   `--schema-format`.
+- A new `--write` flag has been added to the `format` subcommand. This flag
+  writes the formatted policy to the file specified by the `--policies` flag.
 
 ## 3.1.3
 
