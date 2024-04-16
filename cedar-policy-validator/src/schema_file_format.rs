@@ -141,6 +141,7 @@ impl SchemaFragment {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition {
     #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     #[serde(rename = "commonTypes")]
     pub common_types: HashMap<Id, SchemaType>,
@@ -173,9 +174,11 @@ impl NamespaceDefinition {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType {
     #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "memberOfTypes")]
     pub member_of_types: Vec<Name>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext,
 }
 
@@ -192,6 +195,10 @@ pub struct AttributesOrContext(
 impl AttributesOrContext {
     pub fn into_inner(self) -> SchemaType {
         self.0
+    }
+
+    pub fn is_empty_record(&self) -> bool {
+        self.0.is_empty_record()
     }
 }
 
@@ -215,11 +222,14 @@ pub struct ActionType {
     /// `cedar_policy_core::entities::json::value::CedarValueJson` which is the
     /// canonical representation of a cedar value as JSON.
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "memberOf")]
     pub member_of: Option<Vec<ActionEntityUID>>,
 }
@@ -238,12 +248,15 @@ pub struct ActionType {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec {
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "resourceTypes")]
     pub resource_types: Option<Vec<Name>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "principalTypes")]
     pub principal_types: Option<Vec<Name>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext,
 }
 
@@ -256,6 +269,7 @@ pub struct ActionEntityUID {
 
     #[serde(rename = "type")]
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ty: Option<Name>,
 }
 
@@ -593,6 +607,7 @@ pub enum SchemaTypeVariant {
     Record {
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
+        #[serde(skip_serializing_if = "is_partial_schema_default")]
         additional_attributes: bool,
     },
     Entity {
@@ -601,6 +616,11 @@ pub enum SchemaTypeVariant {
     Extension {
         name: Id,
     },
+}
+
+// Only used for serialization
+fn is_partial_schema_default(b: &bool) -> bool {
+    *b == partial_schema_default()
 }
 
 // The possible tags for a SchemaType as written in a schema JSON document. Used
@@ -638,6 +658,18 @@ impl SchemaType {
                 }),
             Self::Type(_) => Some(false),
             Self::TypeDef { .. } => None,
+        }
+    }
+
+    /// Is this `SchemaType` an empty record? This function is used by the `Display`
+    /// implementation to avoid printing unnecessary entity/action data.
+    pub fn is_empty_record(&self) -> bool {
+        match self {
+            Self::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => *additional_attributes == partial_schema_default() && attributes.is_empty(),
+            _ => false,
         }
     }
 }
@@ -711,7 +743,13 @@ pub struct TypeOfAttribute {
     #[serde(flatten)]
     pub ty: SchemaType,
     #[serde(default = "record_attribute_required_default")]
+    #[serde(skip_serializing_if = "is_record_attribute_required_default")]
     pub required: bool,
+}
+
+// Only used for serialization
+fn is_record_attribute_required_default(b: &bool) -> bool {
+    *b == record_attribute_required_default()
 }
 
 /// By default schema properties which enable parts of partial schema validation
