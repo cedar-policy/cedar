@@ -635,6 +635,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
         Some(policies_file) if args.write => {
             let mut file = OpenOptions::new()
                 .write(true)
+                .truncate(true)
                 .open(policies_file)
                 .into_diagnostic()
                 .wrap_err(format!("failed to open {policies_file} for writing"))?;
