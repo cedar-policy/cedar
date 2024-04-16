@@ -27,8 +27,8 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    ffi::Response, AuthorizationError, Authorizer, Context, Decision, Entities,
-    EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
+    ffi::Response, AuthorizationError, Authorizer, Context, Decision, Entities, EntityUid,
+    PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
