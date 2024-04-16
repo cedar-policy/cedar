@@ -41,10 +41,14 @@ pub fn wasm_validate(call: ValidationCall) -> ValidateResult {
         ValidationAnswer::Success {
             validation_errors,
             validation_warnings,
+            other_warnings: _,
         } => ValidateResult::Success {
             validation_errors,
             validation_warnings,
         },
-        ValidationAnswer::Failure { errors } => ValidateResult::Error { errors },
+        ValidationAnswer::Failure {
+            errors,
+            warnings: _,
+        } => ValidateResult::Error { errors },
     }
 }
