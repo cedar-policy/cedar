@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
+- Overhauled the FFI interface in the `frontend` module; see #757.
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
 - Validation error messages render types in the new, more readable, schema

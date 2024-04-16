@@ -17,15 +17,10 @@
 //! This module contains the `json_is_authorized` entry point that other language
 //! FFI's can call in order to use Cedar functionality
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{InterfaceResult, PolicySpecification};
-use crate::api::EntityId;
-use crate::api::EntityTypeName;
-#[cfg(feature = "partial-eval")]
-use crate::api::PartialResponse;
-use crate::PolicyId;
+use super::utils::PolicySpecification;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, PolicySet, Request, Response, Schema,
-    SlotId,
+    Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
+    PolicySet, Request, SchemaWarning, SlotId,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -47,90 +42,102 @@ thread_local!(
     static AUTHORIZER: Authorizer = Authorizer::new();
 );
 
-/// Construct and ask the authorizer the request.
+/// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
-        Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
-                response: authorizer
-                    .is_authorized(&request, &policies, &entities)
-                    .into(),
-            })
-        }
-        Err(errors) => AuthorizationAnswer::Failure { errors },
-    }
-}
-
-/// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
-/// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
-/// or a single String which is a concatenation of multiple policies. If you choose the latter,
-/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
-pub fn json_is_authorized(input: &str) -> InterfaceResult {
-    serde_json::from_str::<AuthorizationCall>(input).map_or_else(
-        |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
-        |call| match is_authorized(call) {
-            answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            AuthorizationAnswer::Failure { errors } => InterfaceResult::fail_bad_request(errors),
-        },
-    )
-}
-
-#[cfg(feature = "partial-eval")]
-fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
-    match call.get_components_partial() {
-        Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
-            let response = authorizer.is_authorized_partial(&request, &policies, &entities);
-            // Allowing this lint warning because the suggestion causes type inference to break
-            #[allow(clippy::map_unwrap_or)]
-            response
-                .try_into()
-                .map(|response| PartialAuthorizationAnswer::Residuals {
-                    response: Box::new(response),
-                })
-                .unwrap_or_else(|e| PartialAuthorizationAnswer::ParseFailed {
-                    errors: vec![e.to_string()],
-                })
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings,
+        } => AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
+            response: authorizer
+                .is_authorized(&request, &policies, &entities)
+                .into(),
+            warnings,
         }),
-        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => AuthorizationAnswer::Failure { errors, warnings },
     }
 }
 
-/// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
-/// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
-/// or a single String which is a concatenation of multiple policies. If you choose the latter,
-/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
+/// Input is a JSON encoding of [`AuthorizationCall`] and output is a JSON
+/// encoding of [`AuthorizationAnswer`]
+pub fn is_authorized_json(json: serde_json::Value) -> Result<serde_json::Value, serde_json::Error> {
+    let ans = is_authorized(serde_json::from_value(json)?);
+    serde_json::to_value(ans)
+}
+
+/// Input and output are strings containing serialized JSON, in the shapes
+/// expected by [`is_authorized_json()`]
+pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
+    let ans = is_authorized(serde_json::from_str(json)?);
+    serde_json::to_string(&ans)
+}
+
+/// Basic interface for partial evaluation, using `AuthorizationCall` and
+/// `PartialAuthorizationAnswer` types
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
-    serde_json::from_str::<AuthorizationCall>(input).map_or_else(
-        |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
-        |call| match is_authorized_partial(call) {
-            answer @ PartialAuthorizationAnswer::Residuals { .. } => {
-                InterfaceResult::succeed(answer)
+pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
+    match call.get_components_partial() {
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings,
+        } => AUTHORIZER.with(|authorizer| {
+            let response = authorizer.is_authorized_partial(&request, &policies, &entities);
+            match ResidualResponse::try_from(response) {
+                Ok(response) => PartialAuthorizationAnswer::Residuals { response, warnings },
+                Err(e) => PartialAuthorizationAnswer::Failure {
+                    errors: vec![e.to_string()],
+                    warnings,
+                },
             }
-            PartialAuthorizationAnswer::ParseFailed { errors } => {
-                InterfaceResult::fail_bad_request(errors)
-            }
-        },
-    )
+        }),
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => PartialAuthorizationAnswer::Failure { errors, warnings },
+    }
 }
 
-/// Interface version of a `Response` that uses `InterfaceDiagnostics` for simpler (de)serialization
+/// Input is a JSON encoding of [`AuthorizationCall`] and output is a JSON
+/// encoding of [`PartialAuthorizationAnswer`]
+#[doc = include_str!("../../experimental_warning.md")]
+#[cfg(feature = "partial-eval")]
+pub fn is_authorized_partial_json(
+    json: serde_json::Value,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let ans = is_authorized_partial(serde_json::from_value(json)?);
+    serde_json::to_value(ans)
+}
+
+/// Input and output are strings containing serialized JSON, in the shapes
+/// expected by [`is_authorized_partial_json()`]
+#[doc = include_str!("../../experimental_warning.md")]
+#[cfg(feature = "partial-eval")]
+pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::Error> {
+    let ans = is_authorized_partial(serde_json::from_str(json)?);
+    serde_json::to_string(&ans)
+}
+
+/// Interface version of a `Response` that uses the interface version of `Diagnostics`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct InterfaceResponse {
+pub struct Response {
     /// Authorization decision
     decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
-    diagnostics: InterfaceDiagnostics,
+    diagnostics: Diagnostics,
 }
 
-/// Interface version of `Diagnostics` that stores error messages as strings for simpler (de)serialization
+/// Interface version of `Diagnostics` that stores error messages and warnings
+/// as strings for simpler (de)serialization
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct InterfaceDiagnostics {
+pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
     #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
@@ -139,12 +146,12 @@ pub struct InterfaceDiagnostics {
     errors: HashSet<String>,
 }
 
-impl InterfaceResponse {
-    /// Construct an `InterfaceResponse`
+impl Response {
+    /// Construct a `Response`
     pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
-            diagnostics: InterfaceDiagnostics { reason, errors },
+            diagnostics: Diagnostics { reason, errors },
         }
     }
 
@@ -154,13 +161,13 @@ impl InterfaceResponse {
     }
 
     /// Get the authorization diagnostics
-    pub fn diagnostics(&self) -> &InterfaceDiagnostics {
+    pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
     }
 }
 
-impl From<Response> for InterfaceResponse {
-    fn from(response: Response) -> Self {
+impl From<crate::Response> for Response {
+    fn from(response: crate::Response) -> Self {
         Self::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
@@ -174,10 +181,10 @@ impl From<Response> for InterfaceResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl TryFrom<PartialResponse> for InterfaceResponse {
+impl TryFrom<crate::PartialResponse> for Response {
     type Error = Infallible;
 
-    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+    fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
         let concrete = partial_response.concretize();
         Ok(Self::new(
             concrete.decision(),
@@ -191,7 +198,7 @@ impl TryFrom<PartialResponse> for InterfaceResponse {
     }
 }
 
-impl InterfaceDiagnostics {
+impl Diagnostics {
     /// Get the policies that contributed to the decision
     pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
         self.reason.iter()
@@ -203,11 +210,11 @@ impl InterfaceDiagnostics {
     }
 }
 
-/// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
+/// FFI version of a [`crate::PartialResponse`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InterfaceResidualResponse {
+pub struct ResidualResponse {
     decision: Option<Decision>,
     satisfied: HashSet<PolicyId>,
     errored: HashSet<PolicyId>,
@@ -218,7 +225,7 @@ pub struct InterfaceResidualResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl InterfaceResidualResponse {
+impl ResidualResponse {
     /// Tri-state decision
     pub fn decision(&self) -> Option<Decision> {
         self.decision
@@ -277,10 +284,10 @@ impl InterfaceResidualResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl TryFrom<PartialResponse> for InterfaceResidualResponse {
+impl TryFrom<crate::PartialResponse> for ResidualResponse {
     type Error = Box<dyn miette::Diagnostic>;
 
-    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+    fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
         Ok(Self {
             decision: partial_response.decision(),
             satisfied: partial_response.definitely_satisfied().cloned().collect(),
@@ -305,27 +312,49 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum AuthorizationAnswer {
-    /// Represents a failure to parse and call the authorizer
+    /// Represents a failure to parse or call the authorizer entirely
     Failure {
-        /// Parsing errors
+        /// Errors encountered
         errors: Vec<String>,
+        /// Warnings encountered
+        warnings: Vec<String>,
     },
-    /// Represents a successful authorization call
+    /// Represents a successful authorization call (although individual policy
+    /// evaluation may still have errors)
     Success {
-        /// Details of the authorization decision
-        response: InterfaceResponse,
+        /// Authorization decision and diagnostics, which may include policy
+        /// evaluation errors
+        response: Response,
+        /// Warnings encountered. These are all warnings not generated by
+        /// authorization itself -- e.g. general warnings about your schema,
+        /// entity data, etc. Warnings generated by authorization are part of
+        /// `response`.
+        warnings: Vec<String>,
     },
 }
 
+/// Answer struct from partial-authorization call
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum PartialAuthorizationAnswer {
-    ParseFailed {
+pub enum PartialAuthorizationAnswer {
+    /// Represents a failure to parse or call the authorizer entirely
+    Failure {
+        /// Errors encountered
         errors: Vec<String>,
+        /// Warnings encountered
+        warnings: Vec<String>,
     },
+    /// Represents a successful authorization call with either a partial or
+    /// concrete answer.  Individual policy evaluation may still have errors.
     Residuals {
-        response: Box<InterfaceResidualResponse>,
+        /// Information about the authorization decision and residuals
+        response: ResidualResponse,
+        /// Warnings encountered. These are all warnings not generated by
+        /// authorization itself -- e.g. general warnings about your schema,
+        /// entity data, etc. Warnings generated by authorization are part of
+        /// `response`.
+        warnings: Vec<String>,
     },
 }
 
@@ -349,13 +378,12 @@ pub struct AuthorizationCall {
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     /// The context details specific to the request
     context: HashMap<String, JsonValueWithNoDuplicateKeys>,
-    /// Optional schema in JSON format.
+    /// Optional schema.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
-    #[serde(rename = "schema")]
     #[cfg_attr(feature = "wasm", tsify(optional, type = "Schema"))]
-    schema: Option<JsonValueWithNoDuplicateKeys>,
+    schema: Option<Schema>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
     /// parsing of `context`, and not for request validation.
@@ -370,51 +398,121 @@ fn constant_true() -> bool {
     true
 }
 
-fn parse_schema(
-    schema_json: Option<JsonValueWithNoDuplicateKeys>,
-) -> Result<Option<Schema>, Vec<String>> {
-    schema_json
-        .map(|v| Schema::from_json_value(v.into()))
-        .transpose()
-        .map_err(|e| vec![e.to_string()])
+#[derive(Debug, Serialize, Deserialize)]
+enum Schema {
+    /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
+    #[serde(rename = "human")]
+    Human(String),
+    /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
+    #[serde(rename = "json")]
+    Json(serde_json::Value),
 }
 
+impl Schema {
+    fn parse(self) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), String> {
+        match self {
+            Self::Human(str) => crate::Schema::from_str_natural(&str)
+                .map(|(sch, warnings)| {
+                    (
+                        sch,
+                        Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
+                    )
+                })
+                .map_err(|e| e.to_string()),
+            Self::Json(val) => crate::Schema::from_json_value(val)
+                .map(|sch| {
+                    (
+                        sch,
+                        Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
+                    )
+                })
+                .map_err(|e| e.to_string()),
+        }
+    }
+}
+
+/// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
+/// appropriate error to `errs` and returns `None`.
 fn parse_entity_uid(
-    entity_uid_json: Option<JsonValueWithNoDuplicateKeys>,
+    entity_uid_json: JsonValueWithNoDuplicateKeys,
     category: &str,
-) -> Result<Option<EntityUid>, Vec<String>> {
-    entity_uid_json
-        .map(|v| EntityUid::from_json(v.into()))
-        .transpose()
-        .map_err(|e| vec![format!("Failed to parse {category}"), e.to_string()])
+    errs: &mut Vec<String>,
+) -> Option<EntityUid> {
+    match EntityUid::from_json(entity_uid_json.into())
+        .map_err(|e| format!("Failed to parse {category}: {e}"))
+    {
+        Ok(euid) => Some(euid),
+        Err(e) => {
+            errs.push(e);
+            None
+        }
+    }
 }
 
-fn parse_action(entity_uid_json: JsonValueWithNoDuplicateKeys) -> Result<EntityUid, Vec<String>> {
-    parse_entity_uid(Some(entity_uid_json), "action")?
-        .map_or_else(|| Err(vec!["parsing action return none".into()]), Ok)
-}
-
+/// Parses the given JSON context into a [`Context`], or if it fails, adds
+/// appropriate error(s) to `errs` and returns an empty context.
 fn parse_context(
     context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
-    schema_ref: Option<&Schema>,
-    action_ref: &EntityUid,
-) -> Result<Context, Vec<String>> {
-    let context = serde_json::to_value(context_map)
-        .map_err(|e| vec!["Failed to parse context".into(), e.to_string()])?;
-    Context::from_json_value(context, schema_ref.map(|s| (s, action_ref)))
-        .map_err(|e| vec![e.to_string()])
+    schema_ref: Option<&crate::Schema>,
+    action_ref: Option<&EntityUid>,
+    errs: &mut Vec<String>,
+) -> Context {
+    match serde_json::to_value(context_map) {
+        Ok(json) => {
+            match Context::from_json_value(
+                json,
+                match (schema_ref, action_ref) {
+                    (Some(s), Some(a)) => Some((s, a)),
+                    _ => None,
+                },
+            ) {
+                Ok(context) => context,
+                Err(e) => {
+                    errs.push(e.to_string());
+                    Context::empty()
+                }
+            }
+        }
+        Err(e) => {
+            errs.push("Failed to parse context".into());
+            errs.push(e.to_string());
+            Context::empty()
+        }
+    }
+}
+
+struct WithWarnings<T> {
+    t: T,
+    warnings: Vec<String>,
 }
 
 impl AuthorizationCall {
-    fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
-        let schema = parse_schema(self.schema)?;
-        let principal = parse_entity_uid(self.principal, "principal")?;
-        let action = parse_action(self.action)?;
-        let resource = parse_entity_uid(self.resource, "resource")?;
-        let context = parse_context(self.context, schema.as_ref(), &action)?;
-        let q = Request::new(
+    fn get_components(self) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
+        let mut errs = vec![];
+        let mut warnings = vec![];
+        let schema = match self.schema.map(Schema::parse).transpose() {
+            Ok(None) => None,
+            Ok(Some((schema, new_warnings))) => {
+                warnings.extend(new_warnings.map(|w| w.to_string()));
+                Some(schema)
+            }
+            Err(e) => {
+                errs.push(e);
+                None
+            }
+        };
+        let principal = self
+            .principal
+            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
+        let action = parse_entity_uid(self.action, "action", &mut errs);
+        let resource = self
+            .resource
+            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
+        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
+
+        let request = match Request::new(
             principal,
-            Some(action),
+            action,
             resource,
             context,
             if self.enable_request_validation {
@@ -423,35 +521,103 @@ impl AuthorizationCall {
                 None
             },
         )
-        .map_err(|e| [e.to_string()])?;
-        let (policies, entities) = self.slice.try_into(schema.as_ref())?;
-        Ok((q, policies, entities))
+        .map_err(|e| e.to_string())
+        {
+            Ok(req) => Some(req),
+            Err(e) => {
+                errs.push(e);
+                None
+            }
+        };
+        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
+            Ok((policies, entities)) => (Some(policies), Some(entities)),
+            Err(e) => {
+                errs.extend(e);
+                (None, None)
+            }
+        };
+
+        match (errs.is_empty(), request, policies, entities) {
+            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
+                t: Ok((req, policies, entities)),
+                warnings,
+            },
+            _ => WithWarnings {
+                t: Err(errs),
+                warnings,
+            },
+        }
     }
 
     #[cfg(feature = "partial-eval")]
-    fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
-        let schema = parse_schema(self.schema)?;
-        let principal = parse_entity_uid(self.principal, "principal")?;
-        let action = parse_action(self.action)?;
-        let resource = parse_entity_uid(self.resource, "resource")?;
-        let context = parse_context(self.context, schema.as_ref(), &action)?;
-        let mut b = Request::builder().action(Some(action)).context(context);
+    fn get_components_partial(
+        self,
+    ) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
+        let mut errs = vec![];
+        let mut warnings = vec![];
+        let schema = match self.schema.map(Schema::parse).transpose() {
+            Ok(None) => None,
+            Ok(Some((schema, new_warnings))) => {
+                warnings.extend(new_warnings.map(|w| w.to_string()));
+                Some(schema)
+            }
+            Err(e) => {
+                errs.push(e);
+                None
+            }
+        };
+        let principal = self
+            .principal
+            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
+        let action = parse_entity_uid(self.action, "action", &mut errs);
+        let resource = self
+            .resource
+            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
+        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
+
+        let mut b = Request::builder();
         if principal.is_some() {
             b = b.principal(principal);
+        }
+        if action.is_some() {
+            b = b.action(action);
         }
         if resource.is_some() {
             b = b.resource(resource);
         }
-        let q = if self.enable_request_validation {
+        b = b.context(context);
+        let request = if self.enable_request_validation {
             match schema.as_ref() {
-                Some(schema_ref) => b.schema(schema_ref).build().map_err(|e| [e.to_string()])?,
-                None => b.build(),
+                Some(schema_ref) => match b.schema(schema_ref).build().map_err(|e| e.to_string()) {
+                    Ok(req) => Some(req),
+                    Err(e) => {
+                        errs.push(e);
+                        None
+                    }
+                },
+                None => Some(b.build()),
             }
         } else {
-            b.build()
+            Some(b.build())
         };
-        let (policies, entities) = self.slice.try_into(schema.as_ref())?;
-        Ok((q, policies, entities.partial()))
+        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
+            Ok((policies, entities)) => (Some(policies), Some(entities)),
+            Err(e) => {
+                errs.extend(e);
+                (None, None)
+            }
+        };
+
+        match (errs.is_empty(), request, policies, entities) {
+            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
+                t: Ok((req, policies, entities.partial())),
+                warnings,
+            },
+            _ => WithWarnings {
+                t: Err(errs),
+                warnings,
+            },
+        }
     }
 }
 
@@ -602,7 +768,10 @@ fn parse_instantiations(
 
 impl RecvdSlice {
     #[allow(clippy::too_many_lines)]
-    fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, Entities), Vec<String>> {
+    fn try_into(
+        self,
+        schema: Option<&crate::Schema>,
+    ) -> Result<(PolicySet, Entities), Vec<String>> {
         let Self {
             policies,
             entities,
@@ -656,9 +825,47 @@ impl RecvdSlice {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{frontend::utils::assert_is_failure, EntityUid};
     use cool_asserts::assert_matches;
-    use std::collections::HashMap;
+    use serde_json::json;
+
+    /// Assert that `is_authorized_json()` returns Allow with no errors
+    #[track_caller]
+    fn assert_is_authorized_json(json: serde_json::Value) {
+        let ans_val = is_authorized_json(json).unwrap();
+        let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
+            assert_eq!(response.decision(), Decision::Allow);
+            let errors: Vec<&str> = response.diagnostics().errors().collect();
+            assert_eq!(errors.len(), 0, "{errors:?}");
+        });
+    }
+
+    /// Assert that `is_authorized_json()` returns Deny with no errors
+    #[track_caller]
+    fn assert_is_not_authorized_json(json: serde_json::Value) {
+        let ans_val = is_authorized_json(json).unwrap();
+        let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
+            assert_eq!(response.decision(), Decision::Deny);
+            let errors: Vec<&str> = response.diagnostics().errors().collect();
+            assert_eq!(errors.len(), 0, "{errors:?}");
+        });
+    }
+
+    /// Assert that `is_authorized_json()` returns
+    /// `AuthorizationAnswer::Failure` where some error contains the expected
+    /// string `err`
+    #[track_caller]
+    fn assert_is_authorized_json_is_failure(json: serde_json::Value, err: &str) {
+        let ans_val =
+            is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
+        let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => {
+            assert!(
+                errors.iter().any(|e| e.contains(err)),
+                "Expected to see error(s) containing `{err}`, but saw {errors:?}");
+        });
+    }
 
     #[test]
     fn test_slice_convert() {
@@ -716,17 +923,14 @@ mod test {
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(
-            &json_is_authorized("iefjieoafiaeosij"),
-            true,
-            "error parsing call: expected value",
-        );
+        assert_matches!(is_authorized_json_str("iefjieoafiaeosij"), Err(e) => {
+            assert!(e.to_string().contains("expected value"));
+        });
     }
 
     #[test]
     fn test_not_authorized_on_empty_slice() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -744,16 +948,14 @@ mod test {
              "policies": {},
              "entities": []
             }
-           }
-        "#;
+        });
 
-        assert_is_not_authorized(json_is_authorized(call));
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_not_authorized_on_unspecified() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": null,
             "action": {
              "type": "Photo",
@@ -770,16 +972,14 @@ mod test {
              },
              "entities": []
             }
-           }
-        "#;
+        });
 
-        assert_is_not_authorized(json_is_authorized(call));
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_simple_slice() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -799,16 +999,14 @@ mod test {
              },
              "entities": []
             }
-           }
-        "#;
+        });
 
-        assert_is_authorized(json_is_authorized(call));
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_simple_slice_with_string_policies() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -826,16 +1024,14 @@ mod test {
              "policies": "permit(principal == User::\"alice\", action, resource);",
              "entities": []
             }
-           }
-	         "#;
+        });
 
-        assert_is_authorized(json_is_authorized(call));
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_simple_slice_with_context() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -858,16 +1054,14 @@ mod test {
              "policies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };",
              "entities": []
             }
-           }
-        "#;
+        });
 
-        assert_is_authorized(json_is_authorized(call));
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_simple_slice_with_attrs_and_parents() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -930,16 +1124,13 @@ mod test {
               }
              ]
             }
-           }
-        "#;
-
-        assert_is_authorized(json_is_authorized(call));
+        });
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_multi_policy_slice() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -961,15 +1152,13 @@ mod test {
              },
              "entities": []
             }
-           }
-	         "#;
-        assert_is_authorized(json_is_authorized(call));
+        });
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_multi_policy_slice_with_string_policies() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1032,15 +1221,13 @@ mod test {
               }
              ]
             }
-           }
-	         "#;
-        assert_is_authorized(json_is_authorized(call));
+        });
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_multi_policy_slice_denies_when_expected() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1061,15 +1248,13 @@ mod test {
              },
              "entities": []
             }
-           }
-	         "#;
-        assert_is_not_authorized(json_is_authorized(call));
+        });
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_on_multi_policy_slice_with_string_policies_denies_when_expected() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1087,16 +1272,14 @@ mod test {
              "policies": "permit(principal, action, resource);forbid(principal == User::\"alice\", action, resource);",
              "entities": []
             }
-           }
-	         "#;
+        });
 
-        assert_is_not_authorized(json_is_authorized(call));
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_with_template_as_policy_should_fail() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1115,15 +1298,13 @@ mod test {
              "entities": [],
              "templates": {}
             }
-           }
-	         "#;
-        assert_is_not_authorized(json_is_authorized(call));
+        });
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_with_template_should_fail() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1144,15 +1325,13 @@ mod test {
               "ID0": "permit(principal == ?principal, action, resource);"
              }
             }
-           }
-	         "#;
-        assert_is_not_authorized(json_is_authorized(call));
+        });
+        assert_is_not_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_with_template_instantiation() {
-        let call = r#"
-        {
+        let call = json!({
             "principal": {
              "type": "User",
              "id": "alice"
@@ -1188,14 +1367,13 @@ mod test {
               }
              ]
             }
-           }
-	         "#;
-        assert_is_authorized(json_is_authorized(call));
+        });
+        assert_is_authorized_json(call);
     }
 
     #[test]
     fn test_authorized_fails_on_policy_collision_with_template() {
-        let call = r#"{
+        let call = json!({
             "principal" : {
                 "type" : "User",
                 "id" : "alice"
@@ -1215,17 +1393,16 @@ mod test {
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
                 "template_instantiations" : []
             }
-        }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
+        });
+        assert_is_authorized_json_is_failure(
+            call,
             "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
         );
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_instantiations_ids() {
-        let call = r#"{
+        let call = json!({
             "principal" : {
                 "type" : "User",
                 "id" : "alice"
@@ -1266,13 +1443,16 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id");
+        });
+        assert_is_authorized_json_is_failure(
+            call,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
     }
 
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_template() {
-        let call = r#"{
+        let call = json!({
             "principal" : {
                 "type" : "User",
                 "id" : "alice"
@@ -1303,13 +1483,16 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id");
+        });
+        assert_is_authorized_json_is_failure(
+            call,
+            "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
+        );
     }
 
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
-        let call = r#"{
+        let call = json!({
             "principal" : {
                 "type" : "User",
                 "id" : "alice"
@@ -1340,32 +1523,11 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id");
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_is_authorized(result: InterfaceResult) {
-        assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: AuthorizationAnswer =
-                serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
-                assert_eq!(response.decision(), Decision::Allow);
-                assert_eq!(response.diagnostics().errors.len(), 0);
-            });
         });
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_is_not_authorized(result: InterfaceResult) {
-        assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: AuthorizationAnswer =
-                serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
-                assert_eq!(response.decision(), Decision::Deny);
-                assert_eq!(response.diagnostics().errors.len(), 0);
-            });
-        });
+        assert_is_authorized_json_is_failure(
+            call,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
     }
 
     #[test]
@@ -1385,7 +1547,9 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true, "error parsing call: policies as a concatenated string or multiple policies as a hashmap where the policy id is the key");
+        assert_matches!(is_authorized_json_str(call), Err(e) => {
+            assert!(e.to_string().contains("policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"));
+        });
     }
 
     #[test]
@@ -1405,16 +1569,14 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: invalid entry: found duplicate key",
-        );
+        assert_matches!(is_authorized_json_str(call), Err(e) => {
+            assert!(e.to_string().contains("found duplicate key"));
+        });
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_slot_instantiation1() {
-        let call = r#"{
+        let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
             "resource" : "Photo::\"door\"",
@@ -1440,17 +1602,15 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: duplicate instantiations of the slot(s): `?principal`",
-        );
+        });
+        assert_matches!(is_authorized_json(call), Err(e) => {
+            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`"));
+        });
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_slot_instantiation2() {
-        let call = r#"{
+        let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
             "resource" : "Photo::\"door\"",
@@ -1480,17 +1640,15 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: duplicate instantiations of the slot(s): `?principal`",
-        );
+        });
+        assert_matches!(is_authorized_json(call), Err(e) => {
+            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`"));
+        });
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_slot_instantiation3() {
-        let call = r#"{
+        let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
             "resource" : "Photo::\"door\"",
@@ -1524,17 +1682,15 @@ mod test {
                     }
                 ]
             }
-        }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: duplicate instantiations of the slot(s): `?principal`, `?resource`",
-        );
+        });
+        assert_matches!(is_authorized_json(call), Err(e) => {
+            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`, `?resource`"));
+        });
     }
 
     #[test]
     fn test_authorized_fails_duplicate_entity_uid() {
-        let call = r#"{
+        let call = json!({
             "principal" : {
                 "type" : "User",
                 "id" : "alice"
@@ -1571,12 +1727,8 @@ mod test {
                 "templates" : {},
                 "template_instantiations" : []
             }
-        }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            r#"duplicate entity entry `User::"alice"`"#,
-        );
+        });
+        assert_is_authorized_json_is_failure(call, r#"duplicate entity entry `User::"alice"`"#);
     }
 
     #[test]
@@ -1605,190 +1757,261 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: invalid entry: found duplicate key",
-        );
+        assert_matches!(is_authorized_json_str(call), Err(e) => {
+            assert!(e.to_string().contains("found duplicate key"));
+        });
     }
 
-    #[cfg(feature = "partial-eval")]
-    mod partial {
-        use super::super::PartialAuthorizationAnswer;
-        use crate::frontend::is_authorized::json_is_authorized_partial;
-        use crate::frontend::utils::InterfaceResult;
-        use crate::Decision;
-        use crate::PolicyId;
-        use cool_asserts::assert_matches;
-        use std::collections::HashSet;
-        use std::str::FromStr;
+    #[test]
+    fn test_request_validation() {
+        let good_call = json!({
+            "principal" : {
+                "type": "User",
+                "id": "alice",
+            },
+            "action": {
+                "type": "Action",
+                "id": "view",
+            },
+            "resource": {
+                "type": "Photo",
+                "id": "door",
+            },
+            "context": {},
+            "slice": {
+                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
+                "entities": [],
+                "templates": {},
+                "template_instantiations": [],
+            },
+            "schema": {
+                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
+            },
+        });
+        let bad_call = json!({
+            "principal" : {
+                "type": "User",
+                "id": "alice",
+            },
+            "action": {
+                "type": "Action",
+                "id": "view",
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob",
+            },
+            "context": {},
+            "slice": {
+                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
+                "entities": [],
+                "templates": {},
+                "template_instantiations": [],
+            },
+            "schema": {
+                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
+            },
+        });
+        let bad_call_req_validation_disabled = json!({
+            "principal" : {
+                "type": "User",
+                "id": "alice",
+            },
+            "action": {
+                "type": "Action",
+                "id": "view",
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob",
+            },
+            "context": {},
+            "slice": {
+                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
+                "entities": [],
+                "templates": {},
+                "template_instantiations": [],
+            },
+            "schema": {
+                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
+            },
+            "enable_request_validation": false,
+        });
 
-        #[test]
-        fn test_authorized_partial_no_resource() {
-            let call = r#"
-              {
-                "principal": {
-                 "type": "User",
-                 "id": "alice"
-                },
-                "action": {
-                 "type": "Photo",
-                 "id": "view"
-                },
-                "context": {},
-                "slice": {
-                 "policies": {
-                  "ID1": "permit(principal == User::\"alice\", action, resource);"
-                 },
-                 "entities": []
-                },
-                "partial_evaluation": true
-              }
-            "#;
-            assert_is_authorized(json_is_authorized_partial(call));
-        }
+        assert_is_authorized_json(good_call);
+        assert_is_authorized_json_is_failure(
+            bad_call,
+            "resource type `User` is not valid for `Action::\"view\"`",
+        );
+        assert_is_authorized_json(bad_call_req_validation_disabled);
+    }
+}
 
-        #[test]
-        fn test_authorized_partial_not_authorized_no_resource() {
-            let call = r#"
-              {
-                "principal": {
-                 "type": "User",
-                 "id": "john"
-                },
-                "action": {
-                 "type": "Photo",
-                 "id": "view"
-                },
-                "context": {},
-                "slice": {
-                 "policies": {
-                  "ID1": "permit(principal == User::\"alice\", action, resource);"
-                 },
-                 "entities": []
-                },
-                "partial_evaluation": true
-              }
-            "#;
-            assert_is_not_authorized(json_is_authorized_partial(call));
-        }
+#[cfg(feature = "partial-eval")]
+#[cfg(test)]
+mod partial_test {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use serde_json::json;
 
-        #[test]
-        fn test_authorized_partial_residual_no_principal_scope() {
-            let call = r#"
-              {
-                "action": {
-                 "type": "Photo",
-                 "id": "view"
-                },
-                "resource" : {
-                    "type" : "Photo",
-                    "id" : "door"
-                },
-                "context": {},
-                "slice": {
-                 "policies": {
-                  "ID1": "permit(principal == User::\"alice\", action, resource);"
-                 },
-                 "entities": []
-                },
-                "partial_evaluation": true
-              }
-            "#;
-            assert_is_residual(json_is_authorized_partial(call), &HashSet::from(["ID1"]));
-        }
+    #[track_caller]
+    fn assert_is_authorized_json_partial(call: serde_json::Value) {
+        let ans_val = is_authorized_partial_json(call).unwrap();
+        let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response, .. }) => {
+            assert_eq!(response.decision(), Some(Decision::Allow));
+            let errors: Vec<_> = response.errored().collect();
+            assert_eq!(errors.len(), 0, "{errors:?}");
+        });
+    }
 
-        #[test]
-        fn test_authorized_partial_residual_no_principal_when() {
-            let call = r#"
-              {
-                "action": {
-                 "type": "Photo",
-                 "id": "view"
-                },
-                "resource" : {
-                    "type" : "Photo",
-                    "id" : "door"
-                },
-                "context": {},
-                "slice": {
-                 "policies": {
-                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
-                 },
-                 "entities": []
-                },
-                "partial_evaluation": true
-              }
-            "#;
-            assert_is_residual(json_is_authorized_partial(call), &HashSet::from(["ID1"]));
-        }
+    #[track_caller]
+    fn assert_is_not_authorized_json_partial(call: serde_json::Value) {
+        let ans_val = is_authorized_partial_json(call).unwrap();
+        let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response, .. }) => {
+            assert_eq!(response.decision(), Some(Decision::Deny));
+            let errors: Vec<_> = response.errored().collect();
+            assert_eq!(errors.len(), 0, "{errors:?}");
+        });
+    }
 
-        #[test]
-        fn test_authorized_partial_residual_no_principal_ignored_forbid() {
-            let call = r#"
-              {
-                "action": {
-                 "type": "Photo",
-                 "id": "view"
-                },
-                "resource" : {
-                    "type" : "Photo",
-                    "id" : "door"
-                },
-                "context": {},
-                "slice": {
-                 "policies": {
-                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
-                  "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
-                 },
-                 "entities": []
-                },
-                "partial_evaluation": true
-              }
-            "#;
-            assert_is_residual(json_is_authorized_partial(call), &HashSet::from(["ID1"]));
-        }
+    #[track_caller]
+    fn assert_is_residual(call: serde_json::Value, expected_residuals: HashSet<&str>) {
+        let ans_val = is_authorized_partial_json(call).unwrap();
+        let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response, .. }) => {
+            assert_eq!(response.decision(), None);
+            let errors: Vec<_> = response.errored().collect();
+            assert_eq!(errors.len(), 0, "{errors:?}");
+            let actual_residuals: HashSet<_> = response.nontrivial_residual_ids().collect();
+            for id in &expected_residuals {
+                assert!(actual_residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected nontrivial residual for {id}, but it's missing")
+            }
+            for id in &actual_residuals {
+                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}")
+            }
+        });
+    }
 
-        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-        fn assert_is_authorized(result: InterfaceResult) {
-            assert_matches!(result, InterfaceResult::Success { result } => {
-                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-                assert_matches!(parsed_result,
-                    PartialAuthorizationAnswer::Residuals { response } => {
-                        assert_eq!(response.decision(), Some(Decision::Allow));
-                        assert_eq!(response.errored().count(), 0);
-                    }
-                );
-            });
-        }
+    #[test]
+    fn test_authorized_partial_no_resource() {
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "Photo",
+                "id": "view"
+            },
+            "context": {},
+            "slice": {
+                "policies": {
+                "ID1": "permit(principal == User::\"alice\", action, resource);"
+                },
+                "entities": []
+            },
+            "partial_evaluation": true
+        });
 
-        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-        fn assert_is_not_authorized(result: InterfaceResult) {
-            assert_matches!(result, InterfaceResult::Success { result } => {
-                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-                assert_matches!(parsed_result, PartialAuthorizationAnswer::Residuals { response } => {
-                    assert_eq!(response.decision(), Some(Decision::Deny));
-                    assert_eq!(response.errored().count(), 0);
-                });
-            });
-        }
+        assert_is_authorized_json_partial(call);
+    }
 
-        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-        fn assert_is_residual(result: InterfaceResult, residual_ids: &HashSet<&str>) {
-            assert_matches!(result, InterfaceResult::Success { result } => {
-                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-                assert_matches!(parsed_result, PartialAuthorizationAnswer::Residuals { response } => {
-                    let num_errors = response.errored().count();
-                    assert_eq!(num_errors, 0, "got {num_errors} errors");
-                    let residuals = response.nontrivial_residual_ids().collect::<HashSet<_>>();
-                    for id in residual_ids {
-                        assert!(residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing");
-                    }
-                    for key in residuals {
-                        assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}");
-                    }
-                });
-            });
-        }
+    #[test]
+    fn test_authorized_partial_not_authorized_no_resource() {
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "john"
+            },
+            "action": {
+                "type": "Photo",
+                "id": "view"
+            },
+            "context": {},
+            "slice": {
+                "policies": {
+                "ID1": "permit(principal == User::\"alice\", action, resource);"
+                },
+                "entities": []
+            },
+            "partial_evaluation": true
+        });
+
+        assert_is_not_authorized_json_partial(call);
+    }
+
+    #[test]
+    fn test_authorized_partial_residual_no_principal_scope() {
+        let call = json!({
+            "action": {
+                "type": "Photo",
+                "id": "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
+            "context": {},
+            "slice": {
+                "policies": {
+                "ID1": "permit(principal == User::\"alice\", action, resource);"
+                },
+                "entities": []
+            },
+            "partial_evaluation": true
+        });
+
+        assert_is_residual(call, HashSet::from(["ID1"]));
+    }
+
+    #[test]
+    fn test_authorized_partial_residual_no_principal_when() {
+        let call = json!({
+            "action": {
+                "type": "Photo",
+                "id": "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
+            "context": {},
+            "slice": {
+                "policies": {
+                "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
+                },
+                "entities": []
+            },
+            "partial_evaluation": true
+        });
+
+        assert_is_residual(call, HashSet::from(["ID1"]));
+    }
+
+    #[test]
+    fn test_authorized_partial_residual_no_principal_ignored_forbid() {
+        let call = json!({
+            "action": {
+                "type": "Photo",
+                "id": "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
+            "context": {},
+            "slice": {
+                "policies": {
+                "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
+                "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
+                },
+                "entities": []
+            },
+            "partial_evaluation": true
+        });
+
+        assert_is_residual(call, HashSet::from(["ID1"]));
     }
 }

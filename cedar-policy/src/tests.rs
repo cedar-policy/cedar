@@ -2966,7 +2966,7 @@ mod schema_based_parsing_tests {
         );
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
-        assert!(Entities::from_json_value(entitiesjson_tc.clone(), Some(&schema)).is_ok());
+        assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
         assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
 
         // Parsing will fail if the TC doesn't match
@@ -3392,7 +3392,7 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid.clone()), est_json);
+        let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
             Err(FromJsonError::SlotsInConditionClause {
@@ -3413,7 +3413,7 @@ mod issue_619 {
     fn issue_619() {
         let policy = Policy::parse(
             None,
-            r#"permit(principal, action, resource) when {1 * 2 * true};"#,
+            "permit(principal, action, resource) when {1 * 2 * true};",
         )
         .unwrap();
         let json = policy.to_json().unwrap();

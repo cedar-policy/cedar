@@ -160,16 +160,3 @@ impl InterfaceResult {
         }
     }
 }
-
-#[cfg(test)]
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &str) {
-    use cool_asserts::assert_matches;
-
-    assert_matches!(result, InterfaceResult::Failure { is_internal, errors } => {
-        assert!(
-            errors.iter().any(|e| e.contains(err)),
-            "Expected to see error(s) containing `{err}`, but saw {errors:?}");
-        assert_eq!(is_internal, &internal, "Unexpected value for `is_internal`");
-    });
-}
