@@ -16,28 +16,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
-  now include multiplication of arbitrary expressions, not just multiplication of
-  an expression and a constant.
 - for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Improved "unexpected token" parse errors when the schema or policy parsers
-  expect an identifier. (#698)
 - Overhauled the FFI interface in the `frontend` module; see #757.
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
-- Validation error messages render types in the new, more readable, schema
-  syntax. (#708, resolving #242)
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
 - Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
-- Improved `Display` implementation for Cedar schemas, both JSON and human syntax. (#780)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
 
+## [3.1.3] - 2024-04-15
+
+### Changed
+
+- Improve parser errors on unexpected tokens. (#698, partially resolving #176)
+- Validation error messages render types in the new, more readable, schema
+  syntax. (#708, resolving #242)
+- Improved error messages when `null` occurs in entity json data. (#751,
+  resolving #530)
+- Improved source location reporting for error `found template slot in a when clause`.
+  (#758, resolving #736)
+- Improved `Display` implementation for Cedar schemas, both JSON and human
+  syntax. (#780)
+
+### Fixed
+
+- Support identifiers in context declarations in the human-readable schema
+  format. (#734, resolving #681)
+
 ## [3.1.2] - 2024-03-29
+
+### Changed
 
 - Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
   now include multiplication of arbitrary expressions, not just multiplication of
@@ -461,7 +474,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.2...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.3...main
+[3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
