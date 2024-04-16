@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
-pub mod is_authorized;
-pub mod utils;
-pub mod validate;
+mod is_authorized;
+pub use is_authorized::*;
+mod utils;
+pub use utils::Schema;
+mod validate;
+pub use validate::*;

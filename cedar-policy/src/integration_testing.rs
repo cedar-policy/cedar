@@ -27,7 +27,7 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    frontend::is_authorized::Response, AuthorizationError, Authorizer, Context, Decision, Entities,
+    ffi::Response, AuthorizationError, Authorizer, Context, Decision, Entities,
     EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
