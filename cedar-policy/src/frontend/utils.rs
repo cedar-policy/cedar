@@ -15,7 +15,8 @@
  */
 
 //! Utility functions and types for JSON interface
-use crate::{Policy, PolicySet, Template};
+use crate::{Policy, SchemaWarning, Template};
+use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
@@ -29,8 +30,8 @@ extern crate tsify;
 )]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-/// Struct defining the two possible ways to pass a set of policies to `json_is_authorized` and `json_validate`
-pub enum PolicySpecification {
+/// Struct defining the two possible ways to pass a set of policies to `is_authorized_json` and `validate_json`
+pub enum PolicySet {
     /// provides multiple policies as a concatenated string
     Concatenated(String),
     /// provides multiple policies as a hashmap where the policyId is the key
@@ -41,8 +42,8 @@ pub enum PolicySpecification {
 fn parse_policy_set_from_individual_policies(
     policies: &HashMap<String, String>,
     templates: Option<HashMap<String, String>>,
-) -> Result<PolicySet, Vec<String>> {
-    let mut policy_set = PolicySet::new();
+) -> Result<crate::PolicySet, Vec<String>> {
+    let mut policy_set = crate::PolicySet::new();
     let mut errs = Vec::new();
     for (id, policy_src) in policies {
         match Policy::parse(Some(id.clone()), policy_src) {
@@ -83,13 +84,13 @@ fn parse_policy_set_from_individual_policies(
     }
 }
 
-impl PolicySpecification {
-    pub(crate) fn try_into(
+impl PolicySet {
+    pub(super) fn try_into(
         self,
         templates: Option<HashMap<String, String>>,
-    ) -> Result<PolicySet, Vec<String>> {
+    ) -> Result<crate::PolicySet, Vec<String>> {
         match self {
-            Self::Concatenated(policies) => match PolicySet::from_str(&policies) {
+            Self::Concatenated(policies) => match crate::PolicySet::from_str(&policies) {
                 Ok(ps) => Ok(ps),
                 Err(parse_errors) => Err(std::iter::once(
                     "couldn't parse concatenated policies string".to_string(),
@@ -100,6 +101,47 @@ impl PolicySpecification {
             Self::Map(policies) => parse_policy_set_from_individual_policies(&policies, templates),
         }
     }
+}
+
+/// Represents a schema in either schema format
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Schema {
+    /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
+    #[serde(rename = "human")]
+    Human(String),
+    /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
+    #[serde(rename = "json")]
+    Json(JsonValueWithNoDuplicateKeys),
+}
+
+impl Schema {
+    pub(super) fn parse(
+        self,
+    ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), String> {
+        match self {
+            Self::Human(str) => crate::Schema::from_str_natural(&str)
+                .map(|(sch, warnings)| {
+                    (
+                        sch,
+                        Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
+                    )
+                })
+                .map_err(|e| e.to_string()),
+            Self::Json(val) => crate::Schema::from_json_value(val.into())
+                .map(|sch| {
+                    (
+                        sch,
+                        Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
+                    )
+                })
+                .map_err(|e| e.to_string()),
+        }
+    }
+}
+
+pub(super) struct WithWarnings<T> {
+    pub t: T,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

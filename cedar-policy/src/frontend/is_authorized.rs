@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-//! This module contains the `json_is_authorized` entry point that other language
-//! FFI's can call in order to use Cedar functionality
+//! This module contains the `is_authorized` entry points that other language
+//! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::PolicySpecification;
+use super::utils::{PolicySet, Schema, WithWarnings};
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
-    PolicySet, Request, SchemaWarning, SlotId,
+    Request, SlotId,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -398,39 +398,6 @@ fn constant_true() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-enum Schema {
-    /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
-    #[serde(rename = "human")]
-    Human(String),
-    /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    #[serde(rename = "json")]
-    Json(serde_json::Value),
-}
-
-impl Schema {
-    fn parse(self) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), String> {
-        match self {
-            Self::Human(str) => crate::Schema::from_str_natural(&str)
-                .map(|(sch, warnings)| {
-                    (
-                        sch,
-                        Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
-                    )
-                })
-                .map_err(|e| e.to_string()),
-            Self::Json(val) => crate::Schema::from_json_value(val)
-                .map(|sch| {
-                    (
-                        sch,
-                        Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
-                    )
-                })
-                .map_err(|e| e.to_string()),
-        }
-    }
-}
-
 /// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
 /// appropriate error to `errs` and returns `None`.
 fn parse_entity_uid(
@@ -481,13 +448,10 @@ fn parse_context(
     }
 }
 
-struct WithWarnings<T> {
-    t: T,
-    warnings: Vec<String>,
-}
-
 impl AuthorizationCall {
-    fn get_components(self) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
+    fn get_components(
+        self,
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<String>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
@@ -552,7 +516,7 @@ impl AuthorizationCall {
     #[cfg(feature = "partial-eval")]
     fn get_components_partial(
         self,
-    ) -> WithWarnings<Result<(Request, PolicySet, Entities), Vec<String>>> {
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<String>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
@@ -702,7 +666,7 @@ impl From<Links> for Vec<Link> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct RecvdSlice {
-    policies: PolicySpecification,
+    policies: PolicySet,
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
     #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
@@ -743,7 +707,7 @@ fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
 }
 
 fn parse_instantiations(
-    policies: &mut PolicySet,
+    policies: &mut crate::PolicySet,
     instantiation: TemplateLink,
 ) -> Result<(), Vec<String>> {
     let template_id = PolicyId::from_str(instantiation.template_id.as_str());
@@ -771,7 +735,7 @@ impl RecvdSlice {
     fn try_into(
         self,
         schema: Option<&crate::Schema>,
-    ) -> Result<(PolicySet, Entities), Vec<String>> {
+    ) -> Result<(crate::PolicySet, Entities), Vec<String>> {
         let Self {
             policies,
             entities,
@@ -779,7 +743,7 @@ impl RecvdSlice {
             template_instantiations,
         } = self;
 
-        let policy_set: Result<PolicySet, Vec<String>> = policies.try_into(templates);
+        let policy_set: Result<crate::PolicySet, Vec<String>> = policies.try_into(templates);
 
         let mut errs = Vec::new();
 
@@ -790,16 +754,16 @@ impl RecvdSlice {
             (Ok(entities), Ok(policies)) => (policies, entities),
             (Ok(_), Err(policy_parse_errors)) => {
                 errs.extend(policy_parse_errors);
-                (PolicySet::new(), Entities::empty())
+                (crate::PolicySet::new(), Entities::empty())
             }
             (Err(e), Ok(_)) => {
                 errs.push(e.to_string());
-                (PolicySet::new(), Entities::empty())
+                (crate::PolicySet::new(), Entities::empty())
             }
             (Err(e), Err(policy_parse_errors)) => {
                 errs.push(e.to_string());
                 errs.extend(policy_parse_errors);
-                (PolicySet::new(), Entities::empty())
+                (crate::PolicySet::new(), Entities::empty())
             }
         };
 
@@ -863,7 +827,8 @@ mod test {
         assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => {
             assert!(
                 errors.iter().any(|e| e.contains(err)),
-                "Expected to see error(s) containing `{err}`, but saw {errors:?}");
+                "Expected to see error(s) containing `{err}`, but saw {errors:?}",
+            );
         });
     }
 
@@ -895,7 +860,7 @@ mod test {
             ]
         );
         let rslice = RecvdSlice {
-            policies: PolicySpecification::Map(HashMap::new()),
+            policies: PolicySet::Map(HashMap::new()),
             entities: entities.into(),
             templates: None,
             template_instantiations: None,

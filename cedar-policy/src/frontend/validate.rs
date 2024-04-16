@@ -14,21 +14,26 @@
  * limitations under the License.
  */
 
-//! This module exposes a JSON-based validate function used by other language FFI's
-//!
+//! This module contains the validator entry points that other language FFIs can
+//! call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{InterfaceResult, PolicySpecification};
-use crate::{PolicySet, Schema, ValidationMode, Validator};
-use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
+use super::utils::{PolicySet, Schema, WithWarnings};
+use crate::{ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Parse a policy set and optionally validate it against a provided schema
+///
+/// This is the basic validator interface, using [`ValidationCall`] and
+/// [`ValidationAnswer`] types
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
-        Ok((policies, schema)) => {
+        WithWarnings {
+            t: Ok((policies, schema)),
+            warnings,
+        } => {
             let validator = Validator::new(schema);
             let validation_result = validator.validate(&policies, ValidationMode::default());
             let validation_errors: Vec<ValidationError> = validation_result
@@ -48,21 +53,28 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
             ValidationAnswer::Success {
                 validation_errors,
                 validation_warnings,
+                other_warnings: warnings,
             }
         }
-        Err(errors) => ValidationAnswer::Failure { errors },
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => ValidationAnswer::Failure { errors, warnings },
     }
 }
 
-/// public string-based validation function
-pub fn json_validate(input: &str) -> InterfaceResult {
-    serde_json::from_str::<ValidationCall>(input).map_or_else(
-        |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
-        |call| match validate(call) {
-            answer @ ValidationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            ValidationAnswer::Failure { errors } => InterfaceResult::fail_bad_request(errors),
-        },
-    )
+/// Input is a JSON encoding of [`ValidationCall`] and output is a JSON
+/// encoding of [`ValidationAnswer`]
+pub fn validate_json(json: serde_json::Value) -> Result<serde_json::Value, serde_json::Error> {
+    let ans = validate(serde_json::from_value(json)?);
+    serde_json::to_value(ans)
+}
+
+/// Input and output are strings containing serialized JSON, in the shapes
+/// expected by [`validate_json()`]
+pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
+    let ans = validate(serde_json::from_str(json)?);
+    serde_json::to_string(&ans)
 }
 
 /// Struct containing the input data for validation
@@ -73,22 +85,35 @@ pub struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
     validation_settings: ValidationSettings,
-    /// Schema in JSON format
     #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
-    schema: JsonValueWithNoDuplicateKeys,
+    schema: Schema,
     #[serde(rename = "policySet")]
-    policy_set: PolicySpecification,
-}
-
-fn parse_schema(schema_json: JsonValueWithNoDuplicateKeys) -> Result<Schema, Vec<String>> {
-    Schema::from_json_value(schema_json.into()).map_err(|e| vec![e.to_string()])
+    policy_set: PolicySet,
 }
 
 impl ValidationCall {
-    fn get_components(self) -> Result<(PolicySet, Schema), Vec<String>> {
-        let policies = self.policy_set.try_into(None)?;
-        let schema = parse_schema(self.schema)?;
-        Ok((policies, schema))
+    fn get_components(
+        self,
+    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<String>>> {
+        let policies = match self.policy_set.try_into(None) {
+            Ok(policies) => policies,
+            Err(errs) => {
+                return WithWarnings {
+                    t: Err(errs),
+                    warnings: vec![],
+                }
+            }
+        };
+        match Schema::parse(self.schema).map_err(|e| vec![e]) {
+            Ok((schema, warnings)) => WithWarnings {
+                t: Ok((policies, schema)),
+                warnings: warnings.map(|w| w.to_string()).collect(),
+            },
+            Err(errs) => WithWarnings {
+                t: Err(errs),
+                warnings: vec![],
+            },
+        }
     }
 }
 
@@ -150,6 +175,8 @@ pub enum ValidationAnswer {
     Failure {
         /// Parsing errors
         errors: Vec<String>,
+        /// Warnings encountered
+        warnings: Vec<String>,
     },
     /// Represents a successful validation call
     Success {
@@ -157,6 +184,9 @@ pub enum ValidationAnswer {
         validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
         validation_warnings: Vec<ValidationWarning>,
+        /// Other warnings, not associated with specific policies.
+        /// For instance, warnings about your schema itself.
+        other_warnings: Vec<String>,
     },
 }
 
@@ -166,321 +196,309 @@ pub enum ValidationAnswer {
 mod test {
     use super::*;
     use cool_asserts::assert_matches;
-    use std::{collections::HashMap, str::FromStr};
+    use serde_json::json;
+    use std::collections::HashMap;
 
-    #[test]
-    fn test_validate_empty_policy_directly() {
-        let schema =
-            JsonValueWithNoDuplicateKeys::from_str("{}").expect("empty schema should be valid");
+    /// Assert that [`validate_json()`] returns Success with no errors
+    #[track_caller]
+    fn assert_validates_without_errors(json: serde_json::Value) {
+        let ans_val = validate_json(json).unwrap();
+        let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
+            assert_eq!(validation_errors.len(), 0, "Unexpected validation errors: {validation_errors:?}");
+        });
+    }
 
-        let call = ValidationCall {
-            validation_settings: ValidationSettings::default(),
-            schema,
-            policy_set: PolicySpecification::Map(HashMap::new()),
-        };
+    /// Assert that [`validate_json()`] returns Success with exactly
+    /// `expected_num_errors` errors
+    #[track_caller]
+    fn assert_validates_with_errors(json: serde_json::Value, expected_num_errors: usize) {
+        let ans_val = validate_json(json).unwrap();
+        let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
+            assert_eq!(validation_errors.len(), expected_num_errors, "actual validation errors were: {validation_errors:?}");
+        });
+    }
 
-        let call_json: String = serde_json::to_string(&call).expect("could not serialise call");
-
-        let result = json_validate(&call_json);
-        assert_validates_without_errors(result);
+    /// Assert that [`validate_json()`] returns `ValidationAnswer::Failure`
+    /// where some error contains the expected error string `err`
+    #[track_caller]
+    fn assert_is_failure(json: serde_json::Value, err: &str) {
+        let ans_val =
+            validate_json(json).expect("expected it to at least parse into ValidationCall");
+        let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => {
+            assert!(
+                errors.iter().any(|e| e.contains(err)),
+                "Expected to see error(s) containing `{err}`, but saw {errors:?}",
+            );
+        });
     }
 
     #[test]
-    fn test_empty_policy_validates_without_errors() {
-        let call_json = r#"{
-            "schema": {},
-            "policySet": {}
-        }"#
-        .to_string();
+    fn test_validate_empty_policy() {
+        let call = ValidationCall {
+            validation_settings: ValidationSettings::default(),
+            schema: Schema::Json(json!({}).into()),
+            policy_set: PolicySet::Map(HashMap::new()),
+        };
 
-        let result = json_validate(&call_json);
-        assert_validates_without_errors(result);
+        assert_validates_without_errors(serde_json::to_value(&call).unwrap());
+
+        let call = ValidationCall {
+            validation_settings: ValidationSettings::default(),
+            schema: Schema::Human(String::new()),
+            policy_set: PolicySet::Map(HashMap::new()),
+        };
+
+        assert_validates_without_errors(serde_json::to_value(&call).unwrap());
+
+        let call = json!({
+            "schema": { "json": {} },
+            "policySet": {}
+        });
+
+        assert_validates_without_errors(call);
     }
 
     #[test]
     fn test_nontrivial_correct_policy_validates_without_errors() {
-        let call_json = r#"{
-  "schema": { "": {
-    "entityTypes": {
-      "User": {
-        "memberOfTypes": [ "UserGroup" ]
-      },
-      "Photo": {
-        "memberOfTypes": [ "Album", "Account" ]
-      },
-      "Album": {
-        "memberOfTypes": [ "Album", "Account" ]
-      },
-      "Account": { },
-      "UserGroup": {}
-    },
-    "actions": {
-      "readOnly": { },
-      "readWrite": { },
-      "createAlbum": {
-        "appliesTo": {
-          "resourceTypes": [ "Account", "Album" ],
-          "principalTypes": [ "User" ]
-        }
-      },
-      "addPhotoToAlbum": {
-        "appliesTo": {
-          "resourceTypes": [ "Album" ],
-          "principalTypes": [ "User" ]
-        }
-      },
-      "viewPhoto": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      },
-      "viewComments": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      }
-    }
-  }},
-  "policySet": {
-    "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
-  }
-}
-"#.to_string();
+        let json = json!({
+        "schema": { "json": { "": {
+          "entityTypes": {
+            "User": {
+              "memberOfTypes": [ "UserGroup" ]
+            },
+            "Photo": {
+              "memberOfTypes": [ "Album", "Account" ]
+            },
+            "Album": {
+              "memberOfTypes": [ "Album", "Account" ]
+            },
+            "Account": { },
+            "UserGroup": {}
+          },
+          "actions": {
+            "readOnly": { },
+            "readWrite": { },
+            "createAlbum": {
+              "appliesTo": {
+                "resourceTypes": [ "Account", "Album" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "addPhotoToAlbum": {
+              "appliesTo": {
+                "resourceTypes": [ "Album" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "viewPhoto": {
+              "appliesTo": {
+                "resourceTypes": [ "Photo" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "viewComments": {
+              "appliesTo": {
+                "resourceTypes": [ "Photo" ],
+                "principalTypes": [ "User" ]
+              }
+            }
+          }
+        }}},
+        "policySet": {
+          "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
+        }});
 
-        let result = json_validate(&call_json);
-        assert_validates_without_errors(result);
+        assert_validates_without_errors(json);
     }
 
     #[test]
     fn test_policy_with_parse_error_fails_passing_on_errors() {
-        let call_json = r#"{
-            "schema": {"": {
+        let json = json!({
+            "schema": { "json": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }},
+            }}},
             "policySet": {
                 "policy0": "azfghbjknnhbud"
             }
-        }"#
-        .to_string();
+        });
 
-        let result = json_validate(&call_json);
-        assert_is_failure(&result, false, "unexpected end of input");
+        assert_is_failure(json, "unexpected end of input");
     }
 
     #[test]
     fn test_semantically_incorrect_policy_fails_with_errors() {
-        let call_json = r#"{
-  "schema":{"": {
-    "entityTypes": {
-      "User": {
-        "memberOfTypes": [ ]
-      },
-      "Photo": {
-        "memberOfTypes": [ ]
-      }
-    },
-    "actions": {
-      "viewPhoto": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      }
-    }
-  }},
-  "policySet": {
-    "policy0": "permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");",
-    "policy1": "permit(principal == Photo::\"photo2.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice2\");"
-  }
-}
-"#.to_string();
+        let json = json!({
+        "schema": { "json": { "": {
+          "entityTypes": {
+            "User": {
+              "memberOfTypes": [ ]
+            },
+            "Photo": {
+              "memberOfTypes": [ ]
+            }
+          },
+          "actions": {
+            "viewPhoto": {
+              "appliesTo": {
+                "resourceTypes": [ "Photo" ],
+                "principalTypes": [ "User" ]
+              }
+            }
+          }
+        }}},
+        "policySet": {
+          "policy0": "permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");",
+          "policy1": "permit(principal == Photo::\"photo2.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice2\");"
+        }});
 
-        let result = json_validate(&call_json);
-        assert_validates_with_errors(result, 2);
+        assert_validates_with_errors(json, 2);
     }
 
     #[test]
     fn test_nontrivial_correct_policy_validates_without_errors_concatenated_policies() {
-        let call_json = r#"{
-  "schema": { "": {
-    "entityTypes": {
-      "User": {
-        "memberOfTypes": [ "UserGroup" ]
-      },
-      "Photo": {
-        "memberOfTypes": [ "Album", "Account" ]
-      },
-      "Album": {
-        "memberOfTypes": [ "Album", "Account" ]
-      },
-      "Account": { },
-      "UserGroup": {}
-    },
-    "actions": {
-      "readOnly": {},
-      "readWrite": {},
-      "createAlbum": {
-        "appliesTo": {
-          "resourceTypes": [ "Account", "Album" ],
-          "principalTypes": [ "User" ]
+        let json = json!({
+        "schema": { "json": { "": {
+          "entityTypes": {
+            "User": {
+              "memberOfTypes": [ "UserGroup" ]
+            },
+            "Photo": {
+              "memberOfTypes": [ "Album", "Account" ]
+            },
+            "Album": {
+              "memberOfTypes": [ "Album", "Account" ]
+            },
+            "Account": { },
+            "UserGroup": {}
+          },
+          "actions": {
+            "readOnly": {},
+            "readWrite": {},
+            "createAlbum": {
+              "appliesTo": {
+                "resourceTypes": [ "Account", "Album" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "addPhotoToAlbum": {
+              "appliesTo": {
+                "resourceTypes": [ "Album" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "viewPhoto": {
+              "appliesTo": {
+                "resourceTypes": [ "Photo" ],
+                "principalTypes": [ "User" ]
+              }
+            },
+            "viewComments": {
+              "appliesTo": {
+                "resourceTypes": [ "Photo" ],
+                "principalTypes": [ "User" ]
+              }
+            }
+          }
+        }}},
+        "policySet": {
+          "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
         }
-      },
-      "addPhotoToAlbum": {
-        "appliesTo": {
-          "resourceTypes": [ "Album" ],
-          "principalTypes": [ "User" ]
-        }
-      },
-      "viewPhoto": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      },
-      "viewComments": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      }
-    }
-  }},
-  "policySet": {
-    "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
-  }
-}
-"#.to_string();
+        });
 
-        let result = json_validate(&call_json);
-        assert_validates_without_errors(result);
+        assert_validates_without_errors(json);
     }
 
     #[test]
     fn test_policy_with_parse_error_fails_passing_on_errors_concatenated_policies() {
-        let call_json = r#"{
-            "schema": {"": {
+        let json = json!({
+            "schema": { "json": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }},
+            }}},
             "policySet": "azfghbjknnhbud"
-        }"#
-        .to_string();
+        });
 
-        let result = json_validate(&call_json);
-        assert_is_failure(&result, false, "unexpected end of input");
+        assert_is_failure(json, "unexpected end of input");
     }
 
     #[test]
     fn test_semantically_incorrect_policy_fails_with_errors_concatenated_policies() {
-        let call_json = r#"{
-  "schema": {"": {
-    "entityTypes": {
-      "User": {
-        "memberOfTypes": [ ]
-      },
-      "Photo": {
-        "memberOfTypes": [ ]
-      }
-    },
-    "actions": {
-      "viewPhoto": {
-        "appliesTo": {
-          "resourceTypes": [ "Photo" ],
-          "principalTypes": [ "User" ]
-        }
-      }
-    }
-  }},
-  "policySet": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
-}
-"#.to_string();
+        let json = json!({
+          "schema": { "json": { "": {
+            "entityTypes": {
+              "User": {
+                "memberOfTypes": [ ]
+              },
+              "Photo": {
+                "memberOfTypes": [ ]
+              }
+            },
+            "actions": {
+              "viewPhoto": {
+                "appliesTo": {
+                  "resourceTypes": [ "Photo" ],
+                  "principalTypes": [ "User" ]
+                }
+              }
+            }
+          }}},
+          "policySet": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
+        });
 
-        let result = json_validate(&call_json);
-        assert_validates_with_errors(result, 1);
+        assert_validates_with_errors(json, 1);
     }
 
     #[test]
     fn test_policy_with_parse_error_fails_concatenated_policies() {
-        let call_json = r#"{
-            "schema": {"": {
+        let json = json!({
+            "schema": { "json": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }},
+            }}},
             "policySet": "permit(principal, action, resource);forbid"
-        }"#
-        .to_string();
-        let result = json_validate(&call_json);
-        assert_is_failure(&result, false, "unexpected end of input");
+        });
+
+        assert_is_failure(json, "unexpected end of input");
     }
 
     #[test]
     fn test_bad_call_format_fails() {
-        let result = json_validate("uerfheriufheiurfghtrg");
-        assert_is_failure(&result, true, "error parsing call: expected value");
+        assert_matches!(validate_json(json!("uerfheriufheiurfghtrg")), Err(e) => {
+            assert!(e.to_string().contains("invalid type: string \"uerfheriufheiurfghtrg\", expected struct ValidationCall"), "actual error message was {e}");
+        });
     }
 
     #[test]
     fn test_validate_fails_on_duplicate_namespace() {
-        let call_json = r#"{
-            "schema": {
+        let json = r#"{
+            "schema": { "json": {
               "foo": { "entityTypes": {}, "actions": {} },
               "foo": { "entityTypes": {}, "actions": {} }
-            },
+            }},
             "policySet": ""
-        }"#
-        .to_string();
-        let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            true,
-            "error parsing call: the key `foo` occurs two or more times in the same JSON object",
-        );
-    }
+        }"#;
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validates_without_errors(result: InterfaceResult) {
-        assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: ValidationAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
-                assert_eq!(validation_errors.len(), 0, "Unexpected validation errors: {validation_errors:?}");
-            });
-        });
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validates_with_errors(result: InterfaceResult, expected_num_errors: usize) {
-        assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: ValidationAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
-                assert_eq!(validation_errors.len(), expected_num_errors);
-            });
-        });
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &str) {
-        assert_matches!(result, InterfaceResult::Failure { errors, is_internal } => {
-            assert!(
-                errors.iter().any(|e| e.contains(err)),
-                "Expected to see error(s) containing `{err}`, but saw {errors:?}");
-            assert_eq!(internal, *is_internal);
+        assert_matches!(validate_json_str(json), Err(e) => {
+          assert!(e.to_string().contains("the key `foo` occurs two or more times in the same JSON object"), "actual error message was {e}");
         });
     }
 
     #[test]
     fn test_validate_fails_on_duplicate_policy_id() {
-        let call_json = r#"{
-            "schema": { "": { "entityTypes": {}, "actions": {} } },
+        let json = r#"{
+            "schema": { "json": { "": { "entityTypes": {}, "actions": {} } } },
             "policySet": {
               "ID0": "permit(principal, action, resource);",
               "ID0": "permit(principal, action, resource);"
             }
-        }"#
-        .to_string();
-        let result = json_validate(&call_json);
-        assert_is_failure(&result, true, "error parsing call: policies as a concatenated string or multiple policies as a hashmap where the policy id is the key");
+        }"#;
+
+        assert_matches!(validate_json_str(json), Err(e) => {
+          assert!(e.to_string().contains("policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"), "actual error message was {e}");
+        });
     }
 }
