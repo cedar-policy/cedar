@@ -17,6 +17,6 @@
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
-pub use utils::Schema;
+pub use utils::{PolicySet, Schema};
 mod validate;
 pub use validate::*;
