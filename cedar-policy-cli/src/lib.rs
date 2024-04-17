@@ -401,13 +401,11 @@ pub struct FormatArgs {
     pub indent_width: isize,
 
     /// Automatically write back the formatted policies to the input file.
-    #[arg(short, long)]
-    #[clap(group = "action")]
+    #[arg(short, long, group = "action")]
     pub write: bool,
 
     /// Check that the code formats without any changes. Mutually exclusive with `write`.
-    #[arg(short, long)]
-    #[clap(group = "action")]
+    #[arg(short, long, group = "action")]
     pub check: bool,
 }
 
