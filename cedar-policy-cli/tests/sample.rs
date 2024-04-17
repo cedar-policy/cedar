@@ -969,7 +969,6 @@ fn test_format_check() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
 fn test_write_check_are_mutually_exclusive() {
     const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
     assert_cmd::Command::cargo_bin("cedar")
@@ -985,3 +984,17 @@ fn test_write_check_are_mutually_exclusive() {
             "the argument '--write' cannot be used with '--check'",
         ));
 }
+
+fn test_require_policies_for_write() {
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-w")
+        .write_stdin("permit (principal, action, resource);")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the following required arguments were not provided:\n  --policies <FILE>",
+        ));
+}
+#[cfg(target_os = "linux")]
