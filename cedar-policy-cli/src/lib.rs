@@ -404,7 +404,7 @@ pub struct FormatArgs {
     #[arg(short, long, group = "action")]
     pub write: bool,
 
-    /// Check that the code formats without any changes. Mutually exclusive with `write`.
+    /// Check that the policies formats without any changes. Mutually exclusive with `write`.
     #[arg(short, long, group = "action")]
     pub check: bool,
 }
