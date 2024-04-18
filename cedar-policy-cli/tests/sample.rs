@@ -997,4 +997,3 @@ fn test_require_policies_for_write() {
             "the following required arguments were not provided:\n  --policies <FILE>",
         ));
 }
-#[cfg(target_os = "linux")]
