@@ -401,7 +401,7 @@ pub struct FormatArgs {
     pub indent_width: isize,
 
     /// Automatically write back the formatted policies to the input file.
-    #[arg(short, long, group = "action")]
+    #[arg(short, long, group = "action", requires = "policies_file")]
     pub write: bool,
 
     /// Check that the policies formats without any changes. Mutually exclusive with `write`.
