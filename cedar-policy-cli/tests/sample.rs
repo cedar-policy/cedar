@@ -985,6 +985,7 @@ fn test_write_check_are_mutually_exclusive() {
         ));
 }
 
+#[test]
 fn test_require_policies_for_write() {
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
