@@ -401,8 +401,12 @@ pub struct FormatArgs {
     pub indent_width: isize,
 
     /// Automatically write back the formatted policies to the input file.
-    #[arg(short, long)]
+    #[arg(short, long, group = "action")]
     pub write: bool,
+
+    /// Check that the policies formats without any changes. Mutually exclusive with `write`.
+    #[arg(short, long, group = "action")]
+    pub check: bool,
 }
 
 #[derive(Args, Debug)]
@@ -624,13 +628,19 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
     }
 }
 
-fn format_policies_inner(args: &FormatArgs) -> Result<()> {
+/// Format the policies in the given file or stdin.
+///
+/// Returns a boolean indicating whether the formatted policies are the same as the original
+/// policies.
+fn format_policies_inner(args: &FormatArgs) -> Result<bool> {
     let policies_str = read_from_file_or_stdin(args.policies_file.as_ref(), "policy set")?;
     let config = Config {
         line_width: args.line_width,
         indent_width: args.indent_width,
     };
     let formatted_policy = policies_str_to_pretty(&policies_str, &config)?;
+    let are_policies_equivalent = policies_str == formatted_policy;
+
     match &args.policies_file {
         Some(policies_file) if args.write => {
             let mut file = OpenOptions::new()
@@ -647,15 +657,17 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
         }
         _ => println!("{}", formatted_policy),
     }
-    Ok(())
+    Ok(are_policies_equivalent)
 }
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
-    if let Err(err) = format_policies_inner(args) {
-        println!("{err:?}");
-        CedarExitCode::Failure
-    } else {
-        CedarExitCode::Success
+    match format_policies_inner(args) {
+        Ok(false) if args.check => CedarExitCode::Failure,
+        Err(err) => {
+            println!("{err:?}");
+            CedarExitCode::Failure
+        }
+        _ => CedarExitCode::Success,
     }
 }
 

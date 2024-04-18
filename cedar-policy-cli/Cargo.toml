@@ -28,6 +28,7 @@ partial-validate = ["cedar-policy/partial-validate"]
 assert_cmd = "2.0"
 tempfile = "3"
 glob = "0.3.1"
+predicates = "3.1.0"
 
 # We override the name of the binary for src/main.rs, which otherwise would be
 # cedar-cli (matching the crate name).

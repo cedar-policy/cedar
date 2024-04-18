@@ -943,3 +943,45 @@ fn test_format_write() {
         "original and formatted should differ under -w\noriginal:{original}\n\nformatted:{formatted}"
     );
 }
+
+#[test]
+fn test_format_check() {
+    const POLICY_REQUIRING_FORMAT: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    const POLICY_ALREADY_FORMATTED: &str = "sample-data/tiny_sandboxes/format/formatted.cedar";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_REQUIRING_FORMAT)
+        .arg("-c")
+        .assert()
+        .code(1);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_ALREADY_FORMATTED)
+        .arg("-c")
+        .assert()
+        .code(0);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn test_write_check_are_mutually_exclusive() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&POLICY_SOURCE)
+        .arg("-w")
+        .arg("-c")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the argument '--write' cannot be used with '--check'",
+        ));
+}

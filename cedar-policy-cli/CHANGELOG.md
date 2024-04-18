@@ -8,6 +8,9 @@
   `--schema-format`.
 - A new `--write` flag has been added to the `format` subcommand. This flag
   writes the formatted policy to the file specified by the `--policies` flag.
+- A new `--check` flag has been added to the `format` subcommand. This flag
+  checks if the policy is already formatted and exits with a non-zero status if
+  it is not.
 
 ## 3.1.3
 
