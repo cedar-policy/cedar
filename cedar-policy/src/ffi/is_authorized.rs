@@ -253,6 +253,13 @@ impl From<crate::AuthorizationError> for AuthorizationError {
     }
 }
 
+#[doc(hidden)]
+impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationError {
+    fn from(e: cedar_policy_core::authorizer::AuthorizationError) -> Self {
+        crate::AuthorizationError::from(e).into()
+    }
+}
+
 /// FFI version of a [`crate::PartialResponse`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
