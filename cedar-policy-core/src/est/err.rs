@@ -82,11 +82,11 @@ pub enum FromJsonError {
     InvalidEntityType(ParseErrors),
 }
 
-/// Errors while instantiating a policy
+/// Errors while linking a policy
 #[derive(Debug, PartialEq, Diagnostic, Error)]
-pub enum InstantiationError {
+pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
-    #[error("failed to instantiate template: no value provided for `{slot}`")]
+    #[error("failed to link template: no value provided for `{slot}`")]
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,

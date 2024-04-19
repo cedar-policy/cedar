@@ -344,7 +344,7 @@ pub fn perform_integration_test(
                 .response
                 .diagnostics()
                 .errors()
-                .map(|err| PolicyId::from_str(err).unwrap())
+                .map(|err| PolicyId::from_str(&err.policy_id).unwrap())
                 .collect();
             assert_eq!(
                 errors,

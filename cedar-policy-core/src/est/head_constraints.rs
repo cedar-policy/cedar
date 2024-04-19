@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{FromJsonError, InstantiationError};
+use super::{FromJsonError, LinkingError};
 use crate::entities::{EntityUidJson, JsonDeserializationErrorContext};
 use crate::{ast, FromNormalizedStr};
 use serde::{Deserialize, Serialize};
@@ -164,7 +164,7 @@ impl PrincipalConstraint {
     pub fn instantiate(
         self,
         vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    ) -> Result<Self, LinkingError> {
         match self {
             PrincipalConstraint::All => Ok(PrincipalConstraint::All),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -177,7 +177,7 @@ impl PrincipalConstraint {
                 Some(val) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
                     entity: val.clone(),
                 })),
-                None => Err(InstantiationError::MissedSlot { slot }),
+                None => Err(LinkingError::MissedSlot { slot }),
             },
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 match vals.get(&slot) {
@@ -186,7 +186,7 @@ impl PrincipalConstraint {
                             entity: val.clone(),
                         },
                     )),
-                    None => Err(InstantiationError::MissedSlot { slot }),
+                    None => Err(LinkingError::MissedSlot { slot }),
                 }
             }
             e @ PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -201,7 +201,7 @@ impl PrincipalConstraint {
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity {
                     entity: vals
                         .get(&slot)
-                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .ok_or(LinkingError::MissedSlot { slot })?
                         .clone(),
                 }),
             })),
@@ -216,7 +216,7 @@ impl ResourceConstraint {
     pub fn instantiate(
         self,
         vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    ) -> Result<Self, LinkingError> {
         match self {
             ResourceConstraint::All => Ok(ResourceConstraint::All),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -229,7 +229,7 @@ impl ResourceConstraint {
                 Some(val) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
                     entity: val.clone(),
                 })),
-                None => Err(InstantiationError::MissedSlot { slot }),
+                None => Err(LinkingError::MissedSlot { slot }),
             },
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 match vals.get(&slot) {
@@ -238,7 +238,7 @@ impl ResourceConstraint {
                             entity: val.clone(),
                         },
                     )),
-                    None => Err(InstantiationError::MissedSlot { slot }),
+                    None => Err(LinkingError::MissedSlot { slot }),
                 }
             }
             e @ ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -253,7 +253,7 @@ impl ResourceConstraint {
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity {
                     entity: vals
                         .get(&slot)
-                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .ok_or(LinkingError::MissedSlot { slot })?
                         .clone(),
                 }),
             })),
@@ -268,7 +268,7 @@ impl ActionConstraint {
     pub fn instantiate(
         self,
         _vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    ) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in action constraints
         Ok(self)
     }

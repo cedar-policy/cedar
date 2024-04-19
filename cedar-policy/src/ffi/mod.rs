@@ -17,6 +17,6 @@
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
-pub use utils::{PolicySet, Schema};
+pub use utils::{MietteJsonError, MietteSeverity, MietteSourceLabel, PolicySet, Schema};
 mod validate;
 pub use validate::*;

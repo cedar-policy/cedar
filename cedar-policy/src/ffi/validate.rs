@@ -17,9 +17,10 @@
 //! This module contains the validator entry points that other language FFIs can
 //! call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{PolicySet, Schema, WithWarnings};
+use super::utils::{MietteJsonError, PolicySet, Schema, WithWarnings};
 use crate::{ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
+use smol_str::{SmolStr, ToSmolStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -35,31 +36,34 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
             warnings,
         } => {
             let validator = Validator::new(schema);
-            let validation_result = validator.validate(&policies, ValidationMode::default());
-            let validation_errors: Vec<ValidationError> = validation_result
-                .validation_errors()
+            let (validation_errors, validation_warnings) = validator
+                .validate(&policies, ValidationMode::default())
+                .into_errors_and_warnings();
+            let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_string(),
-                    error: format!("{}", error.error_kind()),
+                    policy_id: error.location().policy_id().to_smolstr(),
+                    error: miette::Report::new(error).into(),
                 })
                 .collect();
-            let validation_warnings: Vec<ValidationWarning> = validation_result
-                .validation_warnings()
-                .map(|error| ValidationWarning {
-                    policy_id: error.location().policy_id().to_string(),
-                    warning: format!("{}", error.warning_kind()),
+            let validation_warnings: Vec<ValidationError> = validation_warnings
+                .map(|error| ValidationError {
+                    policy_id: error.location().policy_id().to_smolstr(),
+                    error: miette::Report::new(error).into(),
                 })
                 .collect();
             ValidationAnswer::Success {
                 validation_errors,
                 validation_warnings,
-                other_warnings: warnings,
+                other_warnings: warnings.into_iter().map(Into::into).collect(),
             }
         }
         WithWarnings {
             t: Err(errors),
             warnings,
-        } => ValidationAnswer::Failure { errors, warnings },
+        } => ValidationAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
     }
 }
 
@@ -94,22 +98,28 @@ pub struct ValidationCall {
 impl ValidationCall {
     fn get_components(
         self,
-    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<String>>> {
+    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<miette::Report>>> {
+        let mut errs = vec![];
         let policies = match self.policy_set.parse(None) {
             Ok(policies) => policies,
-            Err(errs) => {
-                return WithWarnings {
-                    t: Err(errs),
-                    warnings: vec![],
-                }
+            Err(e) => {
+                errs.extend(e);
+                crate::PolicySet::new()
             }
         };
-        match Schema::parse(self.schema).map_err(|e| vec![e]) {
-            Ok((schema, warnings)) => WithWarnings {
+        let pair = match self.schema.parse() {
+            Ok((schema, warnings)) => Some((schema, warnings)),
+            Err(e) => {
+                errs.push(e);
+                None
+            }
+        };
+        match (errs.is_empty(), pair) {
+            (true, Some((schema, warnings))) => WithWarnings {
                 t: Ok((policies, schema)),
-                warnings: warnings.map(|w| w.to_string()).collect(),
+                warnings: warnings.map(miette::Report::new).collect(),
             },
-            Err(errs) => WithWarnings {
+            _ => WithWarnings {
                 t: Err(errs),
                 warnings: vec![],
             },
@@ -147,24 +157,18 @@ impl Default for ValidationEnabled {
     }
 }
 
-/// Error for a specified policy after validation
-#[derive(Debug, Serialize, Deserialize)]
+/// Error (or warning) for a specified policy after validation
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ValidationError {
+    /// Id of the policy where the error (or warning) occurred
     #[serde(rename = "policyId")]
-    policy_id: String,
-    error: String,
-}
-
-/// Warning for a specified policy after validation
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct ValidationWarning {
-    #[serde(rename = "policyId")]
-    policy_id: String,
-    warning: String,
+    pub policy_id: SmolStr,
+    /// Error (or warning) in miette JSON format.
+    /// You can look at the `severity` field to see whether it is actually an
+    /// error or a warning.
+    pub error: MietteJsonError,
 }
 
 /// Result struct for validation
@@ -174,19 +178,19 @@ pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {
         /// Parsing errors
-        errors: Vec<String>,
+        pub errors: Vec<MietteJsonError>,
         /// Warnings encountered
-        warnings: Vec<String>,
+        pub warnings: Vec<MietteJsonError>,
     },
     /// Represents a successful validation call
     Success {
         /// Errors from any issues found during validation
-        validation_errors: Vec<ValidationError>,
+        pub validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
-        validation_warnings: Vec<ValidationWarning>,
+        pub validation_warnings: Vec<ValidationError>,
         /// Other warnings, not associated with specific policies.
         /// For instance, warnings about your schema itself.
-        other_warnings: Vec<String>,
+        pub other_warnings: Vec<MietteJsonError>,
     },
 }
 
@@ -221,7 +225,8 @@ mod test {
     }
 
     /// Assert that [`validate_json()`] returns `ValidationAnswer::Failure`
-    /// where some error contains the expected error string `err`
+    /// where some error contains the expected error string `err` (in its full
+    /// error message, that is, `message` + `causes` but without `help`)
     #[track_caller]
     fn assert_is_failure(json: serde_json::Value, err: &str) {
         let ans_val =
@@ -229,7 +234,7 @@ mod test {
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => {
             assert!(
-                errors.iter().any(|e| e.contains(err)),
+                errors.iter().any(|e| e.full_error_message().contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}",
             );
         });

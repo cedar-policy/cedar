@@ -441,7 +441,7 @@ impl<'a> Typechecker<'a> {
     }
 
     /// Given a request environment and a template, return new environments
-    /// formed by instantiating template slots with possible entity types.
+    /// formed by linking template slots with possible entity types.
     fn link_request_env<'b>(
         &'b self,
         env: RequestEnv<'b>,

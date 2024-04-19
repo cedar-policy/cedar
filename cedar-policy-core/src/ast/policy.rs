@@ -286,7 +286,7 @@ impl std::fmt::Display for Template {
     }
 }
 
-/// Errors instantiating templates
+/// Errors linking templates
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum LinkingError {
     /// An error with the slot arguments provided
@@ -637,10 +637,10 @@ pub enum ReificationError {
     /// The [`PolicyID`] linked to did not exist
     #[error("the id linked to does not exist")]
     NoSuchTemplate(PolicyID),
-    /// Error instantiating the policy
+    /// Error linking the policy
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Instantiation(#[from] LinkingError),
+    Linking(#[from] LinkingError),
 }
 
 impl LiteralPolicy {
@@ -656,7 +656,7 @@ impl LiteralPolicy {
             .get(&self.template_id)
             .ok_or_else(|| ReificationError::NoSuchTemplate(self.template_id().clone()))?;
         // INVARIANT (values total map)
-        Template::check_binding(template, &self.values).map_err(ReificationError::Instantiation)?;
+        Template::check_binding(template, &self.values).map_err(ReificationError::Linking)?;
         Ok(Policy::new(template.clone(), self.link_id, self.values))
     }
 

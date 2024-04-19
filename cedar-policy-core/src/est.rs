@@ -80,10 +80,7 @@ impl Policy {
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
     /// `self` is an inline policy (in which case it is returned unchanged).
-    pub fn link(
-        self,
-        vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         Ok(Policy {
             effect: self.effect,
             principal: self.principal.instantiate(vals)?,
@@ -106,7 +103,7 @@ impl Clause {
     pub fn instantiate(
         self,
         _vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    ) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in clauses
         Ok(self)
     }
@@ -2943,7 +2940,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::principal()
             }
         );
@@ -2956,7 +2953,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::resource()
             }
         );
@@ -3909,7 +3906,7 @@ mod test {
             let err = est.clone().link(&HashMap::from_iter([]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::principal()
                 })
             );
@@ -3919,7 +3916,7 @@ mod test {
             )]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::resource()
                 })
             );

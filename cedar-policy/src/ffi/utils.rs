@@ -17,11 +17,104 @@
 //! Utility functions and types for JSON interface
 use crate::{Policy, SchemaWarning, Template};
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
+use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
+
+thread_local!(
+    /// miette JSON report handler
+    static JSON_REPORT_HANDLER: miette::JSONReportHandler = miette::JSONReportHandler::new();
+);
+
+/// Structure of the JSON output representing one `miette` error, produced by
+/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+pub struct MietteJsonError {
+    /// Main error message. But see `full_error_message()`, which you might want to use instead
+    pub message: String,
+    /// Help message, providing additional information about the error or help resolving it
+    pub help: Option<String>,
+    /// Error code
+    pub code: Option<String>,
+    /// URL for more information about the error
+    pub url: Option<String>,
+    /// Severity
+    pub severity: MietteSeverity,
+    /// Causes
+    pub causes: Vec<String>,
+    /// Source labels (ranges)
+    pub labels: Vec<MietteSourceLabel>,
+    /// Related errors
+    pub related: Vec<MietteJsonError>,
+}
+
+impl MietteJsonError {
+    /// The full error message, including `message` and `causes` (but not
+    /// `help`, which is often rendered separately)
+    pub fn full_error_message(&self) -> String {
+        let mut s = self.message.clone();
+        for cause in &self.causes {
+            s.push_str(": ");
+            s.push_str(cause);
+        }
+        s
+    }
+}
+
+/// Severity levels produced by `miette` in its JSON format
+///
+/// We can't just use `miette::Severity` because that serializes with
+/// capitalized labels like `Error`, while miette's JSON format uses
+/// uncapitalized ones like `error`
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
+pub enum MietteSeverity {
+    /// Advice (the lowest severity)
+    #[serde(rename = "advice")]
+    Advice,
+    /// Warning
+    #[serde(rename = "warning")]
+    Warning,
+    /// Error (the highest severity)
+    #[serde(rename = "error")]
+    Error,
+}
+
+/// Structure of the JSON output representing a `miette` source label (range), produced by
+/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+pub struct MietteSourceLabel {
+    /// Text of the label (may be empty)
+    label: String,
+    /// Source span (range) of the label
+    span: MietteSourceSpan,
+}
+
+/// Structure of the JSON output representing a `miette` source span (range), produced by
+/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
+pub struct MietteSourceSpan {
+    /// Start of the source span (presumably in bytes?)
+    offset: usize,
+    /// Length of the source span (presumably in bytes?)
+    length: usize,
+}
+
+impl From<miette::Report> for MietteJsonError {
+    fn from(report: miette::Report) -> Self {
+        let mut json_str = String::new();
+        JSON_REPORT_HANDLER.with(|json_handler| {
+            json_handler
+                .render_report(&mut json_str, report.as_ref())
+                .expect("miette rendering as JSON should not fail")
+        });
+        serde_json::from_str(&json_str).unwrap_or_else(|e| {
+            panic!("failed to parse miette JSON output: {e}\nJSON was {json_str}")
+        })
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -42,37 +135,42 @@ pub enum PolicySet {
 fn parse_policy_set_from_individual_policies(
     policies: &HashMap<String, String>,
     templates: Option<HashMap<String, String>>,
-) -> Result<crate::PolicySet, Vec<String>> {
+) -> Result<crate::PolicySet, Vec<miette::Report>> {
     let mut policy_set = crate::PolicySet::new();
     let mut errs = Vec::new();
     for (id, policy_src) in policies {
-        match Policy::parse(Some(id.clone()), policy_src) {
-            Ok(p) => match policy_set.add(p) {
+        match Policy::parse(Some(id.clone()), policy_src)
+            .wrap_err_with(|| format!("failed to parse policy with id `{id}`"))
+        {
+            Ok(p) => match policy_set
+                .add(p)
+                .wrap_err_with(|| format!("failed to add policy with id `{id}` to policy set"))
+            {
                 Ok(()) => {}
-                Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err}"));
+                Err(e) => {
+                    errs.push(e);
                 }
             },
-            Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                    .chain(pes.errors_as_strings().into_iter()),
-            ),
+            Err(e) => {
+                errs.push(e);
+            }
         }
     }
 
     if let Some(templates) = templates {
         for (id, policy_src) in templates {
-            match Template::parse(Some(id.clone()), policy_src) {
-                Ok(p) => match policy_set.add_template(p) {
+            match Template::parse(Some(id.clone()), policy_src)
+                .wrap_err_with(|| format!("failed to parse template with id `{id}`"))
+            {
+                Ok(p) => match policy_set.add_template(p).wrap_err_with(|| {
+                    format!("failed to add template with id `{id}` to policy set")
+                }) {
                     Ok(()) => {}
-                    Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err}"));
+                    Err(e) => {
+                        errs.push(e);
                     }
                 },
-                Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                        .chain(pes.errors_as_strings().into_iter()),
-                ),
+                Err(e) => errs.push(e),
             }
         }
     }
@@ -89,16 +187,11 @@ impl PolicySet {
     pub(super) fn parse(
         self,
         templates: Option<HashMap<String, String>>,
-    ) -> Result<crate::PolicySet, Vec<String>> {
+    ) -> Result<crate::PolicySet, Vec<miette::Report>> {
         match self {
-            Self::Concatenated(policies) => match crate::PolicySet::from_str(&policies) {
-                Ok(ps) => Ok(ps),
-                Err(parse_errors) => Err(std::iter::once(
-                    "couldn't parse concatenated policies string".to_string(),
-                )
-                .chain(parse_errors.errors_as_strings())
-                .collect()),
-            },
+            Self::Concatenated(policies) => crate::PolicySet::from_str(&policies)
+                .wrap_err("failed to parse policies from string")
+                .map_err(|e| vec![e]),
             Self::Map(policies) => parse_policy_set_from_individual_policies(&policies, templates),
         }
     }
@@ -118,7 +211,7 @@ pub enum Schema {
 impl Schema {
     pub(super) fn parse(
         self,
-    ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), String> {
+    ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
         match self {
             Self::Human(str) => crate::Schema::from_str_natural(&str)
                 .map(|(sch, warnings)| {
@@ -127,7 +220,7 @@ impl Schema {
                         Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(|e| e.to_string()),
+                .map_err(miette::Report::new),
             Self::Json(val) => crate::Schema::from_json_value(val.into())
                 .map(|sch| {
                     (
@@ -135,12 +228,12 @@ impl Schema {
                         Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(|e| e.to_string()),
+                .map_err(miette::Report::new),
         }
     }
 }
 
 pub(super) struct WithWarnings<T> {
     pub t: T,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<miette::Report>,
 }

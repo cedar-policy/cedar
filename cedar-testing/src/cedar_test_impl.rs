@@ -26,7 +26,9 @@ use cedar_policy_core::entities::Entities;
 use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
+use miette::miette;
 use serde::Deserialize;
+use smol_str::ToSmolStr;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -197,8 +199,6 @@ impl CedarTestImplementation for RustEngine {
         let authorizer = Authorizer::new();
         let (response, duration) =
             time_function(|| authorizer.is_authorized(request.clone(), policies, entities));
-        // Error messages should only include the policy id to use the
-        // `ErrorComparisonMode::PolicyIds` mode.
         let response = cedar_policy::Response::from(response);
         let response = ffi::Response::new(
             response.decision(),
@@ -206,8 +206,15 @@ impl CedarTestImplementation for RustEngine {
             response
                 .diagnostics()
                 .errors()
-                .map(cedar_policy::AuthorizationError::id)
-                .map(ToString::to_string)
+                .map(|e| {
+                    // Error messages should only include the policy id to use the
+                    // `ErrorComparisonMode::PolicyIds` mode.
+                    let policy_id = e.id();
+                    ffi::AuthorizationError::new_from_report(
+                        policy_id.to_smolstr(),
+                        miette!("{policy_id}"),
+                    )
+                })
                 .collect(),
         );
         let response = TestResponse {
