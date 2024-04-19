@@ -178,19 +178,19 @@ pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {
         /// Parsing errors
-        pub errors: Vec<MietteJsonError>,
+        errors: Vec<MietteJsonError>,
         /// Warnings encountered
-        pub warnings: Vec<MietteJsonError>,
+        warnings: Vec<MietteJsonError>,
     },
     /// Represents a successful validation call
     Success {
         /// Errors from any issues found during validation
-        pub validation_errors: Vec<ValidationError>,
+        validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
-        pub validation_warnings: Vec<ValidationError>,
+        validation_warnings: Vec<ValidationError>,
         /// Other warnings, not associated with specific policies.
         /// For instance, warnings about your schema itself.
-        pub other_warnings: Vec<MietteJsonError>,
+        other_warnings: Vec<MietteJsonError>,
     },
 }
 
