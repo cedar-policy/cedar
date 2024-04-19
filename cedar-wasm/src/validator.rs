@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy::frontend::validate::{
+use cedar_policy::ffi::{
     validate, ValidationAnswer, ValidationCall, ValidationError, ValidationWarning,
 };
 use serde::{Deserialize, Serialize};
