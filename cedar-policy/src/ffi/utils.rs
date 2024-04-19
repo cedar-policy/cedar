@@ -29,11 +29,11 @@ thread_local!(
     static JSON_REPORT_HANDLER: miette::JSONReportHandler = miette::JSONReportHandler::new();
 );
 
-/// Structure of the JSON output representing one `miette` error, produced by
-/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+/// Structure of the JSON output representing one `miette` error
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
-pub struct MietteJsonError {
-    /// Main error message. But see `full_error_message()`, which you might want to use instead
+pub struct DetailedError {
+    /// Main error message, including both the `miette` "message" and the
+    /// `miette` "causes" (uses `miette`'s default `Display` output)
     pub message: String,
     /// Help message, providing additional information about the error or help resolving it
     pub help: Option<String>,
@@ -42,77 +42,99 @@ pub struct MietteJsonError {
     /// URL for more information about the error
     pub url: Option<String>,
     /// Severity
-    pub severity: MietteSeverity,
-    /// Causes
-    pub causes: Vec<String>,
+    pub severity: Option<Severity>,
     /// Source labels (ranges)
-    pub labels: Vec<MietteSourceLabel>,
+    pub labels: Vec<SourceLabel>,
     /// Related errors
-    pub related: Vec<MietteJsonError>,
+    pub related: Vec<DetailedError>,
 }
 
-impl MietteJsonError {
-    /// The full error message, including `message` and `causes` (but not
-    /// `help`, which is often rendered separately)
-    pub fn full_error_message(&self) -> String {
-        let mut s = self.message.clone();
-        for cause in &self.causes {
-            s.push_str(": ");
-            s.push_str(cause);
-        }
-        s
-    }
-}
-
-/// Severity levels produced by `miette` in its JSON format
+/// Exactly like `miette::Severity` but implements `Hash`
 ///
-/// We can't just use `miette::Severity` because that serializes with
-/// capitalized labels like `Error`, while miette's JSON format uses
-/// uncapitalized ones like `error`
+/// If `miette::Severity` adds `derive(Hash)` in the future, we can remove this
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
-pub enum MietteSeverity {
+pub enum Severity {
     /// Advice (the lowest severity)
-    #[serde(rename = "advice")]
     Advice,
     /// Warning
-    #[serde(rename = "warning")]
     Warning,
     /// Error (the highest severity)
-    #[serde(rename = "error")]
     Error,
 }
 
-/// Structure of the JSON output representing a `miette` source label (range), produced by
-/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+impl From<miette::Severity> for Severity {
+    fn from(severity: miette::Severity) -> Self {
+        match severity {
+            miette::Severity::Advice => Self::Advice,
+            miette::Severity::Warning => Self::Warning,
+            miette::Severity::Error => Self::Error,
+        }
+    }
+}
+
+/// Structure of the JSON output representing a `miette` source label (range)
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
-pub struct MietteSourceLabel {
-    /// Text of the label (may be empty)
-    label: String,
+pub struct SourceLabel {
+    /// Text of the label (if any)
+    pub label: Option<String>,
     /// Source span (range) of the label
-    span: MietteSourceSpan,
+    pub span: SourceSpan,
 }
 
-/// Structure of the JSON output representing a `miette` source span (range), produced by
-/// [`miette::JSONReportHandler`](https://docs.rs/miette/latest/miette/struct.JSONReportHandler.html).
+/// Structure of the JSON output representing a `miette` source span (range)
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
-pub struct MietteSourceSpan {
-    /// Start of the source span (presumably in bytes?)
-    offset: usize,
-    /// Length of the source span (presumably in bytes?)
-    length: usize,
+pub struct SourceSpan {
+    /// Start of the source span (in bytes)
+    pub offset: usize,
+    /// Length of the source span (in bytes)
+    pub length: usize,
 }
 
-impl From<miette::Report> for MietteJsonError {
+impl From<miette::LabeledSpan> for SourceLabel {
+    fn from(span: miette::LabeledSpan) -> Self {
+        Self {
+            label: span.label().map(ToString::to_string),
+            span: SourceSpan {
+                offset: span.offset(),
+                length: span.len(),
+            },
+        }
+    }
+}
+
+impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
+    fn from(diag: &'a E) -> Self {
+        Self {
+            message: {
+                let mut s = diag.to_string();
+                let mut source = diag.source();
+                while let Some(e) = source {
+                    s.push_str(": ");
+                    s.push_str(&e.to_string());
+                    source = e.source();
+                }
+                s
+            },
+            help: diag.help().map(|h| h.to_string()),
+            code: diag.code().map(|c| c.to_string()),
+            url: diag.url().map(|u| u.to_string()),
+            severity: diag.severity().map(Into::into),
+            labels: diag
+                .labels()
+                .map(|labels| labels.map(Into::into).collect())
+                .unwrap_or_else(|| vec![]),
+            related: diag
+                .related()
+                .map(|errs| errs.map(|e| e.into()).collect())
+                .unwrap_or_else(|| vec![]),
+        }
+    }
+}
+
+impl From<miette::Report> for DetailedError {
     fn from(report: miette::Report) -> Self {
-        let mut json_str = String::new();
-        JSON_REPORT_HANDLER.with(|json_handler| {
-            json_handler
-                .render_report(&mut json_str, report.as_ref())
-                .expect("miette rendering as JSON should not fail")
-        });
-        serde_json::from_str(&json_str).unwrap_or_else(|e| {
-            panic!("failed to parse miette JSON output: {e}\nJSON was {json_str}")
-        })
+        let diag: &dyn miette::Diagnostic = report.as_ref();
+        diag.into()
     }
 }
 

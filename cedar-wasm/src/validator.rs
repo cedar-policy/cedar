@@ -32,9 +32,9 @@ pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {
         /// Parsing errors
-        errors: Vec<ffi::MietteJsonError>,
+        errors: Vec<ffi::DetailedError>,
         /// Warnings encountered
-        warnings: Vec<ffi::MietteJsonError>,
+        warnings: Vec<ffi::DetailedError>,
     },
     /// Represents a successful validation call
     #[serde(rename_all = "camelCase")]
@@ -45,7 +45,7 @@ pub enum ValidationAnswer {
         validation_warnings: Vec<ffi::ValidationError>,
         /// Other warnings, not associated with specific policies.
         /// For instance, warnings about your schema itself.
-        other_warnings: Vec<ffi::MietteJsonError>,
+        other_warnings: Vec<ffi::DetailedError>,
     },
 }
 

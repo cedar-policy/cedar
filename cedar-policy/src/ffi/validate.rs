@@ -17,7 +17,7 @@
 //! This module contains the validator entry points that other language FFIs can
 //! call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{MietteJsonError, PolicySet, Schema, WithWarnings};
+use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
@@ -168,7 +168,7 @@ pub struct ValidationError {
     /// Error (or warning) in miette JSON format.
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
-    pub error: MietteJsonError,
+    pub error: DetailedError,
 }
 
 /// Result struct for validation
@@ -178,9 +178,9 @@ pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {
         /// Parsing errors
-        errors: Vec<MietteJsonError>,
+        errors: Vec<DetailedError>,
         /// Warnings encountered
-        warnings: Vec<MietteJsonError>,
+        warnings: Vec<DetailedError>,
     },
     /// Represents a successful validation call
     Success {
@@ -190,7 +190,7 @@ pub enum ValidationAnswer {
         validation_warnings: Vec<ValidationError>,
         /// Other warnings, not associated with specific policies.
         /// For instance, warnings about your schema itself.
-        other_warnings: Vec<MietteJsonError>,
+        other_warnings: Vec<DetailedError>,
     },
 }
 
@@ -225,8 +225,8 @@ mod test {
     }
 
     /// Assert that [`validate_json()`] returns `ValidationAnswer::Failure`
-    /// where some error contains the expected error string `err` (in its full
-    /// error message, that is, `message` + `causes` but without `help`)
+    /// where some error contains the expected error string `err` (in its main
+    /// error message)
     #[track_caller]
     fn assert_is_failure(json: serde_json::Value, err: &str) {
         let ans_val =
@@ -234,7 +234,7 @@ mod test {
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => {
             assert!(
-                errors.iter().any(|e| e.full_error_message().contains(err)),
+                errors.iter().any(|e| e.message.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}",
             );
         });
