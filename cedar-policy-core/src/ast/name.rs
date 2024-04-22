@@ -30,7 +30,6 @@ use super::PrincipalOrResource;
 /// The name can include namespaces.
 /// Clone is O(1).
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
@@ -215,6 +214,17 @@ impl std::str::FromStr for Name {
 impl FromNormalizedStr for Name {
     fn describe_self() -> &'static str {
         "Name"
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            id: u.arbitrary()?,
+            path: u.arbitrary()?,
+            loc: None,
+        })
     }
 }
 

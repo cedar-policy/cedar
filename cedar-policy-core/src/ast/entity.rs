@@ -64,7 +64,6 @@ impl std::fmt::Display for EntityType {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
@@ -213,6 +212,17 @@ impl std::str::FromStr for EntityUID {
 impl FromNormalizedStr for EntityUID {
     fn describe_self() -> &'static str {
         "Entity UID"
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            ty: u.arbitrary()?,
+            eid: u.arbitrary()?,
+            loc: None,
+        })
     }
 }
 
