@@ -167,7 +167,7 @@ pub struct ValidationError {
     error: String,
 }
 
-/// Error for a specified policy after validation
+/// A range of source code denoted by an offset and length.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
