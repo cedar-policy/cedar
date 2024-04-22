@@ -43,7 +43,7 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    AttributeAccess, UnexpectedTypeHelp, ValidationMode, ValidationWarningKind,
+    AttributeAccess, UnexpectedTypeHelp, ValidationMode, ValidationWarning, ValidationWarningKind,
 };
 
 use super::type_error::TypeError;
@@ -270,11 +270,11 @@ impl<'a> Typechecker<'a> {
     /// relevant error is expected to be added by a different pass. Finally,
     /// warnings may be added to the `warnings` list, although these will not
     /// impact the boolean return value.
-    pub fn typecheck_policy(
+    pub fn typecheck_policy<'b>(
         &self,
-        t: &Template,
+        t: &'b Template,
         type_errors: &mut HashSet<TypeError>,
-        warnings: &mut HashSet<ValidationWarningKind>,
+        warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
         let typecheck_answers = self.typecheck_by_request_env(t);
 
@@ -298,7 +298,11 @@ impl<'a> Typechecker<'a> {
         // If every policy typechecked with type false, then the policy cannot
         // possibly apply to any request.
         if all_false {
-            warnings.insert(ValidationWarningKind::ImpossiblePolicy);
+            warnings.insert(ValidationWarning::with_policy_id(
+                t.id().clone(),
+                t.loc().clone(),
+                ValidationWarningKind::ImpossiblePolicy,
+            ));
         }
 
         all_succ

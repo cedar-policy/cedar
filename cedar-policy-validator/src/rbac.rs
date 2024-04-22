@@ -569,6 +569,7 @@ mod test {
         let singleton_schema = schema_file.try_into().unwrap();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -692,6 +693,7 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -868,6 +870,7 @@ mod test {
             .expect("Expected entity parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -936,6 +939,7 @@ mod test {
         let entity_type: Name = "NS::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
@@ -1206,6 +1210,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(principal),
@@ -1299,6 +1304,7 @@ mod test {
         let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(principal),
@@ -1587,6 +1593,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -1609,6 +1616,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -1627,6 +1635,7 @@ mod test {
         // principal in Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_in(EntityUID::unspecified_from_eid(Eid::new("foo"))),
@@ -1652,6 +1661,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),

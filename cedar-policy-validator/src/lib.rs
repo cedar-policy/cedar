@@ -176,7 +176,9 @@ impl Validator {
                     p.action_constraint(),
                     &p.resource_constraint(),
                 ))
-                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
+                .map(move |note| {
+                    ValidationError::with_policy_id(p.id().clone(), p.loc().clone(), note)
+                }),
         )
     }
 
@@ -206,9 +208,7 @@ impl Validator {
                     ValidationErrorKind::type_error(kind),
                 )
             }),
-            warnings
-                .into_iter()
-                .map(|kind| ValidationWarning::with_policy_id(t.id().clone(), None, kind)),
+            warnings.into_iter(),
         )
     }
 }
@@ -362,6 +362,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
+        let loc = t.loc().clone();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
@@ -411,7 +412,7 @@ mod test {
         let id = ast::PolicyID::from_string("link2");
         let undefined_err = ValidationError::with_policy_id(
             id.clone(),
-            None,
+            loc.clone(),
             ValidationErrorKind::unrecognized_entity_type(
                 "some_namespace::Undefined".to_string(),
                 Some("some_namespace::User".to_string()),
@@ -419,7 +420,7 @@ mod test {
         );
         let invalid_action_err = ValidationError::with_policy_id(
             id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
