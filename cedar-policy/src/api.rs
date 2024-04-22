@@ -1667,8 +1667,8 @@ impl ValidationResult {
     }
 }
 
-impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult {
-    fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
+impl From<cedar_policy_validator::ValidationResult> for ValidationResult {
+    fn from(r: cedar_policy_validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
@@ -1781,8 +1781,8 @@ impl ValidationError {
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError {
-    fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
+impl From<cedar_policy_validator::ValidationError> for ValidationError {
+    fn from(err: cedar_policy_validator::ValidationError) -> Self {
         let (location, error_kind) = err.into_location_and_error_kind();
         Self {
             location: SourceLocation::from(location),
@@ -1864,8 +1864,8 @@ impl std::fmt::Display for SourceLocation {
     }
 }
 
-impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation {
-    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> Self {
+impl From<cedar_policy_validator::SourceLocation> for SourceLocation {
+    fn from(loc: cedar_policy_validator::SourceLocation) -> Self {
         let policy_id = PolicyId(loc.policy_id().clone());
         let source_loc = loc.source_loc().cloned();
         Self {
@@ -1907,8 +1907,8 @@ impl ValidationWarning {
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning {
-    fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
+impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
+    fn from(w: cedar_policy_validator::ValidationWarning) -> Self {
         let (loc, kind) = w.to_kind_and_location();
         Self {
             location: loc.into(),

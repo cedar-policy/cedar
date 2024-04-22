@@ -92,11 +92,7 @@ impl Validator {
 
     /// Validate all templates, links, and static policies in a policy set.
     /// Return a `ValidationResult`.
-    pub fn validate<'a>(
-        &'a self,
-        policies: &'a PolicySet,
-        mode: ValidationMode,
-    ) -> ValidationResult<'a> {
+    pub fn validate(&self, policies: &PolicySet, mode: ValidationMode) -> ValidationResult {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy(p, mode))
@@ -122,8 +118,8 @@ impl Validator {
         p: &'a Template,
         mode: ValidationMode,
     ) -> (
-        impl Iterator<Item = ValidationError<'a>>,
-        impl Iterator<Item = ValidationWarning<'a>>,
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let validation_errors = if mode.is_partial() {
             // We skip `validate_entity_types`, `validate_action_ids`, and
@@ -144,7 +140,7 @@ impl Validator {
                         p.action_constraint(),
                         p.resource_constraint(),
                     ))
-                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                    .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
             )
         }
         .into_iter()
@@ -180,7 +176,7 @@ impl Validator {
                     p.action_constraint(),
                     &p.resource_constraint(),
                 ))
-                .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
         )
     }
 
@@ -194,8 +190,8 @@ impl Validator {
         t: &'a Template,
         mode: ValidationMode,
     ) -> (
-        impl Iterator<Item = ValidationError<'a>>,
-        impl Iterator<Item = ValidationWarning<'a>>,
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
@@ -205,14 +201,14 @@ impl Validator {
             type_errors.into_iter().map(|type_error| {
                 let (kind, location) = type_error.kind_and_location();
                 ValidationError::with_policy_id(
-                    t.id(),
+                    t.id().clone(),
                     location,
                     ValidationErrorKind::type_error(kind),
                 )
             }),
             warnings
                 .into_iter()
-                .map(|kind| ValidationWarning::with_policy_id(t.id(), None, kind)),
+                .map(|kind| ValidationWarning::with_policy_id(t.id().clone(), None, kind)),
         )
     }
 }
@@ -282,7 +278,7 @@ mod test {
 
         let result = validator.validate(&set, ValidationMode::default());
         let principal_err = ValidationError::with_policy_id(
-            policy_b.id(),
+            policy_b.id().clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "foo_tye".to_string(),
@@ -290,7 +286,7 @@ mod test {
             ),
         );
         let resource_err = ValidationError::with_policy_id(
-            policy_b.id(),
+            policy_b.id().clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "br_type".to_string(),
@@ -298,7 +294,7 @@ mod test {
             ),
         );
         let action_err = ValidationError::with_policy_id(
-            policy_a.id(),
+            policy_a.id().clone(),
             None,
             ValidationErrorKind::unrecognized_action_id(
                 "Action::\"actin\"".to_string(),
@@ -414,7 +410,7 @@ mod test {
         assert_eq!(result.validation_errors().count(), 2);
         let id = ast::PolicyID::from_string("link2");
         let undefined_err = ValidationError::with_policy_id(
-            &id,
+            id.clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "some_namespace::Undefined".to_string(),
@@ -422,7 +418,7 @@ mod test {
             ),
         );
         let invalid_action_err = ValidationError::with_policy_id(
-            &id,
+            id,
             None,
             ValidationErrorKind::invalid_action_application(false, false),
         );
@@ -450,7 +446,7 @@ mod test {
         assert_eq!(result.validation_errors().count(), 3);
         let id = ast::PolicyID::from_string("link3");
         let invalid_action_err = ValidationError::with_policy_id(
-            &id,
+            id,
             None,
             ValidationErrorKind::invalid_action_application(false, false),
         );
