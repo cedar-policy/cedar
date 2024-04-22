@@ -2072,7 +2072,7 @@ impl EntityUid {
     /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         // INVARIANT: `from_components` always constructs a Concrete id
-        Self(ast::EntityUID::from_components(name.0, id.0))
+        Self(ast::EntityUID::from_components(name.0, id.0, None))
     }
 
     /// Creates `EntityUid` from a JSON value, which should have

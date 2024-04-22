@@ -23,7 +23,10 @@ use cedar_policy_core::ast::{
 
 use std::{collections::HashSet, sync::Arc};
 
-use crate::expr_iterator::{policy_entity_type_names, policy_entity_uids};
+use crate::{
+    expr_iterator::{policy_entity_type_names, policy_entity_uids},
+    ValidationError,
+};
 
 use super::{
     fuzzy_match::fuzzy_search, schema::*, validation_result::ValidationErrorKind, Validator,
@@ -35,7 +38,7 @@ impl Validator {
     pub(crate) fn validate_entity_types<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
         let known_entity_types = self
@@ -53,9 +56,13 @@ impl Validator {
                     let actual_entity_type = name.to_string();
                     let suggested_entity_type =
                         fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                    Some(ValidationErrorKind::unrecognized_entity_type(
-                        actual_entity_type,
-                        suggested_entity_type,
+                    Some(ValidationError::with_policy_id(
+                        template.id().clone(),
+                        name.loc().clone(),
+                        ValidationErrorKind::unrecognized_entity_type(
+                            actual_entity_type,
+                            suggested_entity_type,
+                        ),
                     ))
                 } else {
                     None
@@ -64,9 +71,13 @@ impl Validator {
             .chain(policy_entity_uids(template).filter_map(move |euid| {
                 let entity_type = euid.entity_type();
                 match entity_type {
-                    cedar_policy_core::ast::EntityType::Unspecified => Some(
-                        ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
-                    ),
+                    cedar_policy_core::ast::EntityType::Unspecified => {
+                        Some(ValidationError::with_policy_id(
+                            template.id().clone(),
+                            euid.loc().clone(),
+                            ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
+                        ))
+                    }
                     cedar_policy_core::ast::EntityType::Specified(_) => None,
                 }
             }))
@@ -78,7 +89,7 @@ impl Validator {
     pub(crate) fn validate_action_ids<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
         let known_action_ids = self
@@ -106,6 +117,9 @@ impl Validator {
                     }
                 }
             }
+            .map(|kind| {
+                ValidationError::with_policy_id(template.id().clone(), euid.loc().clone(), kind)
+            })
         })
     }
 
@@ -425,49 +439,34 @@ mod test {
             ResourceConstraint,
         },
         parser::{parse_policy, parse_policy_template},
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
+    use miette::Report;
 
     use super::*;
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntityError, ValidationMode,
-        ValidationWarningKind, Validator,
+        UnrecognizedEntityType, UnspecifiedEntityError, ValidationMode, ValidationWarningKind,
+        Validator,
     };
 
     use cool_asserts::assert_matches;
 
     #[test]
     fn validate_entity_type_empty_schema() -> Result<()> {
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::any(),
-            ResourceConstraint::is_eq(
-                EntityUID::with_eid_and_type("foo_type", "foo_name").expect("should be valid"),
-            ),
-            Expr::val(true),
-        );
-
+        let src = r#"permit(principal, action, resource == foo_type::"foo_name");"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
-
-        assert_eq!(1, notes.len());
-        match notes.first() {
-            Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
-                actual_entity_type,
-                suggested_entity_type,
-            })) => {
-                assert_eq!("foo_type", actual_entity_type);
-                assert!(
-                    suggested_entity_type.is_none(),
-                    "Did not expect suggested entity type."
-                );
-            }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error("unrecognized entity type `foo_type`")
+                .exactly_one_underline("foo_type")
+                .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
 
         Ok(())
     }
@@ -602,73 +601,38 @@ mod test {
             [],
         );
         let singleton_schema = schema_file.try_into().unwrap();
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(
-                EntityUID::with_eid_and_type("bar_type", "bar_name")
-                    .expect("should be a valid identifier"),
-            ),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
 
+        let src = r#"permit(principal, action, resource == bar_type::"bar_name");"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
-
-        assert_eq!(1, notes.len());
-        match notes.first() {
-            Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
-                actual_entity_type,
-                suggested_entity_type,
-            })) => {
-                assert_eq!("bar_type", actual_entity_type);
-                assert_eq!(
-                    "foo_type",
-                    suggested_entity_type
-                        .as_ref()
-                        .expect("Expected a suggested entity type")
-                );
-            }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error("unrecognized entity type `bar_type`")
+                .exactly_one_underline("bar_type")
+                .help("did you mean `foo_type`?")
+                .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
 
         Ok(())
     }
 
     #[test]
     fn validate_action_id_empty_schema() -> Result<()> {
-        let entity = EntityUID::with_eid_and_type("Action", "foo_name")
-            .expect("should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_eq(entity),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
-
+        let src = r#"permit(principal, action == Action::"foo_name", resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
-
-        assert_eq!(1, notes.len());
-        match notes.first() {
-            Some(ValidationErrorKind::UnrecognizedActionId(UnrecognizedActionId {
-                actual_action_id,
-                suggested_action_id,
-            })) => {
-                assert_eq!("Action::\"foo_name\"", actual_action_id);
-                assert!(
-                    suggested_action_id.is_none(),
-                    "Did not expect suggested action id."
-                );
-            }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"foo_name"`"#)
+                .exactly_one_underline(r#"Action::"foo_name""#)
+                .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
 
         Ok(())
     }
@@ -815,38 +779,20 @@ mod test {
             )],
         );
         let singleton_schema = schema_file.try_into().unwrap();
-        let entity = EntityUID::with_eid_and_type("Action", "bar_name")
-            .expect("Should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_eq(entity),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
 
+        let src = r#"permit(principal, action == Action::"bar_name", resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
-
-        assert_eq!(1, notes.len());
-        match notes.first() {
-            Some(ValidationErrorKind::UnrecognizedActionId(UnrecognizedActionId {
-                actual_action_id,
-                suggested_action_id,
-            })) => {
-                assert_eq!("Action::\"bar_name\"", actual_action_id);
-                assert_eq!(
-                    "Action::\"foo_name\"",
-                    suggested_action_id
-                        .as_ref()
-                        .expect("Expected suggested action id.")
-                )
-            }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
-
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"bar_name"`"#)
+                .exactly_one_underline(r#"Action::"bar_name""#)
+                .help(r#"did you mean `Action::"foo_name"`?"#)
+                .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
         Ok(())
     }
 
@@ -877,7 +823,10 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_ids(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
     }
@@ -895,28 +844,23 @@ mod test {
         )
         .expect("Expected schema parse.");
         let schema = descriptors.try_into().unwrap();
-        let entity: EntityUID = "Bogus::Action::\"foo_name\""
-            .parse()
-            .expect("Expected entity parse.");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_eq(entity),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
 
+        let src = r#"permit(principal, action == Bogus::Action::"foo_name", resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
-        assert_eq!(
-            notes,
-            vec![ValidationErrorKind::unrecognized_action_id(
-                "Bogus::Action::\"foo_name\"".into(),
-                Some("NS::Action::\"foo_name\"".into()),
-            )]
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"unrecognized action `Bogus::Action::"foo_name"`"#,
+            )
+            .exactly_one_underline(r#"Bogus::Action::"foo_name""#)
+            .help(r#"did you mean `NS::Action::"foo_name"`?"#)
+            .build(),
         );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+
         Ok(())
     }
 
@@ -938,14 +882,22 @@ mod test {
             PolicyID::from_string("policy0"),
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
+            PrincipalConstraint::is_eq(EntityUID::from_components(
+                entity_type,
+                Eid::new("bar"),
+                None,
+            )),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
+
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
     }
@@ -963,26 +915,21 @@ mod test {
         )
         .expect("Expected schema parse.");
         let schema = descriptors.try_into().unwrap();
-        let entity_type: Name = "Bogus::Foo".parse().expect("Expected entity type parse.");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
 
+        let src = r#"permit(principal == Bogus::Foo::"bar", action, resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
-        assert_eq!(
-            notes,
-            vec![ValidationErrorKind::unrecognized_entity_type(
-                "Bogus::Foo".into(),
-                Some("NS::Foo".into())
-            )]
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error("unrecognized entity type `Bogus::Foo`")
+                .exactly_one_underline("Bogus::Foo")
+                .help("did you mean `NS::Foo`?")
+                .build(),
         );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+
         Ok(())
     }
 
@@ -1384,9 +1331,9 @@ mod test {
             &validator,
             &policy,
             vec![
+                ValidationErrorKind::invalid_action_application(false, false),
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1468,9 +1415,9 @@ mod test {
             &validator,
             &policy,
             vec![
+                ValidationErrorKind::invalid_action_application(false, false),
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1479,21 +1426,24 @@ mod test {
     #[test]
     fn is_unknown_entity_condition() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
-        let policy = parse_policy_template(
-            None,
-            r#"permit(principal, action, resource) when { resource is biz };"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal, action, resource) when { resource is biz };"#;
+        let policy = parse_policy_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
-        assert_validate_policy_fails(
-            &validator,
-            &policy,
-            vec![ValidationErrorKind::unrecognized_entity_type(
-                "biz".into(),
-                Some("baz".into()),
-            )],
+        let err = validator
+            .validate_policy(&policy, ValidationMode::default())
+            .0
+            .next()
+            .unwrap();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unrecognized entity type `biz`")
+                .exactly_one_underline("biz")
+                .help("did you mean `baz`?")
+                .build(),
         );
+
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
     }
 
@@ -1616,7 +1566,10 @@ mod test {
             ResourceConstraint::is_eq(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
@@ -1634,7 +1587,10 @@ mod test {
             ResourceConstraint::any(),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
@@ -1662,7 +1618,11 @@ mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             ),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
+
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),

@@ -18,6 +18,7 @@ use crate::ast::*;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
@@ -62,13 +63,44 @@ impl std::fmt::Display for EntityType {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
     /// EID of the entity
     eid: Eid,
+    /// Location of the entity in policy source
+    #[serde(skip)]
+    loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`.
+impl PartialEq for EntityUID {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.eid == other.eid
+    }
+}
+impl Eq for EntityUID {}
+
+impl std::hash::Hash for EntityUID {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash the ty and eid, in line with the `PartialEq` impl which compares
+        // the ty and eid.
+        self.ty.hash(state);
+        self.eid.hash(state);
+    }
+}
+
+impl PartialOrd for EntityUID {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for EntityUID {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ty.cmp(&other.ty).then(self.eid.cmp(&other.eid))
+    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -87,6 +119,7 @@ impl EntityUID {
         Self {
             ty: Self::test_entity_type(),
             eid: Eid(eid.into()),
+            loc: None,
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -113,6 +146,7 @@ impl EntityUID {
         Ok(Self {
             ty: EntityType::Specified(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
+            loc: None,
         })
     }
 
@@ -122,11 +156,17 @@ impl EntityUID {
         (self.ty, self.eid)
     }
 
+    /// Get the source location for this `EntityUID`.
+    pub fn loc(&self) -> &Option<Loc> {
+        &self.loc
+    }
+
     /// Create a nominally-typed `EntityUID` with the given typename and EID
-    pub fn from_components(name: Name, eid: Eid) -> Self {
+    pub fn from_components(name: Name, eid: Eid, loc: Option<Loc>) -> Self {
         Self {
             ty: EntityType::Specified(name),
             eid,
+            loc,
         }
     }
 
@@ -135,6 +175,7 @@ impl EntityUID {
         Self {
             ty: EntityType::Unspecified,
             eid,
+            loc: None,
         }
     }
 
@@ -497,12 +538,14 @@ mod test {
         let e2 = EntityUID::from_components(
             Name::parse_unqualified_name("test_entity_type").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
         let e3 = EntityUID::unspecified_from_eid(Eid("foo".into()));
         let e4 = EntityUID::unspecified_from_eid(Eid("bar".into()));
         let e5 = EntityUID::from_components(
             Name::parse_unqualified_name("Unspecified").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
 
         // an EUID is equal to itself

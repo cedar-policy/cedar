@@ -605,11 +605,11 @@ impl ValidatorNamespaceDef {
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
             );
             match namespace {
-                Some(namespace) => Name::type_in_namespace(id, namespace.clone()),
+                Some(namespace) => Name::type_in_namespace(id, namespace.clone(), None),
                 None => Name::unqualified_name(id),
             }
         };
-        EntityUID::from_components(namespaced_action_type, Eid::new(action_id.id.clone()))
+        EntityUID::from_components(namespaced_action_type, Eid::new(action_id.id.clone()), None)
     }
 
     /// Implemented to convert a type as written in the schema json format into the
