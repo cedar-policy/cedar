@@ -150,7 +150,7 @@ impl ValidationError {
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SourceLocation {
     policy_id: PolicyID,
     source_loc: Option<Loc>,
