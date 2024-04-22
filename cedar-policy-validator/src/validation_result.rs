@@ -76,11 +76,49 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Debug)]
+#[derive(Clone, Debug, Error)]
+#[error("{error_kind}")]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct ValidationError {
     location: SourceLocation,
     error_kind: ValidationErrorKind,
+}
+
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .error_kind
+impl Diagnostic for ValidationError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.location.source_loc.as_ref()?.src)
+    }
+
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.url()
+    }
+
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.help()
+    }
+
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
+        self.error_kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
+    }
 }
 
 impl ValidationError {
@@ -289,7 +327,7 @@ pub struct UnspecifiedEntityError {
 }
 
 /// The structure for validation warnings.
-#[derive(Debug, Clone)]
+#[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
 pub struct ValidationWarning {
     pub(crate) location: SourceLocation,
     pub(crate) kind: ValidationWarningKind,
@@ -328,6 +366,43 @@ impl std::fmt::Display for ValidationWarning {
             self.location.policy_id(),
             self.kind
         )
+    }
+}
+
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .kind
+impl Diagnostic for ValidationWarning {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.location.source_loc.as_ref()?.src)
+    }
+
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.url()
+    }
+
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.help()
+    }
+
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
+        self.kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
     }
 }
 
