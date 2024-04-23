@@ -1668,8 +1668,8 @@ impl ValidationResult {
     }
 }
 
-impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult {
-    fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
+impl From<cedar_policy_validator::ValidationResult> for ValidationResult {
+    fn from(r: cedar_policy_validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
@@ -1762,117 +1762,69 @@ impl Diagnostic for ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Debug, Clone, Error)]
-#[error("validation error on {location}: {}", self.error_kind())]
+#[derive(Debug, Clone, Error, Diagnostic)]
+#[error(transparent)]
+#[diagnostic(transparent)]
 pub struct ValidationError {
-    location: SourceLocation,
-    error_kind: ValidationErrorKind,
+    error: cedar_policy_validator::ValidationError,
 }
 
 impl ValidationError {
     /// Extract details about the exact issue detected by the validator.
     pub fn error_kind(&self) -> &ValidationErrorKind {
-        &self.error_kind
+        self.error.error_kind()
     }
 
     /// Extract the location where the validator found the issue.
     pub fn location(&self) -> &SourceLocation {
-        &self.location
+        SourceLocation::ref_cast(self.error.location())
     }
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError {
-    fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
-        let (location, error_kind) = err.into_location_and_error_kind();
-        Self {
-            location: SourceLocation::from(location),
-            error_kind,
-        }
-    }
-}
-
-// custom impl of `Diagnostic`: source location and source code are from
-// .location, everything else forwarded to .error_kind
-impl Diagnostic for ValidationError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
-        Some(Box::new(std::iter::once(label)))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
-    }
-
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.code()
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.error_kind.severity()
-    }
-
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.url()
-    }
-
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.help()
-    }
-
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.error_kind.related()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error_kind.diagnostic_source()
+impl From<cedar_policy_validator::ValidationError> for ValidationError {
+    fn from(error: cedar_policy_validator::ValidationError) -> Self {
+        Self { error }
     }
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SourceLocation {
-    policy_id: PolicyId,
-    source_loc: Option<parser::Loc>,
-}
+#[derive(Debug, Clone, Eq, PartialEq, RefCast)]
+#[repr(transparent)]
+pub struct SourceLocation(cedar_policy_validator::SourceLocation);
 
 impl SourceLocation {
     /// Get the `PolicyId` for the policy at this source location.
     pub fn policy_id(&self) -> &PolicyId {
-        &self.policy_id
+        PolicyId::ref_cast(self.0.policy_id())
     }
 
     /// Get the start of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_start(&self) -> Option<usize> {
-        self.source_loc.as_ref().map(parser::Loc::start)
+        self.0.source_loc().map(parser::Loc::start)
     }
 
     /// Get the end of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_end(&self) -> Option<usize> {
-        self.source_loc.as_ref().map(parser::Loc::end)
+        self.0.source_loc().map(parser::Loc::end)
     }
 }
 
 impl std::fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "policy `{}`", self.policy_id)?;
-        if let Some(loc) = &self.source_loc {
+        write!(f, "policy `{}`", self.0.policy_id())?;
+        if let Some(loc) = self.0.source_loc() {
             write!(f, " at offset {}-{}", loc.start(), loc.end())?;
         }
         Ok(())
     }
 }
 
-impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation {
-    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> Self {
-        let policy_id = PolicyId(loc.policy_id().clone());
-        let source_loc = loc.source_loc().cloned();
-        Self {
-            policy_id,
-            source_loc,
-        }
+impl From<&cedar_policy_validator::SourceLocation> for SourceLocation {
+    fn from(loc: &cedar_policy_validator::SourceLocation) -> Self {
+        Self(loc.clone())
     }
 }
 
@@ -1887,71 +1839,30 @@ pub fn confusable_string_checker<'a>(
         .map(std::convert::Into::into)
 }
 
-#[derive(Debug, Clone, Error)]
-#[error("validation warning on {location}: {kind}")]
+#[derive(Debug, Clone, Error, Diagnostic)]
+#[error(transparent)]
+#[diagnostic(transparent)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning {
-    location: SourceLocation,
-    kind: ValidationWarningKind,
+    warning: cedar_policy_validator::ValidationWarning,
 }
 
 impl ValidationWarning {
     /// Extract details about the exact issue detected by the validator.
     pub fn warning_kind(&self) -> &ValidationWarningKind {
-        &self.kind
+        self.warning.kind()
     }
 
     /// Extract the location where the validator found the issue.
     pub fn location(&self) -> &SourceLocation {
-        &self.location
+        SourceLocation::ref_cast(self.warning.location())
     }
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning {
-    fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
-        let (loc, kind) = w.to_kind_and_location();
-        Self {
-            location: loc.into(),
-            kind,
-        }
-    }
-}
-
-// custom impl of `Diagnostic`: source location and source code are from
-// .location, everything else forwarded to .kind
-impl Diagnostic for ValidationWarning {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
-        Some(Box::new(std::iter::once(label)))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
-    }
-
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.code()
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.kind.severity()
-    }
-
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.url()
-    }
-
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.help()
-    }
-
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.kind.related()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.kind.diagnostic_source()
+impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
+    fn from(warning: cedar_policy_validator::ValidationWarning) -> Self {
+        Self { warning }
     }
 }
 
