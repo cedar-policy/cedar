@@ -19,7 +19,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{join_with_conjunction, Loc};
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
@@ -127,12 +127,17 @@ impl TypeError {
 
     /// Construct a type error for when a least upper bound cannot be found for
     /// a collection of types.
-    pub(crate) fn incompatible_types(on_expr: Expr, types: impl IntoIterator<Item = Type>) -> Self {
+    pub(crate) fn incompatible_types(
+        on_expr: Expr,
+        types: impl IntoIterator<Item = Type>,
+        hint: LubHelp,
+    ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
             kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
+                hint,
             }),
         }
     }
@@ -241,7 +246,8 @@ pub enum TypeErrorKind {
     #[diagnostic(transparent)]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
-    #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
@@ -331,9 +337,33 @@ pub(crate) enum UnexpectedTypeHelp {
 }
 
 /// Structure containing details about an incompatible type error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct IncompatibleTypes {
     pub(crate) types: BTreeSet<Type>,
+    #[help]
+    pub(crate) hint: LubHelp,
+}
+
+impl Display for IncompatibleTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The types ")?;
+        join_with_conjunction(f, "and", self.types.iter(), |f, t| write!(f, "{t}"))?;
+        write!(f, " are not compatible")
+    }
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubHelp {
+    #[error("corresponding attributes of compatible record types must either both be required or both be optional")]
+    AttributeQualifier,
+    #[error("compatible record types must have exactly the same attributes")]
+    RecordWidth,
+    #[error("entity types with different names are never compatible even when their attributes would be compatible")]
+    EntityType,
+    #[error("entity and record types are never compatible even when their attribute would be compatible")]
+    EntityRecord,
+    #[error("types must be exactly equal to be compatible")]
+    None,
 }
 
 /// Structure containing details about a missing attribute error.

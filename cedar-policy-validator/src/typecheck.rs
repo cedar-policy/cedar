@@ -1591,20 +1591,24 @@ impl<'a> Typechecker<'a> {
                 TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
             }
             _ => match (lhs_ty, rhs_ty) {
-                (Some(lhs_ty), Some(rhs_ty))
-                    if Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
-                        .is_none() =>
-                {
-                    type_errors.push(TypeError::incompatible_types(
-                        unannotated_expr.clone(),
-                        [lhs_ty.clone(), rhs_ty.clone()],
-                    ));
-                    TypecheckAnswer::fail(annotated_expr)
+                (Some(lhs_ty), Some(rhs_ty)) => {
+                    if let Err(lub_hint) =
+                        Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
+                    {
+                        type_errors.push(TypeError::incompatible_types(
+                            unannotated_expr.clone(),
+                            [lhs_ty.clone(), rhs_ty.clone()],
+                            lub_hint,
+                        ));
+                        TypecheckAnswer::fail(annotated_expr)
+                    } else {
+                        // We had `Some` type for lhs and rhs and these types
+                        // were compatible.
+                        TypecheckAnswer::success(annotated_expr)
+                    }
                 }
-                // Either we had `Some` type for lhs and rhs and these types
-                // were compatible, or we failed to a compute a type for either
-                // lhs or rhs, meaning we already failed typechecking for that
-                // expression.
+                // We failed to a compute a type for either lhs or rhs, meaning
+                // we already failed typechecking for that expression.
                 _ => TypecheckAnswer::success(annotated_expr),
             },
         }
@@ -2381,17 +2385,21 @@ impl<'a> Typechecker<'a> {
             .and_then(|typechecked_types| {
                 let lub =
                     Type::reduce_to_least_upper_bound(self.schema, &typechecked_types, self.mode);
-                if lub.is_none() {
-                    // A type error is generated if we could not find a least
-                    // upper bound for the types. The computed least upper bound
-                    // will be None, so this function will correctly report this
-                    // as a failure.
-                    type_errors.push(TypeError::incompatible_types(
-                        expr.clone(),
-                        typechecked_types,
-                    ));
+                match lub {
+                    Err(lub_hint) => {
+                        // A type error is generated if we could not find a least
+                        // upper bound for the types. The computed least upper bound
+                        // will be None, so this function will correctly report this
+                        // as a failure.
+                        type_errors.push(TypeError::incompatible_types(
+                            expr.clone(),
+                            typechecked_types,
+                            lub_hint,
+                        ));
+                        None
+                    }
+                    Ok(lub) => Some(lub),
                 }
-                lub
             })
     }
 
