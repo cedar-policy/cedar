@@ -22,6 +22,8 @@ mod expr;
 pub use expr::*;
 mod scope_constraints;
 pub use scope_constraints::*;
+mod policy_set;
+pub use policy_set::*;
 
 use crate::ast;
 use crate::entities::EntityUidJson;
