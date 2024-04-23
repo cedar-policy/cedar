@@ -1331,9 +1331,9 @@ mod test {
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::invalid_action_application(false, false),
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                ValidationErrorKind::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1415,9 +1415,9 @@ mod test {
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::invalid_action_application(false, false),
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                ValidationErrorKind::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);

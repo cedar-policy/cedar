@@ -129,18 +129,22 @@ impl Validator {
             None
         } else {
             Some(
-                // We could usefully update this pass to apply to partial
-                // schema if it only failed when there is a known action
-                // applied to known principal/resource entity types that are
-                // not in its `appliesTo`.
-                self.validate_action_application(
-                    p.principal_constraint(),
-                    p.action_constraint(),
-                    p.resource_constraint(),
-                )
-                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
-                .chain(self.validate_entity_types(p))
-                .chain(self.validate_action_ids(p)),
+                self.validate_entity_types(p)
+                    .chain(self.validate_action_ids(p))
+                    // We could usefully update this pass to apply to partial
+                    // schema if it only failed when there is a known action
+                    // applied to known principal/resource entity types that are
+                    // not in its `appliesTo`.
+                    .chain(
+                        self.validate_action_application(
+                            p.principal_constraint(),
+                            p.action_constraint(),
+                            p.resource_constraint(),
+                        )
+                        .map(move |note| {
+                            ValidationError::with_policy_id(p.id().clone(), None, note)
+                        }),
+                    ),
             )
         }
         .into_iter()
