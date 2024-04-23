@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wasm` Cargo feature for targeting Wasm
 - `Entity::into_inner` (resolving #636)
 - `Entities::into_iter` (resolving #680)
+- Adds an JSON representation for Policy Sets (#783, resolving #549), 
+    along with methods like `::from_json_value/file/str` and `::to_json` 
+    for `PolicySet`.
 
 ### Changed
 
