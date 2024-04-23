@@ -44,6 +44,9 @@ decimal = ["dep:regex"]
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
 
+# Expose test utilities
+test-util = []
+
 # Experimental features.
 partial-eval = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
