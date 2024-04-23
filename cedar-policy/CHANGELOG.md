@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record types that differ in whether an attribute is required or optional.
 - Improved validation error messages when incompatible types appear in
   `if`, `==`, `contains`, `containsAll`, and `containsAny` expressions.
+- Validation error for invalid use of an action now includes a source location
+  containing the offending policy.
 
 ## [3.1.3] - 2024-04-15
 

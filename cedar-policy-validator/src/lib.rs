@@ -131,16 +131,12 @@ impl Validator {
             Some(
                 self.validate_entity_types(p)
                     .chain(self.validate_action_ids(p))
+                    .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_action_application(
-                        p.principal_constraint(),
-                        p.action_constraint(),
-                        p.resource_constraint(),
-                    ))
-                    .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
+                    .chain(self.validate_template_action_application(p)),
             )
         }
         .into_iter()
@@ -171,12 +167,8 @@ impl Validator {
         // the slot filled by the appropriate value.
         Some(
             self.validate_entity_types_in_slots(p.env())
-                .chain(self.validate_action_application(
-                    &p.principal_constraint(),
-                    p.action_constraint(),
-                    &p.resource_constraint(),
-                ))
-                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
+                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
+                .chain(self.validate_linked_action_application(p)),
         )
     }
 
@@ -206,9 +198,7 @@ impl Validator {
                     ValidationErrorKind::type_error(kind),
                 )
             }),
-            warnings
-                .into_iter()
-                .map(|kind| ValidationWarning::with_policy_id(t.id().clone(), None, kind)),
+            warnings.into_iter(),
         )
     }
 }
@@ -301,10 +291,15 @@ mod test {
                 Some("Action::\"action\"".to_string()),
             ),
         );
-        assert!(!result.validation_passed());
-        assert!(result.validation_errors().any(|x| x == &principal_err));
-        assert!(result.validation_errors().any(|x| x == &resource_err));
-        assert!(result.validation_errors().any(|x| x == &action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == principal_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == resource_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == action_err.error_kind()));
 
         Ok(())
     }
@@ -362,6 +357,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
+        let loc = t.loc().clone();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
@@ -419,7 +415,7 @@ mod test {
         );
         let invalid_action_err = ValidationError::with_policy_id(
             id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
@@ -447,7 +443,7 @@ mod test {
         let id = ast::PolicyID::from_string("link3");
         let invalid_action_err = ValidationError::with_policy_id(
             id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));

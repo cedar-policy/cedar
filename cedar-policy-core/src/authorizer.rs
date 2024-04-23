@@ -261,6 +261,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             e,
             PrincipalConstraint::any(),
@@ -275,6 +276,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             effect,
             PrincipalConstraint::any(),
