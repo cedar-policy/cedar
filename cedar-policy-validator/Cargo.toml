@@ -41,6 +41,7 @@ partial-validate = []
 
 [dev-dependencies]
 cool_asserts = "2.0"
+cedar-policy-core = { version = "=3.1.3", path = "../cedar-policy-core", features = ["test-util"] }
 
 [build-dependencies]
 lalrpop = "0.20.0"

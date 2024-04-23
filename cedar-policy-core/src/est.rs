@@ -245,6 +245,7 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
+            None,
             self.annotations
                 .into_iter()
                 .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
