@@ -76,9 +76,8 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
 #[error("{error_kind}")]
-#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct ValidationError {
     location: SourceLocation,
     error_kind: ValidationErrorKind,
@@ -176,8 +175,7 @@ impl SourceLocation {
 
 /// Enumeration of the possible diagnostic error that could be found by the
 /// verification steps.
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
     /// A policy contains an entity type that is not declared in the schema.
@@ -249,8 +247,7 @@ impl ValidationErrorKind {
 }
 
 /// Structure containing details about an unrecognized entity type error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
     /// The entity type seen in the policy.
@@ -270,8 +267,7 @@ impl Diagnostic for UnrecognizedEntityType {
 }
 
 /// Structure containing details about an unrecognized action id error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
     /// Action Id seen in the policy.
@@ -291,8 +287,7 @@ impl Diagnostic for UnrecognizedActionId {
 }
 
 /// Structure containing details about an invalid action application error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unable to find an applicable action given the policy head constraints")]
 pub struct InvalidActionApplication {
     pub(crate) would_in_fix_principal: bool,
@@ -317,8 +312,7 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unspecified entity error.
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
 #[error("unspecified entity with id `{entity_id}`")]
 #[diagnostic(help("unspecified entities cannot be used in policies"))]
 pub struct UnspecifiedEntityError {
