@@ -913,6 +913,7 @@ mod policy_set_tests {
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
+            None,
         );
         let static_policy = Policy::from_ast(ast);
         let mut pset = PolicySet::new();
