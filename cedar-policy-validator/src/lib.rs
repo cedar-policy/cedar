@@ -131,16 +131,12 @@ impl Validator {
             Some(
                 self.validate_entity_types(p)
                     .chain(self.validate_action_ids(p))
+                    .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_action_application(
-                        p.principal_constraint(),
-                        p.action_constraint(),
-                        p.resource_constraint(),
-                    ))
-                    .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note)),
+                    .chain(self.validate_template_action_application(p)),
             )
         }
         .into_iter()
@@ -171,14 +167,8 @@ impl Validator {
         // the slot filled by the appropriate value.
         Some(
             self.validate_entity_types_in_slots(p.env())
-                .chain(self.validate_action_application(
-                    &p.principal_constraint(),
-                    p.action_constraint(),
-                    &p.resource_constraint(),
-                ))
-                .map(move |note| {
-                    ValidationError::with_policy_id(p.id().clone(), p.loc().clone(), note)
-                }),
+                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
+                .chain(self.validate_linked_action_application(p)),
         )
     }
 
@@ -301,10 +291,15 @@ mod test {
                 Some("Action::\"action\"".to_string()),
             ),
         );
-        assert!(!result.validation_passed());
-        assert!(result.validation_errors().any(|x| x == &principal_err));
-        assert!(result.validation_errors().any(|x| x == &resource_err));
-        assert!(result.validation_errors().any(|x| x == &action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == principal_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == resource_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == action_err.error_kind()));
 
         Ok(())
     }
@@ -412,7 +407,7 @@ mod test {
         let id = ast::PolicyID::from_string("link2");
         let undefined_err = ValidationError::with_policy_id(
             id.clone(),
-            loc.clone(),
+            None,
             ValidationErrorKind::unrecognized_entity_type(
                 "some_namespace::Undefined".to_string(),
                 Some("some_namespace::User".to_string()),
@@ -448,7 +443,7 @@ mod test {
         let id = ast::PolicyID::from_string("link3");
         let invalid_action_err = ValidationError::with_policy_id(
             id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));

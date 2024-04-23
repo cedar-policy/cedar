@@ -270,9 +270,9 @@ impl<'a> Typechecker<'a> {
     /// relevant error is expected to be added by a different pass. Finally,
     /// warnings may be added to the `warnings` list, although these will not
     /// impact the boolean return value.
-    pub fn typecheck_policy<'b>(
+    pub fn typecheck_policy(
         &self,
-        t: &'b Template,
+        t: &Template,
         type_errors: &mut HashSet<TypeError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
