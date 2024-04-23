@@ -354,13 +354,13 @@ impl Display for IncompatibleTypes {
 
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
 pub(crate) enum LubHelp {
-    #[error("corresponding attributes of compatible record types must either both be required or both be optional")]
+    #[error("corresponding attributes of compatible record types must have the same optionality, either both being required or both being optional")]
     AttributeQualifier,
     #[error("compatible record types must have exactly the same attributes")]
     RecordWidth,
-    #[error("entity types with different names are never compatible even when their attributes would be compatible")]
+    #[error("different entity types are never compatible even when their attributes would be compatible")]
     EntityType,
-    #[error("entity and record types are never compatible even when their attribute would be compatible")]
+    #[error("entity and record types are never compatible even when their attributes would be compatible")]
     EntityRecord,
     #[error("types must be exactly equal to be compatible")]
     None,

@@ -1607,7 +1607,7 @@ impl<'a> Typechecker<'a> {
                         TypecheckAnswer::success(annotated_expr)
                     }
                 }
-                // We failed to a compute a type for either lhs or rhs, meaning
+                // We failed to compute a type for either lhs or rhs, meaning
                 // we already failed typechecking for that expression.
                 _ => TypecheckAnswer::success(annotated_expr),
             },
