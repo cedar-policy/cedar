@@ -2319,6 +2319,7 @@ fn construct_template_policy(
     let construct_template = |non_head_constraint| {
         ast::Template::new(
             id,
+            Some(loc.clone()),
             annotations,
             effect,
             principal,

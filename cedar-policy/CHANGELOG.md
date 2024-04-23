@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record types that differ in whether an attribute is required or optional.
 - Validation error messages for unknown entity types and action entities now
   report the precise source location where the unknown type was encountered.
+- Validation error for invalid use of an action now includes a source location
+  containing the offending policy.
 
 ## [3.1.3] - 2024-04-15
 
