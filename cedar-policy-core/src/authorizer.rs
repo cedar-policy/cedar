@@ -221,7 +221,8 @@ impl Authorizer {
                 // PANIC SAFETY This `unwrap` is safe as `idset` is non-empty
                 #[allow(clippy::unwrap_used)]
                 let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are satisfied permits
-                let trivial_true = Policy::from_when_clause(Effect::Permit, Expr::val(true), id);
+                let trivial_true =
+                    Policy::from_when_clause(Effect::Permit, Expr::val(true), id, None);
                 // PANIC SAFETY Since all of the ids in the original policy set were unique by construction, a subset will still be unique
                 #[allow(clippy::unwrap_used)]
                 let policy_set = PolicySet::try_from_iter(
@@ -336,11 +337,13 @@ impl Authorizer {
                         p.effect(),
                         residual,
                         p.id().clone(),
+                        None,
                     )),
                     Effect::Forbid => results.forbid_residuals.push(Policy::from_when_clause(
                         p.effect(),
                         residual,
                         p.id().clone(),
+                        None,
                     )),
                 },
                 Err(e) => {
@@ -515,6 +518,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             e,
             PrincipalConstraint::any(),
@@ -529,6 +533,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             effect,
             PrincipalConstraint::any(),
@@ -723,6 +728,7 @@ mod test {
                         p.effect(),
                         p.condition().substitute(&map).unwrap(),
                         p.id().clone(),
+                        None,
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
@@ -735,6 +741,7 @@ mod test {
                         p.effect(),
                         p.condition().substitute(&map).unwrap(),
                         p.id().clone(),
+                        None,
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
@@ -857,6 +864,7 @@ mod test {
                         p.effect(),
                         p.condition().substitute(&map).unwrap(),
                         p.id().clone(),
+                        None,
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
@@ -869,6 +877,7 @@ mod test {
                         p.effect(),
                         p.condition().substitute(&map).unwrap(),
                         p.id().clone(),
+                        None,
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();

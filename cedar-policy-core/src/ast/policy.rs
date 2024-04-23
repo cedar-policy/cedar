@@ -66,6 +66,7 @@ impl Template {
     /// Construct a `Template` from its components
     pub fn new(
         id: PolicyID,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -75,6 +76,7 @@ impl Template {
     ) -> Self {
         let body = TemplateBody::new(
             id,
+            loc,
             annotations,
             effect,
             principal_constraint,
@@ -118,6 +120,11 @@ impl Template {
             body: self.body.new_id(id),
             slots: self.slots.clone(),
         }
+    }
+
+    /// Get the location of this policy
+    pub fn loc(&self) -> &Option<Loc> {
+        self.body.loc()
     }
 
     /// Get the `Effect` (`Permit` or `Deny`) of this template
@@ -344,9 +351,10 @@ impl Policy {
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained head variables
-    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID) -> Self {
+    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Loc>) -> Self {
         let t = Template::new(
             id,
+            loc,
             Annotations::new(),
             effect,
             PrincipalConstraint::any(),
@@ -448,6 +456,11 @@ impl Policy {
                 values: self.values.clone(),
             },
         }
+    }
+
+    /// Get the location of this policy
+    pub fn loc(&self) -> &Option<Loc> {
+        self.template.loc()
     }
 
     /// Returns true if this policy is an inline policy
@@ -744,6 +757,7 @@ impl StaticPolicy {
     /// Construct a `StaticPolicy` from its components
     pub fn new(
         id: PolicyID,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -753,6 +767,7 @@ impl StaticPolicy {
     ) -> Result<Self, UnexpectedSlotError> {
         let body = TemplateBody::new(
             id,
+            loc,
             annotations,
             effect,
             principal_constraint,
@@ -802,6 +817,8 @@ impl From<StaticPolicy> for Arc<Template> {
 pub struct TemplateBody {
     /// ID of this policy
     id: PolicyID,
+    /// Source location spanning the entire policy
+    loc: Option<Loc>,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
@@ -831,6 +848,11 @@ impl TemplateBody {
     /// Get the `Id` of this policy.
     pub fn id(&self) -> &PolicyID {
         &self.id
+    }
+
+    /// Get the location of this policy
+    pub fn loc(&self) -> &Option<Loc> {
+        &self.loc
     }
 
     /// Clone this policy with a new `Id`.
@@ -910,16 +932,20 @@ impl TemplateBody {
                 Expr::and(
                     self.principal_constraint_expr(),
                     self.action_constraint_expr(),
-                ),
+                )
+                .with_maybe_source_loc(self.loc.clone()),
                 self.resource_constraint_expr(),
-            ),
+            )
+            .with_maybe_source_loc(self.loc.clone()),
             self.non_head_constraints.clone(),
         )
+        .with_maybe_source_loc(self.loc.clone())
     }
 
     /// Construct a `Policy` from its components
     pub fn new(
         id: PolicyID,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -929,6 +955,7 @@ impl TemplateBody {
     ) -> Self {
         Self {
             id,
+            loc,
             annotations,
             effect,
             principal_constraint,
@@ -1704,6 +1731,7 @@ pub mod test_generators {
                 for resource in all_resource_constraints() {
                     let permit = Template::new(
                         permit.clone(),
+                        None,
                         Annotations::new(),
                         Effect::Permit,
                         principal.clone(),
@@ -1713,6 +1741,7 @@ pub mod test_generators {
                     );
                     let forbid = Template::new(
                         forbid.clone(),
+                        None,
                         Annotations::new(),
                         Effect::Forbid,
                         principal.clone(),
@@ -1786,7 +1815,7 @@ mod test {
             let a = template.action_constraint().clone();
             let r = template.resource_constraint().clone();
             let nhc = template.non_head_constraints().clone();
-            let t2 = Template::new(id, Annotations::new(), effect, p, a, r, nhc);
+            let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, nhc);
             assert_eq!(template, t2);
         }
     }
@@ -1805,8 +1834,8 @@ mod test {
                 let a = ip.action_constraint().clone();
                 let r = ip.resource_constraint().clone();
                 let nhc = ip.non_head_constraints().clone();
-                let ip2 =
-                    StaticPolicy::new(id, anno, e, p, a, r, nhc).expect("Policy Creation Failed");
+                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, nhc)
+                    .expect("Policy Creation Failed");
                 assert_eq!(ip, ip2);
                 let (t2, inst) = Template::link_static_policy(ip2);
                 assert!(inst.is_static());
@@ -1821,6 +1850,7 @@ mod test {
         let iid = PolicyID::from_string("iid");
         let t = Arc::new(Template::new(
             tid,
+            None,
             Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
@@ -1842,6 +1872,7 @@ mod test {
         let iid = PolicyID::from_string("iid");
         let t = Arc::new(Template::new(
             tid,
+            None,
             Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
@@ -1867,6 +1898,7 @@ mod test {
         let iid = PolicyID::from_string("linked");
         let t = Arc::new(Template::new(
             tid,
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_in_slot(),

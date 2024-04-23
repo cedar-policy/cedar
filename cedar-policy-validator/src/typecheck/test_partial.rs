@@ -13,8 +13,8 @@ use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::UnexpectedTypeHelp;
 use crate::{
-    AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidationWarningKind,
-    ValidatorSchema,
+    AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidationWarning,
+    ValidationWarningKind, ValidatorSchema,
 };
 
 use super::test_utils::empty_schema_file;
@@ -27,7 +27,7 @@ pub(crate) fn assert_partial_typecheck(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
-    let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
         &mut type_errors,
@@ -46,7 +46,7 @@ pub(crate) fn assert_partial_typecheck_fails(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
-    let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
         &mut type_errors,
@@ -65,7 +65,7 @@ pub(crate) fn assert_partial_typecheck_warns(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
-    let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
         &mut type_errors,

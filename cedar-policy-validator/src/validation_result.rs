@@ -112,7 +112,7 @@ impl<'a> ValidationError<'a> {
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyID,
     source_loc: Option<Loc>,
@@ -289,7 +289,7 @@ pub struct UnspecifiedEntityError {
 }
 
 /// The structure for validation warnings.
-#[derive(Debug, Clone)]
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct ValidationWarning<'a> {
     pub(crate) location: SourceLocation<'a>,
     pub(crate) kind: ValidationWarningKind,

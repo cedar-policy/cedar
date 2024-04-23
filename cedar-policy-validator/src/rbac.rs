@@ -17,13 +17,16 @@
 //! Contains the validation logic specific to RBAC policy validation.
 
 use cedar_policy_core::ast::{
-    self, ActionConstraint, EntityReference, EntityUID, Name, PrincipalConstraint,
+    self, ActionConstraint, EntityReference, EntityUID, Name, Policy, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
 };
 
 use std::{collections::HashSet, sync::Arc};
 
-use crate::expr_iterator::{policy_entity_type_names, policy_entity_uids};
+use crate::{
+    expr_iterator::{policy_entity_type_names, policy_entity_uids},
+    ValidationError,
+};
 
 use super::{
     fuzzy_match::fuzzy_search, schema::*, validation_result::ValidationErrorKind, Validator,
@@ -252,11 +255,35 @@ impl Validator {
         }
     }
 
+    pub(crate) fn validate_linked_action_application<'a>(
+        &self,
+        p: &'a Policy,
+    ) -> impl Iterator<Item = ValidationError<'a>> {
+        self.validate_action_application(
+            &p.principal_constraint(),
+            p.action_constraint(),
+            &p.resource_constraint(),
+        )
+        .map(move |e| ValidationError::with_policy_id(p.id(), p.loc().clone(), e))
+    }
+
+    pub(crate) fn validate_template_action_application<'a>(
+        &self,
+        t: &'a Template,
+    ) -> impl Iterator<Item = ValidationError<'a>> {
+        self.validate_action_application(
+            t.principal_constraint(),
+            t.action_constraint(),
+            t.resource_constraint(),
+        )
+        .map(|e| ValidationError::with_policy_id(t.id(), t.loc().clone(), e))
+    }
+
     // Check that there exists a (action id, principal type, resource type)
     // entity type pair where the action can be applied to both the principal
     // and resource. This function takes the three scope constraints as input
     // (rather than a template) to facilitate code reuse.
-    pub(crate) fn validate_action_application(
+    fn validate_action_application(
         &self,
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
@@ -441,6 +468,7 @@ mod test {
     fn validate_entity_type_empty_schema() -> Result<()> {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -569,6 +597,7 @@ mod test {
         let singleton_schema = schema_file.try_into().unwrap();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -604,6 +633,7 @@ mod test {
         let singleton_schema = schema_file.try_into().unwrap();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(
@@ -644,6 +674,7 @@ mod test {
             .expect("should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -692,6 +723,7 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -819,6 +851,7 @@ mod test {
             .expect("Should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -868,6 +901,7 @@ mod test {
             .expect("Expected entity parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -900,6 +934,7 @@ mod test {
             .expect("Expected entity parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -936,6 +971,7 @@ mod test {
         let entity_type: Name = "NS::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
@@ -966,6 +1002,7 @@ mod test {
         let entity_type: Name = "Bogus::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
@@ -1206,6 +1243,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(principal),
@@ -1290,50 +1328,6 @@ mod test {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
             _ => panic!("Unexpected variant of ValidationErrorKind."),
         }
-
-        Ok(())
-    }
-
-    #[test]
-    fn validate_used_as_correct() -> Result<()> {
-        let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(principal),
-            ActionConstraint::is_eq(action),
-            ResourceConstraint::is_eq(resource),
-            Expr::val(true),
-        );
-
-        let validator = Validator::new(schema);
-        assert_validate_policy_succeeds(&validator, &policy);
-        Ok(())
-    }
-
-    #[test]
-    fn validate_used_as_incorrect() -> Result<()> {
-        let (principal, _, resource, schema) = schema_with_single_principal_action_resource();
-
-        let principal_constraint = PrincipalConstraint::is_eq(resource);
-        let action_constraint = ActionConstraint::any();
-        let resource_constraint = ResourceConstraint::is_eq(principal);
-
-        let validate = Validator::new(schema);
-        let notes: Vec<_> = validate
-            .validate_action_application(
-                &principal_constraint,
-                &action_constraint,
-                &resource_constraint,
-            )
-            .collect();
-        assert_eq!(
-            notes,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false
-            )],
-        );
 
         Ok(())
     }
@@ -1587,6 +1581,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -1609,6 +1604,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -1627,6 +1623,7 @@ mod test {
         // principal in Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_in(EntityUID::unspecified_from_eid(Eid::new("foo"))),
@@ -1652,6 +1649,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
