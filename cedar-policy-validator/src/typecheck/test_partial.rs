@@ -653,7 +653,7 @@ mod fail_partial_schema {
     use std::str::FromStr;
 
     use super::*;
-    use crate::LubHelp;
+    use crate::{LubContext, LubHelp};
 
     #[test]
     fn error_on_declared_attr() {
@@ -696,6 +696,7 @@ mod fail_partial_schema {
                 Expr::from_str("if resource.foo then principal.age else (if resource.bar then principal.name else principal.unknown)").unwrap(),
                 vec![Type::primitive_long(), Type::primitive_string()],
                 LubHelp::None,
+                LubContext::Conditional,
             )],
         );
     }
