@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Validation error for invalid use of an action now includes a source location
   containing the offending policy.
 
+### Fixed
+
+- Validation error message for an invalid attribute access now reports the
+  correct attribute and entity type when accessing an optional attribute that is
+  itself an entity.
+
 ## [3.1.3] - 2024-04-15
 
 ### Changed
