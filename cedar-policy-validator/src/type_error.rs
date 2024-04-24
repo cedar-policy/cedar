@@ -131,6 +131,7 @@ impl TypeError {
         on_expr: Expr,
         types: impl IntoIterator<Item = Type>,
         hint: LubHelp,
+        context: LubContext,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
@@ -138,6 +139,7 @@ impl TypeError {
             kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
                 hint,
+                context,
             }),
         }
     }
@@ -338,10 +340,11 @@ pub(crate) enum UnexpectedTypeHelp {
 
 /// Structure containing details about an incompatible type error.
 #[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
+#[diagnostic(help("{context} must have compatible types; {hint}"))]
 pub struct IncompatibleTypes {
     pub(crate) types: BTreeSet<Type>,
-    #[help]
     pub(crate) hint: LubHelp,
+    pub(crate) context: LubContext,
 }
 
 impl Display for IncompatibleTypes {
@@ -364,6 +367,20 @@ pub(crate) enum LubHelp {
     EntityRecord,
     #[error("types must be exactly equal to be compatible")]
     None,
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubContext {
+    #[error("elements of a set")]
+    Set,
+    #[error("both branches of a conditional")]
+    Conditional,
+    #[error("both operands to a `==` expression")]
+    Equality,
+    #[error("elements of the first operand and the second operand to a `contains` expression")]
+    Contains,
+    #[error("elements of both set operands to a `containsAll` or `containsAny` expression")]
+    ContainsAnyAll,
 }
 
 /// Structure containing details about a missing attribute error.

@@ -38,7 +38,8 @@ use crate::{
     type_error::TypeError,
     typecheck::{test_utils::static_to_template, PolicyCheck},
     types::{EntityLUB, Type},
-    AttributeAccess, LubHelp, NamespaceDefinition, ValidationMode, ValidationWarningKind,
+    AttributeAccess, LubContext, LubHelp, NamespaceDefinition, ValidationMode,
+    ValidationWarningKind,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -718,6 +719,7 @@ fn entity_record_lub_is_none() {
                     Type::named_entity_reference_from_str("User"),
                 ],
                 LubHelp::EntityRecord,
+                LubContext::Conditional,
             )
         ],
     );
@@ -939,6 +941,7 @@ fn record_entity_lub_non_term() {
                 Type::named_entity_reference_from_str("U"),
             ],
             LubHelp::EntityRecord,
+            LubContext::Conditional,
         )],
     );
 }

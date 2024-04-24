@@ -35,7 +35,8 @@ use cedar_policy_core::{
 use crate::{
     typecheck::test_utils::assert_policy_typecheck_fails,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, LubHelp, SchemaFragment, TypeError, TypeErrorKind, ValidationMode,
+    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeError, TypeErrorKind,
+    ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -100,6 +101,7 @@ fn assert_types_must_match(
     expected_type: Type,
     unequal_types: impl IntoIterator<Item = Type>,
     hint: LubHelp,
+    context: LubContext,
 ) {
     assert_strict_type_error(
         schema,
@@ -110,6 +112,7 @@ fn assert_types_must_match(
         TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
             hint,
+            context,
         }),
     )
 }
@@ -231,6 +234,7 @@ fn eq_strict_types_mismatch() {
             Type::primitive_boolean(),
             [Type::primitive_string(), Type::primitive_long()],
             LubHelp::None,
+            LubContext::Equality,
         )
     })
 }
@@ -246,6 +250,7 @@ fn contains_strict_types_mismatch() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
+            LubContext::Contains,
         )
     })
 }
@@ -264,6 +269,7 @@ fn contains_any_strict_types_mismatch() {
                 Type::set(Type::primitive_long()),
             ],
             LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -282,6 +288,7 @@ fn contains_all_strict_types_mismatch() {
                 Type::set(Type::primitive_long()),
             ],
             LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -345,6 +352,7 @@ fn if_bool_strict_type_mismatch() {
                 Type::named_entity_reference_from_str("Photo"),
             ],
             LubHelp::EntityType,
+            LubContext::Conditional,
         )
     })
 }
@@ -363,6 +371,7 @@ fn set_strict_types_mismatch() {
                 Type::named_entity_reference_from_str("Photo"),
             ],
             LubHelp::EntityType,
+            LubContext::Set,
         )
     })
 }
@@ -431,6 +440,7 @@ fn entity_in_lub() {
                 Type::named_entity_reference_from_str("Photo"),
             ],
             LubHelp::EntityType,
+            LubContext::Conditional,
         )
     });
 }
@@ -457,6 +467,7 @@ fn test_and() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
             LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -466,6 +477,7 @@ fn test_and() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -488,6 +500,7 @@ fn test_or() {
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
             LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -497,6 +510,7 @@ fn test_or() {
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -519,6 +533,7 @@ fn test_unary() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -541,6 +556,7 @@ fn test_mul() {
             Type::primitive_long(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -563,6 +579,7 @@ fn test_like() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -585,6 +602,7 @@ fn test_get_attr() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -623,6 +641,7 @@ fn test_has_attr() {
                 )]),
             ],
             LubHelp::RecordWidth,
+            LubContext::Conditional,
         );
     })
 }
@@ -646,6 +665,7 @@ fn test_extension() {
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -736,6 +756,7 @@ fn qualified_record_attr() {
                 ),
             ],
             LubHelp::AttributeQualifier,
+            LubContext::Equality,
         )],
     );
 }

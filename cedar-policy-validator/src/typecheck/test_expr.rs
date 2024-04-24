@@ -26,8 +26,8 @@ use serde_json::json;
 use smol_str::SmolStr;
 
 use crate::{
-    type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType, LubHelp,
-    NamespaceDefinition, SchemaFragment, UnexpectedTypeHelp, ValidationMode,
+    type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
+    LubContext, LubHelp, NamespaceDefinition, SchemaFragment, UnexpectedTypeHelp, ValidationMode,
 };
 
 use super::test_utils::{
@@ -145,6 +145,7 @@ fn heterogeneous_set() {
             set,
             vec![Type::singleton_boolean(true), Type::primitive_long()],
             LubHelp::None,
+            LubContext::Set,
         )],
     );
 }
@@ -673,6 +674,7 @@ fn record_get_attr_lub_typecheck_fails() {
                 Type::primitive_long(),
             ],
             LubHelp::None,
+            LubContext::Conditional,
         )],
     );
 }
@@ -1028,6 +1030,7 @@ fn if_no_lub_error() {
             if_expr,
             vec![Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
+            LubContext::Conditional,
         )],
     );
 }
@@ -1042,6 +1045,7 @@ fn if_typecheck_fails() {
                 if_expr,
                 vec![Type::primitive_long(), Type::primitive_string()],
                 LubHelp::None,
+                LubContext::Conditional,
             ),
             TypeError::expected_type(
                 Expr::val("fail"),
