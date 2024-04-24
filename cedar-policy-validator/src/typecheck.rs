@@ -999,7 +999,11 @@ impl<'a> Typechecker<'a> {
                                 } else {
                                     type_errors.push(TypeError::unsafe_optional_attribute_access(
                                         e.clone(),
-                                        AttributeAccess::from_expr(request_env, &annot_expr),
+                                        AttributeAccess::from_expr(
+                                            request_env,
+                                            &typ_expr_actual,
+                                            attr.clone(),
+                                        ),
                                     ));
                                     TypecheckAnswer::fail(annot_expr)
                                 }
@@ -1023,7 +1027,11 @@ impl<'a> Typechecker<'a> {
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(TypeError::unsafe_attribute_access(
                                     e.clone(),
-                                    AttributeAccess::from_expr(request_env, &annot_expr),
+                                    AttributeAccess::from_expr(
+                                        request_env,
+                                        &typ_expr_actual,
+                                        attr.clone(),
+                                    ),
                                     suggestion,
                                     Type::may_have_attr(self.schema, typ_actual, attr),
                                 ));
