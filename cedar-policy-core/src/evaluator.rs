@@ -4316,8 +4316,11 @@ pub mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        assert_matches!(v, Err(EvaluationError::InvalidRestrictedExpression { .. }));
+    fn assert_restricted_expression_error(e: Expr) {
+        assert_matches!(
+            BorrowedRestrictedExpr::new(&e),
+            Err(RestrictedExprError::InvalidRestrictedExpression { .. })
+        );
     }
 
     #[test]
@@ -4327,146 +4330,92 @@ pub mod test {
 
         // simple expressions
         assert_eq!(
-            BorrowedRestrictedExpr::new(&Expr::val(true))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator.partial_interpret(BorrowedRestrictedExpr::new(&Expr::val(true)).unwrap()),
             Ok(Value::from(true).into())
         );
         assert_eq!(
-            BorrowedRestrictedExpr::new(&Expr::val(-2))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator.partial_interpret(BorrowedRestrictedExpr::new(&Expr::val(-2)).unwrap()),
             Ok(Value::from(-2).into())
         );
         assert_eq!(
-            BorrowedRestrictedExpr::new(&Expr::val("hello world"))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator
+                .partial_interpret(BorrowedRestrictedExpr::new(&Expr::val("hello world")).unwrap()),
             Ok(Value::from("hello world").into())
         );
         assert_eq!(
-            BorrowedRestrictedExpr::new(&Expr::val(EntityUID::with_eid("alice")))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator.partial_interpret(
+                BorrowedRestrictedExpr::new(&Expr::val(EntityUID::with_eid("alice"))).unwrap()
+            ),
             Ok(Value::from(EntityUID::with_eid("alice")).into())
         );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::var(Var::Principal))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::var(Var::Action))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::var(Var::Resource))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::var(Var::Context))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::and(Expr::val("bogus"), Expr::val(true)))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::or(Expr::val("bogus"), Expr::val(true)))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::not(Expr::val(true)))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::is_in(
-                Expr::val(EntityUID::with_eid("alice")),
-                Expr::val(EntityUID::with_eid("some_group")),
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::is_eq(
-                Expr::val(EntityUID::with_eid("alice")),
-                Expr::val(EntityUID::with_eid("some_group")),
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
+        assert_restricted_expression_error(Expr::var(Var::Principal));
+        assert_restricted_expression_error(Expr::var(Var::Action));
+        assert_restricted_expression_error(Expr::var(Var::Resource));
+        assert_restricted_expression_error(Expr::var(Var::Context));
+        assert_restricted_expression_error(Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)));
+        assert_restricted_expression_error(Expr::and(Expr::val("bogus"), Expr::val(true)));
+        assert_restricted_expression_error(Expr::or(Expr::val("bogus"), Expr::val(true)));
+        assert_restricted_expression_error(Expr::not(Expr::val(true)));
+        assert_restricted_expression_error(Expr::is_in(
+            Expr::val(EntityUID::with_eid("alice")),
+            Expr::val(EntityUID::with_eid("some_group")),
+        ));
+        assert_restricted_expression_error(Expr::is_eq(
+            Expr::val(EntityUID::with_eid("alice")),
+            Expr::val(EntityUID::with_eid("some_group")),
+        ));
         #[cfg(feature = "ipaddr")]
         assert_matches!(
-            BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
-                "ip".parse().expect("should be a valid Name"),
-                vec![Expr::val("222.222.222.222")]
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator.partial_interpret(
+                BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
+                    "ip".parse().expect("should be a valid Name"),
+                    vec![Expr::val("222.222.222.222")]
+                ))
+                .unwrap()
+            ),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::ExtensionValue(_),
                 ..
             }))
         );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::get_attr(
-                Expr::val(EntityUID::with_eid("alice")),
-                "pancakes".into(),
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::has_attr(
-                Expr::val(EntityUID::with_eid("alice")),
-                "pancakes".into(),
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::like(
-                Expr::val("abcdefg12"),
-                vec![
-                    PatternElem::Char('a'),
-                    PatternElem::Char('b'),
-                    PatternElem::Char('c'),
-                    PatternElem::Wildcard,
-                ],
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
+        assert_restricted_expression_error(Expr::get_attr(
+            Expr::val(EntityUID::with_eid("alice")),
+            "pancakes".into(),
+        ));
+        assert_restricted_expression_error(Expr::has_attr(
+            Expr::val(EntityUID::with_eid("alice")),
+            "pancakes".into(),
+        ));
+        assert_restricted_expression_error(Expr::like(
+            Expr::val("abcdefg12"),
+            vec![
+                PatternElem::Char('a'),
+                PatternElem::Char('b'),
+                PatternElem::Char('c'),
+                PatternElem::Wildcard,
+            ],
+        ));
         assert_matches!(
-            BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
-                .map_err(Into::into)
-                .and_then(|e| evaluator.partial_interpret(e)),
+            evaluator.partial_interpret(
+                BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
+                    .unwrap()
+            ),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::Set(_),
                 ..
             }))
         );
         assert_matches!(
-            BorrowedRestrictedExpr::new(
-                &Expr::record([
-                    ("hi".into(), Expr::val(1001)),
-                    ("foo".into(), Expr::val("bar"))
-                ])
+            evaluator.partial_interpret(
+                BorrowedRestrictedExpr::new(
+                    &Expr::record([
+                        ("hi".into(), Expr::val(1001)),
+                        ("foo".into(), Expr::val("bar"))
+                    ])
+                    .unwrap()
+                )
                 .unwrap()
-            )
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
+            ),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::Record(_),
                 ..
@@ -4474,31 +4423,19 @@ pub mod test {
         );
 
         // complex expressions -- for instance, violation not at top level
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::set([
-                Expr::val("hi"),
-                Expr::and(Expr::val("bogus"), Expr::val(false)),
-            ]))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
-                "ip".parse().expect("should be a valid Name"),
-                vec![Expr::var(Var::Principal)],
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
+        assert_restricted_expression_error(Expr::set([
+            Expr::val("hi"),
+            Expr::and(Expr::val("bogus"), Expr::val(false)),
+        ]));
+        assert_restricted_expression_error(Expr::call_extension_fn(
+            "ip".parse().expect("should be a valid Name"),
+            vec![Expr::var(Var::Principal)],
+        ));
 
-        assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::is_entity_type(
-                Expr::val(EntityUID::with_eid("alice")),
-                "User".parse().unwrap(),
-            ))
-            .map_err(Into::into)
-            .and_then(|e| evaluator.partial_interpret(e)),
-        );
+        assert_restricted_expression_error(Expr::is_entity_type(
+            Expr::val(EntityUID::with_eid("alice")),
+            "User".parse().unwrap(),
+        ));
     }
 
     #[test]

@@ -76,11 +76,6 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     IntegerOverflow(#[from] evaluation_errors::IntegerOverflowError),
 
-    /// Error with the use of "restricted" expressions
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExprError),
-
     /// Not all template slots were linked
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -116,7 +111,6 @@ impl EvaluationError {
             Self::TypeError(e) => e.source_loc.as_ref(),
             Self::WrongNumArguments(e) => e.source_loc.as_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
-            Self::InvalidRestrictedExpression(e) => e.source_loc(),
             Self::UnlinkedSlot(e) => e.source_loc.as_ref(),
             Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
             Self::NonValue(e) => e.source_loc.as_ref(),
@@ -162,9 +156,6 @@ impl EvaluationError {
                 })
             }
             Self::IntegerOverflow(e) => Self::IntegerOverflow(e.with_maybe_source_loc(source_loc)),
-            Self::InvalidRestrictedExpression(e) => {
-                Self::InvalidRestrictedExpression(e.with_maybe_source_loc(source_loc))
-            }
             Self::UnlinkedSlot(e) => {
                 Self::UnlinkedSlot(evaluation_errors::UnlinkedSlotError { source_loc, ..e })
             }
