@@ -440,11 +440,14 @@ pub(crate) enum AttributeAccess {
 }
 
 impl AttributeAccess {
+    /// Construct an `Attribute` access from `GetAttr` expressions which is
+    /// constructed as `expr.attr`.
     pub(crate) fn from_expr(
         req_env: &RequestEnv,
         mut expr: &Expr<Option<Type>>,
+        attr: SmolStr,
     ) -> AttributeAccess {
-        let mut attrs: Vec<SmolStr> = Vec::new();
+        let mut attrs: Vec<SmolStr> = vec![attr];
         loop {
             if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
@@ -525,7 +528,7 @@ impl Display for AttributeAccess {
 // optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
 mod test_attr_access {
-    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, Var};
+    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Var};
 
     use crate::{
         types::{OpenTag, RequestEnv, Type},
@@ -548,7 +551,11 @@ mod test_attr_access {
             resource_slot: None,
         };
 
-        let access = AttributeAccess::from_expr(&env, attr_access);
+        let ExprKind::GetAttr { expr, attr } = attr_access.expr_kind() else {
+            panic!("Can only test `AttributeAccess::from_expr` only `GetAttr` expressions");
+        };
+
+        let access = AttributeAccess::from_expr(&env, expr, attr.clone());
         assert_eq!(
             access.to_string().as_str(),
             msg.as_ref(),
@@ -601,6 +608,21 @@ mod test_attr_access {
             "`foo.bar.baz` for entity type User",
             "e.foo.bar has baz",
         );
+    }
+
+    #[test]
+    fn entity_type_attr_access() {
+        let e = ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("Thing")))
+            .get_attr(
+                ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("User")))
+                    .var(Var::Principal),
+                "thing".into(),
+            );
+        assert_message_and_help(&e, "`thing` for entity type User", "e has thing");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`bar` for entity type Thing", "e has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(&e, "`bar.baz` for entity type Thing", "e.bar has baz");
     }
 
     #[test]
