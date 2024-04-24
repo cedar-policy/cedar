@@ -81,6 +81,7 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
@@ -121,7 +122,7 @@ impl ValidationCall {
 #[derive(Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-/// Configuration for the validation call
+#[serde(rename_all = "camelCase")]
 pub struct ValidationSettings {
     /// Whether validation is enabled
     enabled: ValidationEnabled,
@@ -131,6 +132,7 @@ pub struct ValidationSettings {
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum ValidationEnabled {
     /// Setting for which policies will be validated against the schema
     #[serde(rename = "on")]
@@ -151,6 +153,7 @@ impl Default for ValidationEnabled {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationError {
     #[serde(rename = "policyId")]
     policy_id: String,
@@ -161,6 +164,7 @@ pub struct ValidationError {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationWarning {
     #[serde(rename = "policyId")]
     policy_id: String,
@@ -170,6 +174,7 @@ pub struct ValidationWarning {
 /// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
+#[serde(rename_all = "camelCase")]
 pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {
