@@ -440,8 +440,7 @@ pub(crate) enum AttributeAccess {
 }
 
 impl AttributeAccess {
-    /// Construct an `Attribute` access from `GetAttr` expressions which is
-    /// constructed as `expr.attr`.
+    /// Construct an `AttributeAccess` access from a `GetAttr` expression `expr.attr`.
     pub(crate) fn from_expr(
         req_env: &RequestEnv,
         mut expr: &Expr<Option<Type>>,
@@ -552,7 +551,7 @@ mod test_attr_access {
         };
 
         let ExprKind::GetAttr { expr, attr } = attr_access.expr_kind() else {
-            panic!("Can only test `AttributeAccess::from_expr` only `GetAttr` expressions");
+            panic!("Can only test `AttributeAccess::from_expr` for `GetAttr` expressions");
         };
 
         let access = AttributeAccess::from_expr(&env, expr, attr.clone());
