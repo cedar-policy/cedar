@@ -872,9 +872,10 @@ impl PartialResponse {
         self.0.concretize().into()
     }
 
-    /// Returns the set of [`PolicyId`]s that were definitely satisfied
-    pub fn definitely_satisfied(&self) -> impl Iterator<Item = &PolicyId> {
-        self.0.definitely_satisfied().map(PolicyId::ref_cast)
+    /// Returns the set of [`Policy`]s that were definitely satisfied.
+    /// This will be the set of policies (both `permit` and `forbid`) that evaluated to `true`
+    pub fn definitely_satisfied(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.definitely_satisfied().map(Policy::from_ast)
     }
 
     /// Returns the set of [`PolicyId`]s that encountered errors
@@ -884,26 +885,29 @@ impl PartialResponse {
 
     /// Returns an over-approximation of the set of determining policies
     ///
-    /// This is all policies that may be determining for any substitution of the unknowns
-    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
-        self.0.may_be_determining().map(PolicyId::ref_cast)
+    /// This is all policies that may be determining for any substitution of the unknowns.
+    /// Policies not in this set will not affect the final decision, regardless of any
+    /// substitutions.
+    ///
+    /// For more information on what counts as "determining" see: <https://docs.cedarpolicy.com/auth/authorization.html#request-authorization>
+    pub fn may_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.may_be_determining().map(Policy::from_ast)
     }
 
     /// Returns an under-approximation of the set of determining policies
     ///
-    /// This is all policies that must be determining for all possible substitutions of the unknowns
-    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
-        self.0.must_be_determining().map(PolicyId::ref_cast)
+    /// This is all policies that must be determining for all possible substitutions of the unknowns.
+    /// This set will include policies that evaluated to `true` and are guaranteed to be
+    /// contributing to the final authorization decision.
+    ///
+    /// For more information on what counts as "determining" see: <https://docs.cedarpolicy.com/auth/authorization.html#request-authorization>
+    pub fn must_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.must_be_determining().map(Policy::from_ast)
     }
 
     /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
     pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.nontrivial_residuals().map(Policy::from_ast)
-    }
-
-    /// Returns the set of [`PolicyId`]s of non-trivial (meaning more than just `true` or `false`) residuals expressions
-    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &PolicyId> {
-        self.0.nontrivial_residual_ids().map(RefCast::ref_cast)
     }
 
     /// Returns every policy as a residual expression
@@ -912,8 +916,8 @@ impl PartialResponse {
     }
 
     /// Return the residual for a given [`PolicyId`], if it exists in the response
-    pub fn get(&self, id: &PolicyId) -> Option<est::Expr> {
-        self.0.get(&id.0).map(|e| est::Expr::from(e.clone()))
+    pub fn get(&self, id: &PolicyId) -> Option<Policy> {
+        self.0.get(&id.0).map(Policy::from_ast)
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
@@ -4571,7 +4575,7 @@ mod test {
     #[test]
     fn test_partition_fold() {
         let even_or_odd = |s: &str| {
-            i64::from_str_radix(s, 10).map(|i| {
+            i64::from_str(s).map(|i| {
                 if i % 2 == 0 {
                     Either::Left(i)
                 } else {
@@ -4605,12 +4609,12 @@ mod test {
     #[test]
     fn test_est_policyset_encoding() {
         let mut pset = PolicySet::default();
-        let policy: Policy = r#"permit(principal, action, resource) when { principal.foo };"#
+        let policy: Policy = r"permit(principal, action, resource) when { principal.foo };"
             .parse()
             .unwrap();
         pset.add(policy.new_id(PolicyId::new("policy"))).unwrap();
         let template: Template =
-            r#"permit(principal == ?principal, action, resource) when { principal.bar };"#
+            r"permit(principal == ?principal, action, resource) when { principal.bar };"
                 .parse()
                 .unwrap();
         pset.add_template(template.new_id(PolicyId::new("template")))
