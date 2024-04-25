@@ -1853,9 +1853,9 @@ impl SourceLocation {
         self.source_loc.as_ref().map(parser::Loc::end)
     }
 
-    /// Returns a tuple of (offset, length) of the location.
+    /// Returns a tuple of (start, end) of the location.
     /// Returns `None` if this location does not have a range.
-    pub fn offset_and_length(&self) -> Option<(usize, usize)> {
+    pub fn range_start_and_end(&self) -> Option<(usize, usize)> {
         self.source_loc.as_ref().map(|loc| (loc.start(), loc.end()))
     }
 }

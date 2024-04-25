@@ -42,8 +42,8 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                     policy_id: error.location().policy_id().to_string(),
                     source_location: error
                         .location()
-                        .offset_and_length()
-                        .map(|(offset, length)| SourceLocation { offset, length }),
+                        .range_start_and_end()
+                        .map(|(start, end)| SourceLocation { start, end }),
                     error: format!("{}", error.error_kind()),
                 })
                 .collect();
@@ -53,8 +53,8 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                     policy_id: error.location().policy_id().to_string(),
                     source_location: error
                         .location()
-                        .offset_and_length()
-                        .map(|(offset, length)| SourceLocation { offset, length }),
+                        .range_start_and_end()
+                        .map(|(start, end)| SourceLocation { start, end }),
                     warning: format!("{}", error.warning_kind()),
                 })
                 .collect();
@@ -172,8 +172,8 @@ pub struct ValidationError {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SourceLocation {
-    offset: usize,
-    length: usize,
+    start: usize,
+    end: usize,
 }
 
 /// Warning for a specified policy after validation
