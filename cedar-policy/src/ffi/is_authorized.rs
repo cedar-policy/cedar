@@ -125,6 +125,7 @@ pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -137,6 +138,7 @@ pub struct Response {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
@@ -214,6 +216,7 @@ impl Diagnostics {
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResidualResponse {
     decision: Option<Decision>,
     satisfied: HashSet<PolicyId>,
@@ -311,6 +314,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
     Failure {
@@ -337,6 +341,7 @@ pub enum AuthorizationAnswer {
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
+#[serde(rename_all = "camelCase")]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
     Failure {
@@ -363,6 +368,7 @@ pub enum PartialAuthorizationAnswer {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct AuthorizationCall {
     /// The principal taking action
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
@@ -591,6 +597,7 @@ impl AuthorizationCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 struct EntityUIDStrings {
     ty: String,
     eid: String,
@@ -599,6 +606,7 @@ struct EntityUIDStrings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 struct Link {
     slot: String,
     value: EntityUIDStrings,
@@ -607,6 +615,7 @@ struct Link {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 struct TemplateLink {
     /// Template ID to fill in
     template_id: String,
@@ -624,6 +633,7 @@ struct TemplateLink {
 #[serde(into = "Vec<Link>")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 struct Links(Vec<Link>);
 
 /// Error returned for duplicate link ids in a template instantiation
@@ -665,6 +675,7 @@ impl From<Links> for Vec<Link> {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 struct RecvdSlice {
     policies: PolicySet,
     /// JSON object containing the entities data, in "natural JSON" form -- same
@@ -1316,10 +1327,10 @@ mod test {
              "templates": {
               "ID0": "permit(principal == ?principal, action, resource);"
              },
-             "template_instantiations": [
+             "templateInstantiations": [
               {
-               "template_id": "ID0",
-               "result_policy_id": "ID0_User_alice",
+               "templateId": "ID0",
+               "resultPolicyId": "ID0_User_alice",
                "instantiations": [
                 {
                  "slot": "?principal",
@@ -1356,7 +1367,7 @@ mod test {
                 "policies" : { "ID0": "permit(principal, action, resource);" },
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : []
+                "templateInstantiations" : []
             }
         });
         assert_is_authorized_json_is_failure(
@@ -1385,10 +1396,10 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1397,8 +1408,8 @@ mod test {
                         ]
                     },
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1435,10 +1446,10 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID0",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID0",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1475,10 +1486,10 @@ mod test {
                 "policies" : { "ID1": "permit(principal, action, resource);" },
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1509,7 +1520,7 @@ mod test {
                 },
                 "entities" : [],
                 "templates" : {},
-                "template_instantiations" : [ ]
+                "templateInstantiations" : [ ]
             }
         }"#;
         assert_matches!(is_authorized_json_str(call), Err(e) => {
@@ -1531,7 +1542,7 @@ mod test {
                     "ID0": "permit(principal == ?principal, action, resource);",
                     "ID0": "permit(principal == ?principal, action, resource);"
                 },
-                "template_instantiations" : [ ]
+                "templateInstantiations" : [ ]
             }
         }"#;
         assert_matches!(is_authorized_json_str(call), Err(e) => {
@@ -1550,10 +1561,10 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1584,10 +1595,10 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1622,10 +1633,10 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "template_instantiations" : [
+                "templateInstantiations" : [
                     {
-                        "template_id" : "ID0",
-                        "result_policy_id" : "ID1",
+                        "templateId" : "ID0",
+                        "resultPolicyId" : "ID1",
                         "instantiations" : [
                             {
                                 "slot": "?principal",
@@ -1690,7 +1701,7 @@ mod test {
                     }
                 ],
                 "templates" : {},
-                "template_instantiations" : []
+                "templateInstantiations" : []
             }
         });
         assert_is_authorized_json_is_failure(call, r#"duplicate entity entry `User::"alice"`"#);
@@ -1719,7 +1730,7 @@ mod test {
                 "policies" : {},
                 "entities" : [],
                 "templates" : {},
-                "template_instantiations" : []
+                "templateInstantiations" : []
             }
         }"#;
         assert_matches!(is_authorized_json_str(call), Err(e) => {
@@ -1747,7 +1758,7 @@ mod test {
                 "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
                 "entities": [],
                 "templates": {},
-                "template_instantiations": [],
+                "templateInstantiations": [],
             },
             "schema": {
                 "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
@@ -1771,7 +1782,7 @@ mod test {
                 "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
                 "entities": [],
                 "templates": {},
-                "template_instantiations": [],
+                "templateInstantiations": [],
             },
             "schema": {
                 "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
@@ -1795,12 +1806,12 @@ mod test {
                 "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
                 "entities": [],
                 "templates": {},
-                "template_instantiations": [],
+                "templateInstantiations": [],
             },
             "schema": {
                 "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
             },
-            "enable_request_validation": false,
+            "enableRequestValidation": false,
         });
 
         assert_is_authorized_json(good_call);
