@@ -233,12 +233,6 @@ pub enum ToASTErrorKind {
         "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
     ))]
     InvalidConstraintOperator(cst::RelOp),
-    /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
-    /// This is valid in Cedar conditions, but not in the Scope
-    #[error(
-        "the right hand side of equality in the policy scope must be a single entity uid or a template slot"
-    )]
-    InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
     #[error("expected an entity uid with the type `Action` but got `{0}`")]
     #[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
