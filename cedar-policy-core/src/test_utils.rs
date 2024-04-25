@@ -15,8 +15,18 @@
  */
 
 // PANIC SAFETY: testing code
-#![allow(clippy::panic)]
+#![allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::expect_used
+)]
 
+//! Shared test utilities.
+
+/// Describes the contents of an error message. Fields are based on the contents
+/// of `miette::Diagnostic`.
+#[derive(Debug)]
 pub struct ExpectedErrorMessage<'a> {
     /// Expected contents of `Display`, or expected prefix of `Display` if `prefix` is `true`
     error: &'a str,
@@ -38,6 +48,7 @@ pub struct ExpectedErrorMessage<'a> {
 }
 
 /// Builder struct for [`ExpectedErrorMessage`]
+#[derive(Debug)]
 pub struct ExpectedErrorMessageBuilder<'a> {
     /// ExpectedErrorMessage::error
     error: &'a str,
@@ -288,6 +299,7 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
 
 /// Forms in which [`expect_err()`] accepts the original input text.
 /// See notes on [`expect_err()`].
+#[derive(Debug)]
 pub enum OriginalInput<'a> {
     /// A plain string
     String(&'a str),

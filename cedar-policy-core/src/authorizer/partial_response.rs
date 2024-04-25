@@ -337,7 +337,13 @@ impl From<PartialResponse> for Response {
 
 /// Build a policy from a policy prototype
 fn construct_policy((effect, id, expr, annotations): PolicyPrototype<'_>) -> Policy {
-    Policy::from_when_clause_annos(effect, expr.clone(), id.clone(), (*annotations).clone())
+    Policy::from_when_clause_annos(
+        effect,
+        expr.clone(),
+        id.clone(),
+        expr.source_loc().cloned(),
+        (*annotations).clone(),
+    )
 }
 
 /// Given a mapping from unknown names to values and a policy prototype
@@ -351,6 +357,7 @@ fn map_unknowns<'a>(
             effect,
             Arc::new(expr.substitute(mapping)),
             id.clone(),
+            expr.source_loc().cloned(),
             annotations.clone(),
         )
     }
@@ -499,43 +506,51 @@ mod test {
                 Policy::from_when_clause(
                     Effect::Permit,
                     Expr::val(true),
-                    PolicyID::from_string("a")
+                    PolicyID::from_string("a"),
+                    None,
                 ),
                 Policy::from_when_clause(
                     Effect::Permit,
                     Expr::val(false),
-                    PolicyID::from_string("b")
+                    PolicyID::from_string("b"),
+                    None,
                 ),
                 Policy::from_when_clause(
                     Effect::Permit,
                     Expr::val(false),
-                    PolicyID::from_string("c")
+                    PolicyID::from_string("c"),
+                    None,
                 ),
                 Policy::from_when_clause_annos(
                     Effect::Permit,
                     one_plus_two.clone(),
                     PolicyID::from_string("d"),
+                    None,
                     Arc::default()
                 ),
                 Policy::from_when_clause(
                     Effect::Forbid,
                     Expr::val(true),
-                    PolicyID::from_string("e")
+                    PolicyID::from_string("e"),
+                    None,
                 ),
                 Policy::from_when_clause(
                     Effect::Forbid,
                     Expr::val(false),
-                    PolicyID::from_string("f")
+                    PolicyID::from_string("f"),
+                    None,
                 ),
                 Policy::from_when_clause(
                     Effect::Forbid,
                     Expr::val(false),
-                    PolicyID::from_string("g")
+                    PolicyID::from_string("g"),
+                    None,
                 ),
                 Policy::from_when_clause_annos(
                     Effect::Forbid,
                     three_plus_four.clone(),
                     PolicyID::from_string("h"),
+                    None,
                     Arc::default()
                 ),
             ])
@@ -552,12 +567,14 @@ mod test {
                     Effect::Permit,
                     one_plus_two.clone(),
                     PolicyID::from_string("d"),
+                    None,
                     Arc::default()
                 ),
                 Policy::from_when_clause_annos(
                     Effect::Forbid,
                     three_plus_four.clone(),
                     PolicyID::from_string("h"),
+                    None,
                     Arc::default()
                 ),
             ])

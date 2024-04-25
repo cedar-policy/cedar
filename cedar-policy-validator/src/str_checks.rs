@@ -25,7 +25,7 @@ use unicode_security::MixedScript;
 /// Perform identifier and string safety checks.
 pub fn confusable_string_checks<'a>(
     p: impl Iterator<Item = &'a Template>,
-) -> impl Iterator<Item = ValidationWarning<'a>> {
+) -> impl Iterator<Item = ValidationWarning> {
     let mut warnings = vec![];
 
     for policy in p {
@@ -43,7 +43,7 @@ pub fn confusable_string_checks<'a>(
 
             if let Some(kind) = warning {
                 warnings.push(ValidationWarning {
-                    location: SourceLocation::new(policy.id(), loc.cloned()),
+                    location: SourceLocation::new(policy.id().clone(), loc.cloned()),
                     kind,
                 })
             }
@@ -150,7 +150,7 @@ mod test {
         );
         assert_eq!(
             location,
-            &SourceLocation::new(&PolicyID::from_string("test"), None)
+            &SourceLocation::new(PolicyID::from_string("test"), None)
         );
     }
 
@@ -196,7 +196,7 @@ mod test {
         assert_eq!(
             location,
             &SourceLocation::new(
-                &PolicyID::from_string("test"),
+                PolicyID::from_string("test"),
                 Some(Loc::new(64..94, Arc::from(src)))
             ),
         );
@@ -227,7 +227,7 @@ mod test {
         assert_eq!(
             location,
             &SourceLocation::new(
-                &PolicyID::from_string("test"),
+                PolicyID::from_string("test"),
                 Some(Loc::new(90..131, Arc::from(src)))
             )
         );

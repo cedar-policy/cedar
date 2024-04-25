@@ -145,6 +145,7 @@ impl From<miette::Report> for DetailedError {
 )]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 /// Struct defining the two possible ways to pass a set of policies to `is_authorized_json` and `validate_json`
 pub enum PolicySet {
     /// provides multiple policies as a concatenated string

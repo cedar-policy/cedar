@@ -26,15 +26,15 @@ use crate::TypeErrorKind;
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
-pub struct ValidationResult<'a> {
-    validation_errors: Vec<ValidationError<'a>>,
-    validation_warnings: Vec<ValidationWarning<'a>>,
+pub struct ValidationResult {
+    validation_errors: Vec<ValidationError>,
+    validation_warnings: Vec<ValidationWarning>,
 }
 
-impl<'a> ValidationResult<'a> {
+impl ValidationResult {
     pub fn new(
-        errors: impl IntoIterator<Item = ValidationError<'a>>,
-        warnings: impl IntoIterator<Item = ValidationWarning<'a>>,
+        errors: impl IntoIterator<Item = ValidationError>,
+        warnings: impl IntoIterator<Item = ValidationWarning>,
     ) -> Self {
         Self {
             validation_errors: errors.into_iter().collect(),
@@ -62,8 +62,8 @@ impl<'a> ValidationResult<'a> {
     pub fn into_errors_and_warnings(
         self,
     ) -> (
-        impl Iterator<Item = ValidationError<'a>>,
-        impl Iterator<Item = ValidationWarning<'a>>,
+        impl Iterator<Item = ValidationError>,
+        impl Iterator<Item = ValidationWarning>,
     ) {
         (
             self.validation_errors.into_iter(),
@@ -76,16 +76,53 @@ impl<'a> ValidationResult<'a> {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Debug)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct ValidationError<'a> {
-    location: SourceLocation<'a>,
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
+#[error("{error_kind}")]
+pub struct ValidationError {
+    location: SourceLocation,
     error_kind: ValidationErrorKind,
 }
 
-impl<'a> ValidationError<'a> {
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .error_kind
+impl Diagnostic for ValidationError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.location.source_loc.as_ref()?.src)
+    }
+
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.url()
+    }
+
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.error_kind.help()
+    }
+
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
+        self.error_kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
+    }
+}
+
+impl ValidationError {
     pub(crate) fn with_policy_id(
-        id: &'a PolicyID,
+        id: PolicyID,
         source_loc: Option<Loc>,
         error_kind: ValidationErrorKind,
     ) -> Self {
@@ -96,7 +133,7 @@ impl<'a> ValidationError<'a> {
     }
 
     /// Deconstruct this into its component source location and error kind.
-    pub fn into_location_and_error_kind(self) -> (SourceLocation<'a>, ValidationErrorKind) {
+    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
         (self.location, self.error_kind)
     }
 
@@ -112,14 +149,14 @@ impl<'a> ValidationError<'a> {
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SourceLocation<'a> {
-    policy_id: &'a PolicyID,
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct SourceLocation {
+    policy_id: PolicyID,
     source_loc: Option<Loc>,
 }
 
-impl<'a> SourceLocation<'a> {
-    pub(crate) fn new(policy_id: &'a PolicyID, source_loc: Option<Loc>) -> Self {
+impl SourceLocation {
+    pub(crate) fn new(policy_id: PolicyID, source_loc: Option<Loc>) -> Self {
         Self {
             policy_id,
             source_loc,
@@ -127,8 +164,8 @@ impl<'a> SourceLocation<'a> {
     }
 
     /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &'a PolicyID {
-        self.policy_id
+    pub fn policy_id(&self) -> &PolicyID {
+        &self.policy_id
     }
 
     pub fn source_loc(&self) -> Option<&Loc> {
@@ -138,8 +175,7 @@ impl<'a> SourceLocation<'a> {
 
 /// Enumeration of the possible diagnostic error that could be found by the
 /// verification steps.
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
     /// A policy contains an entity type that is not declared in the schema.
@@ -211,8 +247,7 @@ impl ValidationErrorKind {
 }
 
 /// Structure containing details about an unrecognized entity type error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
     /// The entity type seen in the policy.
@@ -232,8 +267,7 @@ impl Diagnostic for UnrecognizedEntityType {
 }
 
 /// Structure containing details about an unrecognized action id error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
     /// Action Id seen in the policy.
@@ -253,8 +287,7 @@ impl Diagnostic for UnrecognizedActionId {
 }
 
 /// Structure containing details about an invalid action application error.
-#[derive(Debug, Clone, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("unable to find an applicable action given the policy head constraints")]
 pub struct InvalidActionApplication {
     pub(crate) would_in_fix_principal: bool,
@@ -279,8 +312,7 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unspecified entity error.
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
 #[error("unspecified entity with id `{entity_id}`")]
 #[diagnostic(help("unspecified entities cannot be used in policies"))]
 pub struct UnspecifiedEntityError {
@@ -289,15 +321,15 @@ pub struct UnspecifiedEntityError {
 }
 
 /// The structure for validation warnings.
-#[derive(Debug, Clone)]
-pub struct ValidationWarning<'a> {
-    pub(crate) location: SourceLocation<'a>,
+#[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
+pub struct ValidationWarning {
+    pub(crate) location: SourceLocation,
     pub(crate) kind: ValidationWarningKind,
 }
 
-impl<'a> ValidationWarning<'a> {
+impl ValidationWarning {
     pub(crate) fn with_policy_id(
-        id: &'a PolicyID,
+        id: PolicyID,
         source_loc: Option<Loc>,
         warning_kind: ValidationWarningKind,
     ) -> Self {
@@ -307,7 +339,7 @@ impl<'a> ValidationWarning<'a> {
         }
     }
 
-    pub fn location(&self) -> &SourceLocation<'a> {
+    pub fn location(&self) -> &SourceLocation {
         &self.location
     }
 
@@ -315,12 +347,12 @@ impl<'a> ValidationWarning<'a> {
         &self.kind
     }
 
-    pub fn to_kind_and_location(self) -> (SourceLocation<'a>, ValidationWarningKind) {
+    pub fn to_kind_and_location(self) -> (SourceLocation, ValidationWarningKind) {
         (self.location, self.kind)
     }
 }
 
-impl std::fmt::Display for ValidationWarning<'_> {
+impl std::fmt::Display for ValidationWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -328,6 +360,43 @@ impl std::fmt::Display for ValidationWarning<'_> {
             self.location.policy_id(),
             self.kind
         )
+    }
+}
+
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .kind
+impl Diagnostic for ValidationWarning {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.location.source_loc.as_ref()?.src)
+    }
+
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.url()
+    }
+
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
+        self.kind.help()
+    }
+
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
+        self.kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
     }
 }
 

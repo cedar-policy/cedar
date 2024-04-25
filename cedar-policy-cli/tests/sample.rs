@@ -465,15 +465,20 @@ fn test_authorize_samples() {
     );
 }
 
+#[track_caller]
 fn run_validate_test(
     policies_file: impl Into<String>,
     schema_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.into();
+
+    // Run with JSON schema
     let cmd = ValidateArgs {
-        schema_file: schema_file.into(),
+        schema_file: schema_file.clone(),
         policies: PoliciesArgs {
-            policies_file: Some(policies_file.into()),
+            policies_file: Some(policies_file.clone()),
             policy_format: PolicyFormat::Human,
             template_linked_file: None,
         },
@@ -483,6 +488,24 @@ fn run_validate_test(
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
+
+    // Run with human schema
+    let cmd = ValidateArgs {
+        schema_file: schema_file
+            .strip_suffix(".json")
+            .expect("`schema_file` should be the JSON schema")
+            .to_string(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        partial_validate: false,
+        schema_format: SchemaFormat::Human,
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{:#?}", cmd)
 }
 
 #[test]

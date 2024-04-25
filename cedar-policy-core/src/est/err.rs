@@ -80,6 +80,14 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
+    /// Error reported when a policy set has duplicate ids
+    #[error("Error creating policy set: {0}")]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] ast::PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error("Error linking policy set: {0}")]
+    #[diagnostic(transparent)]
+    Linking(#[from] ast::LinkingError),
 }
 
 /// Errors while linking a policy

@@ -15,60 +15,9 @@
  */
 
 use cedar_policy::ffi;
-use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
-/// `ffi::ValidationAnswer`, but with `serde(rename_all = "camelCase")`
-///
-/// REVIEW: do we want to just camelCase the fields in the normal
-/// `ValidationAnswer`, and adapt Java and others? It's confusing for
-/// Rust<->Wasm to use camelCased JSON field names but Rust<->Java to use
-/// snake_cased JSON field names
-#[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub enum ValidationAnswer {
-    /// Represents a failure to parse or call the validator
-    Failure {
-        /// Parsing errors
-        errors: Vec<ffi::DetailedError>,
-        /// Warnings encountered
-        warnings: Vec<ffi::DetailedError>,
-    },
-    /// Represents a successful validation call
-    #[serde(rename_all = "camelCase")]
-    Success {
-        /// Errors from any issues found during validation
-        validation_errors: Vec<ffi::ValidationError>,
-        /// Warnings from any issues found during validation
-        validation_warnings: Vec<ffi::ValidationError>,
-        /// Other warnings, not associated with specific policies.
-        /// For instance, warnings about your schema itself.
-        other_warnings: Vec<ffi::DetailedError>,
-    },
-}
-
-impl From<ffi::ValidationAnswer> for ValidationAnswer {
-    fn from(ans: ffi::ValidationAnswer) -> Self {
-        match ans {
-            ffi::ValidationAnswer::Failure { errors, warnings } => {
-                Self::Failure { errors, warnings }
-            }
-            ffi::ValidationAnswer::Success {
-                validation_errors,
-                validation_warnings,
-                other_warnings,
-            } => Self::Success {
-                validation_errors,
-                validation_warnings,
-                other_warnings,
-            },
-        }
-    }
-}
-
 #[wasm_bindgen(js_name = "validate")]
-pub fn wasm_validate(call: ffi::ValidationCall) -> ValidationAnswer {
+pub fn wasm_validate(call: ffi::ValidationCall) -> ffi::ValidationAnswer {
     ffi::validate(call).into()
 }
