@@ -41,7 +41,7 @@
       "context": {
         "authenticated": true
       },
-      "enableRequestValidation": false,
+      "enable_request_validation": false,
       "decision": "Deny",
       "reasons": [],
       "errors": [
@@ -84,7 +84,7 @@
       "context": {
         "authenticated": false
       },
-      "enableRequestValidation": false,
+      "enable_request_validation": false,
       "decision": "Deny",
       "reasons": [
         "policy1"
@@ -130,7 +130,7 @@
       "context": {
         "authenticated": true
       },
-      "enableRequestValidation": false,
+      "enable_request_validation": false,
       "decision": "Allow",
       "reasons": [
         "policy2"
