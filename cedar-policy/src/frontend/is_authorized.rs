@@ -277,13 +277,22 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
     fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
         Ok(Self {
             decision: partial_response.decision(),
-            satisfied: partial_response.definitely_satisfied().cloned().collect(),
+            satisfied: partial_response
+                .definitely_satisfied()
+                .map(|p| p.id().clone())
+                .collect(),
             errored: partial_response.definitely_errored().cloned().collect(),
-            may_be_determining: partial_response.may_be_determining().cloned().collect(),
-            must_be_determining: partial_response.must_be_determining().cloned().collect(),
+            may_be_determining: partial_response
+                .may_be_determining()
+                .map(|p| p.id().clone())
+                .collect(),
+            must_be_determining: partial_response
+                .must_be_determining()
+                .map(|p| p.id().clone())
+                .collect(),
             nontrivial_residuals: partial_response
-                .nontrivial_residual_ids()
-                .cloned()
+                .nontrivial_residuals()
+                .map(|p| p.id().clone())
                 .collect(),
             residuals: partial_response
                 .all_residuals()
