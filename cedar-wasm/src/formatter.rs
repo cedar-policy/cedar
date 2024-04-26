@@ -21,16 +21,12 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum FormattingResult {
-    #[serde(rename_all = "camelCase")]
-    Success {
-        formatted_policy: String,
-    },
-    Error {
-        errors: Vec<String>,
-    },
+    Success { formatted_policy: String },
+    Error { errors: Vec<String> },
 }
 
 #[wasm_bindgen(js_name = "formatPolicies")]
