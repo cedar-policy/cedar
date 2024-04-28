@@ -22,6 +22,8 @@ mod expr;
 pub use expr::*;
 mod head_constraints;
 pub use head_constraints::*;
+mod policy_set;
+pub use policy_set::*;
 
 use crate::ast;
 use crate::entities::EntityUidJson;
@@ -246,6 +248,7 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
+            None,
             self.annotations
                 .into_iter()
                 .map(|(key, val)| (key, ast::Annotation { val, loc: None }))

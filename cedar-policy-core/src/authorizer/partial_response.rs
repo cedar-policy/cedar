@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{ast::PolicyID, entities::Entities, evaluator::EvaluationError};
 
-type PolicyPrototype<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
+type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
 
 /// Enum representing whether a policy is not satisfied due to
 /// evaluating to `false`, or because it errored.
@@ -118,17 +118,21 @@ impl PartialResponse {
     }
 
     /// All of the [`Effect::Permit`] policies that were known to be satisfied
-    fn definitely_satisfied_permits(&self) -> impl Iterator<Item = &PolicyID> {
-        self.satisfied_permits.iter().map(first)
+    fn definitely_satisfied_permits(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.satisfied_permits.iter().map(|(id, annotations)| {
+            construct_policy((Effect::Permit, id, &self.true_expr, annotations))
+        })
     }
 
     /// All of the [`Effect::Forbid`] policies that were known to be satisfied
-    fn definitely_satisfied_forbids(&self) -> impl Iterator<Item = &PolicyID> {
-        self.satisfied_forbids.iter().map(first)
+    fn definitely_satisfied_forbids(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.satisfied_forbids.iter().map(|(id, annotations)| {
+            construct_policy((Effect::Forbid, id, &self.true_expr, annotations))
+        })
     }
 
     /// Returns the set of [`PolicyID`]s that were definitely satisfied -- both permits and forbids
-    pub fn definitely_satisfied(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn definitely_satisfied(&self) -> impl Iterator<Item = Policy> + '_ {
         self.definitely_satisfied_permits()
             .chain(self.definitely_satisfied_forbids())
     }
@@ -144,28 +148,44 @@ impl PartialResponse {
     /// Returns an over-approximation of the set of determining policies.
     ///
     /// This is all policies that may be determining for any substitution of the unknowns.
-    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn may_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
         if self.satisfied_forbids.is_empty() {
             // We have no definitely true forbids, so the over approx is everything that is true or potentially true
             Either::Left(
                 self.definitely_satisfied_permits()
-                    .chain(self.residual_permits.keys())
-                    .chain(self.residual_forbids.keys()),
+                    .chain(self.residual_permits())
+                    .chain(self.residual_forbids()),
             )
         } else {
             // We have definitely true forbids, so we know only things that can determine is
             // true forbids and potentially true forbids
             Either::Right(
                 self.definitely_satisfied_forbids()
-                    .chain(self.residual_forbids.keys()),
+                    .chain(self.residual_forbids()),
             )
         }
+    }
+
+    fn residual_permits(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.residual_permits
+            .iter()
+            .map(|(id, (expr, annotations))| {
+                construct_policy((Effect::Permit, id, expr, annotations))
+            })
+    }
+
+    fn residual_forbids(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.residual_forbids
+            .iter()
+            .map(|(id, (expr, annotations))| {
+                construct_policy((Effect::Forbid, id, expr, annotations))
+            })
     }
 
     /// Returns an under-approximation of the set of determining policies.
     ///
     /// This is all policies that must be determining for all possible substitutions of the unknowns.
-    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn must_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
         // If there are no true forbids or potentially true forbids,
         // then the under approximation is the true permits
         if self.satisfied_forbids.is_empty() && self.residual_forbids.is_empty() {
@@ -214,7 +234,7 @@ impl PartialResponse {
     }
 
     /// Returns all residuals expressions that come from [`Effect::Permit`] policies
-    fn all_permit_residuals(&'_ self) -> impl Iterator<Item = PolicyPrototype<'_>> {
+    fn all_permit_residuals(&'_ self) -> impl Iterator<Item = PolicyComponents<'_>> {
         let trues = self
             .satisfied_permits
             .iter()
@@ -234,7 +254,7 @@ impl PartialResponse {
     }
 
     /// Returns all residuals expressions that come from [`Effect::Forbid`] policies
-    fn all_forbid_residuals(&'_ self) -> impl Iterator<Item = PolicyPrototype<'_>> {
+    fn all_forbid_residuals(&'_ self) -> impl Iterator<Item = PolicyComponents<'_>> {
         let trues = self
             .satisfied_forbids
             .iter()
@@ -254,33 +274,34 @@ impl PartialResponse {
     }
 
     /// Return the residual for a given [`PolicyID`], if it exists in the response
-    pub fn get(&self, id: &PolicyID) -> Option<&Expr> {
-        self.get_true(id)
-            .or_else(|| self.get_false(id).or_else(|| self.get_residual(id)))
+    pub fn get(&self, id: &PolicyID) -> Option<Policy> {
+        self.get_permit(id).or_else(|| self.get_forbid(id))
     }
 
-    /// Get a policy that evaluated to a true residual, if it did so
-    fn get_true(&self, id: &PolicyID) -> Option<&Expr> {
-        self.satisfied_permits
-            .get(id)
-            .or_else(|| self.satisfied_forbids.get(id))
-            .map(|_| self.true_expr.as_ref())
-    }
-
-    /// Get a policy that evaluated to a false residual, if it did so
-    fn get_false(&self, id: &PolicyID) -> Option<&Expr> {
-        self.false_permits
-            .get(id)
-            .or_else(|| self.false_forbids.get(id))
-            .map(|_| self.false_expr.as_ref())
-    }
-
-    /// Get a policy that evaluated to a non-trivial residual, if it did so
-    fn get_residual(&self, id: &PolicyID) -> Option<&Expr> {
+    fn get_permit(&self, id: &PolicyID) -> Option<Policy> {
         self.residual_permits
             .get(id)
-            .or_else(|| self.residual_forbids.get(id))
-            .map(|(r, _)| r.as_ref())
+            .map(|(a, b)| (a, b))
+            .or_else(|| self.satisfied_permits.get(id).map(|a| (&self.true_expr, a)))
+            .or_else(|| {
+                self.false_permits
+                    .get(id)
+                    .map(|(_, a)| (&self.false_expr, a))
+            })
+            .map(|(expr, a)| construct_policy((Effect::Permit, id, expr, a)))
+    }
+
+    fn get_forbid(&self, id: &PolicyID) -> Option<Policy> {
+        self.residual_forbids
+            .get(id)
+            .map(|(a, b)| (a, b))
+            .or_else(|| self.satisfied_forbids.get(id).map(|a| (&self.true_expr, a)))
+            .or_else(|| {
+                self.false_forbids
+                    .get(id)
+                    .map(|(_, a)| (&self.false_expr, a))
+            })
+            .map(|(expr, a)| construct_policy((Effect::Forbid, id, expr, a)))
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
@@ -329,15 +350,21 @@ impl From<PartialResponse> for Response {
         };
         Response::new(
             decision,
-            p.must_be_determining().cloned().collect(),
+            p.must_be_determining().map(|p| p.id().clone()).collect(),
             p.errors().collect(),
         )
     }
 }
 
-/// Build a policy from a policy prototype
-fn construct_policy((effect, id, expr, annotations): PolicyPrototype<'_>) -> Policy {
-    Policy::from_when_clause_annos(effect, expr.clone(), id.clone(), (*annotations).clone())
+/// Build a policy from a policy components
+fn construct_policy((effect, id, expr, annotations): PolicyComponents<'_>) -> Policy {
+    Policy::from_when_clause_annos(
+        effect,
+        expr.clone(),
+        id.clone(),
+        expr.source_loc().cloned(),
+        (*annotations).clone(),
+    )
 }
 
 /// Given a mapping from unknown names to values and a policy prototype
@@ -345,12 +372,13 @@ fn construct_policy((effect, id, expr, annotations): PolicyPrototype<'_>) -> Pol
 /// Curried for convenience
 fn map_unknowns<'a>(
     mapping: &'a HashMap<SmolStr, Value>,
-) -> impl Fn(PolicyPrototype<'a>) -> Policy {
+) -> impl Fn(PolicyComponents<'a>) -> Policy {
     |(effect, id, expr, annotations)| {
         Policy::from_when_clause_annos(
             effect,
             Arc::new(expr.substitute(mapping)),
             id.clone(),
+            expr.source_loc().cloned(),
             annotations.clone(),
         )
     }
@@ -364,11 +392,6 @@ fn did_error<'a>(
         ErrorState::NoError => None,
         ErrorState::Error => Some(id),
     }
-}
-
-/// Extract the first element from a tuple
-fn first<A, B>(p: (A, B)) -> A {
-    p.0
 }
 
 #[cfg(test)]
@@ -467,116 +490,106 @@ mod test {
         ));
         let errs = empty();
         let pr = PartialResponse::new(a, bc, d, e, fg, h, errs);
+
+        let a = Policy::from_when_clause(
+            Effect::Permit,
+            Expr::val(true),
+            PolicyID::from_string("a"),
+            None,
+        );
+        let b = Policy::from_when_clause(
+            Effect::Permit,
+            Expr::val(false),
+            PolicyID::from_string("b"),
+            None,
+        );
+        let c = Policy::from_when_clause(
+            Effect::Permit,
+            Expr::val(false),
+            PolicyID::from_string("c"),
+            None,
+        );
+        let d = Policy::from_when_clause_annos(
+            Effect::Permit,
+            one_plus_two.clone(),
+            PolicyID::from_string("d"),
+            None,
+            Arc::default(),
+        );
+        let e = Policy::from_when_clause(
+            Effect::Forbid,
+            Expr::val(true),
+            PolicyID::from_string("e"),
+            None,
+        );
+        let f = Policy::from_when_clause(
+            Effect::Forbid,
+            Expr::val(false),
+            PolicyID::from_string("f"),
+            None,
+        );
+        let g = Policy::from_when_clause(
+            Effect::Forbid,
+            Expr::val(false),
+            PolicyID::from_string("g"),
+            None,
+        );
+        let h = Policy::from_when_clause_annos(
+            Effect::Forbid,
+            three_plus_four.clone(),
+            PolicyID::from_string("h"),
+            None,
+            Arc::default(),
+        );
+
         assert_eq!(
-            pr.definitely_satisfied_permits().collect::<HashSet<_>>(),
-            HashSet::from([&PolicyID::from_string("a")])
+            pr.definitely_satisfied_permits().collect::<SlowSet<_>>(),
+            SlowSet::from([a.clone()])
         );
         assert_eq!(
-            pr.definitely_satisfied_forbids().collect::<HashSet<_>>(),
-            HashSet::from([&PolicyID::from_string("e")])
+            pr.definitely_satisfied_forbids().collect::<SlowSet<_>>(),
+            SlowSet::from([e.clone()])
         );
         assert_eq!(
-            pr.definitely_satisfied().collect::<HashSet<_>>(),
-            HashSet::from([&PolicyID::from_string("a"), &PolicyID::from_string("e")])
+            pr.definitely_satisfied().collect::<SlowSet<_>>(),
+            SlowSet::from([a.clone(), e.clone()])
         );
         assert_eq!(
             pr.definitely_errored().collect::<HashSet<_>>(),
             HashSet::from([&PolicyID::from_string("b"), &PolicyID::from_string("f")])
         );
         assert_eq!(
-            pr.may_be_determining().collect::<HashSet<_>>(),
-            HashSet::from([&PolicyID::from_string("e"), &PolicyID::from_string("h")])
+            pr.may_be_determining().collect::<SlowSet<_>>(),
+            SlowSet::from([e.clone(), h.clone()])
         );
         assert_eq!(
-            pr.must_be_determining().collect::<HashSet<_>>(),
-            HashSet::from([&PolicyID::from_string("e")])
+            pr.must_be_determining().collect::<SlowSet<_>>(),
+            SlowSet::from([e.clone()])
         );
         assert_eq!(pr.nontrivial_residuals().count(), 2);
 
         assert_eq!(
+            pr.nontrivial_residuals().collect::<SlowSet<_>>(),
+            SlowSet::from([d.clone(), h.clone()])
+        );
+        assert_eq!(
             pr.all_residuals().collect::<SlowSet<_>>(),
-            SlowSet::from([
-                Policy::from_when_clause(
-                    Effect::Permit,
-                    Expr::val(true),
-                    PolicyID::from_string("a")
-                ),
-                Policy::from_when_clause(
-                    Effect::Permit,
-                    Expr::val(false),
-                    PolicyID::from_string("b")
-                ),
-                Policy::from_when_clause(
-                    Effect::Permit,
-                    Expr::val(false),
-                    PolicyID::from_string("c")
-                ),
-                Policy::from_when_clause_annos(
-                    Effect::Permit,
-                    one_plus_two.clone(),
-                    PolicyID::from_string("d"),
-                    Arc::default()
-                ),
-                Policy::from_when_clause(
-                    Effect::Forbid,
-                    Expr::val(true),
-                    PolicyID::from_string("e")
-                ),
-                Policy::from_when_clause(
-                    Effect::Forbid,
-                    Expr::val(false),
-                    PolicyID::from_string("f")
-                ),
-                Policy::from_when_clause(
-                    Effect::Forbid,
-                    Expr::val(false),
-                    PolicyID::from_string("g")
-                ),
-                Policy::from_when_clause_annos(
-                    Effect::Forbid,
-                    three_plus_four.clone(),
-                    PolicyID::from_string("h"),
-                    Arc::default()
-                ),
-            ])
+            SlowSet::from([&a, &b, &c, &d, &e, &f, &g, &h].into_iter().cloned())
         );
         assert_eq!(
             pr.nontrivial_residual_ids().collect::<HashSet<_>>(),
             HashSet::from([&PolicyID::from_string("d"), &PolicyID::from_string("h")])
         );
 
-        assert_eq!(
-            pr.nontrivial_residuals().collect::<SlowSet<_>>(),
-            SlowSet::from([
-                Policy::from_when_clause_annos(
-                    Effect::Permit,
-                    one_plus_two.clone(),
-                    PolicyID::from_string("d"),
-                    Arc::default()
-                ),
-                Policy::from_when_clause_annos(
-                    Effect::Forbid,
-                    three_plus_four.clone(),
-                    PolicyID::from_string("h"),
-                    Arc::default()
-                ),
-            ])
-        );
-
-        assert_eq!(pr.get(&PolicyID::from_string("a")), Some(&Expr::val(true)));
-        assert_eq!(pr.get(&PolicyID::from_string("b")), Some(&Expr::val(false)));
-        assert_eq!(pr.get(&PolicyID::from_string("c")), Some(&Expr::val(false)));
-        assert_eq!(
-            pr.get(&PolicyID::from_string("d")),
-            Some(&Expr::add(Expr::val(1), Expr::val(2)))
-        );
-        assert_eq!(pr.get(&PolicyID::from_string("e")), Some(&Expr::val(true)));
-        assert_eq!(pr.get(&PolicyID::from_string("f")), Some(&Expr::val(false)));
-        assert_eq!(pr.get(&PolicyID::from_string("g")), Some(&Expr::val(false)));
-        assert_eq!(
-            pr.get(&PolicyID::from_string("h")),
-            Some(&Expr::add(Expr::val(3), Expr::val(4)))
-        );
+        assert_eq!(pr.get(&PolicyID::from_string("a")), Some(a));
+        assert_eq!(pr.get(&PolicyID::from_string("b")), Some(b));
+        assert_eq!(pr.get(&PolicyID::from_string("c")), Some(c));
+        assert_eq!(pr.get(&PolicyID::from_string("d")), Some(d));
+        assert_eq!(pr.get(&PolicyID::from_string("e")), Some(e));
+        assert_eq!(pr.get(&PolicyID::from_string("f")), Some(f));
+        assert_eq!(pr.get(&PolicyID::from_string("g")), Some(g));
+        assert_eq!(pr.get(&PolicyID::from_string("h")), Some(h));
+        assert_eq!(pr.get(&PolicyID::from_string("i")), None);
     }
 
     #[test]
