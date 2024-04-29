@@ -45,10 +45,10 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-pub(crate) use namespace_def::is_action_entity_type;
 pub use namespace_def::ValidatorNamespaceDef;
 #[cfg(test)]
 pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
+pub(crate) use namespace_def::{is_action_entity_type, CommonTypeResolver};
 
 // We do not have a formal model for action attributes, so we disable them by default.
 #[derive(Eq, PartialEq, Copy, Clone, Default)]
@@ -86,7 +86,6 @@ impl ValidatorSchemaFragment {
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
-        let fragment = fragment.resolve_common_types()?;
         Ok(Self(
             fragment
                 .0
@@ -252,6 +251,9 @@ impl ValidatorSchema {
                 };
             }
         }
+
+        let resolver = CommonTypeResolver::new(&type_defs);
+        let type_defs = resolver.resolve()?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.

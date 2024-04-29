@@ -32,7 +32,7 @@ use crate::{
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
-    HumanSchemaError, Result, SchemaError,
+    HumanSchemaError, Result,
 };
 
 #[cfg(feature = "wasm")]
@@ -52,16 +52,6 @@ pub struct SchemaFragment(
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
     pub HashMap<Option<Name>, NamespaceDefinition>,
 );
-
-impl SchemaFragment {
-    /// Resolve common types in the schema
-    pub(crate) fn resolve_common_types(self) -> Result<Self> {
-        let mut schema = self.clone();
-        let mut resolver = CommonTypeResolver::new(&mut schema);
-        resolver.resolve()?;
-        Ok(schema)
-    }
-}
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
 fn deserialize_schema_fragment<'de, D>(
@@ -139,197 +129,6 @@ impl SchemaFragment {
     pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaStrError> {
         let src = human_schema::json_schema_to_custom_schema_str(self)?;
         Ok(src)
-    }
-}
-
-/// A common type reference resolver
-#[derive(Debug)]
-pub(crate) struct CommonTypeResolver<'a> {
-    /// The `SchemaFragment` to resolve
-    schema: &'a mut SchemaFragment,
-    /// The dependency graph among common type names
-    /// A common type name is prefixed with the namespace id where it's declared
-    graph: HashMap<Name, HashSet<Name>>,
-}
-
-impl<'a> CommonTypeResolver<'a> {
-    /// Construct a the resolver
-    pub(crate) fn new(schema: &'a mut SchemaFragment) -> Self {
-        let mut graph = HashMap::new();
-        for (ns, def) in schema.0.iter() {
-            for (ty_name, ty) in def.common_types.iter() {
-                let name = Name::from(ty_name.clone()).prefix_namespace_if_unqualified(ns.clone());
-                graph.insert(name, HashSet::from_iter(ty.common_type_references()));
-            }
-        }
-        Self { schema, graph }
-    }
-
-    /// Perform topological sort on the dependency graph
-    /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
-    /// depends on `B`)
-    /// topo_sort(A -> B -> C) produces [C, B, A]
-    /// If there is a cycle, a type name involving in this cycle is the error
-    /// It implements a variant of Kahn's algorithm
-    fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
-        // The in-degree map
-        // Note that the keys of this map may be a superset of all common type
-        // names
-        let mut indegrees: HashMap<&Name, usize> = HashMap::new();
-        for (ty_name, deps) in self.graph.iter() {
-            // Ensure that declared common types have values in `indegrees`
-            indegrees.entry(ty_name).or_insert(0);
-            for dep in deps {
-                match indegrees.entry(dep) {
-                    std::collections::hash_map::Entry::Occupied(mut o) => {
-                        o.insert(o.get() + 1);
-                    }
-                    std::collections::hash_map::Entry::Vacant(v) => {
-                        v.insert(1);
-                    }
-                }
-            }
-        }
-
-        // The set that contains type names with zero coming edges
-        let mut work_set: HashSet<&Name> = HashSet::new();
-        let mut res: Vec<Name> = Vec::new();
-
-        // Find all type names with zero in coming edges
-        for (name, degree) in indegrees.iter() {
-            let name = *name;
-            if *degree == 0 {
-                work_set.insert(name);
-                // The result only contains *declared* type names
-                if self.graph.contains_key(name) {
-                    res.push(name.clone());
-                }
-            }
-        }
-
-        // Pop a node
-        while let Some(name) = work_set.iter().next().cloned() {
-            work_set.remove(name);
-            if let Some(deps) = self.graph.get(name) {
-                for dep in deps {
-                    if let Some(degree) = indegrees.get_mut(dep) {
-                        // There will not be any underflows here because
-                        // in order for the in-degree to underflow, `dep`'s
-                        // in-degree must be 0 at this point
-                        // The only possibility where a node's in-degree
-                        // becomes 0 is through the subtraction below, which
-                        // means it has been visited and hence has 0 in-degrees
-                        // In other words, all its in-coming edges have been
-                        // "removed" and hence contradicts with the fact that
-                        // one of them is being "removed"
-                        *degree -= 1;
-                        if *degree == 0 {
-                            work_set.insert(dep);
-                            if self.graph.contains_key(dep) {
-                                res.push(dep.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // The set of nodes that have not been added to the result
-        // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&Name> = HashSet::from_iter(self.graph.keys().clone());
-        for name in res.iter() {
-            set.remove(name);
-        }
-
-        if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.clone())
-        } else {
-            // We need to reverse the result because, e.g.,
-            // `res` is now [A,B,C] for A -> B -> C because no one depends on A
-            res.reverse();
-            Ok(res)
-        }
-    }
-
-    // Substitute common type references in `ty` according to `resolve_table`
-    fn resolve_type(
-        resolve_table: &HashMap<&Name, SchemaType>,
-        ty: SchemaType,
-        ns: &Option<Name>,
-    ) -> Result<SchemaType> {
-        match ty {
-            SchemaType::TypeDef { type_name } => {
-                let name = if type_name.is_unqualified() {
-                    type_name.prefix_namespace_if_unqualified(ns.clone())
-                } else {
-                    type_name.clone()
-                };
-                resolve_table
-                    .get(&name)
-                    .ok_or(SchemaError::UndeclaredCommonTypes(HashSet::from_iter(
-                        std::iter::once(name.to_string()),
-                    )))
-                    .cloned()
-            }
-            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
-                Ok(SchemaType::Type(SchemaTypeVariant::Set {
-                    element: Box::new(Self::resolve_type(resolve_table, *element, ns)?),
-                }))
-            }
-            SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes,
-            }) => Ok(SchemaType::Type(SchemaTypeVariant::Record {
-                attributes: BTreeMap::from_iter(
-                    attributes
-                        .into_iter()
-                        .map(|(attr, attr_ty)| {
-                            Ok((
-                                attr,
-                                TypeOfAttribute {
-                                    required: attr_ty.required,
-                                    ty: Self::resolve_type(resolve_table, attr_ty.ty, ns)?,
-                                },
-                            ))
-                        })
-                        .collect::<Result<Vec<(_, _)>>>()?,
-                ),
-                additional_attributes,
-            })),
-            _ => Ok(ty),
-        }
-    }
-
-    // Resolve common type references in `self.schema`
-    pub(crate) fn resolve(&mut self) -> Result<()> {
-        let sorted_names = self
-            .topo_sort()
-            .map_err(|name| SchemaError::CycleInCommonTypeReferences(name))?;
-
-        let mut resolve_table = HashMap::new();
-
-        for name in sorted_names.iter() {
-            let ns: Option<Name> = if name.is_unqualified() {
-                None
-            } else {
-                // PANIC SAFETY: The namespace of qualified names should be a valid name
-                #[allow(clippy::unwrap_used)]
-                Some(name.namespace().parse().unwrap())
-            };
-
-            // PANIC SAFETY: `ns` should be an existing namespace name
-            #[allow(clippy::unwrap_used)]
-            let common_types = &mut self.schema.0.get_mut(&ns).unwrap().common_types;
-
-            // PANIC SAFETY: `name.basename()` should be an existing common type id
-            #[allow(clippy::unwrap_used)]
-            let ty = common_types.get(name.basename()).unwrap();
-            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &ns)?;
-            resolve_table.insert(name, substituted_ty.clone());
-            common_types.insert(name.basename().clone(), substituted_ty);
-        }
-
-        Ok(())
     }
 }
 
@@ -523,6 +322,35 @@ impl SchemaType {
             }
             SchemaType::TypeDef { type_name } => Box::new(std::iter::once(type_name.clone())),
             _ => Box::new(std::iter::empty()),
+        }
+    }
+
+    pub(crate) fn prefix_namespace_if_unqualified(self, ns: Option<Name>) -> SchemaType {
+        match self {
+            Self::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => Self::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(attributes.into_iter().map(
+                    |(attr, TypeOfAttribute { ty, required })| {
+                        (
+                            attr,
+                            TypeOfAttribute {
+                                ty: ty.prefix_namespace_if_unqualified(ns.clone()),
+                                required,
+                            },
+                        )
+                    },
+                )),
+                additional_attributes,
+            }),
+            Self::Type(SchemaTypeVariant::Set { element }) => Self::Type(SchemaTypeVariant::Set {
+                element: Box::new(element.prefix_namespace_if_unqualified(ns)),
+            }),
+            Self::TypeDef { type_name } => Self::TypeDef {
+                type_name: type_name.prefix_namespace_if_unqualified(ns),
+            },
+            _ => self,
         }
     }
 }
@@ -1871,179 +1699,5 @@ mod test_duplicates_error {
             }
         }"#;
         serde_json::from_str::<SchemaFragment>(src).unwrap();
-    }
-}
-
-#[cfg(test)]
-mod test_resolver {
-    use std::collections::{BTreeMap, HashMap};
-
-    use crate::{CommonTypeResolver, SchemaFragment, SchemaType, TypeOfAttribute};
-
-    #[test]
-    fn test_simple() {
-        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
-            {
-                "": {
-                    "entityTypes": {},
-                    "actions": {},
-                    "commonTypes": {
-                        "a" : {
-                            "type": "b"
-                        },
-                        "b": {
-                            "type": "Boolean"
-                        }
-                    }
-                }
-            }
-        ))
-        .unwrap();
-        let mut resolver = CommonTypeResolver::new(&mut schema);
-        let _ = resolver.resolve().unwrap();
-        assert_eq!(
-            resolver.schema.0[&None].common_types,
-            HashMap::from_iter([
-                (
-                    "a".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                ),
-                (
-                    "b".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                )
-            ])
-        );
-
-        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
-            {
-                "": {
-                    "entityTypes": {},
-                    "actions": {},
-                    "commonTypes": {
-                        "a" : {
-                            "type": "b"
-                        },
-                        "b": {
-                            "type": "c"
-                        },
-                        "c": {
-                            "type": "Boolean"
-                        }
-                    }
-                }
-            }
-        ))
-        .unwrap();
-        let mut resolver = CommonTypeResolver::new(&mut schema);
-        let _ = resolver.resolve().unwrap();
-        assert_eq!(
-            resolver.schema.0[&None].common_types,
-            HashMap::from_iter([
-                (
-                    "a".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                ),
-                (
-                    "b".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                ),
-                (
-                    "c".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                )
-            ])
-        );
-    }
-
-    #[test]
-    fn test_set() {
-        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
-            {
-                "": {
-                    "entityTypes": {},
-                    "actions": {},
-                    "commonTypes": {
-                        "a" : {
-                            "type": "Set",
-                            "element": {
-                                "type": "b"
-                            }
-                        },
-                        "b": {
-                            "type": "Boolean"
-                        }
-                    }
-                }
-            }
-        ))
-        .unwrap();
-        let mut resolver = CommonTypeResolver::new(&mut schema);
-        let _ = resolver.resolve().unwrap();
-        assert_eq!(
-            resolver.schema.0[&None].common_types,
-            HashMap::from_iter([
-                (
-                    "a".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Set {
-                        element: Box::new(SchemaType::Type(crate::SchemaTypeVariant::Boolean))
-                    })
-                ),
-                (
-                    "b".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                )
-            ])
-        );
-    }
-
-    #[test]
-    fn test_record() {
-        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
-            {
-                "": {
-                    "entityTypes": {},
-                    "actions": {},
-                    "commonTypes": {
-                        "a" : {
-                            "type": "Record",
-                            "attributes": {
-                                "foo": {
-                                    "type": "b"
-                                }
-                            }
-                        },
-                        "b": {
-                            "type": "Boolean"
-                        }
-                    }
-                }
-            }
-        ))
-        .unwrap();
-        let mut resolver = CommonTypeResolver::new(&mut schema);
-        let _ = resolver.resolve().unwrap();
-        assert_eq!(
-            resolver.schema.0[&None].common_types,
-            HashMap::from_iter([
-                (
-                    "a".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Record {
-                        attributes: BTreeMap::from_iter([(
-                            "foo".into(),
-                            TypeOfAttribute {
-                                ty: SchemaType::Type(crate::SchemaTypeVariant::Boolean),
-                                required: true
-                            }
-                        )]),
-                        additional_attributes: false
-                    })
-                ),
-                (
-                    "b".parse().unwrap(),
-                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
-                )
-            ])
-        );
     }
 }
