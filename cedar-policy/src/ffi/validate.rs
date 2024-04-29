@@ -171,7 +171,6 @@ pub struct ValidationError {
     /// Error (or warning) itself.
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
-    #[serde(flatten)]
     pub error: DetailedError,
 }
 
