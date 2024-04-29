@@ -148,7 +148,7 @@ pub struct Response {
 }
 
 /// Interface version of `Diagnostics` that stores error messages and warnings
-/// in the miette JSON format
+/// in the `DetailedError` format
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -220,11 +220,13 @@ impl Diagnostics {
 
 /// Error (or warning) which occurred in a particular policy during authorization
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
-    #[serde(rename = "policyId")]
     pub policy_id: SmolStr,
-    /// Error (or warning) in miette JSON format.
+    /// Error (or warning).
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
     pub error: DetailedError,
@@ -269,6 +271,8 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct ResidualResponse {
     decision: Option<Decision>,
@@ -402,7 +406,9 @@ pub enum AuthorizationAnswer {
 /// Answer struct from partial-authorization call
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely

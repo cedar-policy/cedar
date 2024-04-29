@@ -20,6 +20,7 @@
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
+use smol_str::{SmolStr, ToSmolStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -40,13 +41,13 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .into_errors_and_warnings();
             let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_string(),
+                    policy_id: error.location().policy_id().to_smolstr(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
             let validation_warnings: Vec<ValidationError> = validation_warnings
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_string(),
+                    policy_id: error.location().policy_id().to_smolstr(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
@@ -86,13 +87,14 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationCall {
+    /// Validation settings
     #[serde(default)]
-    #[serde(rename = "validationSettings")]
-    validation_settings: ValidationSettings,
+    pub validation_settings: ValidationSettings,
+    /// Schema to use for validation
     #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
-    schema: Schema,
-    #[serde(rename = "policySet")]
-    policy_set: PolicySet,
+    pub schema: Schema,
+    /// Policies to validate
+    pub policy_set: PolicySet,
 }
 
 impl ValidationCall {
@@ -165,7 +167,7 @@ impl Default for ValidationEnabled {
 #[serde(rename_all = "camelCase")]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
-    pub policy_id: String,
+    pub policy_id: SmolStr,
     /// Error (or warning) itself.
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
