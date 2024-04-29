@@ -43,7 +43,8 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    AttributeAccess, UnexpectedTypeHelp, ValidationMode, ValidationWarning, ValidationWarningKind,
+    AttributeAccess, LubContext, UnexpectedTypeHelp, ValidationMode, ValidationWarning,
+    ValidationWarningKind,
 };
 
 use super::type_error::TypeError;
@@ -740,6 +741,7 @@ impl<'a> Typechecker<'a> {
                                     e,
                                     vec![typ_then.data().clone(), typ_else.data().clone()],
                                     type_errors,
+                                    LubContext::Conditional,
                                 );
                                 let has_lub = lub_ty.is_some();
                                 let annot_expr = ExprBuilder::with_data(lub_ty)
@@ -1000,7 +1002,11 @@ impl<'a> Typechecker<'a> {
                                 } else {
                                     type_errors.push(TypeError::unsafe_optional_attribute_access(
                                         e.clone(),
-                                        AttributeAccess::from_expr(request_env, &annot_expr),
+                                        AttributeAccess::from_expr(
+                                            request_env,
+                                            &typ_expr_actual,
+                                            attr.clone(),
+                                        ),
                                     ));
                                     TypecheckAnswer::fail(annot_expr)
                                 }
@@ -1024,7 +1030,11 @@ impl<'a> Typechecker<'a> {
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(TypeError::unsafe_attribute_access(
                                     e.clone(),
-                                    AttributeAccess::from_expr(request_env, &annot_expr),
+                                    AttributeAccess::from_expr(
+                                        request_env,
+                                        &typ_expr_actual,
+                                        attr.clone(),
+                                    ),
                                     suggestion,
                                     Type::may_have_attr(self.schema, typ_actual, attr),
                                 ));
@@ -1263,6 +1273,7 @@ impl<'a> Typechecker<'a> {
                         e,
                         elem_expr_types.iter().map(|ety| ety.data().clone()),
                         type_errors,
+                        LubContext::Set,
                     );
                     match elem_lub {
                         _ if self.mode.is_strict() && exprs.is_empty() => {
@@ -1380,6 +1391,7 @@ impl<'a> Typechecker<'a> {
                                 lhs_ty.data(),
                                 rhs_ty.data(),
                                 type_errors,
+                                LubContext::Equality,
                             )
                         } else {
                             TypecheckAnswer::success(
@@ -1509,6 +1521,7 @@ impl<'a> Typechecker<'a> {
                                     },
                                     expr_ty_arg2.data(),
                                     type_errors,
+                                    LubContext::Contains,
                                 )
                             } else {
                                 TypecheckAnswer::success(
@@ -1565,6 +1578,7 @@ impl<'a> Typechecker<'a> {
                                 expr_ty_arg1.data(),
                                 expr_ty_arg2.data(),
                                 type_errors,
+                                LubContext::ContainsAnyAll,
                             )
                         } else {
                             TypecheckAnswer::success(
@@ -1586,6 +1600,7 @@ impl<'a> Typechecker<'a> {
         lhs_ty: &Option<Type>,
         rhs_ty: &Option<Type>,
         type_errors: &mut Vec<TypeError>,
+        context: LubContext,
     ) -> TypecheckAnswer<'b> {
         match annotated_expr.data() {
             Some(Type::False) => {
@@ -1595,20 +1610,25 @@ impl<'a> Typechecker<'a> {
                 TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
             }
             _ => match (lhs_ty, rhs_ty) {
-                (Some(lhs_ty), Some(rhs_ty))
-                    if Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
-                        .is_none() =>
-                {
-                    type_errors.push(TypeError::incompatible_types(
-                        unannotated_expr.clone(),
-                        [lhs_ty.clone(), rhs_ty.clone()],
-                    ));
-                    TypecheckAnswer::fail(annotated_expr)
+                (Some(lhs_ty), Some(rhs_ty)) => {
+                    if let Err(lub_hint) =
+                        Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
+                    {
+                        type_errors.push(TypeError::incompatible_types(
+                            unannotated_expr.clone(),
+                            [lhs_ty.clone(), rhs_ty.clone()],
+                            lub_hint,
+                            context,
+                        ));
+                        TypecheckAnswer::fail(annotated_expr)
+                    } else {
+                        // We had `Some` type for lhs and rhs and these types
+                        // were compatible.
+                        TypecheckAnswer::success(annotated_expr)
+                    }
                 }
-                // Either we had `Some` type for lhs and rhs and these types
-                // were compatible, or we failed to a compute a type for either
-                // lhs or rhs, meaning we already failed typechecking for that
-                // expression.
+                // We failed to compute a type for either lhs or rhs, meaning
+                // we already failed typechecking for that expression.
                 _ => TypecheckAnswer::success(annotated_expr),
             },
         }
@@ -2375,6 +2395,7 @@ impl<'a> Typechecker<'a> {
         expr: &Expr,
         answers: impl IntoIterator<Item = Option<Type>>,
         type_errors: &mut Vec<TypeError>,
+        context: LubContext,
     ) -> Option<Type> {
         answers
             .into_iter()
@@ -2385,17 +2406,22 @@ impl<'a> Typechecker<'a> {
             .and_then(|typechecked_types| {
                 let lub =
                     Type::reduce_to_least_upper_bound(self.schema, &typechecked_types, self.mode);
-                if lub.is_none() {
-                    // A type error is generated if we could not find a least
-                    // upper bound for the types. The computed least upper bound
-                    // will be None, so this function will correctly report this
-                    // as a failure.
-                    type_errors.push(TypeError::incompatible_types(
-                        expr.clone(),
-                        typechecked_types,
-                    ));
+                match lub {
+                    Err(lub_hint) => {
+                        // A type error is generated if we could not find a least
+                        // upper bound for the types. The computed least upper bound
+                        // will be None, so this function will correctly report this
+                        // as a failure.
+                        type_errors.push(TypeError::incompatible_types(
+                            expr.clone(),
+                            typechecked_types,
+                            lub_hint,
+                            context,
+                        ));
+                        None
+                    }
+                    Ok(lub) => Some(lub),
                 }
-                lub
             })
     }
 

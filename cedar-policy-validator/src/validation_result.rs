@@ -186,9 +186,9 @@ pub enum ValidationErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnrecognizedActionId(#[from] UnrecognizedActionId),
-    /// There is no action satisfying the action head constraint that can be
+    /// There is no action satisfying the action scope constraint that can be
     /// applied to a principal and resources that both satisfy their respective
-    /// head conditions.
+    /// scope conditions.
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] InvalidActionApplication),
@@ -288,7 +288,7 @@ impl Diagnostic for UnrecognizedActionId {
 
 /// Structure containing details about an invalid action application error.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("unable to find an applicable action given the policy head constraints")]
+#[error("unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
     pub(crate) would_in_fix_principal: bool,
     pub(crate) would_in_fix_resource: bool,

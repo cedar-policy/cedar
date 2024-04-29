@@ -19,7 +19,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{join_with_conjunction, Loc};
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
@@ -127,12 +127,19 @@ impl TypeError {
 
     /// Construct a type error for when a least upper bound cannot be found for
     /// a collection of types.
-    pub(crate) fn incompatible_types(on_expr: Expr, types: impl IntoIterator<Item = Type>) -> Self {
+    pub(crate) fn incompatible_types(
+        on_expr: Expr,
+        types: impl IntoIterator<Item = Type>,
+        hint: LubHelp,
+        context: LubContext,
+    ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
             kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
+                hint,
+                context,
             }),
         }
     }
@@ -241,7 +248,8 @@ pub enum TypeErrorKind {
     #[diagnostic(transparent)]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
-    #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
@@ -331,9 +339,48 @@ pub(crate) enum UnexpectedTypeHelp {
 }
 
 /// Structure containing details about an incompatible type error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
+#[diagnostic(help("{context} must have compatible types. {hint}"))]
 pub struct IncompatibleTypes {
     pub(crate) types: BTreeSet<Type>,
+    pub(crate) hint: LubHelp,
+    pub(crate) context: LubContext,
+}
+
+impl Display for IncompatibleTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the types ")?;
+        join_with_conjunction(f, "and", self.types.iter(), |f, t| write!(f, "{t}"))?;
+        write!(f, " are not compatible")
+    }
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubHelp {
+    #[error("Corresponding attributes of compatible record types must have the same optionality, either both being required or both being optional")]
+    AttributeQualifier,
+    #[error("Compatible record types must have exactly the same attributes")]
+    RecordWidth,
+    #[error("Different entity types are never compatible even when their attributes would be compatible")]
+    EntityType,
+    #[error("Entity and record types are never compatible even when their attributes would be compatible")]
+    EntityRecord,
+    #[error("Types must be exactly equal to be compatible")]
+    None,
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubContext {
+    #[error("elements of a set")]
+    Set,
+    #[error("both branches of a conditional")]
+    Conditional,
+    #[error("both operands to a `==` expression")]
+    Equality,
+    #[error("elements of the first operand and the second operand to a `contains` expression")]
+    Contains,
+    #[error("elements of both set operands to a `containsAll` or `containsAny` expression")]
+    ContainsAnyAll,
 }
 
 /// Structure containing details about a missing attribute error.
@@ -440,11 +487,13 @@ pub(crate) enum AttributeAccess {
 }
 
 impl AttributeAccess {
+    /// Construct an `AttributeAccess` access from a `GetAttr` expression `expr.attr`.
     pub(crate) fn from_expr(
         req_env: &RequestEnv,
         mut expr: &Expr<Option<Type>>,
+        attr: SmolStr,
     ) -> AttributeAccess {
-        let mut attrs: Vec<SmolStr> = Vec::new();
+        let mut attrs: Vec<SmolStr> = vec![attr];
         loop {
             if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
@@ -525,7 +574,7 @@ impl Display for AttributeAccess {
 // optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
 mod test_attr_access {
-    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, Var};
+    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Var};
 
     use crate::{
         types::{OpenTag, RequestEnv, Type},
@@ -548,7 +597,11 @@ mod test_attr_access {
             resource_slot: None,
         };
 
-        let access = AttributeAccess::from_expr(&env, attr_access);
+        let ExprKind::GetAttr { expr, attr } = attr_access.expr_kind() else {
+            panic!("Can only test `AttributeAccess::from_expr` for `GetAttr` expressions");
+        };
+
+        let access = AttributeAccess::from_expr(&env, expr, attr.clone());
         assert_eq!(
             access.to_string().as_str(),
             msg.as_ref(),
@@ -601,6 +654,21 @@ mod test_attr_access {
             "`foo.bar.baz` for entity type User",
             "e.foo.bar has baz",
         );
+    }
+
+    #[test]
+    fn entity_type_attr_access() {
+        let e = ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("Thing")))
+            .get_attr(
+                ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("User")))
+                    .var(Var::Principal),
+                "thing".into(),
+            );
+        assert_message_and_help(&e, "`thing` for entity type User", "e has thing");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`bar` for entity type Thing", "e has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(&e, "`bar.baz` for entity type Thing", "e.bar has baz");
     }
 
     #[test]

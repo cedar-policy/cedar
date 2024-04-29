@@ -40,6 +40,10 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .validation_errors()
                 .map(|error| ValidationError {
                     policy_id: error.location().policy_id().to_string(),
+                    source_location: error
+                        .location()
+                        .range_start_and_end()
+                        .map(|(start, end)| SourceLocation { start, end }),
                     error: format!("{}", error.error_kind()),
                 })
                 .collect();
@@ -47,6 +51,10 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .validation_warnings()
                 .map(|error| ValidationWarning {
                     policy_id: error.location().policy_id().to_string(),
+                    source_location: error
+                        .location()
+                        .range_start_and_end()
+                        .map(|(start, end)| SourceLocation { start, end }),
                     warning: format!("{}", error.warning_kind()),
                 })
                 .collect();
@@ -81,6 +89,7 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
@@ -121,7 +130,7 @@ impl ValidationCall {
 #[derive(Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-/// Configuration for the validation call
+#[serde(rename_all = "camelCase")]
 pub struct ValidationSettings {
     /// Whether validation is enabled
     enabled: ValidationEnabled,
@@ -131,6 +140,7 @@ pub struct ValidationSettings {
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum ValidationEnabled {
     /// Setting for which policies will be validated against the schema
     #[serde(rename = "on")]
@@ -147,13 +157,24 @@ impl Default for ValidationEnabled {
     }
 }
 
+/// A range of source code denoted by an offset and length.
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct SourceLocation {
+    start: usize,
+    end: usize,
+}
+
 /// Error for a specified policy after validation
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationError {
-    #[serde(rename = "policyId")]
     policy_id: String,
+    /// Represents a location in Cedar policy source.
+    source_location: Option<SourceLocation>,
     error: String,
 }
 
@@ -161,15 +182,18 @@ pub struct ValidationError {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationWarning {
-    #[serde(rename = "policyId")]
     policy_id: String,
+    /// Represents a location in Cedar policy source.
+    source_location: Option<SourceLocation>,
     warning: String,
 }
 
 /// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
+#[serde(rename_all = "camelCase")]
 pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
     Failure {

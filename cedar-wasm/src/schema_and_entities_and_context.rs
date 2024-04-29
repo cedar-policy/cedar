@@ -22,21 +22,22 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result for the syntax validation function
 pub enum CheckParseResult {
     /// represents successful syntax validation
     Success,
     /// represents a syntax error and encloses a vector of the errors
-    SyntaxError { errors: Vec<String> },
+    Error { errors: Vec<String> },
 }
 
 #[wasm_bindgen(js_name = "checkParseSchema")]
 pub fn check_parse_schema(input_schema: &str) -> CheckParseResult {
     match Schema::from_str(input_schema) {
         Ok(_schema) => CheckParseResult::Success,
-        Err(err) => CheckParseResult::SyntaxError {
+        Err(err) => CheckParseResult::Error {
             errors: vec![err.to_string()],
         },
     }
@@ -47,14 +48,14 @@ pub fn check_parse_entities(entities_str: &str, schema_str: &str) -> CheckParseR
     let parsed_schema = match Schema::from_str(schema_str) {
         Ok(schema) => schema,
         Err(err) => {
-            return CheckParseResult::SyntaxError {
+            return CheckParseResult::Error {
                 errors: vec![err.to_string()],
             }
         }
     };
     match Entities::from_json_str(entities_str, Some(&parsed_schema)) {
         Ok(_) => CheckParseResult::Success,
-        Err(err) => CheckParseResult::SyntaxError {
+        Err(err) => CheckParseResult::Error {
             errors: vec![err.to_string()],
         },
     }
@@ -69,7 +70,7 @@ pub fn check_parse_context(
     let parsed_schema = match Schema::from_str(schema_str) {
         Ok(schema) => schema,
         Err(err) => {
-            return CheckParseResult::SyntaxError {
+            return CheckParseResult::Error {
                 errors: vec![err.to_string()],
             }
         }
@@ -77,14 +78,14 @@ pub fn check_parse_context(
     let parsed_action = match EntityUid::from_str(action_str) {
         Ok(action) => action,
         Err(err) => {
-            return CheckParseResult::SyntaxError {
+            return CheckParseResult::Error {
                 errors: vec![err.to_string()],
             }
         }
     };
     match Context::from_json_str(context_str, Some((&parsed_schema, &parsed_action))) {
         Ok(_entities) => CheckParseResult::Success,
-        Err(err) => CheckParseResult::SyntaxError {
+        Err(err) => CheckParseResult::Error {
             errors: vec![err.to_string()],
         },
     }
@@ -259,7 +260,7 @@ mod test {
     fn assert_syntax_result_has_errors(parse_result: &CheckParseResult) {
         assert!(matches!(
             parse_result,
-            CheckParseResult::SyntaxError { errors: _ }
+            CheckParseResult::Error { errors: _ }
         ))
     }
 }
