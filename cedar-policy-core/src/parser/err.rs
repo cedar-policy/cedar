@@ -180,7 +180,7 @@ pub enum ToASTErrorKind {
     #[error("this policy is missing the `{0}` variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra head constraint in the scope: `{0}`")]
+    #[error("this policy has an extra constraint in the scope: `{0}`")]
     #[diagnostic(help(
         "a policy must have exactly `principal`, `action`, and `resource` constraints"
     ))]
