@@ -24,11 +24,6 @@ use std::{collections::HashMap, str::FromStr};
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-thread_local!(
-    /// miette JSON report handler
-    static JSON_REPORT_HANDLER: miette::JSONReportHandler = miette::JSONReportHandler::new();
-);
-
 /// Structure of the JSON output representing one `miette` error
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

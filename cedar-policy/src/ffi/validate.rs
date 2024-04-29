@@ -338,7 +338,10 @@ mod test {
             }
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policy with id `policy0`: unexpected end of input",
+        );
     }
 
     #[test]
@@ -434,7 +437,10 @@ mod test {
             "policySet": "azfghbjknnhbud"
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policies from string: unexpected end of input",
+        );
     }
 
     #[test]
@@ -474,7 +480,10 @@ mod test {
             "policySet": "permit(principal, action, resource);forbid"
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policies from string: unexpected end of input",
+        );
     }
 
     #[test]
