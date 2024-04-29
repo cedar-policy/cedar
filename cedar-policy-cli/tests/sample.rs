@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -465,15 +465,20 @@ fn test_authorize_samples() {
     );
 }
 
+#[track_caller]
 fn run_validate_test(
     policies_file: impl Into<String>,
     schema_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.into();
+
+    // Run with JSON schema
     let cmd = ValidateArgs {
-        schema_file: schema_file.into(),
+        schema_file: schema_file.clone(),
         policies: PoliciesArgs {
-            policies_file: Some(policies_file.into()),
+            policies_file: Some(policies_file.clone()),
             policy_format: PolicyFormat::Human,
             template_linked_file: None,
         },
@@ -483,6 +488,24 @@ fn run_validate_test(
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
+
+    // Run with human schema
+    let cmd = ValidateArgs {
+        schema_file: schema_file
+            .strip_suffix(".json")
+            .expect("`schema_file` should be the JSON schema")
+            .to_string(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        partial_validate: false,
+        schema_format: SchemaFormat::Human,
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{:#?}", cmd)
 }
 
 #[test]
@@ -904,4 +927,97 @@ fn test_format_samples() {
     use glob::glob;
     let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
     ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
+}
+
+#[test]
+fn test_format_write() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    // See https://doc.rust-lang.org/cargo/reference/environment-variables.html for the
+    // CARGO_TARGET_TMPDIR environment variable.
+    let tmp_dir = env!("CARGO_TARGET_TMPDIR");
+    let unformatted_file = format!("{}/unformatted.cedar", tmp_dir);
+    std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
+    let original = std::fs::read_to_string(&unformatted_file).unwrap();
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_eq!(
+        original, formatted,
+        "original and formatted should be the same without -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .arg("-w")
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_ne!(
+        original, formatted,
+        "original and formatted should differ under -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+}
+
+#[test]
+fn test_format_check() {
+    const POLICY_REQUIRING_FORMAT: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    const POLICY_ALREADY_FORMATTED: &str = "sample-data/tiny_sandboxes/format/formatted.cedar";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_REQUIRING_FORMAT)
+        .arg("-c")
+        .assert()
+        .code(1);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_ALREADY_FORMATTED)
+        .arg("-c")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_write_check_are_mutually_exclusive() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&POLICY_SOURCE)
+        .arg("-w")
+        .arg("-c")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the argument '--write' cannot be used with '--check'",
+        ));
+}
+
+#[test]
+fn test_require_policies_for_write() {
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-w")
+        .write_stdin("permit (principal, action, resource);")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the following required arguments were not provided:\n  --policies <FILE>",
+        ));
 }

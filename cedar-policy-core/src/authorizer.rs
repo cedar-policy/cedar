@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -261,6 +261,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             e,
             PrincipalConstraint::any(),
@@ -275,6 +276,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
+            None,
             Annotations::new(),
             effect,
             PrincipalConstraint::any(),

@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #![cfg(test)]
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
@@ -897,6 +913,7 @@ mod policy_set_tests {
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
+            None,
         );
         let static_policy = Policy::from_ast(ast);
         let mut pset = PolicySet::new();
@@ -2966,7 +2983,7 @@ mod schema_based_parsing_tests {
         );
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
-        assert!(Entities::from_json_value(entitiesjson_tc.clone(), Some(&schema)).is_ok());
+        assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
         assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
 
         // Parsing will fail if the TC doesn't match
@@ -3392,7 +3409,7 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid.clone()), est_json);
+        let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
             Err(FromJsonError::SlotsInConditionClause {
@@ -3413,7 +3430,7 @@ mod issue_619 {
     fn issue_619() {
         let policy = Policy::parse(
             None,
-            r#"permit(principal, action, resource) when {1 * 2 * true};"#,
+            "permit(principal, action, resource) when {1 * 2 * true};",
         )
         .unwrap();
         let json = policy.to_json().unwrap();

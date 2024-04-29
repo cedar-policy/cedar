@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ mod expr;
 pub use expr::*;
 mod head_constraints;
 pub use head_constraints::*;
+mod policy_set;
+pub use policy_set::*;
 
 use crate::ast;
 use crate::entities::EntityUidJson;
@@ -246,6 +248,7 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
+            None,
             self.annotations
                 .into_iter()
                 .map(|(key, val)| (key, ast::Annotation { val, loc: None }))

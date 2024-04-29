@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 
 use crate::ast;
+use crate::ast::{LinkingError, PolicySetError};
 use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
@@ -80,6 +81,14 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
+    /// Error reported when a policy set has duplicate ids
+    #[error("Error creating policy set: {0}")]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error("Error linking policy set: {0}")]
+    #[diagnostic(transparent)]
+    Linking(#[from] LinkingError),
 }
 
 /// Errors while instantiating a policy

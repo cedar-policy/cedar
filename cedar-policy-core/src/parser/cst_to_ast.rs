@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -679,26 +679,22 @@ impl Node<Option<cst::VariableDef>> {
         }
 
         let action_constraint = if let Some((op, rel_expr)) = &vardef.ineq {
-            let refs = rel_expr.to_refs(errs, ast::Var::Action)?;
-            match (op, refs) {
-                (cst::RelOp::In, OneOrMultipleRefs::Multiple(euids)) => {
-                    Some(ActionConstraint::is_in(euids))
+            match op {
+                cst::RelOp::In => match rel_expr.to_refs(errs, ast::Var::Action)? {
+                    OneOrMultipleRefs::Single(single_ref) => {
+                        Some(ActionConstraint::is_in([single_ref]))
+                    }
+                    OneOrMultipleRefs::Multiple(refs) => Some(ActionConstraint::is_in(refs)),
+                },
+                cst::RelOp::Eq => {
+                    let single_ref = rel_expr.to_ref(ast::Var::Action, errs)?;
+                    Some(ActionConstraint::is_eq(single_ref))
                 }
-                (cst::RelOp::In, OneOrMultipleRefs::Single(euid)) => {
-                    Some(ActionConstraint::is_in([euid]))
-                }
-                (cst::RelOp::Eq, OneOrMultipleRefs::Single(euid)) => {
-                    Some(ActionConstraint::is_eq(euid))
-                }
-                (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
-                    errs.push(rel_expr.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
-                    None
-                }
-                (cst::RelOp::InvalidSingleEq, _) => {
+                cst::RelOp::InvalidSingleEq => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
                     None
                 }
-                (op, _) => {
+                op => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op)));
                     None
                 }
@@ -2317,6 +2313,7 @@ fn construct_template_policy(
     let construct_template = |non_head_constraint| {
         ast::Template::new(
             id,
+            Some(loc.clone()),
             annotations,
             effect,
             principal,
@@ -5040,7 +5037,7 @@ mod tests {
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
@@ -5048,7 +5045,7 @@ mod tests {
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action in ?principal, resource);"#,
@@ -5056,7 +5053,7 @@ mod tests {
             ),
             (
                 r#"permit(principal, action == ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in ?resource, resource);"#,
@@ -5203,7 +5200,7 @@ mod tests {
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ use crate::FromNormalizedStr;
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use serde_with::{DeserializeAs, SerializeAs};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -726,17 +727,40 @@ impl<'e> ValueParser<'e> {
     }
 }
 
+/// A (optional) static context for deserialization of entity uids
+/// This is useful when, for plumbing reasons, we can't get the appopriate values into the dynamic
+/// context. Primary use case is in the [`DeserializeAs`] trait.
+pub trait DeserializationContext {
+    /// Access the (optional) static context.
+    /// If returns [`None`], use the dynamic context.
+    fn static_context() -> Option<JsonDeserializationErrorContext>;
+}
+
+/// A [`DeserializationContext`] that always returns [`None`].
+/// This is the default behaviour,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NoStaticContext;
+
+impl DeserializationContext for NoStaticContext {
+    fn static_context() -> Option<JsonDeserializationErrorContext> {
+        None
+    }
+}
+
 /// Serde JSON format for Cedar values where we know we're expecting an entity
 /// reference
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub enum EntityUidJson {
+pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
         __expr: String,
+        /// Phantom value for the `Context` type parameter
+        #[serde(skip)]
+        context: std::marker::PhantomData<Context>,
     },
     /// Explicit `__entity` escape; see notes on `CedarValueJson::EntityEscape`
     ExplicitEntityEscape {
@@ -751,7 +775,31 @@ pub enum EntityUidJson {
     FoundValue(#[cfg_attr(feature = "wasm", tsify(type = "__skip"))] serde_json::Value),
 }
 
-impl EntityUidJson {
+impl<'de, C: DeserializationContext> DeserializeAs<'de, EntityUID> for EntityUidJson<C> {
+    fn deserialize_as<D>(deserializer: D) -> Result<EntityUID, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        // We don't know the context that called us, so we'll rely on the statically set context
+        let context = || JsonDeserializationErrorContext::Unknown;
+        let s = EntityUidJson::<C>::deserialize(deserializer)?;
+        let euid = s.into_euid(context).map_err(Error::custom)?;
+        Ok(euid)
+    }
+}
+
+impl<C> SerializeAs<EntityUID> for EntityUidJson<C> {
+    fn serialize_as<S>(source: &EntityUID, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let json: EntityUidJson = source.clone().into();
+        json.serialize(serializer)
+    }
+}
+
+impl<C: DeserializationContext> EntityUidJson<C> {
     /// Construct an `EntityUidJson` from entity type name and eid.
     ///
     /// This will use the `ImplicitEntityEscape` form, if it matters.
@@ -765,8 +813,9 @@ impl EntityUidJson {
     /// Convert this `EntityUidJson` into an `EntityUID`
     pub fn into_euid(
         self,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        dynamic_ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<EntityUID, JsonDeserializationError> {
+        let ctx = || C::static_context().unwrap_or_else(&dynamic_ctx);
         match self {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
@@ -784,7 +833,7 @@ impl EntityUidJson {
                 ctx: Box::new(ctx()),
                 got: Box::new(Either::Left(v)),
             }),
-            Self::ExplicitExprEscape { __expr } => {
+            Self::ExplicitExprEscape { __expr, .. } => {
                 Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
             }
         }

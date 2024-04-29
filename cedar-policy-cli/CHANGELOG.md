@@ -6,6 +6,15 @@
 
 - The default `--schema-format` is now `human` for all subcommands that take
   `--schema-format`.
+- A new `--write` flag has been added to the `format` subcommand. This flag
+  writes the formatted policy to the file specified by the `--policies` flag.
+- A new `--check` flag has been added to the `format` subcommand. This flag
+  checks if the policy is already formatted and exits with a non-zero status if
+  it is not.
+
+## 3.1.3
+
+- The `translate-schema` command now produces prettier output.
 
 ## 3.1.2
 
@@ -19,8 +28,9 @@ Now uses Cedar language version 3.1.0.
 
 - Added support for the human-readable schema format (`--schema-format human`
   when a schema is needed). The default schema format is still JSON for backward
-  compatibility.  - Added command `translate-schema` that translates a schema in
-  the JSON format to its human-readable format and vice versa (except comments).
+  compatibility.
+- Added command `translate-schema` that translates a schema in the JSON format
+  to its human-readable format and vice versa (except comments).
 - The `-p`/`--policies` flag can now be omitted across all subcommands where it
   is present. If the flag is omitted, policies will be read from `stdin`.
 - `--policy-format` flag to many subcommands, allowing you to pass policies in

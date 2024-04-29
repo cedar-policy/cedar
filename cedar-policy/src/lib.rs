@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,8 +42,8 @@ mod api;
 
 pub use api::*;
 
-/// Frontend utilities, see comments in the module itself
-pub mod frontend;
+/// FFI utilities, see comments in the module itself
+pub mod ffi;
 
 mod prop_test_policy_set;
 mod tests;

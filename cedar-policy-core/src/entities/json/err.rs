@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -311,6 +311,10 @@ pub enum JsonDeserializationErrorContext {
         /// ID of the policy we were deserializing
         id: PolicyID,
     },
+    /// The error occured while deserializing a template link
+    TemplateLink,
+    /// The context was unknown, this shouldn't surface to users
+    Unknown,
 }
 
 /// Type mismatch error (in terms of `SchemaType`)
@@ -346,6 +350,8 @@ impl std::fmt::Display for JsonDeserializationErrorContext {
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),
             Self::Policy { id } => write!(f, "while parsing JSON policy `{id}`"),
+            Self::TemplateLink => write!(f, "while parsing a template link"),
+            Self::Unknown => write!(f, "parsing context was unknown, please file a bug report at https://github.com/cedar-policy/cedar so we can improve this error message"),
         }
     }
 }

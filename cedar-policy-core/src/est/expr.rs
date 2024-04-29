@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ impl From<Vec<PatternElem>> for crate::ast::Pattern {
                     elems.push(crate::ast::PatternElem::Wildcard);
                 }
                 PatternElem::Literal(s) => {
-                    elems.extend(s.chars().map(|c| crate::ast::PatternElem::Char(c)));
+                    elems.extend(s.chars().map(crate::ast::PatternElem::Char));
                 }
             }
         }
@@ -88,7 +88,7 @@ impl From<crate::ast::PatternElem> for PatternElem {
 
 impl From<crate::ast::Pattern> for Vec<PatternElem> {
     fn from(value: crate::ast::Pattern) -> Self {
-        value.iter().map(|elem| elem.clone().into()).collect()
+        value.iter().map(|elem| (*elem).into()).collect()
     }
 }
 

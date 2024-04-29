@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +34,8 @@ use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidationWarningKind,
-    ValidatorSchema,
+    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidationWarning,
+    ValidationWarningKind, ValidatorSchema,
 };
 
 impl TypeError {
@@ -155,11 +155,11 @@ pub(crate) fn assert_expected_type_errors(expected: &Vec<TypeError>, actual: &Ha
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_expected_warnings(
     expected: &Vec<ValidationWarningKind>,
-    actual: &HashSet<ValidationWarningKind>,
+    actual: &HashSet<ValidationWarning>,
 ) {
     expected.iter().for_each(|expected| {
             assert!(
-                actual.contains(expected),
+                actual.iter().any(|w| w.kind() == expected),
                 "Expected generated warnings to contain {:#?}, but warning was not found. The following warnings were generated: {:#?}",
                 expected,
                 actual
@@ -192,7 +192,7 @@ pub(crate) fn assert_policy_typechecks_for_mode(
         let policy: Arc<Template> = policy.into();
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
         let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
@@ -252,7 +252,7 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
         let typechecked =
             typechecker.typecheck_policy(&policy.into(), &mut type_errors, &mut warnings);
         assert_expected_type_errors(&expected_type_errors, &type_errors);
@@ -270,9 +270,9 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
-        let typechecked =
-            typechecker.typecheck_policy(&policy.into(), &mut type_errors, &mut warnings);
+        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+        let policy = policy.into();
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
         assert_expected_warnings(&expected_warnings, &warnings);
         assert!(
             typechecked,
