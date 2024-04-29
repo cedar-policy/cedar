@@ -340,7 +340,7 @@ pub(crate) enum UnexpectedTypeHelp {
 
 /// Structure containing details about an incompatible type error.
 #[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
-#[diagnostic(help("{context} must have compatible types; {hint}"))]
+#[diagnostic(help("{context} must have compatible types. {hint}"))]
 pub struct IncompatibleTypes {
     pub(crate) types: BTreeSet<Type>,
     pub(crate) hint: LubHelp,
@@ -349,7 +349,7 @@ pub struct IncompatibleTypes {
 
 impl Display for IncompatibleTypes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "The types ")?;
+        write!(f, "the types ")?;
         join_with_conjunction(f, "and", self.types.iter(), |f, t| write!(f, "{t}"))?;
         write!(f, " are not compatible")
     }
