@@ -180,11 +180,11 @@ pub enum ToASTErrorKind {
     #[error("this policy is missing the `{0}` variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra constraint in the scope: `{0}`")]
+    #[error("this policy has an extra scope constraint in the scope: `{0}`")]
     #[diagnostic(help(
         "a policy must have exactly `principal`, `action`, and `resource` constraints"
     ))]
-    ExtraHeadConstraints(cst::VariableDef),
+    ExtraScopeConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: `{0}`")]
     ReservedIdentifier(cst::Ident),

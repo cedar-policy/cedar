@@ -495,7 +495,7 @@ mod test {
 
     #[test]
     fn idempotent1() {
-        // Note: the context field in the head is no longer supported and
+        // Note: the context field in the scope is no longer supported and
         // will produce an error during CST -> AST conversion. But it is
         // still correctly parsed & displayed by the CST code.
         let cstnode1 = text_to_cst::parse_policies(
