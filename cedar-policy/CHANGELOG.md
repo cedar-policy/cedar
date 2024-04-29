@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation error message for an invalid attribute access now reports the
   correct attribute and entity type when accessing an optional attribute that is
   itself an entity.
+- The error message returend when parsing an invalid action scope constraint
+  `action == ?action` no longer suggests that `action == [...]` would be a
+  valid scope constraint.
 
 ## [3.1.3] - 2024-04-15
 

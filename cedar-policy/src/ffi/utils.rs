@@ -31,6 +31,9 @@ thread_local!(
 
 /// Structure of the JSON output representing one `miette` error
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct DetailedError {
     /// Main error message, including both the `miette` "message" and the
     /// `miette` "causes" (uses `miette`'s default `Display` output)
@@ -44,8 +47,10 @@ pub struct DetailedError {
     /// Severity
     pub severity: Option<Severity>,
     /// Source labels (ranges)
-    pub labels: Vec<SourceLabel>,
+    #[serde(default)]
+    pub source_locations: Vec<SourceLabel>,
     /// Related errors
+    #[serde(default)]
     pub related: Vec<DetailedError>,
 }
 
@@ -74,29 +79,36 @@ impl From<miette::Severity> for Severity {
 
 /// Structure of the JSON output representing a `miette` source label (range)
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub struct SourceLabel {
     /// Text of the label (if any)
     pub label: Option<String>,
-    /// Source span (range) of the label
-    pub span: SourceSpan,
+    /// Source location (range) of the label
+    #[serde(flatten)]
+    pub loc: SourceLocation,
 }
 
-/// Structure of the JSON output representing a `miette` source span (range)
+/// A range of source code representing the location of an error or warning.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
-pub struct SourceSpan {
-    /// Start of the source span (in bytes)
-    pub offset: usize,
-    /// Length of the source span (in bytes)
-    pub length: usize,
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct SourceLocation {
+    /// Start of the source location (in bytes)
+    pub start: usize,
+    /// End of the source location (in bytes)
+    pub end: usize,
 }
 
 impl From<miette::LabeledSpan> for SourceLabel {
     fn from(span: miette::LabeledSpan) -> Self {
         Self {
             label: span.label().map(ToString::to_string),
-            span: SourceSpan {
-                offset: span.offset(),
-                length: span.len(),
+            loc: SourceLocation {
+                start: span.offset(),
+                end: span.offset() + span.len(),
             },
         }
     }
@@ -119,7 +131,7 @@ impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
             code: diag.code().map(|c| c.to_string()),
             url: diag.url().map(|u| u.to_string()),
             severity: diag.severity().map(Into::into),
-            labels: diag
+            source_locations: diag
                 .labels()
                 .map(|labels| labels.map(Into::into).collect())
                 .unwrap_or_else(|| vec![]),
@@ -222,6 +234,9 @@ impl PolicySet {
 
 /// Represents a schema in either schema format
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     #[serde(rename = "human")]

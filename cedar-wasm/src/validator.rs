@@ -19,5 +19,5 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = "validate")]
 pub fn wasm_validate(call: ffi::ValidationCall) -> ffi::ValidationAnswer {
-    ffi::validate(call).into()
+    ffi::validate(call)
 }

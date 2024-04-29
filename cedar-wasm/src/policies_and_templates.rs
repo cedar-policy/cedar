@@ -24,7 +24,7 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum JsonToPolicyResult {
@@ -59,7 +59,8 @@ pub fn policy_text_from_json(json_str: &str) -> JsonToPolicyResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum PolicyToJsonResult {
     Success {
@@ -81,20 +82,21 @@ pub fn policy_text_to_json(cedar_str: &str) -> PolicyToJsonResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result for the syntax validation function
 pub enum CheckParsePolicySetResult {
     /// represents successful syntax validation
     Success { policies: i32, templates: i32 },
     /// represents a syntax error and encloses a vector of the errors
-    SyntaxError { errors: Vec<String> },
+    Error { errors: Vec<String> },
 }
 
 #[wasm_bindgen(js_name = "checkParsePolicySet")]
 pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetResult {
     match PolicySet::from_str(input_policies_str) {
-        Err(parse_errors) => CheckParsePolicySetResult::SyntaxError {
+        Err(parse_errors) => CheckParsePolicySetResult::Error {
             errors: parse_errors.errors_as_strings(),
         },
         Ok(policy_set) => {
@@ -107,7 +109,7 @@ pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetRe
                     policies: p,
                     templates: t,
                 },
-                _ => CheckParsePolicySetResult::SyntaxError {
+                _ => CheckParsePolicySetResult::Error {
                     errors: vec!["Error counting policies or templates".to_string()],
                 },
             }
@@ -116,7 +118,8 @@ pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetRe
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum CheckParseTemplateResult {
     /// represents successful template validation
@@ -218,7 +221,7 @@ mod test {
     }
 
     fn assert_result_had_syntax_errors(result: &CheckParsePolicySetResult) {
-        assert_matches!(result, CheckParsePolicySetResult::SyntaxError { .. });
+        assert_matches!(result, CheckParsePolicySetResult::Error { .. });
     }
 
     #[test]
