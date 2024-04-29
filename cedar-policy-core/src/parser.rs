@@ -24,6 +24,7 @@ mod cst_to_ast;
 pub mod err;
 /// implementations for formatting, like `Display`
 mod fmt;
+pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
 pub use loc::Loc;
