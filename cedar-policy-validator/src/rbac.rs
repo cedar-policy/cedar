@@ -540,7 +540,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy head constraints"#,
+                r#"unable to find an applicable action given the policy scope constraints"#,
             )
             .help("try replacing `==` with `in` in the principal clause and the resource clause")
             .exactly_one_underline(src)
@@ -1241,7 +1241,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy head constraints"#,
+                r#"unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1265,7 +1265,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy head constraints"#,
+                r#"unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1289,7 +1289,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy head constraints"#,
+                r#"unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
