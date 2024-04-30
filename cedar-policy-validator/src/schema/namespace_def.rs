@@ -189,7 +189,7 @@ impl<'a> CommonTypeResolver<'a> {
             }
         }
 
-        // The set that contains type names with zero coming edges
+        // The set that contains type names with zero incoming edges
         let mut work_set: HashSet<&Name> = HashSet::new();
         let mut res: Vec<Name> = Vec::new();
 
