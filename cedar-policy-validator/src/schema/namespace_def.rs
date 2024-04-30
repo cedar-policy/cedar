@@ -84,7 +84,8 @@ pub struct ValidatorNamespaceDef {
 }
 
 /// Holds a map from `Name`s of common type definitions to their corresponding
-/// `Type`.
+/// `SchemaType`. Note that the schema type should have all common type
+/// references fully qualified.
 #[derive(Debug)]
 pub struct TypeDefs {
     pub(super) type_defs: HashMap<Name, SchemaType>,
@@ -142,7 +143,7 @@ pub struct ActionFragment {
 /// A common type reference resolver
 #[derive(Debug)]
 pub(crate) struct CommonTypeResolver<'a> {
-    /// The `SchemaFragment` to resolve
+    /// Common type declarations to resolve
     type_defs: &'a HashMap<Name, SchemaType>,
     /// The dependency graph among common type names
     /// A common type name is prefixed with the namespace id where it's declared
@@ -289,7 +290,7 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
-    // Resolve common type references in `self.schema`
+    // Resolve common type references
     pub(crate) fn resolve(&self) -> Result<HashMap<Name, Type>> {
         let sorted_names = self
             .topo_sort()
@@ -454,7 +455,8 @@ impl ValidatorNamespaceDef {
                     Name::from(name).prefix_namespace_if_unqualified(schema_namespace.cloned());
                 Ok((
                     name,
-                    schema_ty.prefix_namespace_if_unqualified(schema_namespace.cloned()),
+                    schema_ty
+                        .prefix_common_type_references_with_namespace(schema_namespace.cloned()),
                 ))
             })
             .collect::<Result<HashMap<_, _>>>()?;
@@ -876,14 +878,18 @@ mod test_resolver {
     use std::collections::HashMap;
 
     use cedar_policy_core::ast::Name;
+    use cool_asserts::assert_matches;
 
     use super::CommonTypeResolver;
     use crate::{types::Type, SchemaError, SchemaFragment, ValidatorSchemaFragment};
 
     fn resolve(schema: SchemaFragment) -> Result<HashMap<Name, Type>, SchemaError> {
         let schema: ValidatorSchemaFragment = schema.try_into().unwrap();
-        let type_defs = &schema.0.get(0).unwrap().type_defs.type_defs;
-        let resolver = CommonTypeResolver::new(type_defs);
+        let mut type_defs = HashMap::new();
+        for def in schema.0 {
+            type_defs.extend(def.type_defs.type_defs.into_iter());
+        }
+        let resolver = CommonTypeResolver::new(&type_defs);
         resolver.resolve()
     }
 
@@ -1016,5 +1022,199 @@ mod test_resolver {
                 ("b".parse().unwrap(), Type::primitive_boolean())
             ])
         );
+    }
+
+    #[test]
+    fn test_names() {
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                ("A::a".parse().unwrap(), Type::primitive_boolean()),
+                ("B::a".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_cycles() {
+        // self reference
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // 2 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b" : {
+                            "type": "c"
+                        },
+                        "c" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 2 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "C::a"
+                        }
+                    }
+                },
+                "C": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "c"
+                        },
+                        "c": {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
     }
 }

@@ -309,6 +309,7 @@ pub enum SchemaType {
 }
 
 impl SchemaType {
+    /// Return an iterator of common type references ocurred in the type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = Name>> {
         match self {
             SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
@@ -325,7 +326,11 @@ impl SchemaType {
         }
     }
 
-    pub(crate) fn prefix_namespace_if_unqualified(self, ns: Option<Name>) -> SchemaType {
+    /// Prefix unqualified common type references with the namespace they are in
+    pub(crate) fn prefix_common_type_references_with_namespace(
+        self,
+        ns: Option<Name>,
+    ) -> SchemaType {
         match self {
             Self::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -336,7 +341,7 @@ impl SchemaType {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: ty.prefix_namespace_if_unqualified(ns.clone()),
+                                ty: ty.prefix_common_type_references_with_namespace(ns.clone()),
                                 required,
                             },
                         )
@@ -345,7 +350,7 @@ impl SchemaType {
                 additional_attributes,
             }),
             Self::Type(SchemaTypeVariant::Set { element }) => Self::Type(SchemaTypeVariant::Set {
-                element: Box::new(element.prefix_namespace_if_unqualified(ns)),
+                element: Box::new(element.prefix_common_type_references_with_namespace(ns)),
             }),
             Self::TypeDef { type_name } => Self::TypeDef {
                 type_name: type_name.prefix_namespace_if_unqualified(ns),
