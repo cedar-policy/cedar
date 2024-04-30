@@ -58,7 +58,7 @@ impl Validator {
                         fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
                     Some(ValidationError::with_policy_id(
                         template.id().clone(),
-                        name.loc().clone(),
+                        name.loc().cloned(),
                         ValidationErrorKind::unrecognized_entity_type(
                             actual_entity_type,
                             suggested_entity_type,
@@ -74,7 +74,7 @@ impl Validator {
                     cedar_policy_core::ast::EntityType::Unspecified => {
                         Some(ValidationError::with_policy_id(
                             template.id().clone(),
-                            euid.loc().clone(),
+                            euid.loc().cloned(),
                             ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
                         ))
                     }
@@ -118,7 +118,7 @@ impl Validator {
                 }
             }
             .map(|kind| {
-                ValidationError::with_policy_id(template.id().clone(), euid.loc().clone(), kind)
+                ValidationError::with_policy_id(template.id().clone(), euid.loc().cloned(), kind)
             })
         })
     }

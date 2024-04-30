@@ -126,8 +126,8 @@ impl Name {
     }
 
     /// Get the source location
-    pub fn loc(&self) -> &Option<Loc> {
-        &self.loc
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Get the basename of the `Name` (ie, with namespaces stripped).

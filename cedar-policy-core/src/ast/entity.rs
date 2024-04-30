@@ -156,8 +156,8 @@ impl EntityUID {
     }
 
     /// Get the source location for this `EntityUID`.
-    pub fn loc(&self) -> &Option<Loc> {
-        &self.loc
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Create a nominally-typed `EntityUID` with the given typename and EID
