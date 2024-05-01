@@ -135,7 +135,6 @@ impl Validator {
             Some(
                 self.validate_entity_types(p)
                     .chain(self.validate_action_ids(p))
-                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
@@ -295,6 +294,8 @@ mod test {
                 Some("Action::\"action\"".to_string()),
             ),
         );
+
+        assert!(!result.validation_passed());
         assert!(result
             .validation_errors()
             .any(|x| x.error_kind() == principal_err.error_kind()));
@@ -379,6 +380,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::Photo".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -397,6 +399,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::Undefined".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -432,6 +435,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::User".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -450,7 +454,9 @@ mod test {
             loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
-        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == invalid_action_err.error_kind()));
 
         Ok(())
     }
