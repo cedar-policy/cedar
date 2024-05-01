@@ -125,7 +125,7 @@ struct PathInternal {
 
 impl From<PathInternal> for Name {
     fn from(value: PathInternal) -> Self {
-        Self::new(value.basename, value.namespace)
+        Self::new(value.basename, value.namespace, None)
     }
 }
 

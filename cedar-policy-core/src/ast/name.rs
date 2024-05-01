@@ -29,13 +29,42 @@ use super::PrincipalOrResource;
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
-#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone)]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
     pub(crate) path: Arc<Vec<Id>>,
+    /// Location of the name in source
+    pub(crate) loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`.
+impl PartialEq for Name {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.path == other.path
+    }
+}
+impl Eq for Name {}
+
+impl std::hash::Hash for Name {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash the ty and eid, in line with the `PartialEq` impl which compares
+        // the ty and eid.
+        self.id.hash(state);
+        self.path.hash(state);
+    }
+}
+
+impl PartialOrd for Name {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Name {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id).then(self.path.cmp(&other.path))
+    }
 }
 
 /// A shortcut for `Name::unqualified_name`
@@ -61,10 +90,11 @@ impl TryFrom<Name> for Id {
 
 impl Name {
     /// A full constructor for `Name`
-    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         Self {
             id: basename,
             path: Arc::new(path.into_iter().collect()),
+            loc,
         }
     }
 
@@ -73,6 +103,7 @@ impl Name {
         Self {
             id,
             path: Arc::new(vec![]),
+            loc: None,
         }
     }
 
@@ -82,15 +113,21 @@ impl Name {
         Ok(Self {
             id: s.parse()?,
             path: Arc::new(vec![]),
+            loc: None,
         })
     }
 
     /// Given a type basename and a namespace (as a `Name` itself),
     /// return a `Name` representing the type's fully qualified name
-    pub fn type_in_namespace(basename: Id, namespace: Name) -> Name {
+    pub fn type_in_namespace(basename: Id, namespace: Name, loc: Option<Loc>) -> Name {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
-        Name::new(basename, path)
+        Name::new(basename, path, loc)
+    }
+
+    /// Get the source location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Get the basename of the `Name` (ie, with namespaces stripped).
@@ -129,6 +166,7 @@ impl Name {
                         .namespace_components()
                         .chain(std::iter::once(namespace.basename()))
                         .cloned(),
+                    self.loc().cloned(),
                 ),
                 None => self.clone(),
             }
@@ -205,6 +243,17 @@ impl<'de> Deserialize<'de> for Name {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(NameVisitor)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            id: u.arbitrary()?,
+            path: u.arbitrary()?,
+            loc: None,
+        })
     }
 }
 

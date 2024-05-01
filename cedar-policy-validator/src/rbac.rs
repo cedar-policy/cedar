@@ -38,7 +38,7 @@ impl Validator {
     pub(crate) fn validate_entity_types<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
         let known_entity_types = self
@@ -56,9 +56,13 @@ impl Validator {
                     let actual_entity_type = name.to_string();
                     let suggested_entity_type =
                         fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                    Some(ValidationErrorKind::unrecognized_entity_type(
-                        actual_entity_type,
-                        suggested_entity_type,
+                    Some(ValidationError::with_policy_id(
+                        template.id(),
+                        name.loc().cloned(),
+                        ValidationErrorKind::unrecognized_entity_type(
+                            actual_entity_type,
+                            suggested_entity_type,
+                        ),
                     ))
                 } else {
                     None
@@ -67,9 +71,13 @@ impl Validator {
             .chain(policy_entity_uids(template).filter_map(move |euid| {
                 let entity_type = euid.entity_type();
                 match entity_type {
-                    cedar_policy_core::ast::EntityType::Unspecified => Some(
-                        ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
-                    ),
+                    cedar_policy_core::ast::EntityType::Unspecified => {
+                        Some(ValidationError::with_policy_id(
+                            template.id(),
+                            euid.loc().cloned(),
+                            ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
+                        ))
+                    }
                     cedar_policy_core::ast::EntityType::Specified(_) => None,
                 }
             }))
@@ -81,7 +89,7 @@ impl Validator {
     pub(crate) fn validate_action_ids<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
         let known_action_ids = self
@@ -109,6 +117,7 @@ impl Validator {
                     }
                 }
             }
+            .map(|kind| ValidationError::with_policy_id(template.id(), euid.loc().cloned(), kind))
         })
     }
 
@@ -480,7 +489,10 @@ mod test {
         );
 
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
 
         assert_eq!(1, notes.len());
         match notes.first() {
@@ -608,7 +620,10 @@ mod test {
         );
 
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
 
         assert_eq!(1, notes.len());
         match notes.first() {
@@ -646,7 +661,10 @@ mod test {
         );
 
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_ids(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
 
         assert_eq!(1, notes.len());
         match notes.first() {
@@ -823,7 +841,10 @@ mod test {
         );
 
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_ids(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
 
         assert_eq!(1, notes.len());
         match notes.first() {
@@ -873,7 +894,10 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_ids(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
     }
@@ -906,7 +930,10 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_ids(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(
             notes,
             vec![ValidationErrorKind::unrecognized_action_id(
@@ -936,14 +963,21 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
+            PrincipalConstraint::is_eq(EntityUID::from_components(
+                entity_type,
+                Eid::new("bar"),
+                None,
+            )),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
     }
@@ -967,14 +1001,21 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
+            PrincipalConstraint::is_eq(EntityUID::from_components(
+                entity_type,
+                Eid::new("bar"),
+                None,
+            )),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(
             notes,
             vec![ValidationErrorKind::unrecognized_entity_type(
@@ -1574,7 +1615,10 @@ mod test {
             ResourceConstraint::is_eq(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
@@ -1593,7 +1637,10 @@ mod test {
             ResourceConstraint::any(),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
@@ -1622,7 +1669,10 @@ mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             ),
         );
-        let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_entity_types(&policy)
+            .map(|e| e.into_location_and_error_kind().1)
+            .collect();
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),

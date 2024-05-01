@@ -185,6 +185,7 @@ impl TryFrom<TypeAndId> for EntityUID {
         Ok(EntityUID::from_components(
             Name::from_normalized_str(&e.entity_type)?,
             Eid::new(e.id),
+            None,
         ))
     }
 }

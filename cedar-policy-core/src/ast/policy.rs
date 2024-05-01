@@ -2137,6 +2137,7 @@ mod test {
         let id = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid"),
+            None,
         );
         let mut i = EntityIterator::One(&id);
         assert_eq!(i.next(), Some(&id));
@@ -2148,10 +2149,12 @@ mod test {
         let id1 = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid1"),
+            None,
         );
         let id2 = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid2"),
+            None,
         );
         let v = vec![&id1, &id2];
         let mut i = EntityIterator::Bunch(v);

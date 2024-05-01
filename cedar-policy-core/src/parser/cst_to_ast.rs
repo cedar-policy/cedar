@@ -2118,7 +2118,9 @@ impl Node<Option<cst::Name>> {
 
         // computation and error generation is complete, so fail or construct
         match (maybe_name, path.len()) {
-            (Some(r), len) if len == name.path.len() => Some(construct_name(path, r)),
+            (Some(r), len) if len == name.path.len() => {
+                Some(construct_name(path, r, self.loc.clone()))
+            }
             _ => None,
         }
     }
@@ -2227,7 +2229,7 @@ impl Node<Option<cst::Ref>> {
                 };
 
                 match (maybe_path, maybe_eid) {
-                    (Some(p), Some(e)) => Some(construct_refr(p, e)),
+                    (Some(p), Some(e)) => Some(construct_refr(p, e, self.loc.clone())),
                     _ => None,
                 }
             }
@@ -2343,15 +2345,16 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id) -> ast::Name {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
     ast::Name {
         id,
         path: Arc::new(path),
+        loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
+fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
-    ast::EntityUID::from_components(p, eid)
+    ast::EntityUID::from_components(p, eid, Some(loc))
 }
 fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).val(r)
