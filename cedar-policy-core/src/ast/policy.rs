@@ -37,7 +37,7 @@ extern crate tsify;
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
-    /// This is maintained by the only two public constructors, `new` and `instantiate_inline_policy`
+    /// This is maintained by the only two public constructors, `new` and `link_inline_policy`
     ///
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<Slot>,
@@ -295,7 +295,7 @@ impl std::fmt::Display for Template {
     }
 }
 
-/// Errors instantiating templates
+/// Errors linking templates
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum LinkingError {
     /// An error with the slot arguments provided
@@ -308,7 +308,7 @@ pub enum LinkingError {
         extra_values: Vec<SlotId>,
     },
 
-    /// The attempted instantiation failed as the template did not exist.
+    /// The attempted linking failed as the template did not exist.
     #[error("failed to find a template with id `{id}`")]
     NoSuchTemplate {
         /// [`PolicyID`] of the template we failed to find
@@ -659,10 +659,10 @@ pub enum ReificationError {
     /// The [`PolicyID`] linked to did not exist
     #[error("the id linked to does not exist")]
     NoSuchTemplate(PolicyID),
-    /// Error instantiating the policy
+    /// Error linking the policy
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Instantiation(#[from] LinkingError),
+    Linking(#[from] LinkingError),
 }
 
 impl LiteralPolicy {
@@ -678,7 +678,7 @@ impl LiteralPolicy {
             .get(&self.template_id)
             .ok_or_else(|| ReificationError::NoSuchTemplate(self.template_id().clone()))?;
         // INVARIANT (values total map)
-        Template::check_binding(template, &self.values).map_err(ReificationError::Instantiation)?;
+        Template::check_binding(template, &self.values).map_err(ReificationError::Linking)?;
         Ok(Policy::new(template.clone(), self.link_id, self.values))
     }
 
@@ -1885,8 +1885,7 @@ mod test {
                 .slots()
                 .map(|slot| (slot.id, EntityUID::with_eid("eid")))
                 .collect();
-            let p =
-                Template::link(t, PolicyID::from_string("id"), env).expect("Instantiation Failed");
+            let p = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
 
             let b_literal = BorrowedLiteralPolicy::from(&p);
             let src = serde_json::to_string(&b_literal).expect("ser error");

@@ -90,7 +90,7 @@ fn slot_equals_typechecks() {
         shape: AttributesOrContext::default(),
     };
     // These don't typecheck in strict mode because the test_util expression
-    // typechecker doesn't have access to a schema, so it can't instantiate
+    // typechecker doesn't have access to a schema, so it can't link
     // the template slots with appropriate types. Similar policies that pass
     // strict typechecking are in the test_policy file.
     let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);

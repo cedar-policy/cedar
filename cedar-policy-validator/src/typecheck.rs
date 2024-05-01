@@ -446,7 +446,7 @@ impl<'a> Typechecker<'a> {
     }
 
     /// Given a request environment and a template, return new environments
-    /// formed by instantiating template slots with possible entity types.
+    /// formed by linking template slots with possible entity types.
     fn link_request_env<'b>(
         &'b self,
         env: RequestEnv<'b>,
@@ -461,14 +461,14 @@ impl<'a> Typechecker<'a> {
                 context,
                 ..
             } => Box::new(
-                self.possible_slot_instantiations(
+                self.possible_slot_links(
                     t,
                     SlotId::principal(),
                     principal,
                     t.principal_constraint().as_inner(),
                 )
                 .flat_map(move |p_slot| {
-                    self.possible_slot_instantiations(
+                    self.possible_slot_links(
                         t,
                         SlotId::resource(),
                         resource,
@@ -487,11 +487,11 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Get the entity types which could instantiate the slot given in this
+    /// Get the entity types which could link the slot given in this
     /// template based on the policy scope constraints. We use this function to
     /// avoid typechecking with slot bindings that will always be false based
     /// only on the scope constraints.
-    fn possible_slot_instantiations(
+    fn possible_slot_links(
         &self,
         t: &Template,
         slot_id: SlotId,
@@ -521,7 +521,7 @@ impl<'a> Typechecker<'a> {
                 // This can't happen for the moment because slots may only
                 // appear in scope constraints, but if we ever see this, then the
                 // only correct way to proceed is by returning all entity types
-                // as possible instantiations.
+                // as possible links.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
                     Box::new(
                         all_entity_types.map(|(name, _)| Some(EntityType::Specified(name.clone()))),
@@ -530,7 +530,7 @@ impl<'a> Typechecker<'a> {
             }
         } else {
             // If the template does not contain this slot, then we don't need to
-            // consider its instantiations..
+            // consider its links.
             Box::new(std::iter::once(None))
         }
     }

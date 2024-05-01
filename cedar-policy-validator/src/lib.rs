@@ -306,7 +306,7 @@ mod test {
     }
 
     #[test]
-    fn top_level_validate_with_instantiations() -> Result<()> {
+    fn top_level_validate_with_links() -> Result<()> {
         let mut set = PolicySet::new();
         let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment>(
             r#"
@@ -369,7 +369,7 @@ mod test {
             Vec::<&ValidationError>::new()
         );
 
-        // a valid instantiation is valid
+        // a valid link is valid
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
@@ -388,7 +388,7 @@ mod test {
         let result = validator.validate(&set, ValidationMode::default());
         assert!(result.validation_passed());
 
-        // an invalid instantiation results in an error
+        // an invalid link results in an error
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
@@ -424,7 +424,7 @@ mod test {
         assert!(result.validation_errors().any(|x| x == &undefined_err));
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));
 
-        // this is also an invalid instantiation (not a valid resource type for any action in the schema)
+        // this is also an invalid link (not a valid resource type for any action in the schema)
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),

@@ -3401,7 +3401,7 @@ impl LosslessPolicy {
     fn link<'a>(
         self,
         vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
-    ) -> Result<Self, est::InstantiationError> {
+    ) -> Result<Self, est::LinkingError> {
         match self {
             Self::Est(est) => {
                 let unwrapped_est_vals: HashMap<
@@ -3461,8 +3461,8 @@ pub enum PolicyToJsonError {
     JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
 }
 
-impl From<est::InstantiationError> for PolicyToJsonError {
-    fn from(e: est::InstantiationError) -> Self {
+impl From<est::LinkingError> for PolicyToJsonError {
+    fn from(e: est::LinkingError) -> Self {
         json_errors::JsonLinkError::from(e).into()
     }
 }
@@ -3486,7 +3486,7 @@ pub mod json_errors {
     pub struct JsonLinkError {
         /// Underlying error
         #[from]
-        err: est::InstantiationError,
+        err: est::LinkingError,
     }
 
     /// Error serializing a policy as JSON
