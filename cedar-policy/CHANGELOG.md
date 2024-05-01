@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `if`, `==`, `contains`, `containsAll`, and `containsAny` expressions.
 - Validation error for invalid use of an action now includes a source location
   containing the offending policy.
+- Validation error messages for unknown entity types and action entities now
+  report the precise source location where the unknown type was encountered.
 
 ### Fixed
 

@@ -434,6 +434,7 @@ impl<'a> ConversionContext<'a> {
                 &Some(Name::new(
                     prefix_base.clone(),
                     prefix_prefix.into_iter().cloned(),
+                    None,
                 )),
             ),
             None =>
