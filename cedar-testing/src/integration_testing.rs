@@ -29,7 +29,7 @@
 use crate::cedar_test_impl::*;
 use cedar_policy::{extensions::Extensions, Decision, PolicyId, ValidationMode};
 use cedar_policy_core::ast::{Eid, EntityUID, PolicySet, Request};
-use cedar_policy_core::entities::{self, Entities, JsonDeserializationErrorContext};
+use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
 use cedar_policy_validator::ValidatorSchema;
 use serde::{Deserialize, Serialize};

@@ -24,7 +24,7 @@ use cedar_policy_core::{
         Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
         PartialValueSerializedAsExpr,
     },
-    entities::{CedarValueJson, JsonDeserializationErrorContext},
+    entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     FromNormalizedStr,

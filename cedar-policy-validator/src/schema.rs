@@ -24,7 +24,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Name},
-    entities::{Entities, EntitiesError, TCComputation},
+    entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     transitive_closure::compute_tc,
 };

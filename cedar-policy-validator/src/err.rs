@@ -135,8 +135,8 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
             transitive_closure::TcError::MissingTcEdge { .. } => {
                 SchemaError::ActionTransitiveClosure(Box::new(e))
             }
-            transitive_closure::TcError::HasCycle { vertex_with_loop } => {
-                SchemaError::CycleInActionHierarchy(vertex_with_loop)
+            transitive_closure::TcError::HasCycle(err) => {
+                SchemaError::CycleInActionHierarchy(err.vertex_with_loop().clone())
             }
         }
     }

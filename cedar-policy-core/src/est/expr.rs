@@ -16,9 +16,9 @@
 
 use super::FromJsonError;
 use crate::ast::InputInteger;
-use crate::entities::{
-    CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
-    JsonDeserializationErrorContext, TypeAndId,
+use crate::entities::json::{
+    err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
+    CedarValueJson, FnAndArg, TypeAndId,
 };
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
@@ -703,11 +703,11 @@ impl Expr {
                             .next()
                             .expect("already checked that len was 1");
                         let fn_name = fn_name.parse().map_err(|errs| {
-                            JsonDeserializationError::ParseEscape {
-                                kind: EscapeKind::Extension,
-                                value: fn_name.to_string(),
+                            JsonDeserializationError::parse_escape(
+                                EscapeKind::Extension,
+                                fn_name,
                                 errs,
-                            }
+                            )
                         })?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,

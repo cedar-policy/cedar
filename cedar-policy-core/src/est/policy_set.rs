@@ -19,8 +19,8 @@ use super::Policy;
 use crate::ast;
 use crate::ast::EntityUID;
 use crate::ast::{PolicyID, SlotId};
-use crate::entities::EntityUidJson;
-use crate::entities::JsonDeserializationErrorContext;
+use crate::entities::json::err::JsonDeserializationErrorContext;
+use crate::entities::json::EntityUidJson;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ pub struct Link {
 /// Statically set the deserialization error context to be deserialization of a template link
 struct TemplateLinkContext;
 
-impl crate::entities::DeserializationContext for TemplateLinkContext {
+impl crate::entities::json::DeserializationContext for TemplateLinkContext {
     fn static_context() -> Option<JsonDeserializationErrorContext> {
         Some(JsonDeserializationErrorContext::TemplateLink)
     }

@@ -17,9 +17,10 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
+use crate::entities::json::err::JsonDeserializationError;
 use crate::ParseErrors;
 use cedar_policy_core::ast;
-use cedar_policy_core::entities::JsonDeserializationErrorContext;
+use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
 use cedar_policy_core::FromNormalizedStr;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
@@ -226,7 +227,7 @@ impl EntityUid {
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self::new(
+        Ok::<Self, JsonDeserializationError>(Self::new(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
     }
