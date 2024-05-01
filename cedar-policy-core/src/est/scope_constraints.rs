@@ -25,7 +25,7 @@ use std::sync::Arc;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// Serde JSON structure for a principal head constraint in the EST format
+/// Serde JSON structure for a principal scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
@@ -46,7 +46,7 @@ pub enum PrincipalConstraint {
     Is(PrincipalOrResourceIsConstraint),
 }
 
-/// Serde JSON structure for an action head constraint in the EST format
+/// Serde JSON structure for an action scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
@@ -64,7 +64,7 @@ pub enum ActionConstraint {
     In(ActionInConstraint),
 }
 
-/// Serde JSON structure for a resource head constraint in the EST format
+/// Serde JSON structure for a resource scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
@@ -85,7 +85,7 @@ pub enum ResourceConstraint {
     Is(PrincipalOrResourceIsConstraint),
 }
 
-/// Serde JSON structure for a `==` head constraint in the EST format
+/// Serde JSON structure for a `==` scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -104,7 +104,7 @@ pub enum EqConstraint {
     },
 }
 
-/// Serde JSON structure for an `in` head constraint for principal/resource in
+/// Serde JSON structure for an `in` scope constraint for principal/resource in
 /// the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -124,7 +124,7 @@ pub enum PrincipalOrResourceInConstraint {
     },
 }
 
-/// Serde JSON structure for an `is` head constraint for principal/resource in
+/// Serde JSON structure for an `is` scope constraint for principal/resource in
 /// the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -138,7 +138,7 @@ pub struct PrincipalOrResourceIsConstraint {
     in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
-/// Serde JSON structure for an `in` head constraint for action in the EST
+/// Serde JSON structure for an `in` scope constraint for action in the EST
 /// format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]

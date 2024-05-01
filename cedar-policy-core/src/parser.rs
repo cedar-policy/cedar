@@ -441,11 +441,11 @@ mod test {
             assert_eq!(parsed.resource_constraint(), template.resource_constraint());
             assert!(
                 parsed
-                    .non_head_constraints()
-                    .eq_shape(template.non_head_constraints()),
+                    .non_scope_constraints()
+                    .eq_shape(template.non_scope_constraints()),
                 "{:?} and {:?} should have the same shape.",
-                parsed.non_head_constraints(),
-                template.non_head_constraints()
+                parsed.non_scope_constraints(),
+                template.non_scope_constraints()
             );
         }
     }

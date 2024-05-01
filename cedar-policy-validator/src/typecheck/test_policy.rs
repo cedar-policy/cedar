@@ -397,7 +397,7 @@ fn policy_lub_entity_type_attr() {
 }
 
 #[test]
-fn policy_impossible_head() {
+fn policy_impossible_scope() {
     let p = parse_policy(
         Some("0".to_string()),
         r#"permit(principal == Group::"foo", action == Action::"delete_group", resource);"#,

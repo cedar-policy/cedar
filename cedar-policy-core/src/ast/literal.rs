@@ -128,7 +128,7 @@ impl From<Arc<EntityUID>> for Literal {
 impl Literal {
     /// Check if this literal is an entity reference
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference.
     pub fn is_ref(&self) -> bool {
         matches!(self, Self::EntityUID(..))
