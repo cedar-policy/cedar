@@ -53,6 +53,9 @@ pub struct DetailedError {
 ///
 /// If `miette::Severity` adds `derive(Hash)` in the future, we can remove this
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum Severity {
     /// Advice (the lowest severity)
     Advice,
