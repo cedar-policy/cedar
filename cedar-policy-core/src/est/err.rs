@@ -15,7 +15,6 @@
  */
 
 use crate::ast;
-use crate::ast::{LinkingError, PolicySetError};
 use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
@@ -84,18 +83,18 @@ pub enum FromJsonError {
     /// Error reported when a policy set has duplicate ids
     #[error("Error creating policy set: {0}")]
     #[diagnostic(transparent)]
-    PolicySet(#[from] PolicySetError),
+    PolicySet(#[from] ast::PolicySetError),
     /// Error reported when attempting to create a template-link
     #[error("Error linking policy set: {0}")]
     #[diagnostic(transparent)]
-    Linking(#[from] LinkingError),
+    Linking(#[from] ast::LinkingError),
 }
 
-/// Errors while instantiating a policy
+/// Errors while linking a policy
 #[derive(Debug, PartialEq, Diagnostic, Error)]
-pub enum InstantiationError {
+pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
-    #[error("failed to instantiate template: no value provided for `{slot}`")]
+    #[error("failed to link template: no value provided for `{slot}`")]
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,
