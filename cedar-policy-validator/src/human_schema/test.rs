@@ -1731,3 +1731,286 @@ mod translator_tests {
         assert!(schema.is_err());
     }
 }
+
+#[cfg(test)]
+mod common_type_references {
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        types::{AttributeType, EntityRecordKind, Type},
+        SchemaError, SchemaFragment, ValidatorSchema,
+    };
+
+    #[test]
+    fn basic() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = b;
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = b;
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = b;
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Long;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+    }
+
+    #[test]
+    fn set() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = Set<b>;
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::primitive_long()), true)
+        );
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = Set<b>;
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::primitive_long()), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = Set<b>;
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Set<Long>;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::set(Type::primitive_long())), true)
+        );
+    }
+
+    #[test]
+    fn record() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = {a: b};
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = {a: b};
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Set<Long>;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::set(Type::primitive_long())
+        );
+    }
+
+    #[test]
+    fn cycles() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = A::b;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = A::a;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = C::a;
+        }
+        namespace C {
+            type a = A::a;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
+    }
+}
