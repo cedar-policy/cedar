@@ -844,9 +844,9 @@ impl From<authorizer::AuthorizationError> for AuthorizationError {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
     /// Authorization decision
-    decision: Decision,
+    pub(crate) decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
-    diagnostics: Diagnostics,
+    pub(crate) diagnostics: Diagnostics,
 }
 
 /// A partially evaluated authorization response.
@@ -1108,6 +1108,16 @@ impl Diagnostics {
     /// ```
     pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
         self.errors.iter()
+    }
+
+    /// Consume the `Diagnostics`, producing owned versions of `reason()` and `errors()`
+    pub(crate) fn into_components(
+        self,
+    ) -> (
+        impl Iterator<Item = PolicyId>,
+        impl Iterator<Item = AuthorizationError>,
+    ) {
+        (self.reason.into_iter(), self.errors.into_iter())
     }
 }
 
@@ -1669,6 +1679,18 @@ impl ValidationResult {
                     .first()
                     .map(|w| w as &dyn Diagnostic)
             })
+    }
+
+    pub(crate) fn into_errors_and_warnings(
+        self,
+    ) -> (
+        impl Iterator<Item = ValidationError>,
+        impl Iterator<Item = ValidationWarning>,
+    ) {
+        (
+            self.validation_errors.into_iter(),
+            self.validation_warnings.into_iter(),
+        )
     }
 }
 

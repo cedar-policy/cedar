@@ -15,30 +15,10 @@
  */
 
 //! This module contains the entry point to the wasm isAuthorized functionality.
-use cedar_policy::ffi::{is_authorized, AuthorizationAnswer, AuthorizationCall, Response};
-use serde::{Deserialize, Serialize};
-use tsify::Tsify;
+use cedar_policy::ffi;
 use wasm_bindgen::prelude::*;
 
-#[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-#[serde(rename_all = "camelCase")]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub enum AuthorizationResult {
-    Success { response: Response },
-    Error { errors: Vec<String> },
-}
-
 #[wasm_bindgen(js_name = "isAuthorized")]
-pub fn wasm_is_authorized(call: AuthorizationCall) -> AuthorizationResult {
-    match is_authorized(call) {
-        AuthorizationAnswer::Success {
-            response,
-            warnings: _,
-        } => AuthorizationResult::Success { response },
-        AuthorizationAnswer::Failure {
-            errors,
-            warnings: _,
-        } => AuthorizationResult::Error { errors },
-    }
+pub fn wasm_is_authorized(call: ffi::AuthorizationCall) -> ffi::AuthorizationAnswer {
+    ffi::is_authorized(call)
 }
