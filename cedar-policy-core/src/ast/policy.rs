@@ -72,7 +72,7 @@ impl Template {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_head_constraint: Expr,
+        non_scope_constraint: Expr,
     ) -> Self {
         let body = TemplateBody::new(
             id,
@@ -82,7 +82,7 @@ impl Template {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraint,
+            non_scope_constraint,
         );
         // INVARIANT (slot cache correctness)
         // This invariant is maintained in the body of the From impl
@@ -98,7 +98,7 @@ impl Template {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_head_constraint: Arc<Expr>,
+        non_scope_constraint: Arc<Expr>,
     ) -> Self {
         let body = TemplateBody::new_shared(
             id,
@@ -108,7 +108,7 @@ impl Template {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraint,
+            non_scope_constraint,
         );
         // INVARIANT (slot cache correctness)
         // This invariant is maintained in the body of the From impl
@@ -130,14 +130,14 @@ impl Template {
         self.body.resource_constraint()
     }
 
-    /// Get the non-head constraint on the body
-    pub fn non_head_constraints(&self) -> &Expr {
-        self.body.non_head_constraints()
+    /// Get the non-scope constraint on the body
+    pub fn non_scope_constraints(&self) -> &Expr {
+        self.body.non_scope_constraints()
     }
 
-    /// Get Arc to non-head constraint on the body
-    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
-        self.body.non_head_constraints_arc()
+    /// Get Arc to non-scope constraint on the body
+    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+        self.body.non_scope_constraints_arc()
     }
 
     /// Get the PolicyID of this template
@@ -180,7 +180,7 @@ impl Template {
 
     /// Get the condition expression of this template.
     ///
-    /// This will be a conjunction of the template's head constraints (on
+    /// This will be a conjunction of the template's scope constraints (on
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
     pub fn condition(&self) -> Expr {
@@ -386,7 +386,7 @@ impl Policy {
         }
     }
 
-    /// Build a policy with a given effect, given when clause, and unconstrained head variables
+    /// Build a policy with a given effect, given when clause, and unconstrained scope variables
     pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Loc>) -> Self {
         Self::from_when_clause_annos(
             effect,
@@ -397,7 +397,7 @@ impl Policy {
         )
     }
 
-    /// Build a policy with a given effect, given when clause, and unconstrained head variables
+    /// Build a policy with a given effect, given when clause, and unconstrained scope variables
     pub fn from_when_clause_annos(
         effect: Effect,
         when: Arc<Expr>,
@@ -479,14 +479,14 @@ impl Policy {
         }
     }
 
-    /// Get the non-head constraints for the policy
-    pub fn non_head_constraints(&self) -> &Expr {
-        self.template.non_head_constraints()
+    /// Get the non-scope constraints for the policy
+    pub fn non_scope_constraints(&self) -> &Expr {
+        self.template.non_scope_constraints()
     }
 
-    /// Get the [`Arc`] owning non-head constraints for the policy
-    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
-        self.template.non_head_constraints_arc()
+    /// Get the [`Arc`] owning non-scope constraints for the policy
+    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+        self.template.non_scope_constraints_arc()
     }
 
     /// Get the expression that represents this policy.
@@ -764,53 +764,53 @@ impl StaticPolicy {
         self.0.annotations()
     }
 
-    /// Get the `principal` head constraint of this policy.
+    /// Get the `principal` scope constraint of this policy.
     pub fn principal_constraint(&self) -> &PrincipalConstraint {
         self.0.principal_constraint()
     }
 
-    /// Get the `principal` head constraint as an expression.
+    /// Get the `principal` scope constraint as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `principal,`), or an equality or hierarchy constraint
     pub fn principal_constraint_expr(&self) -> Expr {
         self.0.principal_constraint_expr()
     }
 
-    /// Get the `action` head constraint of this policy.
+    /// Get the `action` scope constraint of this policy.
     pub fn action_constraint(&self) -> &ActionConstraint {
         self.0.action_constraint()
     }
 
-    /// Get the `action` head constraint of this policy as an expression.
+    /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
     pub fn action_constraint_expr(&self) -> Expr {
         self.0.action_constraint_expr()
     }
 
-    /// Get the `resource` head constraint of this policy.
+    /// Get the `resource` scope constraint of this policy.
     pub fn resource_constraint(&self) -> &ResourceConstraint {
         self.0.resource_constraint()
     }
 
-    /// Get the `resource` head constraint of this policy as an expression.
+    /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
     pub fn resource_constraint_expr(&self) -> Expr {
         self.0.resource_constraint_expr()
     }
 
-    /// Get the non-head constraints of this policy.
+    /// Get the non-scope constraints of this policy.
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    pub fn non_head_constraints(&self) -> &Expr {
-        self.0.non_head_constraints()
+    pub fn non_scope_constraints(&self) -> &Expr {
+        self.0.non_scope_constraints()
     }
 
     /// Get the condition expression of this policy.
     ///
-    /// This will be a conjunction of the policy's head constraints (on
+    /// This will be a conjunction of the policy's scope constraints (on
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
@@ -826,7 +826,7 @@ impl StaticPolicy {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_head_constraints: Expr,
+        non_scope_constraints: Expr,
     ) -> Result<Self, UnexpectedSlotError> {
         let body = TemplateBody::new(
             id,
@@ -836,7 +836,7 @@ impl StaticPolicy {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraints,
+            non_scope_constraints,
         );
         let first_slot = body.condition().slots().next();
         // INVARIANT (inline policy correctness), checks that no slots exists
@@ -888,23 +888,23 @@ pub struct TemplateBody {
     annotations: Arc<Annotations>,
     /// `Effect` of this policy
     effect: Effect,
-    /// Head constraint for principal. This will be a boolean-valued expression:
+    /// Scope constraint for principal. This will be a boolean-valued expression:
     /// either `true` (if the policy just has `principal,`), or an equality or
     /// hierarchy constraint
     principal_constraint: PrincipalConstraint,
-    /// Head constraint for action. This will be a boolean-valued expression:
+    /// Scope constraint for action. This will be a boolean-valued expression:
     /// either `true` (if the policy just has `action,`), or an equality or
     /// hierarchy constraint
     action_constraint: ActionConstraint,
-    /// Head constraint for resource. This will be a boolean-valued expression:
+    /// Scope constraint for resource. This will be a boolean-valued expression:
     /// either `true` (if the policy just has `resource,`), or an equality or
     /// hierarchy constraint
     resource_constraint: ResourceConstraint,
-    /// Conjunction of all of the non-head constraints in the policy.
+    /// Conjunction of all of the non-scope constraints in the policy.
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    non_head_constraints: Arc<Expr>,
+    non_scope_constraints: Arc<Expr>,
 }
 
 impl TemplateBody {
@@ -945,58 +945,58 @@ impl TemplateBody {
         self.annotations.iter()
     }
 
-    /// Get the `principal` head constraint of this policy.
+    /// Get the `principal` scope constraint of this policy.
     pub fn principal_constraint(&self) -> &PrincipalConstraint {
         &self.principal_constraint
     }
 
-    /// Get the `principal` head constraint as an expression.
+    /// Get the `principal` scope constraint as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `principal,`), or an equality or hierarchy constraint
     pub fn principal_constraint_expr(&self) -> Expr {
         self.principal_constraint.as_expr()
     }
 
-    /// Get the `action` head constraint of this policy.
+    /// Get the `action` scope constraint of this policy.
     pub fn action_constraint(&self) -> &ActionConstraint {
         &self.action_constraint
     }
 
-    /// Get the `action` head constraint of this policy as an expression.
+    /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
     pub fn action_constraint_expr(&self) -> Expr {
         self.action_constraint.as_expr()
     }
 
-    /// Get the `resource` head constraint of this policy.
+    /// Get the `resource` scope constraint of this policy.
     pub fn resource_constraint(&self) -> &ResourceConstraint {
         &self.resource_constraint
     }
 
-    /// Get the `resource` head constraint of this policy as an expression.
+    /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
     pub fn resource_constraint_expr(&self) -> Expr {
         self.resource_constraint.as_expr()
     }
 
-    /// Get the non-head constraints of this policy.
+    /// Get the non-scope constraints of this policy.
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    pub fn non_head_constraints(&self) -> &Expr {
-        &self.non_head_constraints
+    pub fn non_scope_constraints(&self) -> &Expr {
+        &self.non_scope_constraints
     }
 
-    /// Get the Arc owning the non head constraints
-    pub fn non_head_constraints_arc(&self) -> &Arc<Expr> {
-        &self.non_head_constraints
+    /// Get the Arc owning the non scope constraints
+    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+        &self.non_scope_constraints
     }
 
     /// Get the condition expression of this policy.
     ///
-    /// This will be a conjunction of the policy's head constraints (on
+    /// This will be a conjunction of the policy's scope constraints (on
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
@@ -1010,7 +1010,7 @@ impl TemplateBody {
                 self.resource_constraint_expr(),
             )
             .with_maybe_source_loc(self.loc.clone()),
-            self.non_head_constraints.as_ref().clone(),
+            self.non_scope_constraints.as_ref().clone(),
         )
         .with_maybe_source_loc(self.loc.clone())
     }
@@ -1024,7 +1024,7 @@ impl TemplateBody {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_head_constraints: Arc<Expr>,
+        non_scope_constraints: Arc<Expr>,
     ) -> Self {
         Self {
             id,
@@ -1034,7 +1034,7 @@ impl TemplateBody {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraints,
+            non_scope_constraints,
         }
     }
 
@@ -1047,7 +1047,7 @@ impl TemplateBody {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_head_constraints: Expr,
+        non_scope_constraints: Expr,
     ) -> Self {
         Self {
             id,
@@ -1057,7 +1057,7 @@ impl TemplateBody {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_head_constraints: Arc::new(non_head_constraints),
+            non_scope_constraints: Arc::new(non_scope_constraints),
         }
     }
 }
@@ -1080,7 +1080,7 @@ impl std::fmt::Display for TemplateBody {
             self.principal_constraint(),
             self.action_constraint(),
             self.resource_constraint(),
-            self.non_head_constraints()
+            self.non_scope_constraints()
         )
     }
 }
@@ -1162,7 +1162,7 @@ impl AsRef<str> for Annotation {
     }
 }
 
-/// Template constraint on principal head variables
+/// Template constraint on principal scope variables
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
@@ -1269,7 +1269,7 @@ impl std::fmt::Display for PrincipalConstraint {
     }
 }
 
-/// Template constraint on resource head variables
+/// Template constraint on resource scope variables
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
@@ -1596,7 +1596,7 @@ impl PrincipalOrResourceConstraint {
     }
 }
 
-/// Constraint for action head variables.
+/// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ActionConstraint {
@@ -1691,7 +1691,7 @@ impl std::fmt::Display for StaticPolicy {
             self.principal_constraint(),
             self.action_constraint(),
             self.resource_constraint(),
-            self.non_head_constraints()
+            self.non_scope_constraints()
         )
     }
 }
@@ -1912,8 +1912,8 @@ mod test {
             let p = template.principal_constraint().clone();
             let a = template.action_constraint().clone();
             let r = template.resource_constraint().clone();
-            let nhc = template.non_head_constraints().clone();
-            let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, nhc);
+            let non_scope = template.non_scope_constraints().clone();
+            let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, non_scope);
             assert_eq!(template, t2);
         }
     }
@@ -1931,8 +1931,8 @@ mod test {
                 let p = ip.principal_constraint().clone();
                 let a = ip.action_constraint().clone();
                 let r = ip.resource_constraint().clone();
-                let nhc = ip.non_head_constraints().clone();
-                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, nhc)
+                let non_scope = ip.non_scope_constraints().clone();
+                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, non_scope)
                     .expect("Policy Creation Failed");
                 assert_eq!(ip, ip2);
                 let (t2, inst) = Template::link_static_policy(ip2);

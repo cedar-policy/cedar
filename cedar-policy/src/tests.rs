@@ -250,7 +250,7 @@ permit(principal ==  A :: B
     }
 }
 
-mod head_constraints_tests {
+mod scope_constraints_tests {
     use super::*;
 
     #[test]

@@ -378,7 +378,7 @@ pub enum Slot {
 }
 
 impl Slot {
-    /// Check if a slot matches a head variable.
+    /// Check if a slot matches a scope variable.
     pub fn matches(&self, var: crate::ast::Var) -> bool {
         matches!(
             (self, var),
