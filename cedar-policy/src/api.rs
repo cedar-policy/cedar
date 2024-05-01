@@ -2107,7 +2107,7 @@ impl EntityUid {
     /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         // INVARIANT: `from_components` always constructs a Concrete id
-        Self(ast::EntityUID::from_components(name.0, id.0))
+        Self(ast::EntityUID::from_components(name.0, id.0, None))
     }
 
     /// Creates `EntityUid` from a JSON value, which should have
@@ -2784,7 +2784,7 @@ impl Template {
         self.ast.slots().map(|slot| SlotId::ref_cast(&slot.id))
     }
 
-    /// Get the head constraint on this policy's principal
+    /// Get the scope constraint on this policy's principal
     pub fn principal_constraint(&self) -> TemplatePrincipalConstraint {
         match self.ast.principal_constraint().as_inner() {
             ast::PrincipalOrResourceConstraint::Any => TemplatePrincipalConstraint::Any,
@@ -2815,7 +2815,7 @@ impl Template {
         }
     }
 
-    /// Get the head constraint on this policy's action
+    /// Get the scope constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistent with the other constraints
         match self.ast.action_constraint() {
@@ -2829,7 +2829,7 @@ impl Template {
         }
     }
 
-    /// Get the head constraint on this policy's resource
+    /// Get the scope constraint on this policy's resource
     pub fn resource_constraint(&self) -> TemplateResourceConstraint {
         match self.ast.resource_constraint().as_inner() {
             ast::PrincipalOrResourceConstraint::Any => TemplateResourceConstraint::Any,
@@ -2905,7 +2905,7 @@ impl FromStr for Template {
     }
 }
 
-/// Head constraint on policy principals.
+/// Scope constraint on policy principals.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrincipalConstraint {
     /// Un-constrained
@@ -2920,7 +2920,7 @@ pub enum PrincipalConstraint {
     IsIn(EntityTypeName, EntityUid),
 }
 
-/// Head constraint on policy principals for templates.
+/// Scope constraint on policy principals for templates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplatePrincipalConstraint {
     /// Un-constrained
@@ -2948,7 +2948,7 @@ impl TemplatePrincipalConstraint {
     }
 }
 
-/// Head constraint on policy actions.
+/// Scope constraint on policy actions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionConstraint {
     /// Un-constrained
@@ -2959,7 +2959,7 @@ pub enum ActionConstraint {
     Eq(EntityUid),
 }
 
-/// Head constraint on policy resources.
+/// Scope constraint on policy resources.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceConstraint {
     /// Un-constrained
@@ -2974,7 +2974,7 @@ pub enum ResourceConstraint {
     IsIn(EntityTypeName, EntityUid),
 }
 
-/// Head constraint on policy resources for templates.
+/// Scope constraint on policy resources for templates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplateResourceConstraint {
     /// Un-constrained
@@ -3135,7 +3135,7 @@ impl Policy {
         self.ast.is_static()
     }
 
-    /// Get the head constraint on this policy's principal
+    /// Get the scope constraint on this policy's principal
     pub fn principal_constraint(&self) -> PrincipalConstraint {
         let slot_id = ast::SlotId::principal();
         match self.ast.template().principal_constraint().as_inner() {
@@ -3158,7 +3158,7 @@ impl Policy {
         }
     }
 
-    /// Get the head constraint on this policy's action
+    /// Get the scope constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistant with the other constraints
         // INVARIANT: all of the EntityUids come from a policy, which must have Concrete EntityUids
@@ -3174,7 +3174,7 @@ impl Policy {
         }
     }
 
-    /// Get the head constraint on this policy's resource
+    /// Get the scope constraint on this policy's resource
     pub fn resource_constraint(&self) -> ResourceConstraint {
         let slot_id = ast::SlotId::resource();
         match self.ast.template().resource_constraint().as_inner() {

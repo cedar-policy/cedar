@@ -113,7 +113,11 @@ impl std::fmt::Display for Path {
 
 impl From<Path> for Name {
     fn from(value: Path) -> Self {
-        value.0.node.into()
+        Self::new(
+            value.0.node.basename,
+            value.0.node.namespace,
+            Some(value.0.loc),
+        )
     }
 }
 
@@ -121,12 +125,6 @@ impl From<Path> for Name {
 struct PathInternal {
     basename: Id,
     namespace: Vec<Id>,
-}
-
-impl From<PathInternal> for Name {
-    fn from(value: PathInternal) -> Self {
-        Self::new(value.basename, value.namespace)
-    }
 }
 
 impl PathInternal {

@@ -685,11 +685,10 @@ struct TemplateLink {
     /// Template ID to fill in
     template_id: String,
 
-    /// Policy id for resulting concrete policy instance
+    /// Policy ID for resulting linked policy
     result_policy_id: String,
 
-    /// List of strings to fill in all slots in policy template "template_id".
-    /// (slot, String)
+    /// Links for all slots in policy template `template_id`
     instantiations: Links,
 }
 
@@ -701,11 +700,11 @@ struct TemplateLink {
 #[serde(rename_all = "camelCase")]
 struct Links(Vec<Link>);
 
-/// Error returned for duplicate link ids in a template instantiation
+/// Error returned for duplicate slot ids
 #[derive(Debug, Clone, Diagnostic, Error)]
 pub enum DuplicateLinkError {
-    /// Duplicate instantiations for the same slot
-    #[error("duplicate instantiations of the slot(s): {}", .0.iter().map(|s| format!("`{s}`")).join(", "))]
+    /// Duplicate values for the same slot
+    #[error("duplicate values for the slot(s): {}", .0.iter().map(|s| format!("`{s}`")).join(", "))]
     Duplicates(Vec<String>),
 }
 
@@ -752,13 +751,11 @@ struct RecvdSlice {
     #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
     templates: Option<HashMap<String, String>>,
 
-    /// Optional template instantiations.
-    /// List of instantiations, one per
-    /// If present, instantiate policies
+    /// Optional template links
     template_instantiations: Option<Vec<TemplateLink>>,
 }
 
-fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> {
+fn parse_link(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> {
     let slot = match v.slot.as_str() {
         "?principal" => SlotId::principal(),
         "?resource" => SlotId::resource(),
@@ -775,22 +772,19 @@ fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> 
     Ok((slot, entity_uid))
 }
 
-fn parse_instantiations(
-    policies: &mut crate::PolicySet,
-    instantiation: TemplateLink,
-) -> Result<(), miette::Report> {
-    let template_id = PolicyId::from_str(instantiation.template_id.as_str());
-    let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
-    match (template_id, instance_id) {
+fn parse_links(policies: &mut crate::PolicySet, link: TemplateLink) -> Result<(), miette::Report> {
+    let template_id = PolicyId::from_str(link.template_id.as_str());
+    let link_id = PolicyId::from_str(link.result_policy_id.as_str());
+    match (template_id, link_id) {
         (Err(never), _) | (_, Err(never)) => match never {},
-        (Ok(template_id), Ok(instance_id)) => {
+        (Ok(template_id), Ok(link_id)) => {
             let mut vals = HashMap::new();
-            for i in instantiation.instantiations.0 {
-                let (slot, euid) = parse_instantiation(&i)?;
+            for i in link.instantiations.0 {
+                let (slot, euid) = parse_link(&i)?;
                 vals.insert(slot, euid);
             }
             policies
-                .link(template_id, instance_id.clone(), vals)
+                .link(template_id, link_id, vals)
                 .map_err(miette::Report::new)
         }
     }
@@ -826,9 +820,9 @@ impl RecvdSlice {
             }
         };
 
-        if let Some(t_inst_list) = template_instantiations {
-            for instantiation in t_inst_list {
-                match parse_instantiations(&mut policies, instantiation) {
+        if let Some(links) = template_instantiations {
+            for link in links {
+                match parse_links(&mut policies, link) {
                     Ok(()) => (),
                     Err(e) => errs.push(e),
                 }
@@ -1354,7 +1348,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_with_template_instantiation() {
+    fn test_authorized_with_template_link() {
         let call = json!({
             "principal": {
              "type": "User",
@@ -1425,7 +1419,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_fails_on_duplicate_instantiations_ids() {
+    fn test_authorized_fails_on_duplicate_link_ids() {
         let call = json!({
             "principal" : {
                 "type" : "User",
@@ -1475,7 +1469,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_fails_on_template_instantiation_collision_with_template() {
+    fn test_authorized_fails_on_template_link_collision_with_template() {
         let call = json!({
             "principal" : {
                 "type" : "User",
@@ -1515,7 +1509,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
+    fn test_authorized_fails_on_template_link_collision_with_policy() {
         let call = json!({
             "principal" : {
                 "type" : "User",
@@ -1599,7 +1593,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_fails_on_duplicate_slot_instantiation1() {
+    fn test_authorized_fails_on_duplicate_slot_link1() {
         let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
@@ -1628,12 +1622,12 @@ mod test {
             }
         });
         assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`"));
+            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`"));
         });
     }
 
     #[test]
-    fn test_authorized_fails_on_duplicate_slot_instantiation2() {
+    fn test_authorized_fails_on_duplicate_slot_link2() {
         let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
@@ -1666,12 +1660,12 @@ mod test {
             }
         });
         assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`"));
+            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`"));
         });
     }
 
     #[test]
-    fn test_authorized_fails_on_duplicate_slot_instantiation3() {
+    fn test_authorized_fails_on_duplicate_slot_link3() {
         let call = json!({
             "principal" : "User::\"alice\"",
             "action" : "Photo::\"view\"",
@@ -1708,7 +1702,7 @@ mod test {
             }
         });
         assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate instantiations of the slot(s): `?principal`, `?resource`"));
+            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`, `?resource`"));
         });
     }
 

@@ -37,7 +37,7 @@ extern crate tsify;
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
-    /// This is maintained by the only two public constructors, `new` and `instantiate_inline_policy`
+    /// This is maintained by the only two public constructors, `new` and `link_inline_policy`
     ///
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<Slot>,
@@ -308,7 +308,7 @@ pub enum LinkingError {
         extra_values: Vec<SlotId>,
     },
 
-    /// The attempted instantiation failed as the template did not exist.
+    /// The attempted linking failed as the template did not exist.
     #[error("failed to find a template with id `{id}`")]
     NoSuchTemplate {
         /// [`PolicyID`] of the template we failed to find
@@ -1885,8 +1885,7 @@ mod test {
                 .slots()
                 .map(|slot| (slot.id, EntityUID::with_eid("eid")))
                 .collect();
-            let p =
-                Template::link(t, PolicyID::from_string("id"), env).expect("Instantiation Failed");
+            let p = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
 
             let b_literal = BorrowedLiteralPolicy::from(&p);
             let src = serde_json::to_string(&b_literal).expect("ser error");
@@ -2142,6 +2141,7 @@ mod test {
         let id = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid"),
+            None,
         );
         let mut i = EntityIterator::One(&id);
         assert_eq!(i.next(), Some(&id));
@@ -2153,10 +2153,12 @@ mod test {
         let id1 = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid1"),
+            None,
         );
         let id2 = EntityUID::from_components(
             name::Name::unqualified_name(id::Id::new_unchecked("s")),
             entity::Eid::new("eid2"),
+            None,
         );
         let v = vec![&id1, &id2];
         let mut i = EntityIterator::Bunch(v);

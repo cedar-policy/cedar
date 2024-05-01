@@ -1108,6 +1108,7 @@ fn interpret_primary(
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid),
+                                None,
                             )),
                         }))),
                         Err(unescape_errs) => {
@@ -1143,6 +1144,7 @@ fn interpret_primary(
                                 .and_then(|id| id.to_string().parse().map_err(Into::into))
                         })
                         .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                    Some(node.loc.clone()),
                 ))),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {

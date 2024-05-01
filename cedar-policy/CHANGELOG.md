@@ -33,8 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
-* Validation error for invalid use of an action now includes a source location
+- Improved validation error messages when incompatible types appear in
+  `if`, `==`, `contains`, `containsAll`, and `containsAny` expressions.
+- Validation error for invalid use of an action now includes a source location
   containing the offending policy.
+- Validation error messages for unknown entity types and action entities now
+  report the precise source location where the unknown type was encountered.
 
 ### Fixed
 

@@ -161,10 +161,7 @@ impl PrincipalConstraint {
     /// Fill in any slots in the principal constraint using the values in
     /// `vals`. Throws an error if `vals` doesn't contain a necessary mapping,
     /// but does not throw an error if `vals` contains unused mappings.
-    pub fn instantiate(
-        self,
-        vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, LinkingError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         match self {
             PrincipalConstraint::All => Ok(PrincipalConstraint::All),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -213,10 +210,7 @@ impl ResourceConstraint {
     /// Fill in any slots in the resource constraint using the values in
     /// `vals`. Throws an error if `vals` doesn't contain a necessary mapping,
     /// but does not throw an error if `vals` contains unused mappings.
-    pub fn instantiate(
-        self,
-        vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, LinkingError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         match self {
             ResourceConstraint::All => Ok(ResourceConstraint::All),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -265,10 +259,7 @@ impl ActionConstraint {
     /// Fill in any slots in the action constraint using the values in `vals`.
     /// Throws an error if `vals` doesn't contain a necessary mapping, but does
     /// not throw an error if `vals` contains unused mappings.
-    pub fn instantiate(
-        self,
-        _vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, LinkingError> {
+    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in action constraints
         Ok(self)
     }
