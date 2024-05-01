@@ -4389,7 +4389,7 @@ pub mod test {
             PolicyID::from_string("instance"),
             values,
         )
-        .expect("Instantiation failed!");
+        .expect("Linking failed!");
         let q = Request::new(
             (EntityUID::with_eid("p"), None),
             (EntityUID::with_eid("a"), None),

@@ -82,19 +82,16 @@ impl Policy {
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
     /// `self` is an inline policy (in which case it is returned unchanged).
-    pub fn link(
-        self,
-        vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         Ok(Policy {
             effect: self.effect,
-            principal: self.principal.instantiate(vals)?,
-            action: self.action.instantiate(vals)?,
-            resource: self.resource.instantiate(vals)?,
+            principal: self.principal.link(vals)?,
+            action: self.action.link(vals)?,
+            resource: self.resource.link(vals)?,
             conditions: self
                 .conditions
                 .into_iter()
-                .map(|clause| clause.instantiate(vals))
+                .map(|clause| clause.link(vals))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
         })
@@ -105,10 +102,7 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn instantiate(
-        self,
-        _vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in clauses
         Ok(self)
     }
@@ -2925,7 +2919,7 @@ mod test {
     }
 
     #[test]
-    fn instantiate() {
+    fn link() {
         let template = r#"
             permit(
                 principal == ?principal,
@@ -2946,7 +2940,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::principal()
             }
         );
@@ -2959,7 +2953,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::resource()
             }
         );
@@ -3896,7 +3890,7 @@ mod test {
         }
 
         #[test]
-        fn instantiate() {
+        fn link() {
             let template = r#"
             permit(
                 principal is User in ?principal,
@@ -3912,7 +3906,7 @@ mod test {
             let err = est.clone().link(&HashMap::from_iter([]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::principal()
                 })
             );
@@ -3922,7 +3916,7 @@ mod test {
             )]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::resource()
                 })
             );
@@ -3965,7 +3959,7 @@ mod test {
         }
 
         #[test]
-        fn instantiate_no_slot() {
+        fn link_no_slot() {
             let template = r#"permit(principal is User, action, resource is Doc);"#;
             let cst = parser::text_to_cst::parse_policy(template)
                 .unwrap()
