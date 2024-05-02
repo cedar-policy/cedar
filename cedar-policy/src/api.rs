@@ -36,9 +36,7 @@ use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
-use cedar_policy_core::entities::{
-    ContextSchema, Dereference, JsonDeserializationError, JsonDeserializationErrorContext,
-};
+use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
 use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
@@ -74,43 +72,6 @@ pub mod entities {
         fn size_hint(&self) -> (usize, Option<usize>) {
             self.inner.size_hint()
         }
-    }
-}
-
-/// Identifier for a Template slot
-#[repr(transparent)]
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
-pub struct SlotId(ast::SlotId);
-
-impl SlotId {
-    /// Get the slot for `principal`
-    pub fn principal() -> Self {
-        Self(ast::SlotId::principal())
-    }
-
-    /// Get the slot for `resource`
-    pub fn resource() -> Self {
-        Self(ast::SlotId::resource())
-    }
-}
-
-impl std::fmt::Display for SlotId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[doc(hidden)]
-impl From<ast::SlotId> for SlotId {
-    fn from(a: ast::SlotId) -> Self {
-        Self(a)
-    }
-}
-
-#[doc(hidden)]
-impl From<SlotId> for ast::SlotId {
-    fn from(s: SlotId) -> Self {
-        s.0
     }
 }
 
@@ -151,12 +112,12 @@ impl Entity {
         // the `Entities` object is created
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Ok(Self(ast::Entity::new(
-            uid.into_inner(),
+            uid.into(),
             attrs
                 .into_iter()
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
-            parents.into_iter().map(EntityUid::into_inner).collect(),
+            parents.into_iter().map(EntityUid::into).collect(),
             &Extensions::all_available(),
         )?))
     }
@@ -170,9 +131,9 @@ impl Entity {
         // the `Entities` object is created
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::new_with_attr_partial_value(
-            uid.into_inner(),
+            uid.into(),
             HashMap::new(),
-            parents.into_iter().map(EntityUid::into_inner).collect(),
+            parents.into_iter().map(EntityUid::into).collect(),
         ))
     }
 
@@ -188,7 +149,7 @@ impl Entity {
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
-        Self(ast::Entity::with_uid(uid.into_inner()))
+        Self(ast::Entity::with_uid(uid.into()))
     }
 
     /// Get the Uid of this entity
@@ -293,7 +254,7 @@ impl Entities {
 
     /// Get the `Entity` with the given Uid, if any
     pub fn get(&self, uid: &EntityUid) -> Option<&Entity> {
-        match self.0.entity(uid.as_inner()) {
+        match self.0.entity(uid.as_ref()) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(Entity::ref_cast(e)),
         }
@@ -612,8 +573,8 @@ impl Entities {
     /// Is entity `a` an ancestor of entity `b`?
     /// Same semantics as `b in a` in the Cedar language
     pub fn is_ancestor_of(&self, a: &EntityUid, b: &EntityUid) -> bool {
-        match self.0.entity(b.as_inner()) {
-            Dereference::Data(b) => b.is_descendant_of(a.as_inner()),
+        match self.0.entity(b.as_ref()) {
+            Dereference::Data(b) => b.is_descendant_of(a.as_ref()),
             _ => a == b, // if b doesn't exist, `b in a` is only true if `b == a`
         }
     }
@@ -624,7 +585,7 @@ impl Entities {
         &'a self,
         euid: &EntityUid,
     ) -> Option<impl Iterator<Item = &'a EntityUid>> {
-        let entity = match self.0.entity(euid.as_inner()) {
+        let entity = match self.0.entity(euid.as_ref()) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(e),
         }?;
@@ -878,7 +839,7 @@ impl PartialResponse {
 
     /// Return the residual for a given [`PolicyId`], if it exists in the response
     pub fn get(&self, id: &PolicyId) -> Option<Policy> {
-        self.0.get(id.as_inner()).map(Policy::from_ast)
+        self.0.get(id.as_ref()).map(Policy::from_ast)
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
@@ -1509,16 +1470,6 @@ pub fn confusable_string_checker<'a>(
         .map(std::convert::Into::into)
 }
 
-/// This `FromStr` implementation requires the _normalized_ representation of the
-/// type name. See <https://github.com/cedar-policy/rfcs/pull/9/>.
-impl FromStr for EntityTypeName {
-    type Err = ParseErrors;
-
-    fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_type_str).map(Self::new)
-    }
-}
-
 /// Represents a namespace.
 ///
 /// An `EntityNamespace` can can be constructed using
@@ -1546,58 +1497,6 @@ impl FromStr for EntityNamespace {
 impl std::fmt::Display for EntityNamespace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-impl EntityUid {
-    /// Creates `EntityUid` from a JSON value, which should have
-    /// either the implicit or explicit `__entity` form.
-    /// ```
-    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// # use std::str::FromStr;
-    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
-    /// let euid = EntityUid::from_json(json_data).unwrap();
-    /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
-    /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
-    /// ```
-    #[allow(clippy::result_large_err)]
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
-        let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self::new(
-            parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-        ))
-    }
-}
-
-impl FromStr for EntityUid {
-    type Err = ParseErrors;
-
-    /// Parse an [`EntityUid`].
-    ///
-    /// An [`EntityUid`] consists of an [`EntityTypeName`] followed by a quoted [`EntityId`].
-    /// The two are joined by a `::`.
-    /// For the formal grammar, see <https://docs.cedarpolicy.com/policies/syntax-grammar.html#entity>
-    ///
-    /// Examples:
-    /// ```
-    ///  # use cedar_policy::EntityUid;
-    ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
-    ///  // Get the type of this euid (`Foo::Bar`)
-    ///  euid.type_name();
-    ///  // Or the id
-    ///  euid.id();
-    /// ```
-    ///
-    /// This [`FromStr`] implementation requires the _normalized_ representation of the
-    /// UID. See <https://github.com/cedar-policy/rfcs/pull/9/>.
-    ///
-    /// A note on safety:
-    ///
-    /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
-    /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
-    fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        // INVARIANT there is no way to write down the unspecified entity
-        ast::EntityUID::from_normalized_str(uid_str).map(Self::new)
     }
 }
 
@@ -1721,7 +1620,7 @@ impl PolicySet {
             .into_iter()
             .map(|(id, template)| {
                 template.lossless.est().map(|est| PolicyEntry {
-                    id: id.into_inner(),
+                    id: id.into(),
                     policy: est,
                 })
             })
@@ -1868,7 +1767,7 @@ impl PolicySet {
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
     pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<&'a str> {
         self.ast
-            .get(id.as_inner())?
+            .get(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
@@ -1880,7 +1779,7 @@ impl PolicySet {
     // without a semver break
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
         self.ast
-            .get_template(id.as_inner())?
+            .get_template(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
             .map(|annot| annot.val.to_string())
     }
@@ -1911,7 +1810,7 @@ impl PolicySet {
     ) -> Result<(), PolicySetError> {
         let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
             .into_iter()
-            .map(|(key, value)| (key.into(), value.into_inner()))
+            .map(|(key, value)| (key.into(), value.into()))
             .collect();
 
         // Try to get the template with the id we're linking from.  We do this
@@ -1923,7 +1822,7 @@ impl PolicySet {
                 PolicySetError::ExpectedTemplate
             } else {
                 PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
-                    id: template_id.into_inner(),
+                    id: template_id.into(),
                 })
             });
         };
@@ -1931,8 +1830,8 @@ impl PolicySet {
         let linked_ast = self
             .ast
             .link(
-                template_id.into_inner(),
-                new_id.as_inner().clone(),
+                template_id.into(),
+                new_id.clone().into(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
@@ -2030,14 +1929,14 @@ fn is_static_or_link(
                 .map(|(id, euid)| (*id, euid.clone()))
                 .collect();
             Ok(Either::Right(Link {
-                id: id.into_inner(),
-                template: template_id.clone().into_inner(),
+                id: id.into(),
+                template: template_id.clone().into(),
                 slots,
             }))
         }
         None => policy.lossless.est().map(|est| {
             Either::Left(PolicyEntry {
-                id: id.into_inner(),
+                id: id.into(),
                 policy: est,
             })
         }),
@@ -2046,6 +1945,7 @@ fn is_static_or_link(
 
 /// Like [`itertools::Itertools::partition_map`], but accepts a function that can fail.
 /// The first invocation of `f` that fails causes the whole computation to fail
+#[allow(clippy::redundant_pub_crate)] // can't be private because it's used in tests
 pub(crate) fn fold_partition<T, A, B, E>(
     i: impl IntoIterator<Item = T>,
     f: impl Fn(T) -> Result<Either<A, B>, E>,
@@ -2113,7 +2013,7 @@ impl Template {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into_inner()),
+            ast: self.ast.new_id(id.into()),
             lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
@@ -2238,9 +2138,7 @@ impl Template {
         est: est::Policy,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         Ok(Self {
-            ast: est
-                .clone()
-                .try_into_ast_template(id.map(PolicyId::into_inner))?,
+            ast: est.clone().try_into_ast_template(id.map(PolicyId::into))?,
             lossless: LosslessPolicy::Est(est),
         })
     }
@@ -2409,7 +2307,7 @@ impl Policy {
                 .ast
                 .env()
                 .iter()
-                .map(|(key, value)| (SlotId(*key), EntityUid::new(value.clone())))
+                .map(|(key, value)| ((*key).into(), EntityUid::new(value.clone())))
                 .collect();
             Some(wrapped_vals)
         }
@@ -2443,7 +2341,7 @@ impl Policy {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into_inner()),
+            ast: self.ast.new_id(id.into()),
             lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
@@ -2631,9 +2529,7 @@ impl Policy {
         est: est::Policy,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         Ok(Self {
-            ast: est
-                .clone()
-                .try_into_ast_policy(id.map(PolicyId::into_inner))?,
+            ast: est.clone().try_into_ast_policy(id.map(PolicyId::into))?,
             lossless: LosslessPolicy::Est(est),
         })
     }
@@ -2900,7 +2796,7 @@ impl RestrictedExpression {
 
     /// Create an expression representing a literal `EntityUid`.
     pub fn new_entity_uid(value: EntityUid) -> Self {
-        Self(ast::RestrictedExpr::val(value.into_inner()))
+        Self(ast::RestrictedExpr::val(ast::EntityUID::from(value)))
     }
 
     /// Create an expression representing a record.
@@ -3020,7 +2916,7 @@ impl<S> RequestBuilder<S> {
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
-                Some(p) => ast::EntityUIDEntry::concrete(p.into_inner(), None),
+                Some(p) => ast::EntityUIDEntry::concrete(p.into(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
                     None,
@@ -3043,7 +2939,7 @@ impl<S> RequestBuilder<S> {
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
-                Some(a) => ast::EntityUIDEntry::concrete(a.into_inner(), None),
+                Some(a) => ast::EntityUIDEntry::concrete(a.into(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
                     None,
@@ -3066,7 +2962,7 @@ impl<S> RequestBuilder<S> {
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
-                Some(r) => ast::EntityUIDEntry::concrete(r.into_inner(), None),
+                Some(r) => ast::EntityUIDEntry::concrete(r.into(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
                     None,
@@ -3165,18 +3061,18 @@ impl Request {
         context: Context,
         schema: Option<&Schema>,
     ) -> Result<Self, RequestValidationError> {
-        let p = match principal {
-            Some(p) => p.into_inner(),
-            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
-        };
-        let a = match action {
-            Some(a) => a.into_inner(),
-            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
-        };
-        let r = match resource {
-            Some(r) => r.into_inner(),
-            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
-        };
+        let p = principal.map_or_else(
+            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
+            EntityUid::into,
+        );
+        let a = action.map_or_else(
+            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
+            EntityUid::into,
+        );
+        let r = resource.map_or_else(
+            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
+            EntityUid::into,
+        );
         Ok(Self(ast::Request::new(
             (p, None),
             (a, None),
@@ -3429,7 +3325,7 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_inner()).ok_or_else(
+        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref()).ok_or_else(
             || ContextJsonError::MissingAction {
                 action: action.clone(),
             },

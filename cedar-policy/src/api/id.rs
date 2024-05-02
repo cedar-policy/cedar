@@ -17,7 +17,10 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
+use crate::ParseErrors;
 use cedar_policy_core::ast;
+use cedar_policy_core::entities::JsonDeserializationErrorContext;
+use cedar_policy_core::FromNormalizedStr;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -36,6 +39,7 @@ use std::str::FromStr;
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
 
@@ -134,6 +138,16 @@ impl EntityTypeName {
     }
 }
 
+/// This `FromStr` implementation requires the _normalized_ representation of the
+/// type name. See <https://github.com/cedar-policy/rfcs/pull/9/>.
+impl FromStr for EntityTypeName {
+    type Err = ParseErrors;
+
+    fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
+        ast::Name::from_normalized_str(namespace_type_str).map(Self::new)
+    }
+}
+
 impl std::fmt::Display for EntityTypeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -198,6 +212,25 @@ impl EntityUid {
         Self(ast::EntityUID::from_components(name.0, id.0, None))
     }
 
+    /// Creates `EntityUid` from a JSON value, which should have
+    /// either the implicit or explicit `__entity` form.
+    /// ```
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
+    /// ```
+    #[allow(clippy::result_large_err)]
+    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+        let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
+        // INVARIANT: There is no way to write down the unspecified entityuid
+        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self::new(
+            parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+        ))
+    }
+
     /// Testing utility for creating `EntityUids` a bit easier
     #[cfg(test)]
     pub(crate) fn from_strs(typename: &str, id: &str) -> Self {
@@ -212,23 +245,57 @@ impl EntityUid {
     pub(crate) fn new(uid: ast::EntityUID) -> Self {
         Self(uid)
     }
+}
 
-    /// Deconstruct an [`EntityUid`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn into_inner(self) -> ast::EntityUID {
-        self.0
-    }
+impl FromStr for EntityUid {
+    type Err = ParseErrors;
 
-    /// Deconstruct an [`EntityUid`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn as_inner(&self) -> &ast::EntityUID {
-        &self.0
+    /// Parse an [`EntityUid`].
+    ///
+    /// An [`EntityUid`] consists of an [`EntityTypeName`] followed by a quoted [`EntityId`].
+    /// The two are joined by a `::`.
+    /// For the formal grammar, see <https://docs.cedarpolicy.com/policies/syntax-grammar.html#entity>
+    ///
+    /// Examples:
+    /// ```
+    ///  # use cedar_policy::EntityUid;
+    ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
+    ///  // Get the type of this euid (`Foo::Bar`)
+    ///  euid.type_name();
+    ///  // Or the id
+    ///  euid.id();
+    /// ```
+    ///
+    /// This [`FromStr`] implementation requires the _normalized_ representation of the
+    /// UID. See <https://github.com/cedar-policy/rfcs/pull/9/>.
+    ///
+    /// A note on safety:
+    ///
+    /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
+    /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
+    fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
+        // INVARIANT there is no way to write down the unspecified entity
+        ast::EntityUID::from_normalized_str(uid_str).map(Self::new)
     }
 }
 
 impl std::fmt::Display for EntityUid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[doc(hidden)]
+impl AsRef<ast::EntityUID> for EntityUid {
+    fn as_ref(&self) -> &ast::EntityUID {
+        &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<EntityUid> for ast::EntityUID {
+    fn from(uid: EntityUid) -> Self {
+        uid.0
     }
 }
 
@@ -242,9 +309,10 @@ impl std::fmt::Display for EntityUid {
 /// # use cedar_policy::PolicyId;
 /// let id = PolicyId::new("my-id");
 /// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(id.as_ref(), "my-id");
+/// # assert_eq!(AsRef::<str>::as_ref(&id), "my-id");
 /// ```
 #[repr(transparent)]
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
 pub struct PolicyId(ast::PolicyID);
 
@@ -252,18 +320,6 @@ impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
     pub fn new(id: impl AsRef<str>) -> Self {
         Self(ast::PolicyID::from_string(id.as_ref()))
-    }
-
-    /// Deconstruct an [`PolicyId`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn into_inner(self) -> ast::PolicyID {
-        self.0
-    }
-
-    /// Deconstruct an [`PolicyId`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn as_inner(&self) -> &ast::PolicyID {
-        &self.0
     }
 }
 
@@ -285,5 +341,57 @@ impl std::fmt::Display for PolicyId {
 impl AsRef<str> for PolicyId {
     fn as_ref(&self) -> &str {
         self.0.as_ref()
+    }
+}
+
+#[doc(hidden)]
+impl AsRef<ast::PolicyID> for PolicyId {
+    fn as_ref(&self) -> &ast::PolicyID {
+        &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<PolicyId> for ast::PolicyID {
+    fn from(uid: PolicyId) -> Self {
+        uid.0
+    }
+}
+
+/// Identifier for a Template slot
+#[repr(transparent)]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
+pub struct SlotId(ast::SlotId);
+
+impl SlotId {
+    /// Get the slot for `principal`
+    pub fn principal() -> Self {
+        Self(ast::SlotId::principal())
+    }
+
+    /// Get the slot for `resource`
+    pub fn resource() -> Self {
+        Self(ast::SlotId::resource())
+    }
+}
+
+impl std::fmt::Display for SlotId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::SlotId> for SlotId {
+    fn from(a: ast::SlotId) -> Self {
+        Self(a)
+    }
+}
+
+#[doc(hidden)]
+impl From<SlotId> for ast::SlotId {
+    fn from(s: SlotId) -> Self {
+        s.0
     }
 }

@@ -4045,7 +4045,7 @@ mod policy_set_est_tests {
         "links" : [
             {
                 "id" : "link",
-                "template" : "non_existant",
+                "template" : "non_existent",
                 "slots" : {
                     "?principal" : { "type" : "User", "id" : "John" }
                 }
@@ -4053,7 +4053,7 @@ mod policy_set_est_tests {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existant").into_inner();
+        let template1 = PolicyId::new("non_existent").into();
         assert_matches!(
             err,
             PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate { id }) if id == template1
