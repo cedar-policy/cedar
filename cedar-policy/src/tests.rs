@@ -3561,14 +3561,9 @@ mod decimal_ip_constructors {
     use super::*;
 
     #[test]
-    fn ip_name_correct() {
-        assert_eq!(ip_extension_name(), ast::Name::from_str("ip").unwrap());
-    }
-
-    #[test]
     fn expr_ip_constructor() {
         let ip = Expression::new_ip("10.10.10.10");
-        assert_matches!(ip.unwrap().expr_kind(),
+        assert_matches!(ip.into_inner().expr_kind(),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
                 assert_eq!(fn_name, &("ip".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
@@ -3640,7 +3635,7 @@ mod decimal_ip_constructors {
     #[test]
     fn rexpr_ip_constructor() {
         let ip = RestrictedExpression::new_ip("10.10.10.10");
-        assert_matches!(ip.unwrap().expr_kind(),
+        assert_matches!(ip.into_inner().expr_kind(),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
                 assert_eq!(fn_name, &("ip".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
@@ -3652,17 +3647,9 @@ mod decimal_ip_constructors {
     }
 
     #[test]
-    fn decimal_name_correct() {
-        assert_eq!(
-            decimal_extension_name(),
-            ast::Name::from_str("decimal").unwrap()
-        );
-    }
-
-    #[test]
     fn expr_decimal_constructor() {
         let decimal = Expression::new_decimal("1234.1234");
-        assert_matches!(decimal.unwrap().expr_kind(),
+        assert_matches!(decimal.into_inner().expr_kind(),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
@@ -3676,7 +3663,7 @@ mod decimal_ip_constructors {
     #[test]
     fn rexpr_decimal_constructor() {
         let decimal = RestrictedExpression::new_decimal("1234.1234");
-        assert_matches!(decimal.unwrap().expr_kind(),
+        assert_matches!(decimal.into_inner().expr_kind(),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);

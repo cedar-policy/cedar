@@ -2843,8 +2843,8 @@ impl Expression {
 
     /// Deconstruct an [`Expression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[allow(dead_code)]
-    pub(crate) fn unwrap(self) -> ast::Expr {
+    #[cfg(test)]
+    pub(crate) fn into_inner(self) -> ast::Expr {
         self.0
     }
 }
@@ -2938,19 +2938,19 @@ impl RestrictedExpression {
 
     /// Deconstruct an [`RestrictedExpression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[allow(dead_code)]
-    pub(crate) fn unwrap(self) -> ast::RestrictedExpr {
+    #[cfg(test)]
+    pub(crate) fn into_inner(self) -> ast::RestrictedExpr {
         self.0
     }
 }
 
-pub(crate) fn decimal_extension_name() -> ast::Name {
+fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("decimal".parse().unwrap())
 }
 
-pub(crate) fn ip_extension_name() -> ast::Name {
+fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("ip".parse().unwrap())

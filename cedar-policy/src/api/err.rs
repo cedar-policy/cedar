@@ -499,32 +499,6 @@ impl From<ast::UnexpectedSlotError> for PolicySetError {
     }
 }
 
-/// Error types related to JSON processing
-pub mod json_errors {
-    use cedar_policy_core::est;
-    use miette::Diagnostic;
-    use thiserror::Error;
-
-    /// Error linking the JSON representation of a linked policy
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    pub struct JsonLinkError {
-        /// Underlying error
-        #[from]
-        err: est::LinkingError,
-    }
-
-    /// Error serializing a policy as JSON
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct PolicyJsonSerializationError {
-        /// Underlying error
-        #[from]
-        err: serde_json::Error,
-    }
-}
-
 /// Errors that can happen when getting the JSON representation of a policy
 #[derive(Debug, Diagnostic, Error)]
 pub enum PolicyToJsonError {
@@ -550,6 +524,32 @@ impl From<est::LinkingError> for PolicyToJsonError {
 impl From<serde_json::Error> for PolicyToJsonError {
     fn from(e: serde_json::Error) -> Self {
         json_errors::PolicyJsonSerializationError::from(e).into()
+    }
+}
+
+/// Error types related to JSON processing
+pub mod json_errors {
+    use cedar_policy_core::est;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Error linking the JSON representation of a linked policy
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct JsonLinkError {
+        /// Underlying error
+        #[from]
+        err: est::LinkingError,
+    }
+
+    /// Error serializing a policy as JSON
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    pub struct PolicyJsonSerializationError {
+        /// Underlying error
+        #[from]
+        err: serde_json::Error,
     }
 }
 

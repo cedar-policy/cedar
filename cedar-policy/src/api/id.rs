@@ -14,69 +14,13 @@
  * limitations under the License.
  */
 
-//! This module defines the publicly exported identifier types `PolicyId` and `EntityUid`.
+//! This module defines the publicly exported identifier types `EntityUid` and `PolicyId`.
 
 use cedar_policy_core::ast;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::str::FromStr;
-
-/// Unique ids assigned to policies and templates.
-///
-/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string.
-/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
-/// Examples:
-/// ```
-/// # use cedar_policy::PolicyId;
-/// let id = PolicyId::new("my-id");
-/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(id.as_ref(), "my-id");
-/// ```
-#[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
-pub struct PolicyId(ast::PolicyID);
-
-impl PolicyId {
-    /// Construct a [`PolicyId`] from a source string
-    pub fn new(id: impl AsRef<str>) -> Self {
-        Self(ast::PolicyID::from_string(id.as_ref()))
-    }
-
-    /// Deconstruct an [`PolicyId`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn into_inner(self) -> ast::PolicyID {
-        self.0
-    }
-
-    /// Deconstruct an [`PolicyId`] to get the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn as_inner(&self) -> &ast::PolicyID {
-        &self.0
-    }
-}
-
-impl FromStr for PolicyId {
-    type Err = Infallible;
-
-    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
-    fn from_str(id: &str) -> Result<Self, Self::Err> {
-        Ok(Self(ast::PolicyID::from_string(id)))
-    }
-}
-
-impl std::fmt::Display for PolicyId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for PolicyId {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
 
 /// Identifier portion of the [`EntityUid`] type.
 ///
@@ -284,5 +228,61 @@ impl EntityUid {
 impl std::fmt::Display for EntityUid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// Unique ids assigned to policies and templates.
+///
+/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
+/// calling `parse()` on a string.
+/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
+/// Examples:
+/// ```
+/// # use cedar_policy::PolicyId;
+/// let id = PolicyId::new("my-id");
+/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
+/// # assert_eq!(id.as_ref(), "my-id");
+/// ```
+#[repr(transparent)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
+pub struct PolicyId(ast::PolicyID);
+
+impl PolicyId {
+    /// Construct a [`PolicyId`] from a source string
+    pub fn new(id: impl AsRef<str>) -> Self {
+        Self(ast::PolicyID::from_string(id.as_ref()))
+    }
+
+    /// Deconstruct an [`PolicyId`] to get the internal type.
+    /// This function is only intended to be used internally.
+    pub(crate) fn into_inner(self) -> ast::PolicyID {
+        self.0
+    }
+
+    /// Deconstruct an [`PolicyId`] to get the internal type.
+    /// This function is only intended to be used internally.
+    pub(crate) fn as_inner(&self) -> &ast::PolicyID {
+        &self.0
+    }
+}
+
+impl FromStr for PolicyId {
+    type Err = Infallible;
+
+    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        Ok(Self(ast::PolicyID::from_string(id)))
+    }
+}
+
+impl std::fmt::Display for PolicyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for PolicyId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
     }
 }
