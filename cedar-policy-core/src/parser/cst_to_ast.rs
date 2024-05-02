@@ -235,8 +235,8 @@ impl Node<Option<cst::Policy>> {
         let (annot_success, annotations) = policy.get_ast_annotations(errs);
         let mut failure = !annot_success;
 
-        // convert head
-        let (maybe_principal, maybe_action, maybe_resource) = policy.extract_head(errs);
+        // convert scope
+        let (maybe_principal, maybe_action, maybe_resource) = policy.extract_scope(errs);
 
         // convert conditions
         let conds: Vec<_> = policy
@@ -284,8 +284,8 @@ impl Node<Option<cst::Policy>> {
 }
 
 impl cst::Policy {
-    /// get the head constraints from the `cst::Policy`
-    pub fn extract_head(
+    /// get the scope constraints from the `cst::Policy`
+    pub fn extract_scope(
         &self,
         errs: &mut ParseErrors,
     ) -> (
@@ -298,9 +298,9 @@ impl cst::Policy {
         let mut end_of_last_var = self.effect.loc.end();
 
         let mut vars = self.variables.iter().peekable();
-        let principal = if let Some(head1) = vars.next() {
-            end_of_last_var = head1.loc.end();
-            head1.to_principal_constraint(errs)
+        let principal = if let Some(scope1) = vars.next() {
+            end_of_last_var = scope1.loc.end();
+            scope1.to_principal_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Principal),
@@ -308,9 +308,9 @@ impl cst::Policy {
             ));
             None
         };
-        let action = if let Some(head2) = vars.next() {
-            end_of_last_var = head2.loc.end();
-            head2.to_action_constraint(errs)
+        let action = if let Some(scope2) = vars.next() {
+            end_of_last_var = scope2.loc.end();
+            scope2.to_action_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Action),
@@ -318,8 +318,8 @@ impl cst::Policy {
             ));
             None
         };
-        let resource = if let Some(head3) = vars.next() {
-            head3.to_resource_constraint(errs)
+        let resource = if let Some(scope3) = vars.next() {
+            scope3.to_resource_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Resource),
@@ -333,7 +333,7 @@ impl cst::Policy {
             for extra_var in vars {
                 if let Some(def) = extra_var.as_inner() {
                     errs.push(
-                        extra_var.to_ast_err(ToASTErrorKind::ExtraHeadConstraints(def.clone())),
+                        extra_var.to_ast_err(ToASTErrorKind::ExtraScopeConstraints(def.clone())),
                     )
                 }
             }
@@ -2312,7 +2312,7 @@ fn construct_template_policy(
     conds: Vec<ast::Expr>,
     loc: &Loc,
 ) -> ast::Template {
-    let construct_template = |non_head_constraint| {
+    let construct_template = |non_scope_constraint| {
         ast::Template::new(
             id,
             Some(loc.clone()),
@@ -2321,7 +2321,7 @@ fn construct_template_policy(
             principal,
             action,
             resource,
-            non_head_constraint,
+            non_scope_constraint,
         )
     };
     let mut conds_iter = conds.into_iter();
@@ -2333,7 +2333,7 @@ fn construct_template_policy(
             None => first_expr,
         })
     } else {
-        // use `true` to mark the absence of non-head constraints
+        // use `true` to mark the absence of non-scope constraints
         construct_template(construct_expr_bool(true, loc.clone()))
     }
 }
@@ -3065,7 +3065,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head1() {
+    fn fail_scope1() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
@@ -3085,7 +3085,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head2() {
+    fn fail_scope2() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
@@ -3105,7 +3105,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head3() {
+    fn fail_scope3() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"

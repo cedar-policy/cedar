@@ -65,8 +65,8 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
             && f_p.action_constraint() == p.action_constraint()
             && f_p.resource_constraint() == p.resource_constraint()
             && f_p
-                .non_head_constraints()
-                .eq_shape(p.non_head_constraints()))
+                .non_scope_constraints()
+                .eq_shape(p.non_scope_constraints()))
         {
             return Err(miette!(
                 "policies differ in meaning or annotations:\noriginal: {p}\nformatted: {f_p}"

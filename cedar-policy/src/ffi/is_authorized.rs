@@ -17,17 +17,17 @@
 //! This module contains the `is_authorized` entry points that other language
 //! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{PolicySet, Schema, WithWarnings};
+use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     Request, SlotId,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
-use miette::Diagnostic;
+use miette::{miette, Diagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use serde_with::MapPreventDuplicates;
+use serde_with::{serde_as, MapPreventDuplicates};
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
@@ -48,16 +48,21 @@ pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
         WithWarnings {
             t: Ok((request, policies, entities)),
             warnings,
-        } => AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
-            response: authorizer
-                .is_authorized(&request, &policies, &entities)
-                .into(),
-            warnings,
-        }),
+        } => AuthorizationAnswer::Success {
+            response: AUTHORIZER.with(|authorizer| {
+                authorizer
+                    .is_authorized(&request, &policies, &entities)
+                    .into()
+            }),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
         WithWarnings {
             t: Err(errors),
             warnings,
-        } => AuthorizationAnswer::Failure { errors, warnings },
+        } => AuthorizationAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
     }
 }
 
@@ -84,23 +89,29 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
         WithWarnings {
             t: Ok((request, policies, entities)),
             warnings,
-        } => AUTHORIZER.with(|authorizer| {
-            let response = authorizer.is_authorized_partial(&request, &policies, &entities);
+        } => {
+            let response = AUTHORIZER.with(|authorizer| {
+                authorizer.is_authorized_partial(&request, &policies, &entities)
+            });
+            let warnings = warnings.into_iter().map(Into::into).collect();
             match ResidualResponse::try_from(response) {
                 Ok(response) => PartialAuthorizationAnswer::Residuals {
                     response: Box::new(response),
                     warnings,
                 },
                 Err(e) => PartialAuthorizationAnswer::Failure {
-                    errors: vec![e.to_string()],
+                    errors: vec![miette::Report::new_boxed(e).into()],
                     warnings,
                 },
             }
-        }),
+        }
         WithWarnings {
             t: Err(errors),
             warnings,
-        } => PartialAuthorizationAnswer::Failure { errors, warnings },
+        } => PartialAuthorizationAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
     }
 }
 
@@ -137,7 +148,7 @@ pub struct Response {
 }
 
 /// Interface version of `Diagnostics` that stores error messages and warnings
-/// as strings for simpler (de)serialization
+/// in the `DetailedError` format
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -147,13 +158,17 @@ pub struct Diagnostics {
     /// If no policies applied to the request, this set will be empty.
     #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
     reason: HashSet<PolicyId>,
-    /// Set of error messages that occurred
-    errors: HashSet<String>,
+    /// Set of errors that occurred
+    errors: HashSet<AuthorizationError>,
 }
 
 impl Response {
     /// Construct a `Response`
-    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        decision: Decision,
+        reason: HashSet<PolicyId>,
+        errors: HashSet<AuthorizationError>,
+    ) -> Self {
         Self {
             decision,
             diagnostics: Diagnostics { reason, errors },
@@ -173,14 +188,11 @@ impl Response {
 
 impl From<crate::Response> for Response {
     fn from(response: crate::Response) -> Self {
+        let (reason, errors) = response.diagnostics.into_components();
         Self::new(
-            response.decision(),
-            response.diagnostics().reason().cloned().collect(),
-            response
-                .diagnostics()
-                .errors()
-                .map(ToString::to_string)
-                .collect(),
+            response.decision,
+            reason.collect(),
+            errors.map(Into::into).collect(),
         )
     }
 }
@@ -190,16 +202,7 @@ impl TryFrom<crate::PartialResponse> for Response {
     type Error = Infallible;
 
     fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
-        let concrete = partial_response.concretize();
-        Ok(Self::new(
-            concrete.decision(),
-            concrete.diagnostics().reason().cloned().collect(),
-            concrete
-                .diagnostics()
-                .errors()
-                .map(ToString::to_string)
-                .collect(),
-        ))
+        Ok(partial_response.concretize().into())
     }
 }
 
@@ -210,8 +213,57 @@ impl Diagnostics {
     }
 
     /// Get the errors
-    pub fn errors(&self) -> impl Iterator<Item = &str> + '_ {
-        self.errors.iter().map(String::as_str)
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
+        self.errors.iter()
+    }
+}
+
+/// Error (or warning) which occurred in a particular policy during authorization
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizationError {
+    /// Id of the policy where the error (or warning) occurred
+    pub policy_id: SmolStr,
+    /// Error (or warning).
+    /// You can look at the `severity` field to see whether it is actually an
+    /// error or a warning.
+    pub error: DetailedError,
+}
+
+impl AuthorizationError {
+    /// Create an `AuthorizationError` from a policy ID and any `miette` error
+    pub fn new(
+        policy_id: impl Into<SmolStr>,
+        error: impl miette::Diagnostic + Send + Sync + 'static,
+    ) -> Self {
+        Self::new_from_report(policy_id, miette::Report::new(error))
+    }
+
+    /// Create an `AuthorizationError` from a policy ID and a `miette::Report`
+    pub fn new_from_report(policy_id: impl Into<SmolStr>, report: miette::Report) -> Self {
+        Self {
+            policy_id: policy_id.into(),
+            error: report.into(),
+        }
+    }
+}
+
+impl From<crate::AuthorizationError> for AuthorizationError {
+    fn from(e: crate::AuthorizationError) -> Self {
+        match e {
+            crate::AuthorizationError::PolicyEvaluationError { id, error } => {
+                AuthorizationError::new(id.to_smolstr(), error)
+            }
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationError {
+    fn from(e: cedar_policy_core::authorizer::AuthorizationError) -> Self {
+        crate::AuthorizationError::from(e).into()
     }
 }
 
@@ -219,6 +271,8 @@ impl Diagnostics {
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct ResidualResponse {
     decision: Option<Decision>,
@@ -291,7 +345,7 @@ impl ResidualResponse {
 
 #[cfg(feature = "partial-eval")]
 impl TryFrom<crate::PartialResponse> for ResidualResponse {
-    type Error = Box<dyn miette::Diagnostic>;
+    type Error = Box<dyn miette::Diagnostic + Send + Sync + 'static>;
 
     fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -323,7 +377,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 
 /// Answer struct from authorization call
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -331,9 +385,9 @@ pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
     Failure {
         /// Errors encountered
-        errors: Vec<String>,
+        errors: Vec<DetailedError>,
         /// Warnings encountered
-        warnings: Vec<String>,
+        warnings: Vec<DetailedError>,
     },
     /// Represents a successful authorization call (although individual policy
     /// evaluation may still have errors)
@@ -345,22 +399,24 @@ pub enum AuthorizationAnswer {
         /// authorization itself -- e.g. general warnings about your schema,
         /// entity data, etc. Warnings generated by authorization are part of
         /// `response`.
-        warnings: Vec<String>,
+        warnings: Vec<DetailedError>,
     },
 }
 
 /// Answer struct from partial-authorization call
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
     Failure {
         /// Errors encountered
-        errors: Vec<String>,
+        errors: Vec<DetailedError>,
         /// Warnings encountered
-        warnings: Vec<String>,
+        warnings: Vec<DetailedError>,
     },
     /// Represents a successful authorization call with either a partial or
     /// concrete answer.  Individual policy evaluation may still have errors.
@@ -371,7 +427,7 @@ pub enum PartialAuthorizationAnswer {
         /// authorization itself -- e.g. general warnings about your schema,
         /// entity data, etc. Warnings generated by authorization are part of
         /// `response`.
-        warnings: Vec<String>,
+        warnings: Vec<DetailedError>,
     },
 }
 
@@ -421,10 +477,10 @@ fn constant_true() -> bool {
 fn parse_entity_uid(
     entity_uid_json: JsonValueWithNoDuplicateKeys,
     category: &str,
-    errs: &mut Vec<String>,
+    errs: &mut Vec<miette::Report>,
 ) -> Option<EntityUid> {
     match EntityUid::from_json(entity_uid_json.into())
-        .map_err(|e| format!("Failed to parse {category}: {e}"))
+        .wrap_err_with(|| format!("Failed to parse {category}"))
     {
         Ok(euid) => Some(euid),
         Err(e) => {
@@ -440,7 +496,7 @@ fn parse_context(
     context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
     schema_ref: Option<&crate::Schema>,
     action_ref: Option<&EntityUid>,
-    errs: &mut Vec<String>,
+    errs: &mut Vec<miette::Report>,
 ) -> Context {
     match serde_json::to_value(context_map) {
         Ok(json) => {
@@ -453,14 +509,13 @@ fn parse_context(
             ) {
                 Ok(context) => context,
                 Err(e) => {
-                    errs.push(e.to_string());
+                    errs.push(miette::Report::new(e));
                     Context::empty()
                 }
             }
         }
         Err(e) => {
-            errs.push("Failed to parse context".into());
-            errs.push(e.to_string());
+            errs.push(miette!("Failed to parse context: {e}"));
             Context::empty()
         }
     }
@@ -469,13 +524,13 @@ fn parse_context(
 impl AuthorizationCall {
     fn get_components(
         self,
-    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<String>>> {
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<miette::Report>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
             Ok(None) => None,
             Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings.map(|w| w.to_string()));
+                warnings.extend(new_warnings.map(miette::Report::new));
                 Some(schema)
             }
             Err(e) => {
@@ -502,19 +557,17 @@ impl AuthorizationCall {
             } else {
                 None
             },
-        )
-        .map_err(|e| e.to_string())
-        {
+        ) {
             Ok(req) => Some(req),
             Err(e) => {
-                errs.push(e);
+                errs.push(miette::Report::new(e));
                 None
             }
         };
         let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
             Ok((policies, entities)) => (Some(policies), Some(entities)),
-            Err(e) => {
-                errs.extend(e);
+            Err(es) => {
+                errs.extend(es);
                 (None, None)
             }
         };
@@ -534,13 +587,13 @@ impl AuthorizationCall {
     #[cfg(feature = "partial-eval")]
     fn get_components_partial(
         self,
-    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<String>>> {
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<miette::Report>>> {
         let mut errs = vec![];
         let mut warnings = vec![];
         let schema = match self.schema.map(Schema::parse).transpose() {
             Ok(None) => None,
             Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings.map(|w| w.to_string()));
+                warnings.extend(new_warnings.map(miette::Report::new));
                 Some(schema)
             }
             Err(e) => {
@@ -570,10 +623,10 @@ impl AuthorizationCall {
         b = b.context(context);
         let request = if self.enable_request_validation {
             match schema.as_ref() {
-                Some(schema_ref) => match b.schema(schema_ref).build().map_err(|e| e.to_string()) {
+                Some(schema_ref) => match b.schema(schema_ref).build() {
                     Ok(req) => Some(req),
                     Err(e) => {
-                        errs.push(e);
+                        errs.push(miette::Report::new(e));
                         None
                     }
                 },
@@ -702,47 +755,37 @@ struct RecvdSlice {
     template_instantiations: Option<Vec<TemplateLink>>,
 }
 
-fn parse_link(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
+fn parse_link(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> {
     let slot = match v.slot.as_str() {
         "?principal" => SlotId::principal(),
         "?resource" => SlotId::resource(),
         _ => {
-            return Err(vec![
-                "Slot must by \"?principal\" or \"?resource\"".to_string()
-            ]);
+            return Err(miette!("Slot must be ?principal or ?resource"));
         }
     };
-    let type_name = EntityTypeName::from_str(v.value.ty.as_str());
+    let type_name = EntityTypeName::from_str(v.value.ty.as_str()).map_err(miette::Report::new)?;
     let eid = match EntityId::from_str(v.value.eid.as_str()) {
         Ok(eid) => eid,
         Err(err) => match err {},
     };
-    match type_name {
-        Ok(type_name) => {
-            let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
-            Ok((slot, entity_uid))
-        }
-        Err(e) => Err(e.errors_as_strings()),
-    }
+    let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
+    Ok((slot, entity_uid))
 }
 
-fn parse_links(policies: &mut crate::PolicySet, link: TemplateLink) -> Result<(), Vec<String>> {
+fn parse_links(policies: &mut crate::PolicySet, link: TemplateLink) -> Result<(), miette::Report> {
     let template_id = PolicyId::from_str(link.template_id.as_str());
-    let instance_id = PolicyId::from_str(link.result_policy_id.as_str());
-    match (template_id, instance_id) {
+    let link_id = PolicyId::from_str(link.result_policy_id.as_str());
+    match (template_id, link_id) {
         (Err(never), _) | (_, Err(never)) => match never {},
-        (Ok(template_id), Ok(instance_id)) => {
+        (Ok(template_id), Ok(link_id)) => {
             let mut vals = HashMap::new();
             for i in link.instantiations.0 {
-                match parse_link(&i) {
-                    Err(e) => return Err(e),
-                    Ok(val) => vals.insert(val.0, val.1),
-                };
+                let (slot, euid) = parse_link(&i)?;
+                vals.insert(slot, euid);
             }
-            match policies.link(template_id, instance_id, vals) {
-                Ok(()) => Ok(()),
-                Err(e) => Err(vec![format!("Error linking template: {e}")]),
-            }
+            policies
+                .link(template_id, link_id, vals)
+                .map_err(miette::Report::new)
         }
     }
 }
@@ -752,7 +795,7 @@ impl RecvdSlice {
     fn try_into(
         self,
         schema: Option<&crate::Schema>,
-    ) -> Result<(crate::PolicySet, Entities), Vec<String>> {
+    ) -> Result<(crate::PolicySet, Entities), Vec<miette::Report>> {
         let Self {
             policies,
             entities,
@@ -760,27 +803,20 @@ impl RecvdSlice {
             template_instantiations,
         } = self;
 
-        let policy_set: Result<crate::PolicySet, Vec<String>> = policies.parse(templates);
-
         let mut errs = Vec::new();
 
-        let (mut policies, entities) = match (
-            Entities::from_json_value(entities.into(), schema),
-            policy_set,
-        ) {
-            (Ok(entities), Ok(policies)) => (policies, entities),
-            (Ok(_), Err(policy_parse_errors)) => {
-                errs.extend(policy_parse_errors);
-                (crate::PolicySet::new(), Entities::empty())
+        let mut policies: crate::PolicySet = match policies.parse(templates) {
+            Ok(policies) => policies,
+            Err(e) => {
+                errs.extend(e);
+                crate::PolicySet::new()
             }
-            (Err(e), Ok(_)) => {
-                errs.push(e.to_string());
-                (crate::PolicySet::new(), Entities::empty())
-            }
-            (Err(e), Err(policy_parse_errors)) => {
-                errs.push(e.to_string());
-                errs.extend(policy_parse_errors);
-                (crate::PolicySet::new(), Entities::empty())
+        };
+        let entities = match Entities::from_json_value(entities.into(), schema) {
+            Ok(entities) => entities,
+            Err(e) => {
+                errs.push(miette::Report::new(e));
+                Entities::empty()
             }
         };
 
@@ -788,7 +824,7 @@ impl RecvdSlice {
             for link in links {
                 match parse_links(&mut policies, link) {
                     Ok(()) => (),
-                    Err(err) => errs.extend(err),
+                    Err(e) => errs.push(e),
                 }
             }
         }
@@ -816,7 +852,7 @@ mod test {
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
             assert_eq!(response.decision(), Decision::Allow);
-            let errors: Vec<&str> = response.diagnostics().errors().collect();
+            let errors: Vec<&AuthorizationError> = response.diagnostics().errors().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
         });
     }
@@ -828,14 +864,14 @@ mod test {
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
             assert_eq!(response.decision(), Decision::Deny);
-            let errors: Vec<&str> = response.diagnostics().errors().collect();
+            let errors: Vec<&AuthorizationError> = response.diagnostics().errors().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
         });
     }
 
     /// Assert that `is_authorized_json()` returns
     /// `AuthorizationAnswer::Failure` where some error contains the expected
-    /// string `err`
+    /// string `err` (in its main error message)
     #[track_caller]
     fn assert_is_authorized_json_is_failure(json: serde_json::Value, err: &str) {
         let ans_val =
@@ -843,7 +879,7 @@ mod test {
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => {
             assert!(
-                errors.iter().any(|e| e.contains(err)),
+                errors.iter().any(|e| e.message.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}",
             );
         });
@@ -1378,7 +1414,7 @@ mod test {
         });
         assert_is_authorized_json_is_failure(
             call,
-            "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
+            "failed to add template with id `ID0` to policy set: duplicate template or policy id `ID0`",
         );
     }
 
@@ -1428,7 +1464,7 @@ mod test {
         });
         assert_is_authorized_json_is_failure(
             call,
-            "Error linking template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+            "unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
         );
     }
 
@@ -1468,7 +1504,7 @@ mod test {
         });
         assert_is_authorized_json_is_failure(
             call,
-            "Error linking template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
+            "unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
         );
     }
 
@@ -1508,7 +1544,7 @@ mod test {
         });
         assert_is_authorized_json_is_failure(
             call,
-            "Error linking template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+            "unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
         );
     }
 

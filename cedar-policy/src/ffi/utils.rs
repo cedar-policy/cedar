@@ -17,11 +17,136 @@
 //! Utility functions and types for JSON interface
 use crate::{Policy, SchemaWarning, Template};
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
+use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
+
+/// Structure of the JSON output representing one `miette` error
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedError {
+    /// Main error message, including both the `miette` "message" and the
+    /// `miette` "causes" (uses `miette`'s default `Display` output)
+    pub message: String,
+    /// Help message, providing additional information about the error or help resolving it
+    pub help: Option<String>,
+    /// Error code
+    pub code: Option<String>,
+    /// URL for more information about the error
+    pub url: Option<String>,
+    /// Severity
+    pub severity: Option<Severity>,
+    /// Source labels (ranges)
+    #[serde(default)]
+    pub source_locations: Vec<SourceLabel>,
+    /// Related errors
+    #[serde(default)]
+    pub related: Vec<DetailedError>,
+}
+
+/// Exactly like `miette::Severity` but implements `Hash`
+///
+/// If `miette::Severity` adds `derive(Hash)` in the future, we can remove this
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub enum Severity {
+    /// Advice (the lowest severity)
+    Advice,
+    /// Warning
+    Warning,
+    /// Error (the highest severity)
+    Error,
+}
+
+impl From<miette::Severity> for Severity {
+    fn from(severity: miette::Severity) -> Self {
+        match severity {
+            miette::Severity::Advice => Self::Advice,
+            miette::Severity::Warning => Self::Warning,
+            miette::Severity::Error => Self::Error,
+        }
+    }
+}
+
+/// Structure of the JSON output representing a `miette` source label (range)
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct SourceLabel {
+    /// Text of the label (if any)
+    pub label: Option<String>,
+    /// Source location (range) of the label
+    #[serde(flatten)]
+    pub loc: SourceLocation,
+}
+
+/// A range of source code representing the location of an error or warning.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct SourceLocation {
+    /// Start of the source location (in bytes)
+    pub start: usize,
+    /// End of the source location (in bytes)
+    pub end: usize,
+}
+
+impl From<miette::LabeledSpan> for SourceLabel {
+    fn from(span: miette::LabeledSpan) -> Self {
+        Self {
+            label: span.label().map(ToString::to_string),
+            loc: SourceLocation {
+                start: span.offset(),
+                end: span.offset() + span.len(),
+            },
+        }
+    }
+}
+
+impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
+    fn from(diag: &'a E) -> Self {
+        Self {
+            message: {
+                let mut s = diag.to_string();
+                let mut source = diag.source();
+                while let Some(e) = source {
+                    s.push_str(": ");
+                    s.push_str(&e.to_string());
+                    source = e.source();
+                }
+                s
+            },
+            help: diag.help().map(|h| h.to_string()),
+            code: diag.code().map(|c| c.to_string()),
+            url: diag.url().map(|u| u.to_string()),
+            severity: diag.severity().map(Into::into),
+            source_locations: diag
+                .labels()
+                .map(|labels| labels.map(Into::into).collect())
+                .unwrap_or_else(|| vec![]),
+            related: diag
+                .related()
+                .map(|errs| errs.map(|e| e.into()).collect())
+                .unwrap_or_else(|| vec![]),
+        }
+    }
+}
+
+impl From<miette::Report> for DetailedError {
+    fn from(report: miette::Report) -> Self {
+        let diag: &dyn miette::Diagnostic = report.as_ref();
+        diag.into()
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -43,37 +168,42 @@ pub enum PolicySet {
 fn parse_policy_set_from_individual_policies(
     policies: &HashMap<String, String>,
     templates: Option<HashMap<String, String>>,
-) -> Result<crate::PolicySet, Vec<String>> {
+) -> Result<crate::PolicySet, Vec<miette::Report>> {
     let mut policy_set = crate::PolicySet::new();
     let mut errs = Vec::new();
     for (id, policy_src) in policies {
-        match Policy::parse(Some(id.clone()), policy_src) {
-            Ok(p) => match policy_set.add(p) {
+        match Policy::parse(Some(id.clone()), policy_src)
+            .wrap_err_with(|| format!("failed to parse policy with id `{id}`"))
+        {
+            Ok(p) => match policy_set
+                .add(p)
+                .wrap_err_with(|| format!("failed to add policy with id `{id}` to policy set"))
+            {
                 Ok(()) => {}
-                Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err}"));
+                Err(e) => {
+                    errs.push(e);
                 }
             },
-            Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                    .chain(pes.errors_as_strings().into_iter()),
-            ),
+            Err(e) => {
+                errs.push(e);
+            }
         }
     }
 
     if let Some(templates) = templates {
         for (id, policy_src) in templates {
-            match Template::parse(Some(id.clone()), policy_src) {
-                Ok(p) => match policy_set.add_template(p) {
+            match Template::parse(Some(id.clone()), policy_src)
+                .wrap_err_with(|| format!("failed to parse template with id `{id}`"))
+            {
+                Ok(p) => match policy_set.add_template(p).wrap_err_with(|| {
+                    format!("failed to add template with id `{id}` to policy set")
+                }) {
                     Ok(()) => {}
-                    Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err}"));
+                    Err(e) => {
+                        errs.push(e);
                     }
                 },
-                Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                        .chain(pes.errors_as_strings().into_iter()),
-                ),
+                Err(e) => errs.push(e),
             }
         }
     }
@@ -90,16 +220,11 @@ impl PolicySet {
     pub(super) fn parse(
         self,
         templates: Option<HashMap<String, String>>,
-    ) -> Result<crate::PolicySet, Vec<String>> {
+    ) -> Result<crate::PolicySet, Vec<miette::Report>> {
         match self {
-            Self::Concatenated(policies) => match crate::PolicySet::from_str(&policies) {
-                Ok(ps) => Ok(ps),
-                Err(parse_errors) => Err(std::iter::once(
-                    "couldn't parse concatenated policies string".to_string(),
-                )
-                .chain(parse_errors.errors_as_strings())
-                .collect()),
-            },
+            Self::Concatenated(policies) => crate::PolicySet::from_str(&policies)
+                .wrap_err("failed to parse policies from string")
+                .map_err(|e| vec![e]),
             Self::Map(policies) => parse_policy_set_from_individual_policies(&policies, templates),
         }
     }
@@ -107,6 +232,9 @@ impl PolicySet {
 
 /// Represents a schema in either schema format
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     #[serde(rename = "human")]
@@ -119,7 +247,7 @@ pub enum Schema {
 impl Schema {
     pub(super) fn parse(
         self,
-    ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), String> {
+    ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
         match self {
             Self::Human(str) => crate::Schema::from_str_natural(&str)
                 .map(|(sch, warnings)| {
@@ -128,7 +256,7 @@ impl Schema {
                         Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(|e| e.to_string()),
+                .map_err(miette::Report::new),
             Self::Json(val) => crate::Schema::from_json_value(val.into())
                 .map(|sch| {
                     (
@@ -136,12 +264,12 @@ impl Schema {
                         Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(|e| e.to_string()),
+                .map_err(miette::Report::new),
         }
     }
 }
 
 pub(super) struct WithWarnings<T> {
     pub t: T,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<miette::Report>,
 }

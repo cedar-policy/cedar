@@ -14,42 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy::ffi::{
-    validate, ValidationAnswer, ValidationCall, ValidationError, ValidationWarning,
-};
-use serde::{Deserialize, Serialize};
-use tsify::Tsify;
+use cedar_policy::ffi;
 use wasm_bindgen::prelude::*;
 
-#[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-#[serde(rename_all = "camelCase")]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub enum ValidateResult {
-    #[serde(rename_all = "camelCase")]
-    Success {
-        validation_errors: Vec<ValidationError>,
-        validation_warnings: Vec<ValidationWarning>,
-    },
-    Error {
-        errors: Vec<String>,
-    },
-}
-
 #[wasm_bindgen(js_name = "validate")]
-pub fn wasm_validate(call: ValidationCall) -> ValidateResult {
-    match validate(call) {
-        ValidationAnswer::Success {
-            validation_errors,
-            validation_warnings,
-            other_warnings: _,
-        } => ValidateResult::Success {
-            validation_errors,
-            validation_warnings,
-        },
-        ValidationAnswer::Failure {
-            errors,
-            warnings: _,
-        } => ValidateResult::Error { errors },
-    }
+pub fn wasm_validate(call: ffi::ValidationCall) -> ffi::ValidationAnswer {
+    ffi::validate(call)
 }
