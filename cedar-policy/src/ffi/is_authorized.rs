@@ -383,6 +383,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 #[serde(rename_all = "camelCase")]
 pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
+    #[serde(rename_all = "camelCase")]
     Failure {
         /// Errors encountered
         errors: Vec<DetailedError>,
@@ -391,6 +392,7 @@ pub enum AuthorizationAnswer {
     },
     /// Represents a successful authorization call (although individual policy
     /// evaluation may still have errors)
+    #[serde(rename_all = "camelCase")]
     Success {
         /// Authorization decision and diagnostics, which may include policy
         /// evaluation errors
@@ -412,6 +414,7 @@ pub enum AuthorizationAnswer {
 #[serde(rename_all = "camelCase")]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
+    #[serde(rename_all = "camelCase")]
     Failure {
         /// Errors encountered
         errors: Vec<DetailedError>,
@@ -420,6 +423,7 @@ pub enum PartialAuthorizationAnswer {
     },
     /// Represents a successful authorization call with either a partial or
     /// concrete answer.  Individual policy evaluation may still have errors.
+    #[serde(rename_all = "camelCase")]
     Residuals {
         /// Information about the authorization decision and residuals
         response: Box<ResidualResponse>,
