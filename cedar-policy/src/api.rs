@@ -20,6 +20,13 @@
     clippy::missing_errors_doc,
     clippy::similar_names
 )]
+
+mod id;
+pub use id::*;
+
+mod err;
+pub use err::*;
+
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
@@ -30,35 +37,25 @@ use cedar_policy_core::ast::{
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{
-    ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
-    JsonDeserializationErrorContext,
+    ContextSchema, Dereference, JsonDeserializationError, JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
 use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
-pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
-pub use cedar_policy_core::parser::err::ParseErrors;
+use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
-pub use cedar_policy_validator::human_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
-pub use cedar_policy_validator::{
-    TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
-};
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
-use nonempty::NonEmpty;
 use ref_cast::RefCast;
-use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::Infallible;
 use std::str::FromStr;
-use thiserror::Error;
 
 /// Extended functionality for `Entities` struct
 pub mod entities {
@@ -153,12 +150,12 @@ impl Entity {
         // the `Entities` object is created
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Ok(Self(ast::Entity::new(
-            uid.0,
+            uid.into_inner(),
             attrs
                 .into_iter()
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
-            parents.into_iter().map(|uid| uid.0).collect(),
+            parents.into_iter().map(EntityUid::into_inner).collect(),
             &Extensions::all_available(),
         )?))
     }
@@ -172,9 +169,9 @@ impl Entity {
         // the `Entities` object is created
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::new_with_attr_partial_value(
-            uid.0,
+            uid.into_inner(),
             HashMap::new(),
-            parents.into_iter().map(|uid| uid.0).collect(),
+            parents.into_iter().map(EntityUid::into_inner).collect(),
         ))
     }
 
@@ -190,7 +187,7 @@ impl Entity {
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
-        Self(ast::Entity::with_uid(uid.0))
+        Self(ast::Entity::with_uid(uid.into_inner()))
     }
 
     /// Get the Uid of this entity
@@ -205,7 +202,7 @@ impl Entity {
     /// ```
     pub fn uid(&self) -> EntityUid {
         // INVARIANT: By invariant on self and `EntityUid`: Our Uid can't be unspecified
-        EntityUid(self.0.uid().clone())
+        EntityUid::new(self.0.uid().clone())
     }
 
     /// Get the value for the given attribute, or `None` if not present.
@@ -264,9 +261,9 @@ impl Entity {
             .collect();
 
         (
-            EntityUid(uid),
+            EntityUid::new(uid),
             attrs,
-            ancestors.into_iter().map(EntityUid).collect(),
+            ancestors.into_iter().map(EntityUid::new).collect(),
         )
     }
 }
@@ -283,8 +280,6 @@ impl std::fmt::Display for Entity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-pub use cedar_policy_core::entities::EntitiesError;
-
 impl Entities {
     /// Create a fresh `Entities` with no entities
     /// ```
@@ -297,7 +292,7 @@ impl Entities {
 
     /// Get the `Entity` with the given Uid, if any
     pub fn get(&self, uid: &EntityUid) -> Option<&Entity> {
-        match self.0.entity(&uid.0) {
+        match self.0.entity(uid.as_inner()) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(Entity::ref_cast(e)),
         }
@@ -616,8 +611,8 @@ impl Entities {
     /// Is entity `a` an ancestor of entity `b`?
     /// Same semantics as `b in a` in the Cedar language
     pub fn is_ancestor_of(&self, a: &EntityUid, b: &EntityUid) -> bool {
-        match self.0.entity(&b.0) {
-            Dereference::Data(b) => b.is_descendant_of(&a.0),
+        match self.0.entity(b.as_inner()) {
+            Dereference::Data(b) => b.is_descendant_of(a.as_inner()),
             _ => a == b, // if b doesn't exist, `b in a` is only true if `b == a`
         }
     }
@@ -628,7 +623,7 @@ impl Entities {
         &'a self,
         euid: &EntityUid,
     ) -> Option<impl Iterator<Item = &'a EntityUid>> {
-        let entity = match self.0.entity(&euid.0) {
+        let entity = match self.0.entity(euid.as_inner()) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(e),
         }?;
@@ -805,41 +800,6 @@ impl Authorizer {
     }
 }
 
-/// Errors that can occur during authorization
-#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
-pub enum AuthorizationError {
-    /// An error occurred when evaluating a policy.
-    #[error("while evaluating policy `{id}`: {error}")]
-    PolicyEvaluationError {
-        /// Id of the policy with an error
-        #[doc(hidden)]
-        id: ast::PolicyID,
-        /// Underlying evaluation error
-        #[diagnostic(transparent)]
-        error: EvaluationError,
-    },
-}
-
-impl AuthorizationError {
-    /// Get the id of the erroring policy
-    pub fn id(&self) -> &PolicyId {
-        match self {
-            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<authorizer::AuthorizationError> for AuthorizationError {
-    fn from(value: authorizer::AuthorizationError) -> Self {
-        match value {
-            authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
-                Self::PolicyEvaluationError { id, error }
-            }
-        }
-    }
-}
-
 /// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
@@ -917,7 +877,7 @@ impl PartialResponse {
 
     /// Return the residual for a given [`PolicyId`], if it exists in the response
     pub fn get(&self, id: &PolicyId) -> Option<Policy> {
-        self.0.get(&id.0).map(Policy::from_ast)
+        self.0.get(id.as_inner()).map(Policy::from_ast)
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
@@ -951,25 +911,6 @@ impl From<cedar_policy_core::authorizer::PartialResponse> for PartialResponse {
     }
 }
 
-/// Errors that can be encountered when re-evaluating a partial response
-#[derive(Debug, Error)]
-pub enum ReAuthorizeError {
-    /// An evaluation error was encountered
-    #[error("{err}")]
-    Evaluation {
-        /// The evaluation error
-        #[from]
-        err: EvaluationError,
-    },
-    /// A policy id conflict was found
-    #[error("{err}")]
-    PolicySet {
-        /// The conflicting ids
-        #[from]
-        err: cedar_policy_core::ast::PolicySetError,
-    },
-}
-
 /// Diagnostics providing more information on how a `Decision` was reached
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
@@ -984,7 +925,7 @@ pub struct Diagnostics {
 impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
-            reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
+            reason: diagnostics.reason.into_iter().map(PolicyId::new).collect(),
             errors: diagnostics.errors.into_iter().map(Into::into).collect(),
         }
     }
@@ -1394,238 +1335,6 @@ impl Schema {
     }
 }
 
-/// Errors encountered during construction of a Validation Schema
-#[derive(Debug, Diagnostic, Error)]
-pub enum SchemaError {
-    /// Error thrown by the `serde_json` crate during deserialization
-    #[error("failed to parse schema: {0}")]
-    Serde(#[from] serde_json::Error),
-    /// Errors occurring while computing or enforcing transitive closure on
-    /// action hierarchy.
-    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
-    ActionTransitiveClosure(String),
-    /// Errors occurring while computing or enforcing transitive closure on
-    /// entity type hierarchy.
-    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
-    EntityTypeTransitiveClosure(String),
-    /// Error generated when processing a schema file that uses unsupported features
-    #[error("unsupported feature used in schema: {0}")]
-    UnsupportedFeature(String),
-    /// Undeclared entity type(s) used in the `memberOf` field of an entity
-    /// type, the `appliesTo` fields of an action, or an attribute type in a
-    /// context or entity attribute record. Entity types in the error message
-    /// are fully qualified, including any implicit or explicit namespaces.
-    #[error("undeclared entity type(s): {0:?}")]
-    UndeclaredEntityTypes(HashSet<String>),
-    /// Undeclared action(s) used in the `memberOf` field of an action.
-    #[error("undeclared action(s): {0:?}")]
-    UndeclaredActions(HashSet<String>),
-    /// Undeclared common type(s) used in entity or context attributes.
-    #[error("undeclared common type(s): {0:?}")]
-    UndeclaredCommonTypes(HashSet<String>),
-    /// Duplicate specifications for an entity type. Argument is the name of
-    /// the duplicate entity type.
-    #[error("duplicate entity type `{0}`")]
-    DuplicateEntityType(String),
-    /// Duplicate specifications for an action. Argument is the name of the
-    /// duplicate action.
-    #[error("duplicate action `{0}`")]
-    DuplicateAction(String),
-    /// Duplicate specification for a reusable type declaration.
-    #[error("duplicate common type `{0}`")]
-    DuplicateCommonType(String),
-    /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy containing `{0}`")]
-    CycleInActionHierarchy(EntityUid),
-    /// The schema file included an entity type `Action` in the entity type
-    /// list. The `Action` entity type is always implicitly declared, and it
-    /// cannot currently have attributes or be in any groups, so there is no
-    /// purposes in adding an explicit entry.
-    #[error("entity type `Action` declared in `entityTypes` list")]
-    ActionEntityTypeDeclared,
-    /// `context` or `shape` fields are not records
-    #[error("{0} is declared with a type other than `Record`")]
-    ContextOrShapeNotRecord(ContextOrShape),
-    /// An action entity (transitively) has an attribute that is an empty set.
-    /// The validator cannot assign a type to an empty set.
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute that is an empty set")]
-    ActionAttributesContainEmptySet(EntityUid),
-    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
-    UnsupportedActionAttribute(EntityUid, String),
-    /// Error when evaluating an action attribute
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionAttrEval(EntityAttrEvaluationError),
-    /// Error thrown when the schema contains the `__expr` escape.
-    /// Support for this escape form has been dropped.
-    #[error("schema contained the non-supported `__expr` escape")]
-    ExprEscapeUsed,
-}
-
-/// Errors serializing Schemas to the natural syntax
-#[derive(Debug, Error, Diagnostic)]
-pub enum ToHumanSyntaxError {
-    /// Duplicate names were found in the schema
-    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
-    NameCollisions(NonEmpty<SmolStr>),
-}
-
-impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
-    fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
-        match value {
-            cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
-                collisions,
-            ) => Self::NameCollisions(collisions),
-        }
-    }
-}
-
-/// Errors when parsing schemas
-#[derive(Debug, Diagnostic, Error)]
-pub enum HumanSchemaError {
-    /// Error parsing a schema in natural syntax
-    #[error("Error parsing schema: {0}")]
-    #[diagnostic(transparent)]
-    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
-    /// Errors combining fragments into full schemas
-    #[error("{0}")]
-    #[diagnostic(transparent)]
-    Core(#[from] SchemaError),
-    /// IO errors while parsing
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
-    fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
-        match value {
-            cedar_policy_validator::HumanSchemaError::Core(core) => Self::Core(core.into()),
-            cedar_policy_validator::HumanSchemaError::IO(io_err) => Self::Io(io_err),
-            cedar_policy_validator::HumanSchemaError::Parsing(e) => Self::ParseError(e),
-        }
-    }
-}
-
-impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        Self::Core(value.into())
-    }
-}
-
-/// Error when evaluating an entity attribute
-#[derive(Debug, Diagnostic, Error)]
-#[error("in attribute `{attr}` of `{uid}`: {err}")]
-pub struct EntityAttrEvaluationError {
-    /// Action that had the attribute with the error
-    pub uid: EntityUid,
-    /// Attribute that had the error
-    pub attr: SmolStr,
-    /// Underlying evaluation error
-    #[diagnostic(transparent)]
-    pub err: EvaluationError,
-}
-
-impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
-    fn from(err: ast::EntityAttrEvaluationError) -> Self {
-        Self {
-            uid: EntityUid(err.uid),
-            attr: err.attr,
-            err: err.err,
-        }
-    }
-}
-
-/// Describes in what action context or entity type shape a schema parsing error
-/// occurred.
-#[derive(Debug)]
-pub enum ContextOrShape {
-    /// An error occurred when parsing the context for the action with this
-    /// `EntityUid`.
-    ActionContext(EntityUid),
-    /// An error occurred when parsing the shape for the entity type with this
-    /// `EntityTypeName`.
-    EntityTypeShape(EntityTypeName),
-}
-
-impl std::fmt::Display for ContextOrShape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ActionContext(action) => write!(f, "Context for action {action}"),
-            Self::EntityTypeShape(entity_type) => {
-                write!(f, "Shape for entity type {entity_type}")
-            }
-        }
-    }
-}
-
-impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
-    fn from(value: cedar_policy_validator::ContextOrShape) -> Self {
-        match value {
-            cedar_policy_validator::ContextOrShape::ActionContext(euid) => {
-                Self::ActionContext(EntityUid(euid))
-            }
-            cedar_policy_validator::ContextOrShape::EntityTypeShape(name) => {
-                Self::EntityTypeShape(EntityTypeName(name))
-            }
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::SchemaError> for SchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        match value {
-            cedar_policy_validator::SchemaError::Serde(e) => Self::Serde(e),
-            cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
-                Self::ActionTransitiveClosure(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
-                Self::EntityTypeTransitiveClosure(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
-                Self::UnsupportedFeature(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
-                Self::UndeclaredEntityTypes(e)
-            }
-            cedar_policy_validator::SchemaError::UndeclaredActions(e) => Self::UndeclaredActions(e),
-            cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
-                Self::UndeclaredCommonTypes(c)
-            }
-            cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
-                Self::DuplicateEntityType(e)
-            }
-            cedar_policy_validator::SchemaError::DuplicateAction(e) => Self::DuplicateAction(e),
-            cedar_policy_validator::SchemaError::DuplicateCommonType(c) => {
-                Self::DuplicateCommonType(c)
-            }
-            cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
-                Self::CycleInActionHierarchy(EntityUid(e))
-            }
-            cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
-                Self::ActionEntityTypeDeclared
-            }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
-                Self::ContextOrShapeNotRecord(context_or_shape.into())
-            }
-            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(uid) => {
-                Self::ActionAttributesContainEmptySet(EntityUid(uid))
-            }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
-                Self::UnsupportedActionAttribute(EntityUid(uid), escape_type)
-            }
-            cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
-                Self::ActionAttrEval(err.into())
-            }
-            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
-        }
-    }
-}
-
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
@@ -1762,85 +1471,6 @@ impl Diagnostic for ValidationResult {
     }
 }
 
-/// An error generated by the validator when it finds a potential problem in a
-/// policy. The error contains a enumeration that specifies the kind of problem,
-/// and provides details specific to that kind of problem. The error also records
-/// where the problem was encountered.
-#[derive(Debug, Clone, Error, Diagnostic)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct ValidationError {
-    error: cedar_policy_validator::ValidationError,
-}
-
-impl ValidationError {
-    /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
-        self.error.error_kind()
-    }
-
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        SourceLocation::ref_cast(self.error.location())
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::ValidationError> for ValidationError {
-    fn from(error: cedar_policy_validator::ValidationError) -> Self {
-        Self { error }
-    }
-}
-
-/// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq, RefCast)]
-#[repr(transparent)]
-pub struct SourceLocation(cedar_policy_validator::SourceLocation);
-
-impl SourceLocation {
-    /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &PolicyId {
-        PolicyId::ref_cast(self.0.policy_id())
-    }
-
-    /// Get the start of the location. Returns `None` if this location does not
-    /// have a range.
-    pub fn range_start(&self) -> Option<usize> {
-        self.0.source_loc().map(parser::Loc::start)
-    }
-
-    /// Get the end of the location. Returns `None` if this location does not
-    /// have a range.
-    pub fn range_end(&self) -> Option<usize> {
-        self.0.source_loc().map(parser::Loc::end)
-    }
-
-    /// Returns a tuple of (start, end) of the location.
-    /// Returns `None` if this location does not have a range.
-    pub fn range_start_and_end(&self) -> Option<(usize, usize)> {
-        self.0
-            .source_loc()
-            .as_ref()
-            .map(|loc| (loc.start(), loc.end()))
-    }
-}
-
-impl std::fmt::Display for SourceLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "policy `{}`", self.0.policy_id())?;
-        if let Some(loc) = self.0.source_loc() {
-            write!(f, " at offset {}-{}", loc.start(), loc.end())?;
-        }
-        Ok(())
-    }
-}
-
-impl From<&cedar_policy_validator::SourceLocation> for SourceLocation {
-    fn from(loc: &cedar_policy_validator::SourceLocation) -> Self {
-        Self(loc.clone())
-    }
-}
-
 /// Scan a set of policies for potentially confusing/obfuscating text. These
 /// checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
@@ -1852,151 +1482,13 @@ pub fn confusable_string_checker<'a>(
         .map(std::convert::Into::into)
 }
 
-#[derive(Debug, Clone, Error, Diagnostic)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-/// Warnings found in Cedar policies
-pub struct ValidationWarning {
-    warning: cedar_policy_validator::ValidationWarning,
-}
-
-impl ValidationWarning {
-    /// Extract details about the exact issue detected by the validator.
-    pub fn warning_kind(&self) -> &ValidationWarningKind {
-        self.warning.kind()
-    }
-
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        SourceLocation::ref_cast(self.warning.location())
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
-    fn from(warning: cedar_policy_validator::ValidationWarning) -> Self {
-        Self { warning }
-    }
-}
-
-/// Identifier portion of the [`EntityUid`] type.
-///
-/// All strings are valid [`EntityId`]s, and can be
-/// constructed either using [`EntityId::new`]
-/// or by using the implementation of [`FromStr`]. This implementation is [`Infallible`], so the
-/// parsed [`EntityId`] can be extracted safely.
-///
-/// ```
-/// # use cedar_policy::EntityId;
-/// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(id.as_ref(), "my-id");
-/// ```
-#[repr(transparent)]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityId(ast::Eid);
-
-impl EntityId {
-    /// Construct an [`EntityId`] from a source string
-    pub fn new(src: impl AsRef<str>) -> Self {
-        match src.as_ref().parse() {
-            Ok(eid) => eid,
-            Err(infallible) => match infallible {},
-        }
-    }
-}
-
-impl FromStr for EntityId {
-    type Err = Infallible;
-    fn from_str(eid_str: &str) -> Result<Self, Self::Err> {
-        Ok(Self(ast::Eid::new(eid_str)))
-    }
-}
-
-impl AsRef<str> for EntityId {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
-
-// Note that this Display formatter will format the EntityId as it would be expected
-// in the EntityUid string form. For instance, the `"alice"` in `User::"alice"`.
-// This means it adds quotes and potentially performs some escaping.
-impl std::fmt::Display for EntityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Represents an entity type name. Consists of a namespace and the type name.
-///
-/// An `EntityTypeName` can can be constructed using
-/// [`EntityTypeName::from_str`] or by calling `parse()` on a string. Unlike
-/// [`EntityId::from_str`], _this can fail_, so it is important to properly
-/// handle an `Err` result.
-///
-/// ```
-/// # use cedar_policy::EntityTypeName;
-/// let id : Result<EntityTypeName, _> = "Namespace::Type".parse();
-/// # let id = id.unwrap();
-/// # assert_eq!(id.basename(), "Type");
-/// # assert_eq!(id.namespace(), "Namespace");
-/// ```
-#[repr(transparent)]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityTypeName(ast::Name);
-
-impl EntityTypeName {
-    /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
-    /// ```
-    /// # use cedar_policy::EntityTypeName;
-    /// # use std::str::FromStr;
-    /// let type_name = EntityTypeName::from_str("MySpace::User").unwrap();
-    /// assert_eq!(type_name.basename(), "User");
-    /// ```
-    pub fn basename(&self) -> &str {
-        self.0.basename().as_ref()
-    }
-
-    /// Get the namespace of the `EntityTypeName`, as components
-    /// ```
-    /// # use cedar_policy::EntityTypeName;
-    /// # use std::str::FromStr;
-    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
-    /// let mut components = type_name.namespace_components();
-    /// assert_eq!(components.next(), Some("Namespace"));
-    /// assert_eq!(components.next(), Some("MySpace"));
-    /// assert_eq!(components.next(), None);
-    /// ```
-    pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.namespace_components().map(AsRef::as_ref)
-    }
-
-    /// Get the full namespace of the `EntityTypeName`, as a single string.
-    /// ```
-    /// # use cedar_policy::EntityTypeName;
-    /// # use std::str::FromStr;
-    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
-    /// let components = type_name.namespace();
-    /// assert_eq!(components,"Namespace::MySpace");
-    /// ```
-    pub fn namespace(&self) -> String {
-        self.0.namespace()
-    }
-}
-
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// type name. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_type_str).map(EntityTypeName)
-    }
-}
-
-impl std::fmt::Display for EntityTypeName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        ast::Name::from_normalized_str(namespace_type_str).map(Self::new)
     }
 }
 
@@ -2029,65 +1521,7 @@ impl std::fmt::Display for EntityNamespace {
         write!(f, "{}", self.0)
     }
 }
-
-/// Unique id for an entity, such as `User::"alice"`.
-///
-/// An `EntityUid` contains an [`EntityTypeName`] and [`EntityId`]. It can
-/// be constructed from these components using
-/// [`EntityUid::from_type_name_and_id`], parsed from a string using `.parse()`
-/// (via [`EntityUid::from_str`]), or constructed from a JSON value using
-/// [`EntityUid::from_json`].
-///
-// INVARIANT: this can never be an `ast::EntityType::Unspecified`
-#[repr(transparent)]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityUid(ast::EntityUID);
-
 impl EntityUid {
-    /// Returns the portion of the Euid that represents namespace and entity type
-    /// ```
-    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// # use std::str::FromStr;
-    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
-    /// let euid = EntityUid::from_json(json_data).unwrap();
-    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
-    /// ```
-    pub fn type_name(&self) -> &EntityTypeName {
-        // PANIC SAFETY by invariant on struct
-        #[allow(clippy::panic)]
-        match self.0.entity_type() {
-            ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
-            ast::EntityType::Specified(name) => EntityTypeName::ref_cast(name),
-        }
-    }
-
-    /// Returns the id portion of the Euid
-    /// ```
-    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// # use std::str::FromStr;
-    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
-    /// let euid = EntityUid::from_json(json_data).unwrap();
-    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
-    /// ```
-    pub fn id(&self) -> &EntityId {
-        EntityId::ref_cast(self.0.eid())
-    }
-
-    /// Creates `EntityUid` from `EntityTypeName` and `EntityId`
-    ///```
-    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// # use std::str::FromStr;
-    /// let eid = EntityId::from_str("alice").unwrap();
-    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
-    /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
-    /// # assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
-    /// ```
-    pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
-        // INVARIANT: `from_components` always constructs a Concrete id
-        Self(ast::EntityUID::from_components(name.0, id.0, None))
-    }
-
     /// Creates `EntityUid` from a JSON value, which should have
     /// either the implicit or explicit `__entity` form.
     /// ```
@@ -2102,18 +1536,9 @@ impl EntityUid {
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self(
+        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self::new(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
-    }
-
-    /// Testing utility for creating `EntityUids` a bit easier
-    #[cfg(test)]
-    pub(crate) fn from_strs(typename: &str, id: &str) -> Self {
-        Self::from_type_name_and_id(
-            EntityTypeName::from_str(typename).unwrap(),
-            EntityId::from_str(id).unwrap(),
-        )
     }
 }
 
@@ -2145,79 +1570,7 @@ impl FromStr for EntityUid {
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
         // INVARIANT there is no way to write down the unspecified entity
-        ast::EntityUID::from_normalized_str(uid_str).map(EntityUid)
-    }
-}
-
-impl std::fmt::Display for EntityUid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Potential errors when adding to a `PolicySet`.
-#[derive(Debug, Diagnostic, Error)]
-#[non_exhaustive]
-pub enum PolicySetError {
-    /// There was a duplicate [`PolicyId`] encountered in either the set of
-    /// templates or the set of policies.
-    #[error("duplicate template or policy id `{id}`")]
-    AlreadyDefined {
-        /// [`PolicyId`] that was duplicate
-        id: PolicyId,
-    },
-    /// Error when linking a template
-    #[error("unable to link template: {0}")]
-    #[diagnostic(transparent)]
-    LinkingError(#[from] ast::LinkingError),
-    /// Expected a static policy, but a template-linked policy was provided
-    #[error("expected a static policy, but a template-linked policy was provided")]
-    ExpectedStatic,
-    /// Expected a template, but a static policy was provided.
-    #[error("expected a template, but a static policy was provided")]
-    ExpectedTemplate,
-    /// Error when removing a static policy
-    #[error("unable to remove static policy `{0}` because it does not exist")]
-    PolicyNonexistentError(PolicyId),
-    /// Error when removing a template that doesn't exist
-    #[error("unable to remove policy template `{0}` because it does not exist")]
-    TemplateNonexistentError(PolicyId),
-    /// Error when removing a template with active links
-    #[error("unable to remove policy template `{0}` because it has active links")]
-    RemoveTemplateWithActiveLinksError(PolicyId),
-    /// Error when removing a template that is not a template
-    #[error("unable to remove policy template `{0}` because it is not a template")]
-    RemoveTemplateNotTemplateError(PolicyId),
-    /// Error when unlinking a template
-    #[error("unable to unlink policy template `{0}` because it does not exist")]
-    LinkNonexistentError(PolicyId),
-    /// Error when removing a link that is not a link
-    #[error("unable to unlink `{0}` because it is not a link")]
-    UnlinkLinkNotLinkError(PolicyId),
-    /// Error when converting from EST
-    #[error("Error deserializing a policy/template from JSON: {0}")]
-    #[diagnostic(transparent)]
-    FromJson(#[from] cedar_policy_core::est::FromJsonError),
-    /// Error when converting to EST
-    #[error("Error serializing a policy to JSON: {0}")]
-    #[diagnostic(transparent)]
-    ToJson(#[from] PolicyToJsonError),
-    /// Errors encountered in JSON ser/de
-    #[error("Error serializing or deserializng from JSON: {0})")]
-    Json(#[from] serde_json::Error),
-}
-
-impl From<ast::PolicySetError> for PolicySetError {
-    fn from(e: ast::PolicySetError) -> Self {
-        match e {
-            ast::PolicySetError::Occupied { id } => Self::AlreadyDefined { id: PolicyId(id) },
-        }
-    }
-}
-
-impl From<ast::UnexpectedSlotError> for PolicySetError {
-    fn from(_: ast::UnexpectedSlotError) -> Self {
-        Self::ExpectedStatic
+        ast::EntityUID::from_normalized_str(uid_str).map(Self::new)
     }
 }
 
@@ -2256,7 +1609,7 @@ impl FromStr for PolicySet {
         #[allow(clippy::expect_used)]
         let policies = pset.policies().map(|p|
             (
-                PolicyId(p.id().clone()),
+                PolicyId::new(p.id().clone()),
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
@@ -2264,7 +1617,7 @@ impl FromStr for PolicySet {
         #[allow(clippy::expect_used)]
         let templates = pset.templates().map(|t|
             (
-                PolicyId(t.id().clone()),
+                PolicyId::new(t.id().clone()),
                 Template { lossless: LosslessPolicy::policy_or_template_text(*texts.get(t.id()).expect("internal invariant violation: template id exists in asts but not ests")), ast: t.clone() }
             )
         ).collect();
@@ -2282,12 +1635,12 @@ impl PolicySet {
         let mut pset = Self::default();
 
         for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId(id)), policy)?;
+            let template = Template::from_est(Some(PolicyId::new(id)), policy)?;
             pset.add_template(template)?;
         }
 
         for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId(id)), policy)?;
+            let p = Policy::from_est(Some(PolicyId::new(id)), policy)?;
             pset.add(p)?;
         }
 
@@ -2299,9 +1652,9 @@ impl PolicySet {
         {
             let slots = slots
                 .into_iter()
-                .map(|(key, value)| (key.into(), EntityUid(value)))
+                .map(|(key, value)| (key.into(), EntityUid::new(value)))
                 .collect();
-            pset.link(PolicyId(template), PolicyId(id), slots)?;
+            pset.link(PolicyId::new(template), PolicyId::new(id), slots)?;
         }
 
         Ok(pset)
@@ -2341,7 +1694,7 @@ impl PolicySet {
             .into_iter()
             .map(|(id, template)| {
                 template.lossless.est().map(|est| PolicyEntry {
-                    id: id.0,
+                    id: id.into_inner(),
                     policy: est,
                 })
             })
@@ -2380,7 +1733,7 @@ impl PolicySet {
     /// the `PolicySet`) if a template-linked policy is passed in.
     pub fn add(&mut self, policy: Policy) -> Result<(), PolicySetError> {
         if policy.is_static() {
-            let id = PolicyId(policy.ast.id().clone());
+            let id = PolicyId::new(policy.ast.id().clone());
             self.ast.add(policy.ast.clone())?;
             self.policies.insert(id, policy);
             Ok(())
@@ -2411,7 +1764,7 @@ impl PolicySet {
 
     /// Add a `Template` to the `PolicySet`
     pub fn add_template(&mut self, template: Template) -> Result<(), PolicySetError> {
-        let id = PolicyId(template.ast.id().clone());
+        let id = PolicyId::new(template.ast.id().clone());
         self.ast.add_template(template.ast.clone())?;
         self.templates.insert(id, template);
         Ok(())
@@ -2488,7 +1841,7 @@ impl PolicySet {
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
     pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<&'a str> {
         self.ast
-            .get(&id.0)?
+            .get(id.as_inner())?
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
@@ -2500,7 +1853,7 @@ impl PolicySet {
     // without a semver break
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
         self.ast
-            .get_template(&id.0)?
+            .get_template(id.as_inner())?
             .annotation(&key.as_ref().parse().ok()?)
             .map(|annot| annot.val.to_string())
     }
@@ -2531,7 +1884,7 @@ impl PolicySet {
     ) -> Result<(), PolicySetError> {
         let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
             .into_iter()
-            .map(|(key, value)| (key.into(), value.0))
+            .map(|(key, value)| (key.into(), value.into_inner()))
             .collect();
 
         // Try to get the template with the id we're linking from.  We do this
@@ -2543,7 +1896,7 @@ impl PolicySet {
                 PolicySetError::ExpectedTemplate
             } else {
                 PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
-                    id: template_id.0,
+                    id: template_id.into_inner(),
                 })
             });
         };
@@ -2551,8 +1904,8 @@ impl PolicySet {
         let linked_ast = self
             .ast
             .link(
-                template_id.0.clone(),
-                new_id.0.clone(),
+                template_id.into_inner(),
+                new_id.as_inner().clone(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
@@ -2650,14 +2003,14 @@ fn is_static_or_link(
                 .map(|(id, euid)| (*id, euid.clone()))
                 .collect();
             Ok(Either::Right(Link {
-                id: id.0,
-                template: template_id.clone().0,
+                id: id.into_inner(),
+                template: template_id.clone().into_inner(),
                 slots,
             }))
         }
         None => policy.lossless.est().map(|est| {
             Either::Left(PolicyEntry {
-                id: id.0,
+                id: id.into_inner(),
                 policy: est,
             })
         }),
@@ -2666,7 +2019,7 @@ fn is_static_or_link(
 
 /// Like [`itertools::Itertools::partition_map`], but accepts a function that can fail.
 /// The first invocation of `f` that fails causes the whole computation to fail
-fn fold_partition<T, A, B, E>(
+pub(crate) fn fold_partition<T, A, B, E>(
     i: impl IntoIterator<Item = T>,
     f: impl Fn(T) -> Result<Either<A, B>, E>,
 ) -> Result<(Vec<A>, Vec<B>), E> {
@@ -2733,7 +2086,7 @@ impl Template {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.0),
+            ast: self.ast.new_id(id.into_inner()),
             lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
@@ -2768,24 +2121,24 @@ impl Template {
             ast::PrincipalOrResourceConstraint::Any => TemplatePrincipalConstraint::Any,
             ast::PrincipalOrResourceConstraint::In(eref) => {
                 TemplatePrincipalConstraint::In(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 TemplatePrincipalConstraint::Eq(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                TemplatePrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+                TemplatePrincipalConstraint::Is(EntityTypeName::new(entity_type.clone()))
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 TemplatePrincipalConstraint::IsIn(
-                    EntityTypeName(entity_type.clone()),
+                    EntityTypeName::new(entity_type.clone()),
                     match eref {
-                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                         ast::EntityReference::Slot => None,
                     },
                 )
@@ -2800,10 +2153,12 @@ impl Template {
             ast::ActionConstraint::Any => ActionConstraint::Any,
             ast::ActionConstraint::In(ids) => ActionConstraint::In(
                 ids.iter()
-                    .map(|id| EntityUid(id.as_ref().clone()))
+                    .map(|id| EntityUid::new(id.as_ref().clone()))
                     .collect(),
             ),
-            ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(EntityUid(id.as_ref().clone())),
+            ast::ActionConstraint::Eq(id) => {
+                ActionConstraint::Eq(EntityUid::new(id.as_ref().clone()))
+            }
         }
     }
 
@@ -2813,24 +2168,24 @@ impl Template {
             ast::PrincipalOrResourceConstraint::Any => TemplateResourceConstraint::Any,
             ast::PrincipalOrResourceConstraint::In(eref) => {
                 TemplateResourceConstraint::In(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 TemplateResourceConstraint::Eq(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+                TemplateResourceConstraint::Is(EntityTypeName::new(entity_type.clone()))
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 TemplateResourceConstraint::IsIn(
-                    EntityTypeName(entity_type.clone()),
+                    EntityTypeName::new(entity_type.clone()),
                     match eref {
-                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
                         ast::EntityReference::Slot => None,
                     },
                 )
@@ -2856,7 +2211,9 @@ impl Template {
         est: est::Policy,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         Ok(Self {
-            ast: est.clone().try_into_ast_template(id.map(|id| id.0))?,
+            ast: est
+                .clone()
+                .try_into_ast_template(id.map(PolicyId::into_inner))?,
             lossless: LosslessPolicy::Est(est),
         })
     }
@@ -2980,50 +2337,6 @@ impl TemplateResourceConstraint {
     }
 }
 
-/// Unique ids assigned to policies and templates.
-///
-/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string.
-/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
-/// Examples:
-/// ```
-/// # use cedar_policy::PolicyId;
-/// let id = PolicyId::new("my-id");
-/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(id.as_ref(), "my-id");
-/// ```
-#[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
-pub struct PolicyId(ast::PolicyID);
-
-impl PolicyId {
-    /// Construct a [`PolicyId`] from a source string
-    pub fn new(id: impl AsRef<str>) -> Self {
-        Self(ast::PolicyID::from_string(id.as_ref()))
-    }
-}
-
-impl FromStr for PolicyId {
-    type Err = Infallible;
-
-    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
-    fn from_str(id: &str) -> Result<Self, Self::Err> {
-        Ok(Self(ast::PolicyID::from_string(id)))
-    }
-}
-
-impl std::fmt::Display for PolicyId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for PolicyId {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
-
 /// Structure for a `Policy`. Includes both static policies and template-linked policies.
 #[derive(Debug, Clone)]
 pub struct Policy {
@@ -3069,7 +2382,7 @@ impl Policy {
                 .ast
                 .env()
                 .iter()
-                .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
+                .map(|(key, value)| (SlotId(*key), EntityUid::new(value.clone())))
                 .collect();
             Some(wrapped_vals)
         }
@@ -3103,7 +2416,7 @@ impl Policy {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.0),
+            ast: self.ast.new_id(id.into_inner()),
             lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
@@ -3125,11 +2438,11 @@ impl Policy {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                PrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+                PrincipalConstraint::Is(EntityTypeName::new(entity_type.clone()))
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 PrincipalConstraint::IsIn(
-                    EntityTypeName(entity_type.clone()),
+                    EntityTypeName::new(entity_type.clone()),
                     self.convert_entity_reference(eref, slot_id).clone(),
                 )
             }
@@ -3164,11 +2477,11 @@ impl Policy {
                 ResourceConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                ResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+                ResourceConstraint::Is(EntityTypeName::new(entity_type.clone()))
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 ResourceConstraint::IsIn(
-                    EntityTypeName(entity_type.clone()),
+                    EntityTypeName::new(entity_type.clone()),
                     self.convert_entity_reference(eref, slot_id).clone(),
                 )
             }
@@ -3291,7 +2604,9 @@ impl Policy {
         est: est::Policy,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         Ok(Self {
-            ast: est.clone().try_into_ast_policy(id.map(|id| id.0))?,
+            ast: est
+                .clone()
+                .try_into_ast_policy(id.map(PolicyId::into_inner))?,
             lossless: LosslessPolicy::Est(est),
         })
     }
@@ -3445,60 +2760,6 @@ impl std::fmt::Display for LosslessPolicy {
     }
 }
 
-/// Errors that can happen when getting the JSON representation of a policy
-#[derive(Debug, Diagnostic, Error)]
-pub enum PolicyToJsonError {
-    /// Parse error in the policy text
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Parse(#[from] ParseErrors),
-    /// For linked policies, error linking the JSON representation
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Link(#[from] json_errors::JsonLinkError),
-    /// Error in the JSON serialization
-    #[error(transparent)]
-    JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
-}
-
-impl From<est::LinkingError> for PolicyToJsonError {
-    fn from(e: est::LinkingError) -> Self {
-        json_errors::JsonLinkError::from(e).into()
-    }
-}
-
-impl From<serde_json::Error> for PolicyToJsonError {
-    fn from(e: serde_json::Error) -> Self {
-        json_errors::PolicyJsonSerializationError::from(e).into()
-    }
-}
-
-/// Error types related to JSON processing
-pub mod json_errors {
-    use cedar_policy_core::est;
-    use miette::Diagnostic;
-    use thiserror::Error;
-
-    /// Error linking the JSON representation of a linked policy
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    pub struct JsonLinkError {
-        /// Underlying error
-        #[from]
-        err: est::LinkingError,
-    }
-
-    /// Error serializing a policy as JSON
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct PolicyJsonSerializationError {
-        /// Underlying error
-        #[from]
-        err: serde_json::Error,
-    }
-}
-
 /// Expressions to be evaluated
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
@@ -3557,6 +2818,13 @@ impl Expression {
             vec![src_expr],
         ))
     }
+
+    /// Deconstruct an [`Expression`] to get the internal type.
+    /// This function is only intended to be used internally.
+    #[allow(dead_code)]
+    pub(crate) fn unwrap(self) -> ast::Expr {
+        self.0
+    }
 }
 
 impl FromStr for Expression {
@@ -3605,7 +2873,7 @@ impl RestrictedExpression {
 
     /// Create an expression representing a literal `EntityUid`.
     pub fn new_entity_uid(value: EntityUid) -> Self {
-        Self(ast::RestrictedExpr::val(value.0))
+        Self(ast::RestrictedExpr::val(value.into_inner()))
     }
 
     /// Create an expression representing a record.
@@ -3645,15 +2913,22 @@ impl RestrictedExpression {
             [src_expr],
         ))
     }
+
+    /// Deconstruct an [`RestrictedExpression`] to get the internal type.
+    /// This function is only intended to be used internally.
+    #[allow(dead_code)]
+    pub(crate) fn unwrap(self) -> ast::RestrictedExpr {
+        self.0
+    }
 }
 
-fn decimal_extension_name() -> ast::Name {
+pub(crate) fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("decimal".parse().unwrap())
 }
 
-fn ip_extension_name() -> ast::Name {
+pub(crate) fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("ip".parse().unwrap())
@@ -3718,7 +2993,7 @@ impl<S> RequestBuilder<S> {
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
-                Some(p) => ast::EntityUIDEntry::concrete(p.0, None),
+                Some(p) => ast::EntityUIDEntry::concrete(p.into_inner(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
                     None,
@@ -3741,7 +3016,7 @@ impl<S> RequestBuilder<S> {
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
-                Some(a) => ast::EntityUIDEntry::concrete(a.0, None),
+                Some(a) => ast::EntityUIDEntry::concrete(a.into_inner(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
                     None,
@@ -3764,7 +3039,7 @@ impl<S> RequestBuilder<S> {
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
-                Some(r) => ast::EntityUIDEntry::concrete(r.0, None),
+                Some(r) => ast::EntityUIDEntry::concrete(r.into_inner(), None),
                 None => ast::EntityUIDEntry::concrete(
                     ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
                     None,
@@ -3864,15 +3139,15 @@ impl Request {
         schema: Option<&Schema>,
     ) -> Result<Self, RequestValidationError> {
         let p = match principal {
-            Some(p) => p.0,
+            Some(p) => p.into_inner(),
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
         };
         let a = match action {
-            Some(a) => a.0,
+            Some(a) => a.into_inner(),
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
         };
         let r = match resource {
-            Some(r) => r.0,
+            Some(r) => r.into_inner(),
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
         Ok(Self(ast::Request::new(
@@ -4127,27 +3402,12 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, &action.0).ok_or_else(|| {
-            ContextJsonError::MissingAction {
+        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_inner()).ok_or_else(
+            || ContextJsonError::MissingAction {
                 action: action.clone(),
-            }
-        })
+            },
+        )
     }
-}
-
-/// Error type for parsing `Context` from JSON
-#[derive(Debug, Diagnostic, Error)]
-pub enum ContextJsonError {
-    /// Error deserializing the JSON into a Context
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    JsonDeserialization(#[from] ContextJsonDeserializationError),
-    /// The supplied action doesn't exist in the supplied schema
-    #[error("action `{action}` does not exist in the supplied schema")]
-    MissingAction {
-        /// UID of the action which doesn't exist
-        action: EntityUid,
-    },
 }
 
 impl std::fmt::Display for Request {
@@ -4241,7 +3501,7 @@ impl From<ast::Value> for EvalResult {
             ast::ValueKind::Lit(ast::Literal::Long(i)) => Self::Long(i),
             ast::ValueKind::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
             ast::ValueKind::Lit(ast::Literal::EntityUID(e)) => {
-                Self::EntityUid(EntityUid(ast::EntityUID::clone(&e)))
+                Self::EntityUid(EntityUid::new(ast::EntityUID::clone(&e)))
             }
             ast::ValueKind::Set(set) => Self::Set(Set(set
                 .authoritative
@@ -4306,911 +3566,4 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
-}
-
-#[cfg(test)]
-// PANIC SAFETY: unit tests
-#[allow(clippy::unwrap_used)]
-mod test {
-    use cool_asserts::assert_matches;
-
-    use super::*;
-
-    #[test]
-    fn test_all_ints() {
-        test_single_int(0);
-        test_single_int(i64::MAX);
-        test_single_int(i64::MIN);
-        test_single_int(7);
-        test_single_int(-7);
-    }
-
-    fn test_single_int(x: i64) {
-        for i in 0..4 {
-            test_single_int_with_dashes(x, i);
-        }
-    }
-
-    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
-        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
-        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
-        let p: Policy = src.parse().unwrap();
-        let json = p.to_json().unwrap();
-        let round_trip = Policy::from_json(None, json).unwrap();
-        let pretty_print = format!("{round_trip}");
-        assert!(pretty_print.contains(&x.to_string()));
-        if x != 0 {
-            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
-            assert_eq!(
-                pretty_print.chars().filter(|c| *c == '-').count(),
-                expected_dashes
-            );
-        }
-    }
-
-    // Serializing a valid 64-bit int that can't be represented in double precision float
-    #[test]
-    fn json_bignum_1() {
-        let src = r#"
-        permit(
-            principal,
-            action == Action::"action",
-            resource
-          ) when {
-            -9223372036854775808
-          };"#;
-        let p: Policy = src.parse().unwrap();
-        p.to_json().unwrap();
-    }
-
-    #[test]
-    fn json_bignum_1a() {
-        let src = r"
-        permit(principal, action, resource) when {
-            (true && (-90071992547409921)) && principal
-        };";
-        let p: Policy = src.parse().unwrap();
-        let v = p.to_json().unwrap();
-        let s = serde_json::to_string(&v).unwrap();
-        assert!(s.contains("90071992547409921"));
-    }
-
-    // Deserializing a valid 64-bit int that can't be represented in double precision float
-    #[test]
-    fn json_bignum_2() {
-        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":90071992547409921}}}}]}"#;
-        let v: serde_json::Value = serde_json::from_str(src).unwrap();
-        let p = Policy::from_json(None, v).unwrap();
-        let pretty = format!("{p}");
-        // Ensure the number didn't get rounded
-        assert!(pretty.contains("90071992547409921"));
-    }
-
-    // Deserializing a valid 64-bit int that can't be represented in double precision float
-    #[test]
-    fn json_bignum_2a() {
-        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
-        let v: serde_json::Value = serde_json::from_str(src).unwrap();
-        let p = Policy::from_json(None, v).unwrap();
-        let pretty = format!("{p}");
-        // Ensure the number didn't get rounded
-        assert!(pretty.contains("-9223372036854775808"));
-    }
-
-    // Deserializing a number that doesn't fit in 64 bit integer
-    // This _should_ fail, as there's no way to do this w/out loss of precision
-    #[test]
-    fn json_bignum_3() {
-        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
-        let v: serde_json::Value = serde_json::from_str(src).unwrap();
-        assert!(Policy::from_json(None, v).is_err());
-    }
-
-    #[test]
-    fn ip_name_correct() {
-        assert_eq!(ip_extension_name(), ast::Name::from_str("ip").unwrap());
-    }
-
-    #[test]
-    fn expr_ip_constructor() {
-        let ip = Expression::new_ip("10.10.10.10");
-        assert_matches!(ip.0.expr_kind(),
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
-                assert_eq!(fn_name, &("ip".parse().unwrap()));
-                assert_eq!(args.as_ref().len(), 1);
-                let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
-            }
-        );
-    }
-
-    #[test]
-    fn expr_ip() {
-        let ip = Expression::new_ip("10.10.10.10");
-        assert_matches!(evaluate_empty(&ip),
-                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
-        );
-    }
-
-    #[test]
-    fn expr_ip_network() {
-        let ip = Expression::new_ip("10.10.10.10/16");
-        assert_matches!(evaluate_empty(&ip),
-            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
-        );
-    }
-
-    #[test]
-    fn expr_bad_ip() {
-        let ip = Expression::new_ip("192.168.312.3");
-        assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
-        );
-    }
-
-    #[test]
-    fn expr_bad_cidr() {
-        let ip = Expression::new_ip("192.168.0.3/100");
-        assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
-        );
-    }
-
-    #[test]
-    fn expr_nonsense_ip() {
-        let ip = Expression::new_ip("foobar");
-        assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
-        );
-    }
-
-    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
-        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
-        let e = Entities::empty();
-        eval_expression(&r, &e, expr)
-    }
-
-    #[test]
-    fn rexpr_ip_constructor() {
-        let ip = RestrictedExpression::new_ip("10.10.10.10");
-        assert_matches!(ip.0.expr_kind(),
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
-                assert_eq!(fn_name, &("ip".parse().unwrap()));
-                assert_eq!(args.as_ref().len(), 1);
-                let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
-            }
-        );
-    }
-
-    #[test]
-    fn decimal_name_correct() {
-        assert_eq!(
-            decimal_extension_name(),
-            ast::Name::from_str("decimal").unwrap()
-        );
-    }
-
-    #[test]
-    fn expr_decimal_constructor() {
-        let decimal = Expression::new_decimal("1234.1234");
-        assert_matches!(decimal.0.expr_kind(),
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
-                assert_eq!(fn_name, &("decimal".parse().unwrap()));
-                assert_eq!(args.as_ref().len(), 1);
-                let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
-            }
-        );
-    }
-
-    #[test]
-    fn rexpr_decimal_constructor() {
-        let decimal = RestrictedExpression::new_decimal("1234.1234");
-        assert_matches!(decimal.0.expr_kind(),
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
-                assert_eq!(fn_name, &("decimal".parse().unwrap()));
-                assert_eq!(args.as_ref().len(), 1);
-                let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
-            }
-        );
-    }
-
-    #[test]
-    fn valid_decimal() {
-        let decimal = Expression::new_decimal("1234.1234");
-        assert_matches!(evaluate_empty(&decimal),
-         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
-    }
-
-    #[test]
-    fn invalid_decimal() {
-        let decimal = Expression::new_decimal("1234.12345");
-        assert_matches!(evaluate_empty(&decimal),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
-                )
-        );
-    }
-
-    #[test]
-    fn into_iter_entities() {
-        let test_data = r#"
-        [
-        {
-        "uid": {"type":"User","id":"alice"},
-        "attrs": {
-            "age":19,
-            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
-        },
-        "parents": [{"type":"Group","id":"admin"}]
-        },
-        {
-        "uid": {"type":"Group","id":"admin"},
-        "attrs": {},
-        "parents": []
-        }
-        ]
-        "#;
-
-        let list = Entities::from_json_str(test_data, None).unwrap();
-        let mut list_out: Vec<String> = list
-            .into_iter()
-            .map(|entity| entity.uid().id().to_string())
-            .collect();
-        list_out.sort();
-        assert_eq!(list_out, &["admin", "alice"]);
-    }
-
-    #[test]
-    fn test_partition_fold() {
-        let even_or_odd = |s: &str| {
-            i64::from_str(s).map(|i| {
-                if i % 2 == 0 {
-                    Either::Left(i)
-                } else {
-                    Either::Right(i)
-                }
-            })
-        };
-
-        let lst = ["23", "24", "75", "9320"];
-        let (evens, odds) = fold_partition(lst, even_or_odd).unwrap();
-        assert!(evens.into_iter().all(|i| i % 2 == 0));
-        assert!(odds.into_iter().all(|i| i % 2 != 0));
-    }
-
-    #[test]
-    fn test_partition_fold_err() {
-        let even_or_odd = |s: &str| {
-            i64::from_str_radix(s, 10).map(|i| {
-                if i % 2 == 0 {
-                    Either::Left(i)
-                } else {
-                    Either::Right(i)
-                }
-            })
-        };
-
-        let lst = ["23", "24", "not-a-number", "75", "9320"];
-        assert!(fold_partition(lst, even_or_odd).is_err());
-    }
-
-    #[test]
-    fn test_est_policyset_encoding() {
-        let mut pset = PolicySet::default();
-        let policy: Policy = r"permit(principal, action, resource) when { principal.foo };"
-            .parse()
-            .unwrap();
-        pset.add(policy.new_id(PolicyId::new("policy"))).unwrap();
-        let template: Template =
-            r"permit(principal == ?principal, action, resource) when { principal.bar };"
-                .parse()
-                .unwrap();
-        pset.add_template(template.new_id(PolicyId::new("template")))
-            .unwrap();
-
-        pset.link(
-            PolicyId::new("template"),
-            PolicyId::new("Link1"),
-            HashMap::from_iter([(SlotId::principal(), r#"User::"Joe""#.parse().unwrap())]),
-        )
-        .unwrap();
-        pset.link(
-            PolicyId::new("template"),
-            PolicyId::new("Link2"),
-            HashMap::from_iter([(SlotId::principal(), r#"User::"Sally""#.parse().unwrap())]),
-        )
-        .unwrap();
-
-        let json = pset.to_json().unwrap();
-
-        let pset2 = PolicySet::from_json_value(json).unwrap();
-
-        // There should be 2 policies, one static and two links
-        assert_eq!(pset2.policies().count(), 3);
-        let static_policy = pset2.policy(&PolicyId::new("policy")).unwrap();
-        assert!(static_policy.is_static());
-
-        let link = pset2.policy(&PolicyId::new("Link1")).unwrap();
-        assert!(!link.is_static());
-        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
-        assert_eq!(
-            link.template_links(),
-            Some(HashMap::from_iter([(
-                SlotId::principal(),
-                r#"User::"Joe""#.parse().unwrap()
-            )]))
-        );
-
-        let link = pset2.policy(&PolicyId::new("Link2")).unwrap();
-        assert!(!link.is_static());
-        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
-        assert_eq!(
-            link.template_links(),
-            Some(HashMap::from_iter([(
-                SlotId::principal(),
-                r#"User::"Sally""#.parse().unwrap()
-            )]))
-        );
-
-        let template = pset2.template(&PolicyId::new("template")).unwrap();
-        assert_eq!(template.slots().count(), 1);
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_empty() {
-        let empty = serde_json::json!({
-            "templates" : [],
-            "static_policies" : [],
-            "links" : []
-        });
-        let empty = PolicySet::from_json_value(empty).unwrap();
-        assert_eq!(empty, PolicySet::default());
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_single() {
-        let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-        ],
-        "links" : [
-        ]});
-
-        let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.templates().count(), 0);
-        assert_eq!(policyset.policies().count(), 1);
-        assert!(policyset.policy(&PolicyId::new("policy1")).is_some());
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates() {
-        let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
-                }
-            }
-        ]});
-
-        let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.policies().count(), 2);
-        assert_eq!(policyset.templates().count(), 1);
-        assert!(policyset.template(&PolicyId::new("template")).is_some());
-        let link = policyset.policy(&PolicyId::new("link")).unwrap();
-        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
-        assert_eq!(
-            link.template_links(),
-            Some(HashMap::from_iter([(
-                SlotId::principal(),
-                r#"User::"John""#.parse().unwrap()
-            )]))
-        );
-        if let Err(_) = policyset
-            .get_linked_policies(PolicyId::new("template"))
-            .unwrap()
-            .exactly_one()
-        {
-            panic!("Should have exactly one");
-        };
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates_bad_link_name() {
-        let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "non_existant",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
-                }
-            }
-        ]});
-
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existant").0;
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate { id }) if id == template1
-        );
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates_empty_env() {
-        let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {},
-            }
-        ]});
-
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_principal = vec![SlotId::principal().into()];
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if extra_values.is_empty() && unbound_values == just_principal
-        );
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates_bad_extra_vals() {
-        let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?resource" : { "type" : "Box", "id" : "ABC" }
-                }
-            }
-        ]});
-
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_resource = vec![SlotId::resource().into()];
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if unbound_values.is_empty() && extra_values == just_resource
-        );
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates_bad_dup_vals() {
-        let value = r#" {
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?principal" : { "type" : "User", "id" : "Duplicate" }
-                }
-            }
-        ]}"#;
-
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("found duplicate key"));
-    }
-
-    #[test]
-    fn test_est_policyset_decoding_templates_bad_euid() {
-        let value = r#" {
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User" }
-                }
-            }
-        ]}"#;
-
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("while parsing a template link, expected a literal entity reference"));
-    }
 }
