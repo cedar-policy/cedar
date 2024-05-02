@@ -100,12 +100,14 @@ impl std::fmt::Display for SlotId {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::SlotId> for SlotId {
     fn from(a: ast::SlotId) -> Self {
         Self(a)
     }
 }
 
+#[doc(hidden)]
 impl From<SlotId> for ast::SlotId {
     fn from(s: SlotId) -> Self {
         s.0
@@ -921,6 +923,7 @@ pub struct Diagnostics {
     errors: Vec<AuthorizationError>,
 }
 
+#[doc(hidden)]
 impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
@@ -1085,6 +1088,7 @@ impl Response {
     }
 }
 
+#[doc(hidden)]
 impl From<authorizer::Response> for Response {
     fn from(a: authorizer::Response) -> Self {
         Self {
@@ -1112,6 +1116,7 @@ pub enum ValidationMode {
     Partial,
 }
 
+#[doc(hidden)]
 impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
     fn from(mode: ValidationMode) -> Self {
         match mode {
@@ -1402,6 +1407,7 @@ impl ValidationResult {
     }
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_validator::ValidationResult> for ValidationResult {
     fn from(r: cedar_policy_validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();

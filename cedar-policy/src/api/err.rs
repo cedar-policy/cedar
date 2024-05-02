@@ -172,6 +172,7 @@ pub enum ToHumanSyntaxError {
     NameCollisions(NonEmpty<SmolStr>),
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
     fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
         match value {
@@ -209,6 +210,7 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
     }
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         Self::Core(value.into())
@@ -228,6 +230,7 @@ pub struct EntityAttrEvaluationError {
     pub err: EvaluationError,
 }
 
+#[doc(hidden)]
 impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
@@ -261,6 +264,7 @@ impl std::fmt::Display for ContextOrShape {
     }
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
     fn from(value: cedar_policy_validator::ContextOrShape) -> Self {
         match value {
@@ -398,6 +402,7 @@ impl std::fmt::Display for SourceLocation {
     }
 }
 
+#[doc(hidden)]
 impl From<&cedar_policy_validator::SourceLocation> for SourceLocation {
     fn from(loc: &cedar_policy_validator::SourceLocation) -> Self {
         Self(loc.clone())
@@ -483,6 +488,7 @@ pub enum PolicySetError {
     Json(#[from] serde_json::Error),
 }
 
+#[doc(hidden)]
 impl From<ast::PolicySetError> for PolicySetError {
     fn from(e: ast::PolicySetError) -> Self {
         match e {
@@ -493,6 +499,7 @@ impl From<ast::PolicySetError> for PolicySetError {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::UnexpectedSlotError> for PolicySetError {
     fn from(_: ast::UnexpectedSlotError) -> Self {
         Self::ExpectedStatic
@@ -515,6 +522,7 @@ pub enum PolicyToJsonError {
     JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
 }
 
+#[doc(hidden)]
 impl From<est::LinkingError> for PolicyToJsonError {
     fn from(e: est::LinkingError) -> Self {
         json_errors::JsonLinkError::from(e).into()
