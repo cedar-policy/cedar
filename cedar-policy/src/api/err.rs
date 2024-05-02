@@ -26,7 +26,7 @@ pub use cedar_policy_core::entities::EntitiesError;
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::parser;
-use cedar_policy_core::parser::err::ParseErrors;
+pub use cedar_policy_core::parser::err::ParseErrors;
 pub use cedar_policy_validator::human_schema::SchemaWarning;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,

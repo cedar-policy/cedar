@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-//! This module defines the publicly exported identifier types `EntityUid` and `PolicyId`.
+//! This module defines the publicly exported identifier types including
+//! `EntityUid` and `PolicyId`.
 
 use cedar_policy_core::ast;
 use ref_cast::RefCast;
