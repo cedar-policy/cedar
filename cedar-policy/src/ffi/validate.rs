@@ -146,11 +146,9 @@ pub struct ValidationSettings {
 #[serde(rename_all = "camelCase")]
 pub enum ValidationEnabled {
     /// Setting for which policies will be validated against the schema
-    #[serde(rename = "on")]
     #[serde(alias = "regular")]
     On,
     /// Setting for which no validation will be done
-    #[serde(rename = "off")]
     Off,
 }
 
@@ -182,6 +180,7 @@ pub struct ValidationError {
 #[serde(rename_all = "camelCase")]
 pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
+    #[serde(rename_all = "camelCase")]
     Failure {
         /// Parsing errors
         errors: Vec<DetailedError>,
@@ -189,6 +188,7 @@ pub enum ValidationAnswer {
         warnings: Vec<DetailedError>,
     },
     /// Represents a successful validation call
+    #[serde(rename_all = "camelCase")]
     Success {
         /// Errors from any issues found during validation
         validation_errors: Vec<ValidationError>,
@@ -224,6 +224,8 @@ mod test {
     #[track_caller]
     fn assert_validates_with_errors(json: serde_json::Value, expected_num_errors: usize) {
         let ans_val = validate_json(json).unwrap();
+        assert_matches!(ans_val.get("validationErrors"), Some(_)); // should be present, with this camelCased name
+        assert_matches!(ans_val.get("validationWarnings"), Some(_)); // should be present, with this camelCased name
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
             assert_eq!(validation_errors.len(), expected_num_errors, "actual validation errors were: {validation_errors:?}");
