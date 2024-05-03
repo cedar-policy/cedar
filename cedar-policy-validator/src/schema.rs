@@ -655,6 +655,7 @@ struct CommonTypeResolver<'a> {
     /// Common type declarations to resolve
     type_defs: &'a HashMap<Name, SchemaType>,
     /// The dependency graph among common type names
+    /// The graph contains a vertex for each `Name` and `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a directed edge in the graph
     /// A common type name is prefixed with the namespace id where it's declared
     graph: HashMap<Name, HashSet<Name>>,
 }
