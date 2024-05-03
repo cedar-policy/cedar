@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    frontend::is_authorized::InterfaceResponse, AuthorizationError, Authorizer, Context, Decision,
-    Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
+    ffi::Response, AuthorizationError, Authorizer, Context, Decision, Entities, EntityUid,
+    PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
@@ -161,7 +161,7 @@ pub trait CustomCedarImpl {
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
         e: &cedar_policy_core::entities::Entities,
-    ) -> InterfaceResponse;
+    ) -> Response;
 
     /// Custom validator entry point.
     ///

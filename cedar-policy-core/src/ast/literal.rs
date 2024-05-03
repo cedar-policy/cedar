@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -128,7 +128,7 @@ impl From<Arc<EntityUID>> for Literal {
 impl Literal {
     /// Check if this literal is an entity reference
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference.
     pub fn is_ref(&self) -> bool {
         matches!(self, Self::EntityUID(..))

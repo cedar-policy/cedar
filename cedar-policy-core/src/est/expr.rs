@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 use super::FromJsonError;
 use crate::ast::InputInteger;
-use crate::entities::{
-    CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
-    JsonDeserializationErrorContext, TypeAndId,
+use crate::entities::json::{
+    err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
+    CedarValueJson, FnAndArg, TypeAndId,
 };
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
@@ -51,6 +51,8 @@ pub enum Expr {
 
 /// Represent an element of a pattern literal
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PatternElem {
     /// The wildcard asterisk
     Wildcard,
@@ -67,7 +69,7 @@ impl From<Vec<PatternElem>> for crate::ast::Pattern {
                     elems.push(crate::ast::PatternElem::Wildcard);
                 }
                 PatternElem::Literal(s) => {
-                    elems.extend(s.chars().map(|c| crate::ast::PatternElem::Char(c)));
+                    elems.extend(s.chars().map(crate::ast::PatternElem::Char));
                 }
             }
         }
@@ -86,7 +88,7 @@ impl From<crate::ast::PatternElem> for PatternElem {
 
 impl From<crate::ast::Pattern> for Vec<PatternElem> {
     fn from(value: crate::ast::Pattern) -> Self {
-        value.iter().map(|elem| elem.clone().into()).collect()
+        value.iter().map(|elem| (*elem).into()).collect()
     }
 }
 
@@ -701,11 +703,11 @@ impl Expr {
                             .next()
                             .expect("already checked that len was 1");
                         let fn_name = fn_name.parse().map_err(|errs| {
-                            JsonDeserializationError::ParseEscape {
-                                kind: EscapeKind::Extension,
-                                value: fn_name.to_string(),
+                            JsonDeserializationError::parse_escape(
+                                EscapeKind::Extension,
+                                fn_name,
                                 errs,
-                            }
+                            )
                         })?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
@@ -1106,6 +1108,7 @@ fn interpret_primary(
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid),
+                                None,
                             )),
                         }))),
                         Err(unescape_errs) => {
@@ -1141,6 +1144,7 @@ fn interpret_primary(
                                 .and_then(|id| id.to_string().parse().map_err(Into::into))
                         })
                         .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                    Some(node.loc.clone()),
                 ))),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {
@@ -1481,6 +1485,10 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
                 }
             }
             write!(f, "}}")?;
+            Ok(())
+        }
+        CedarValueJson::Null => {
+            write!(f, "null")?;
             Ok(())
         }
     }

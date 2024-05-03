@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
 use serde::{Deserialize, Serialize};
 
@@ -5,14 +21,12 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum FormattingResult {
-    #[serde(rename = "true")]
     Success { formatted_policy: String },
-    #[serde(rename = "false")]
-    Error { error: String },
+    Error { errors: Vec<String> },
 }
 
 #[wasm_bindgen(js_name = "formatPolicies")]
@@ -25,7 +39,7 @@ pub fn wasm_format_policies(
         Ok(width) => width,
         Err(_) => {
             return FormattingResult::Error {
-                error: "Input size error (line width)".to_string(),
+                errors: vec!["Input size error (line width)".to_string()],
             }
         }
     };
@@ -33,7 +47,7 @@ pub fn wasm_format_policies(
         Ok(width) => width,
         Err(_) => {
             return FormattingResult::Error {
-                error: "Input size error (indent width)".to_string(),
+                errors: vec!["Input size error (indent width)".to_string()],
             }
         }
     };
@@ -46,7 +60,7 @@ pub fn wasm_format_policies(
             formatted_policy: prettified_policy,
         },
         Err(err) => FormattingResult::Error {
-            error: err.to_string(),
+            errors: vec![err.to_string()],
         },
     }
 }

@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use std::str::FromStr;
 
 use cedar_policy::{Policy, PolicySet, Template};
@@ -8,14 +24,17 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum JsonToPolicyResult {
-    #[serde(rename = "true")]
-    Success { policy_text: String },
-    #[serde(rename = "false")]
-    Error { errors: Vec<String> },
+    #[serde(rename_all = "camelCase")]
+    Success {
+        policy_text: String,
+    },
+    Error {
+        errors: Vec<String>,
+    },
 }
 
 #[wasm_bindgen(js_name = "policyTextFromJson")]
@@ -40,15 +59,16 @@ pub fn policy_text_from_json(json_str: &str) -> JsonToPolicyResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "success")]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum PolicyToJsonResult {
-    #[serde(rename = "true")]
     Success {
         policy: cedar_policy_core::est::Policy,
     },
-    #[serde(rename = "false")]
-    Error { errors: Vec<String> },
+    Error {
+        errors: Vec<String>,
+    },
 }
 
 #[wasm_bindgen(js_name = "policyTextToJson")]
@@ -62,22 +82,21 @@ pub fn policy_text_to_json(cedar_str: &str) -> PolicyToJsonResult {
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result for the syntax validation function
 pub enum CheckParsePolicySetResult {
-    #[serde(rename = "true")]
     /// represents successful syntax validation
     Success { policies: i32, templates: i32 },
-    #[serde(rename = "false")]
     /// represents a syntax error and encloses a vector of the errors
-    SyntaxError { errors: Vec<String> },
+    Error { errors: Vec<String> },
 }
 
 #[wasm_bindgen(js_name = "checkParsePolicySet")]
 pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetResult {
     match PolicySet::from_str(input_policies_str) {
-        Err(parse_errors) => CheckParsePolicySetResult::SyntaxError {
+        Err(parse_errors) => CheckParsePolicySetResult::Error {
             errors: parse_errors.errors_as_strings(),
         },
         Ok(policy_set) => {
@@ -90,7 +109,7 @@ pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetRe
                     policies: p,
                     templates: t,
                 },
-                _ => CheckParsePolicySetResult::SyntaxError {
+                _ => CheckParsePolicySetResult::Error {
                     errors: vec!["Error counting policies or templates".to_string()],
                 },
             }
@@ -99,13 +118,12 @@ pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetRe
 }
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum CheckParseTemplateResult {
-    #[serde(rename = "true")]
     /// represents successful template validation
     Success { slots: Vec<String> },
-    #[serde(rename = "false")]
     /// represents errors in the template validation and encloses a vector of the errors
     Error { errors: Vec<String> },
 }
@@ -137,14 +155,11 @@ mod test {
     fn test_conversion_from_cedar() {
         let cedar_repr = r#"permit(principal, action, resource) when { principal has "Email" && principal.Email == "a@a.com" };"#;
         let json_conversion_result = policy_text_to_json(cedar_repr);
-        assert!(matches!(
-            json_conversion_result,
-            PolicyToJsonResult::Success { policy: _ }
-        ))
+        assert_matches!(json_conversion_result, PolicyToJsonResult::Success { .. });
     }
 
     #[test]
-    fn test_convertion_from_json() {
+    fn test_conversion_from_json() {
         let est_repr = r#"{
             "effect": "permit",
             "action": {
@@ -167,17 +182,13 @@ mod test {
             "conditions": []
         }"#;
 
-        let cedar_convertion_result: JsonToPolicyResult = policy_text_from_json(&est_repr);
-        match cedar_convertion_result {
-            JsonToPolicyResult::Success { policy_text } => assert_eq!(
+        let cedar_conversion_result: JsonToPolicyResult = policy_text_from_json(est_repr);
+        assert_matches!(cedar_conversion_result, JsonToPolicyResult::Success { policy_text } => {
+            assert_eq!(
                 &policy_text,
                 "permit(principal in UserGroup::\"DeathRowRecords\", action == Action::\"pop\", resource);"
-            ),
-            JsonToPolicyResult::Error { errors } => {
-                dbg!(errors);
-                panic!("Test failed")
-            }
-        }
+            );
+        });
     }
 
     #[test]
@@ -206,20 +217,11 @@ mod test {
     }
 
     fn assert_result_is_ok(result: &CheckParsePolicySetResult) {
-        assert!(matches!(
-            result,
-            CheckParsePolicySetResult::Success {
-                policies: _,
-                templates: _,
-            }
-        ));
+        assert_matches!(result, CheckParsePolicySetResult::Success { .. });
     }
 
     fn assert_result_had_syntax_errors(result: &CheckParsePolicySetResult) {
-        assert!(matches!(
-            result,
-            CheckParsePolicySetResult::SyntaxError { errors: _ }
-        ));
+        assert_matches!(result, CheckParsePolicySetResult::Error { .. });
     }
 
     #[test]
@@ -235,19 +237,13 @@ mod test {
     fn parse_template_fails_for_missing_slots() {
         let template_str = r#"permit (principal, action, resource);"#;
         let result = check_parse_template(template_str);
-        assert!(matches!(
-            result,
-            CheckParseTemplateResult::Error { errors: _ }
-        ));
+        assert_matches!(result, CheckParseTemplateResult::Error { .. });
     }
 
     #[test]
     fn parse_template_fails_for_bad_slot() {
         let template_str = r#"permit (principal, action, resource == ?principal);"#;
         let result = check_parse_template(template_str);
-        assert!(matches!(
-            result,
-            CheckParseTemplateResult::Error { errors: _ }
-        ));
+        assert_matches!(result, CheckParseTemplateResult::Error { .. });
     }
 }

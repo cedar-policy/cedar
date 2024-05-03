@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Name>
 }
 
 /// Returns an iterator over all literal entity uids in a policy. This iterates
-/// over any entities in the policy head condition in addition to any entities
+/// over any entities in the policy scope condition in addition to any entities
 /// in the body.
 pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &EntityUID> {
     template
@@ -51,11 +51,11 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
         .iter_euids()
         .chain(template.action_constraint().iter_euids())
         .chain(template.resource_constraint().as_inner().iter_euids())
-        .chain(expr_entity_uids(template.non_head_constraints()))
+        .chain(expr_entity_uids(template.non_scope_constraints()))
 }
 
 /// Returns an iterator over all entity type names in the policy. This iterates
-/// over the policy head condition in addition to the body.
+/// over the policy scope condition in addition to the body.
 /// The Unspecified entity type does not have a `Name`, so it is excluded
 /// from this iter.
 pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &Name> {
@@ -70,7 +70,7 @@ pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Ite
                 .as_inner()
                 .iter_entity_type_names(),
         )
-        .chain(expr_entity_type_names(template.non_head_constraints()))
+        .chain(expr_entity_type_names(template.non_scope_constraints()))
 }
 
 /// The 3 different "classes" of text in an expression.
@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn entity_full_head() {
+    fn entity_full_scope() {
         let euid_foo =
             EntityUID::with_eid_and_type("test_entity_type", "foo").expect("valid identifier");
         let euid_bar =
@@ -304,7 +304,7 @@ mod tests {
             EntityUID::with_eid_and_type("test_entity_type", "baz").expect("valid identifier");
         let euid_buz =
             EntityUID::with_eid_and_type("test_entity_type", "buz").expect("valid identifier");
-        let head = Expr::and(
+        let scope = Expr::and(
             Expr::is_eq(Expr::var(Var::Principal), Expr::val(euid_foo.clone())),
             Expr::and(
                 Expr::is_in(
@@ -318,7 +318,7 @@ mod tests {
             ),
         );
 
-        let entities: HashSet<EntityUID> = expr_entity_uids(&head).cloned().collect();
+        let entities: HashSet<EntityUID> = expr_entity_uids(&scope).cloned().collect();
         assert_eq!(
             HashSet::from([euid_foo, euid_bar, euid_baz, euid_buz]),
             entities

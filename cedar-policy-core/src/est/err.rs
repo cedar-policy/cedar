@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 
 use crate::ast;
-use crate::entities::JsonDeserializationError;
+use crate::entities::json::err::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
 use miette::Diagnostic;
@@ -80,13 +80,21 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
+    /// Error reported when a policy set has duplicate ids
+    #[error("Error creating policy set: {0}")]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] ast::PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error("Error linking policy set: {0}")]
+    #[diagnostic(transparent)]
+    Linking(#[from] ast::LinkingError),
 }
 
-/// Errors while instantiating a policy
+/// Errors while linking a policy
 #[derive(Debug, PartialEq, Diagnostic, Error)]
-pub enum InstantiationError {
+pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
-    #[error("failed to instantiate template: no value provided for `{slot}`")]
+    #[error("failed to link template: no value provided for `{slot}`")]
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,

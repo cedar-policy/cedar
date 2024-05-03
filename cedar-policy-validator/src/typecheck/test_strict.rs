@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,11 +27,16 @@ use cool_asserts::assert_matches;
 use serde_json::json;
 use std::str::FromStr;
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
+use cedar_policy_core::{
+    ast::{EntityType, EntityUID, Expr},
+    parser::parse_policy_template,
+};
 
 use crate::{
-    types::{EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
+    typecheck::test_utils::assert_policy_typecheck_fails,
+    types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
+    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeError, TypeErrorKind,
+    ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -95,6 +100,8 @@ fn assert_types_must_match(
     e_strict: Expr,
     expected_type: Type,
     unequal_types: impl IntoIterator<Item = Type>,
+    hint: LubHelp,
+    context: LubContext,
 ) {
     assert_strict_type_error(
         schema,
@@ -104,6 +111,8 @@ fn assert_types_must_match(
         expected_type,
         TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
+            hint,
+            context,
         }),
     )
 }
@@ -224,6 +233,8 @@ fn eq_strict_types_mismatch() {
             Expr::from_str(r#"1 == "foo""#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_string(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         )
     })
 }
@@ -238,6 +249,8 @@ fn contains_strict_types_mismatch() {
             Expr::from_str(r#"[1].contains("test")"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Contains,
         )
     })
 }
@@ -255,6 +268,8 @@ fn contains_any_strict_types_mismatch() {
                 Type::set(Type::named_entity_reference_from_str("User")),
                 Type::set(Type::primitive_long()),
             ],
+            LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -272,6 +287,8 @@ fn contains_all_strict_types_mismatch() {
                 Type::set(Type::named_entity_reference_from_str("User")),
                 Type::set(Type::primitive_long()),
             ],
+            LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -334,6 +351,8 @@ fn if_bool_strict_type_mismatch() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Conditional,
         )
     })
 }
@@ -351,6 +370,8 @@ fn set_strict_types_mismatch() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Set,
         )
     })
 }
@@ -418,6 +439,8 @@ fn entity_in_lub() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Conditional,
         )
     });
 }
@@ -443,6 +466,8 @@ fn test_and() {
             Expr::from_str(r#"(1 == (2 > 0)) && true"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
+            LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -451,6 +476,8 @@ fn test_and() {
             Expr::from_str(r#"true && (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -472,6 +499,8 @@ fn test_or() {
             Expr::from_str(r#"(1 == (2 > 0)) || false"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -480,6 +509,8 @@ fn test_or() {
             Expr::from_str(r#"false || (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -501,6 +532,8 @@ fn test_unary() {
             Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -522,6 +555,8 @@ fn test_mul() {
             Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
             Type::primitive_long(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -543,6 +578,8 @@ fn test_like() {
             Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -564,6 +601,8 @@ fn test_get_attr() {
             Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -601,6 +640,8 @@ fn test_has_attr() {
                     Type::primitive_long(),
                 )]),
             ],
+            LubHelp::RecordWidth,
+            LubContext::Conditional,
         );
     })
 }
@@ -622,7 +663,9 @@ fn test_extension() {
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::singleton_boolean(false)]
+            [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -678,4 +721,42 @@ fn true_false_set() {
             Type::set(Type::set(Type::set(Type::primitive_boolean()))),
         )
     })
+}
+
+#[test]
+fn qualified_record_attr() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"action A appliesTo { context: {num_of_things?: Long } };"#,
+    )
+    .unwrap();
+    let p = parse_policy_template(
+        None,
+        "permit(principal, action, resource) when { context == {num_of_things: 1}};",
+    )
+    .unwrap();
+    assert_policy_typecheck_fails(
+        schema,
+        p.clone(),
+        vec![TypeError::incompatible_types(
+            "context == {num_of_things: 1}".parse().unwrap(),
+            [
+                Type::record_with_attributes(
+                    [(
+                        "num_of_things".into(),
+                        AttributeType::new(Type::primitive_long(), false),
+                    )],
+                    OpenTag::ClosedAttributes,
+                ),
+                Type::record_with_attributes(
+                    [(
+                        "num_of_things".into(),
+                        AttributeType::new(Type::primitive_long(), true),
+                    )],
+                    OpenTag::ClosedAttributes,
+                ),
+            ],
+            LubHelp::AttributeQualifier,
+            LubContext::Equality,
+        )],
+    );
 }

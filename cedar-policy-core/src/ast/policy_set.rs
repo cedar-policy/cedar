@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -682,6 +682,7 @@ mod test {
         let lid = PolicyID::from_string("link");
         let t = Template::new(
             tid.clone(),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -710,6 +711,7 @@ mod test {
         let lid = PolicyID::from_string("link");
         let t = Template::new(
             tid.clone(),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),
@@ -745,6 +747,7 @@ mod test {
         let id = PolicyID::from_string("id");
         let p = StaticPolicy::new(
             id.clone(),
+            None,
             Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::any(),
@@ -773,6 +776,7 @@ mod test {
         let link_id = PolicyID::from_string("link");
         let t = Template::new(
             template_id.clone(),
+            None,
             Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
@@ -807,6 +811,7 @@ mod test {
         let tid1 = PolicyID::from_string("template");
         let policy1 = StaticPolicy::new(
             id1.clone(),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -817,6 +822,7 @@ mod test {
         .expect("Policy Creation Failed");
         let template1 = Template::new(
             tid1.clone(),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
@@ -836,6 +842,7 @@ mod test {
         let id2 = PolicyID::from_string("id2");
         let policy2 = StaticPolicy::new(
             id2.clone(),
+            None,
             Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq(EntityUID::with_eid("jane")),
@@ -850,6 +857,7 @@ mod test {
         let tid2 = PolicyID::from_string("template2");
         let template2 = Template::new(
             tid2.clone(),
+            None,
             Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -378,7 +378,7 @@ pub enum Slot {
 }
 
 impl Slot {
-    /// Check if a slot matches a head variable.
+    /// Check if a slot matches a scope variable.
     pub fn matches(&self, var: crate::ast::Var) -> bool {
         matches!(
             (self, var),

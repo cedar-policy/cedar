@@ -1,5 +1,21 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::GetSchemaTypeError;
+use cedar_policy_core::entities::json::GetSchemaTypeError;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -44,7 +60,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action(&self, action: &ast::EntityUID) -> Option<Arc<ast::Entity>> {
-        self.actions.get(action).map(Arc::clone)
+        self.actions.get(action).cloned()
     }
 
     fn entity_types_with_basename<'b>(

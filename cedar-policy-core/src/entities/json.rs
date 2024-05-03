@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,5 +39,4 @@ mod schema_types;
 pub use schema_types::*;
 
 /// Error types for JSON serialization and deserialization
-mod err;
-pub use err::*;
+pub mod err;

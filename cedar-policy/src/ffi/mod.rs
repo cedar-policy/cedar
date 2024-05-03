@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
-pub mod is_authorized;
-pub mod utils;
-pub mod validate;
+#![cfg_attr(feature = "wasm", allow(non_snake_case))]
+
+mod is_authorized;
+pub use is_authorized::*;
+mod utils;
+pub use utils::{DetailedError, PolicySet, Schema, Severity, SourceLabel, SourceLocation};
+mod validate;
+pub use validate::*;

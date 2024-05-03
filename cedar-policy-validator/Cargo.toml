@@ -1,6 +1,7 @@
 [package]
 name = "cedar-policy-validator"
 edition = "2021"
+rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 
 version = "4.0.0"
 license = "Apache-2.0"
@@ -47,6 +48,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [dev-dependencies]
 cool_asserts = "2.0"
+cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["test-util"] }
 
 [build-dependencies]
 lalrpop = "0.20.0"

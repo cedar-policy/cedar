@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,24 @@
  */
 
 use super::{
-    JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError, SchemaType,
+    err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
+    SchemaType,
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
     RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
-    schematype_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, GetSchemaTypeError,
-    TypeMismatchError,
+    conformance::err::EntitySchemaConformanceError,
+    json::err::{EscapeKind, TypeMismatchError},
+    schematype_of_restricted_expr, GetSchemaTypeError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use serde_with::{DeserializeAs, SerializeAs};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -94,6 +97,9 @@ pub enum CedarValueJson {
     Record(
         #[cfg_attr(feature = "wasm", tsify(type = "{ [key: string]: CedarValueJson }"))] JsonRecord,
     ),
+    /// JSON null, which is never valid, but we put this here in order to
+    /// provide a better error message.
+    Null,
 }
 
 /// Structure representing a Cedar record in JSON
@@ -194,6 +200,7 @@ impl TryFrom<TypeAndId> for EntityUID {
         Ok(EntityUID::from_components(
             Name::from_normalized_str(&e.entity_type)?,
             Eid::new(e.id),
+            None,
         ))
     }
 }
@@ -240,24 +247,19 @@ impl CedarValueJson {
             )
             .map_err(|e| match e {
                 ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                    JsonDeserializationError::DuplicateKeyInRecordLiteral {
-                        ctx: Box::new(ctx()),
-                        key,
-                    }
+                    JsonDeserializationError::duplicate_key_in_record_literal(ctx(), key)
                 }
             })?),
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
                 EntityUID::try_from(entity.clone()).map_err(|errs| {
-                    JsonDeserializationError::ParseEscape {
-                        kind: EscapeKind::Entity,
-                        value: serde_json::to_string_pretty(&entity)
-                            .unwrap_or_else(|_| format!("{:?}", &entity)),
-                        errs,
-                    }
+                    let err_msg = serde_json::to_string_pretty(&entity)
+                        .unwrap_or_else(|_| format!("{:?}", &entity));
+                    JsonDeserializationError::parse_escape(EscapeKind::Entity, err_msg, errs)
                 })?,
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
             Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
+            Self::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
         }
     }
 
@@ -266,9 +268,7 @@ impl CedarValueJson {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::from_lit(lit.clone())),
             ExprKind::ExtensionFunctionApp { fn_name, args } => match args.len() {
-                0 => Err(JsonSerializationError::ExtnCall0Arguments {
-                    func: fn_name.clone(),
-                }),
+                0 => Err(JsonSerializationError::call_0_args(fn_name.clone())),
                 // PANIC SAFETY. We've checked that `args` is of length 1, fine to index at 0
                 #[allow(clippy::indexing_slicing)]
                 1 => Ok(Self::ExtnEscape {
@@ -282,9 +282,7 @@ impl CedarValueJson {
                         )?),
                     },
                 }),
-                _ => Err(JsonSerializationError::ExtnCall2OrMoreArguments {
-                    func: fn_name.clone(),
-                }),
+                _ => Err(JsonSerializationError::call_2_or_more_args(fn_name.clone())),
             },
             ExprKind::Set(exprs) => Ok(Self::Set(
                 exprs
@@ -312,9 +310,9 @@ impl CedarValueJson {
                         .collect::<Result<_, JsonSerializationError>>()?,
                 ))
             }
-            kind => {
-                Err(JsonSerializationError::UnexpectedRestrictedExprKind { kind: kind.clone() })
-            }
+            kind => Err(JsonSerializationError::unexpected_restricted_expr_kind(
+                kind.clone(),
+            )),
         }
     }
 
@@ -363,15 +361,11 @@ impl CedarValueJson {
                         ext_fn: ext_fn.to_string().into(),
                         arg: match ev.args.as_slice() {
                             [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
-                            [] => {
-                                return Err(JsonSerializationError::ExtnCall0Arguments {
-                                    func: ext_fn.clone(),
-                                })
-                            }
+                            [] => return Err(JsonSerializationError::call_0_args(ext_fn.clone())),
                             _ => {
-                                return Err(JsonSerializationError::ExtnCall2OrMoreArguments {
-                                    func: ext_fn.clone(),
-                                })
+                                return Err(JsonSerializationError::call_2_or_more_args(
+                                    ext_fn.clone(),
+                                ))
                             }
                         },
                     },
@@ -405,9 +399,7 @@ fn check_for_reserved_keys<'a>(
     let reserved_keys: HashSet<&str> = HashSet::from_iter(["__entity", "__extn", "__expr"]);
     let collision = keys.find(|k| reserved_keys.contains(k.as_str()));
     match collision {
-        Some(collision) => Err(JsonSerializationError::ReservedKey {
-            key: collision.clone(),
-        }),
+        Some(collision) => Err(JsonSerializationError::reserved_key(collision.clone())),
         None => Ok(()),
     }
 }
@@ -420,11 +412,7 @@ impl FnAndArg {
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         Ok(RestrictedExpr::call_extension_fn(
             Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
-                JsonDeserializationError::ParseEscape {
-                    kind: EscapeKind::Extension,
-                    value: self.ext_fn.to_string(),
-                    errs,
-                }
+                JsonDeserializationError::parse_escape(EscapeKind::Extension, self.ext_fn, errs)
             })?,
             vec![CedarValueJson::into_expr(*self.arg, ctx)?],
         ))
@@ -520,13 +508,10 @@ impl<'e> ValueParser<'e> {
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
+                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
                             ))
                         }
-                        ctx => Err(JsonDeserializationError::TypeMismatch {
-                            ctx: Box::new(ctx),
-                            err,
-                        }),
+                        ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
                     }
                 }
             },
@@ -552,10 +537,7 @@ impl<'e> ValueParser<'e> {
                                         Err(e) => Some(Err(e)),
                                     }
                                 }
-                                None if expected_attr_ty.is_required() => Some(Err(JsonDeserializationError::MissingRequiredRecordAttr {
-                                    ctx: Box::new(ctx()),
-                                    record_attr: k.clone(),
-                                })),
+                                None if expected_attr_ty.is_required() => Some(Err(JsonDeserializationError::missing_required_record_attr(ctx(), k.clone()))),
                                 None => None,
                             }
                         })
@@ -565,10 +547,10 @@ impl<'e> ValueParser<'e> {
                         // we've now checked that all expected attrs exist, and removed them from `actual_attrs`.
                         // we still need to verify that we didn't have any unexpected attrs.
                         if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
-                            return Err(JsonDeserializationError::UnexpectedRecordAttr {
-                                ctx: Box::new(ctx2()),
-                                record_attr: record_attr.into(),
-                            });
+                            return Err(JsonDeserializationError::unexpected_record_attr(
+                                ctx2(),
+                                record_attr,
+                            ));
                         }
                     }
 
@@ -578,10 +560,7 @@ impl<'e> ValueParser<'e> {
                     // the error properly in the case that it somehow happens
                     RestrictedExpr::record(rexpr_pairs).map_err(|e| match e {
                         ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                            JsonDeserializationError::DuplicateKeyInRecordLiteral {
-                                ctx: Box::new(ctx2()),
-                                key,
-                            }
+                            JsonDeserializationError::duplicate_key_in_record_literal(ctx2(), key)
                         }
                     })
                 }
@@ -604,13 +583,10 @@ impl<'e> ValueParser<'e> {
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
+                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
                             ))
                         }
-                        ctx => Err(JsonDeserializationError::TypeMismatch {
-                            ctx: Box::new(ctx),
-                            err,
-                        }),
+                        ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
                     }
                 }
             },
@@ -646,10 +622,10 @@ impl<'e> ValueParser<'e> {
                 let expr = jvalue.into_expr(ctx.clone())?;
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
-                    _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: Box::new(ctx()),
-                        got: Box::new(Either::Right(expr.clone().into())),
-                    }),
+                    _ => Err(JsonDeserializationError::expected_extn_value(
+                        ctx(),
+                        Either::Right(expr.clone().into()),
+                    )),
                 }
             }
             ExtnValueJson::ImplicitConstructor(val) => {
@@ -659,39 +635,27 @@ impl<'e> ValueParser<'e> {
                         GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                                 JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::HeterogeneousSet {
-                                        uid,
-                                        attr,
-                                        err,
-                                    },
+                                    EntitySchemaConformanceError::heterogeneous_set(uid, attr, err),
                                 )
                             }
-                            ctx => JsonDeserializationError::HeterogeneousSet {
-                                ctx: Box::new(ctx),
-                                err,
-                            },
+                            ctx => JsonDeserializationError::heterogeneous_set(ctx, err),
                         },
                         GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                                 JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
-                                        uid,
-                                        attr,
-                                        err,
-                                    },
+                                    EntitySchemaConformanceError::extension_function_lookup(
+                                        uid, attr, err,
+                                    ),
                                 )
                             }
-                            ctx => JsonDeserializationError::ExtensionFunctionLookup {
-                                ctx: Box::new(ctx),
-                                err,
-                            },
+                            ctx => JsonDeserializationError::extension_function_lookup(ctx, err),
                         },
                         GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
                         | GetSchemaTypeError::NontrivialResidual { .. } => {
-                            JsonDeserializationError::UnknownInImplicitConstructorArg {
-                                ctx: Box::new(ctx()),
-                                arg: Box::new(arg.clone()),
-                            }
+                            JsonDeserializationError::unknown_in_implicit_constructor_arg(
+                                ctx(),
+                                arg.clone(),
+                            )
                         }
                     })?;
                 let func = self
@@ -702,16 +666,15 @@ impl<'e> ValueParser<'e> {
                         },
                         &argty,
                     )
-                    .map_err(|err| JsonDeserializationError::ExtensionFunctionLookup {
-                        ctx: Box::new(ctx()),
-                        err,
-                    })?
-                    .ok_or_else(|| JsonDeserializationError::MissingImpliedConstructor {
-                        ctx: Box::new(ctx()),
-                        return_type: Box::new(SchemaType::Extension {
-                            name: expected_typename,
-                        }),
-                        arg_type: Box::new(argty.clone()),
+                    .map_err(|err| JsonDeserializationError::extension_function_lookup(ctx(), err))?
+                    .ok_or_else(|| {
+                        JsonDeserializationError::missing_implied_constructor(
+                            ctx(),
+                            SchemaType::Extension {
+                                name: expected_typename,
+                            },
+                            argty.clone(),
+                        )
                     })?;
                 Ok(RestrictedExpr::call_extension_fn(
                     func.name().clone(),
@@ -722,17 +685,40 @@ impl<'e> ValueParser<'e> {
     }
 }
 
+/// A (optional) static context for deserialization of entity uids
+/// This is useful when, for plumbing reasons, we can't get the appopriate values into the dynamic
+/// context. Primary use case is in the [`DeserializeAs`] trait.
+pub trait DeserializationContext {
+    /// Access the (optional) static context.
+    /// If returns [`None`], use the dynamic context.
+    fn static_context() -> Option<JsonDeserializationErrorContext>;
+}
+
+/// A [`DeserializationContext`] that always returns [`None`].
+/// This is the default behaviour,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NoStaticContext;
+
+impl DeserializationContext for NoStaticContext {
+    fn static_context() -> Option<JsonDeserializationErrorContext> {
+        None
+    }
+}
+
 /// Serde JSON format for Cedar values where we know we're expecting an entity
 /// reference
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub enum EntityUidJson {
+pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
         __expr: String,
+        /// Phantom value for the `Context` type parameter
+        #[serde(skip)]
+        context: std::marker::PhantomData<Context>,
     },
     /// Explicit `__entity` escape; see notes on `CedarValueJson::EntityEscape`
     ExplicitEntityEscape {
@@ -747,7 +733,31 @@ pub enum EntityUidJson {
     FoundValue(#[cfg_attr(feature = "wasm", tsify(type = "__skip"))] serde_json::Value),
 }
 
-impl EntityUidJson {
+impl<'de, C: DeserializationContext> DeserializeAs<'de, EntityUID> for EntityUidJson<C> {
+    fn deserialize_as<D>(deserializer: D) -> Result<EntityUID, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        // We don't know the context that called us, so we'll rely on the statically set context
+        let context = || JsonDeserializationErrorContext::Unknown;
+        let s = EntityUidJson::<C>::deserialize(deserializer)?;
+        let euid = s.into_euid(context).map_err(Error::custom)?;
+        Ok(euid)
+    }
+}
+
+impl<C> SerializeAs<EntityUID> for EntityUidJson<C> {
+    fn serialize_as<S>(source: &EntityUID, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let json: EntityUidJson = source.clone().into();
+        json.serialize(serializer)
+    }
+}
+
+impl<C: DeserializationContext> EntityUidJson<C> {
     /// Construct an `EntityUidJson` from entity type name and eid.
     ///
     /// This will use the `ImplicitEntityEscape` form, if it matters.
@@ -761,26 +771,27 @@ impl EntityUidJson {
     /// Convert this `EntityUidJson` into an `EntityUID`
     pub fn into_euid(
         self,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        dynamic_ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<EntityUID, JsonDeserializationError> {
+        let ctx = || C::static_context().unwrap_or_else(&dynamic_ctx);
         match self {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::EntityEscape { __entity };
-                let expr = jvalue.into_expr(ctx.clone())?;
+                let expr = jvalue.into_expr(ctx)?;
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
-                    _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: Box::new(ctx()),
-                        got: Box::new(Either::Right(expr.clone().into())),
-                    }),
+                    _ => Err(JsonDeserializationError::expected_entity_ref(
+                        ctx(),
+                        Either::Right(expr.clone().into()),
+                    )),
                 }
             }
-            Self::FoundValue(v) => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                ctx: Box::new(ctx()),
-                got: Box::new(Either::Left(v)),
-            }),
-            Self::ExplicitExprEscape { __expr } => {
+            Self::FoundValue(v) => Err(JsonDeserializationError::expected_entity_ref(
+                ctx(),
+                Either::Left(v),
+            )),
+            Self::ExplicitExprEscape { __expr, .. } => {
                 Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
             }
         }

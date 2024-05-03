@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -332,21 +348,21 @@ impl Diagnostic for ToJsonSchemaErrors {
 pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate keys
     #[error("Duplicate keys: `{key}`")]
-    DuplicateKeys { key: SmolStr, start: Loc, end: Loc },
+    DuplicateKeys { key: SmolStr, loc1: Loc, loc2: Loc },
     /// Error raised when there are duplicate declarations
     #[error("Duplicate declarations: `{decl}`")]
-    DuplicateDeclarations { decl: SmolStr, start: Loc, end: Loc },
+    DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
     #[error("Duplicate context declaration. Action may have at most one context declaration")]
-    DuplicateContext { start: Loc, end: Loc },
+    DuplicateContext { loc1: Loc, loc2: Loc },
     #[error("Duplicate {kind} decleration. Action may have at most once {kind} declaration")]
-    DuplicatePR { kind: PR, start: Loc, end: Loc },
+    DuplicatePR { kind: PR, loc1: Loc, loc2: Loc },
 
     /// Error raised when there are duplicate namespace IDs
     #[error("Duplicate namespace IDs: `{namespace_id}`")]
     DuplicateNameSpaces {
         namespace_id: SmolStr,
-        start: Option<Loc>,
-        end: Option<Loc>,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
     },
     /// Invalid type name
     #[error("Unknown type name: `{}`", .0.node)]
@@ -356,17 +372,17 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub fn duplicate_keys(key: SmolStr, start: Loc, end: Loc) -> Self {
-        Self::DuplicateKeys { key, start, end }
+    pub fn duplicate_keys(key: SmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateKeys { key, loc1, loc2 }
     }
-    pub fn duplicate_decls(decl: SmolStr, start: Loc, end: Loc) -> Self {
-        Self::DuplicateDeclarations { decl, start, end }
+    pub fn duplicate_decls(decl: SmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateDeclarations { decl, loc1, loc2 }
     }
-    pub fn duplicate_namespace(namespace_id: SmolStr, start: Loc, end: Loc) -> Self {
+    pub fn duplicate_namespace(namespace_id: SmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicateNameSpaces {
             namespace_id,
-            start: Some(start),
-            end: Some(end),
+            loc1: Some(loc1),
+            loc2: Some(loc2),
         }
     }
 }
@@ -374,18 +390,18 @@ impl ToJsonSchemaError {
 impl Diagnostic for ToJsonSchemaError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match self {
-            ToJsonSchemaError::DuplicateDeclarations { start, end, .. }
-            | ToJsonSchemaError::DuplicateContext { start, end }
-            | ToJsonSchemaError::DuplicatePR { start, end, .. }
-            | ToJsonSchemaError::DuplicateKeys { start, end, .. } => Some(Box::new(
+            ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
+            | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
+            | ToJsonSchemaError::DuplicatePR { loc1, loc2, .. }
+            | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
                 vec![
-                    LabeledSpan::underline(start.span),
-                    LabeledSpan::underline(end.span),
+                    LabeledSpan::underline(loc1.span),
+                    LabeledSpan::underline(loc2.span),
                 ]
                 .into_iter(),
             )),
-            ToJsonSchemaError::DuplicateNameSpaces { start, end, .. } => {
-                Some(Box::new([start, end].into_iter().filter_map(|loc| {
+            ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
+                Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
                     Some(LabeledSpan::underline(loc.as_ref()?.span))
                 })))
             }

@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #![cfg(test)]
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
@@ -9,6 +25,8 @@ use cedar_policy_core::ast;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{self};
 use cedar_policy_core::parser::err::ParseErrors;
+use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+use miette::Report;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
@@ -148,11 +166,18 @@ permit(principal ==  A :: B
 
     #[test]
     fn malformed_entity_type_name_should_fail() {
-        let result = EntityTypeName::from_str("I'm an invalid name");
+        let src = "I'm an invalid name";
+        let result = EntityTypeName::from_str(src);
 
         assert_matches!(result, Err(ParseErrors(_)));
         let error = result.err().unwrap();
-        assert!(error.to_string().contains("invalid token"));
+        expect_err(
+            src,
+            &Report::new(error),
+            &ExpectedErrorMessageBuilder::error("invalid token")
+                .exactly_one_underline("")
+                .build(),
+        );
     }
 
     /// parsing an `EntityUid` from string
@@ -234,7 +259,7 @@ permit(principal ==  A :: B
     }
 }
 
-mod head_constraints_tests {
+mod scope_constraints_tests {
     use super::*;
 
     #[test]
@@ -897,6 +922,7 @@ mod policy_set_tests {
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
+            None,
         );
         let static_policy = Policy::from_ast(ast);
         let mut pset = PolicySet::new();
@@ -1479,6 +1505,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use entities::err::EntitiesError;
     use serde_json::json;
 
     fn schema() -> Schema {
@@ -1525,7 +1552,7 @@ mod entity_validate_tests {
         .expect("should be a valid schema")
     }
 
-    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), entities::EntitiesError> {
+    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), EntitiesError> {
         let _ = Entities::from_entities([entity], Some(schema))?;
         Ok(())
     }
@@ -1649,10 +1676,7 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#),
-                    "actual error message was {e}",
-                );
+                expect_err("", &Report::new(e), &ExpectedErrorMessageBuilder::error(r#"entity does not conform to the schema: `Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#).build());
             }
         }
 
@@ -1801,6 +1825,9 @@ mod entity_validate_tests {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use entities::conformance::err::EntitySchemaConformanceError;
+    use entities::err::EntitiesError;
+
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -2011,7 +2038,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
             err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was {err}"
+            "actual error message was: `{err}`"
         );
 
         // another simple type mismatch with expected type
@@ -2756,10 +2783,18 @@ mod schema_based_parsing_tests {
                 "parents": []
             }
         ]);
-        let r = Entities::from_json_value(json, None).err().unwrap();
-        let expected_euid: cedar_policy_core::ast::EntityUID = r#"User::"alice""#.parse().unwrap();
+        let r = Entities::from_json_value(json.clone(), None).err().unwrap();
         match r {
-            EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
+            EntitiesError::Duplicate(euid) => {
+                expect_err(
+                    &json,
+                    &Report::new(euid),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"duplicate entity entry `User::"alice"`"#,
+                    )
+                    .build(),
+                );
+            }
             e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
         }
     }
@@ -2767,7 +2802,7 @@ mod schema_based_parsing_tests {
     /// Test that schema-based parsing accepts unknowns in any position where any type is expected
     #[test]
     fn issue_418() {
-        let schema = Schema::from_json_value(json!(
+        let json = json!(
         {"": {
             "entityTypes": {
                 "Employee": {
@@ -2808,8 +2843,8 @@ mod schema_based_parsing_tests {
                 "view": { }
             }
         }}
-        ))
-        .expect("should be a valid schema");
+        );
+        let schema = Schema::from_json_value(json).expect("should be a valid schema");
 
         let entitiesjson = json!(
             [
@@ -2966,7 +3001,7 @@ mod schema_based_parsing_tests {
         );
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
-        assert!(Entities::from_json_value(entitiesjson_tc.clone(), Some(&schema)).is_ok());
+        assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
         assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
 
         // Parsing will fail if the TC doesn't match
@@ -2996,7 +3031,7 @@ mod schema_based_parsing_tests {
         assert!(matches!(
             Entities::from_json_value(entitiesjson_bad, Some(&schema)),
             Err(EntitiesError::InvalidEntity(
-                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+                EntitySchemaConformanceError::ActionDeclarationMismatch(_)
             ))
         ));
 
@@ -3010,7 +3045,7 @@ mod schema_based_parsing_tests {
         assert!(matches!(
             parser_assume_computed.from_json_value(entitiesjson_no_tc.clone()),
             Err(EntitiesError::InvalidEntity(
-                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+                EntitySchemaConformanceError::ActionDeclarationMismatch(_)
             ))
         ));
 
@@ -3392,7 +3427,7 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid.clone()), est_json);
+        let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
             Err(FromJsonError::SlotsInConditionClause {
@@ -3413,7 +3448,7 @@ mod issue_619 {
     fn issue_619() {
         let policy = Policy::parse(
             None,
-            r#"permit(principal, action, resource) when {1 * 2 * true};"#,
+            "permit(principal, action, resource) when {1 * 2 * true};",
         )
         .unwrap();
         let json = policy.to_json().unwrap();
@@ -3475,5 +3510,910 @@ mod macro_tests {
     fn fail() {
         let t = trybuild::TestCases::new();
         t.compile_fail("macro-tests/fail.rs");
+    }
+}
+mod issue_596 {
+    use super::*;
+
+    #[test]
+    fn test_all_ints() {
+        test_single_int(0);
+        test_single_int(i64::MAX);
+        test_single_int(i64::MIN);
+        test_single_int(7);
+        test_single_int(-7);
+    }
+
+    fn test_single_int(x: i64) {
+        for i in 0..4 {
+            test_single_int_with_dashes(x, i);
+        }
+    }
+
+    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
+        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
+        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let p: Policy = src.parse().unwrap();
+        let json = p.to_json().unwrap();
+        let round_trip = Policy::from_json(None, json).unwrap();
+        let pretty_print = format!("{round_trip}");
+        assert!(pretty_print.contains(&x.to_string()));
+        if x != 0 {
+            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
+            assert_eq!(
+                pretty_print.chars().filter(|c| *c == '-').count(),
+                expected_dashes
+            );
+        }
+    }
+
+    // Serializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_1() {
+        let src = r#"
+        permit(
+            principal,
+            action == Action::"action",
+            resource
+          ) when {
+            -9223372036854775808
+          };"#;
+        let p: Policy = src.parse().unwrap();
+        p.to_json().unwrap();
+    }
+
+    #[test]
+    fn json_bignum_1a() {
+        let src = r"
+        permit(principal, action, resource) when {
+            (true && (-90071992547409921)) && principal
+        };";
+        let p: Policy = src.parse().unwrap();
+        let v = p.to_json().unwrap();
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":90071992547409921}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2a() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("-9223372036854775808"));
+    }
+
+    // Deserializing a number that doesn't fit in 64 bit integer
+    // This _should_ fail, as there's no way to do this w/out loss of precision
+    #[test]
+    fn json_bignum_3() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        assert!(Policy::from_json(None, v).is_err());
+    }
+}
+
+mod decimal_ip_constructors {
+    use cool_asserts::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn expr_ip_constructor() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(ip.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_ip() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(evaluate_empty(&ip),
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
+        );
+    }
+
+    #[test]
+    fn expr_ip_network() {
+        let ip = Expression::new_ip("10.10.10.10/16");
+        assert_matches!(evaluate_empty(&ip),
+            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
+        );
+    }
+
+    #[test]
+    fn expr_bad_ip() {
+        let ip = Expression::new_ip("192.168.312.3");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_bad_cidr() {
+        let ip = Expression::new_ip("192.168.0.3/100");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_nonsense_ip() {
+        let ip = Expression::new_ip("foobar");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
+        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let e = Entities::empty();
+        eval_expression(&r, &e, expr)
+    }
+
+    #[test]
+    fn rexpr_ip_constructor() {
+        let ip = RestrictedExpression::new_ip("10.10.10.10");
+        assert_matches!(ip.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_decimal_constructor() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(decimal.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_decimal_constructor() {
+        let decimal = RestrictedExpression::new_decimal("1234.1234");
+        assert_matches!(decimal.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn valid_decimal() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(evaluate_empty(&decimal),
+         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
+    }
+
+    #[test]
+    fn invalid_decimal() {
+        let decimal = Expression::new_decimal("1234.12345");
+        assert_matches!(evaluate_empty(&decimal),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
+                )
+        );
+    }
+}
+
+mod into_iter_entities {
+    use super::*;
+
+    #[test]
+    fn into_iter_entities() {
+        let test_data = r#"
+        [
+        {
+        "uid": {"type":"User","id":"alice"},
+        "attrs": {
+            "age":19,
+            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+        },
+        "parents": [{"type":"Group","id":"admin"}]
+        },
+        {
+        "uid": {"type":"Group","id":"admin"},
+        "attrs": {},
+        "parents": []
+        }
+        ]
+        "#;
+
+        let list = Entities::from_json_str(test_data, None).unwrap();
+        let mut list_out: Vec<String> = list
+            .into_iter()
+            .map(|entity| entity.uid().id().to_string())
+            .collect();
+        list_out.sort();
+        assert_eq!(list_out, &["admin", "alice"]);
+    }
+}
+
+mod policy_set_est_tests {
+    use cool_asserts::assert_matches;
+    use itertools::{Either, Itertools};
+
+    use super::*;
+
+    #[test]
+    fn test_partition_fold() {
+        let even_or_odd = |s: &str| {
+            i64::from_str(s).map(|i| {
+                if i % 2 == 0 {
+                    Either::Left(i)
+                } else {
+                    Either::Right(i)
+                }
+            })
+        };
+
+        let lst = ["23", "24", "75", "9320"];
+        let (evens, odds) = fold_partition(lst, even_or_odd).unwrap();
+        assert!(evens.into_iter().all(|i| i % 2 == 0));
+        assert!(odds.into_iter().all(|i| i % 2 != 0));
+    }
+
+    #[test]
+    fn test_partition_fold_err() {
+        let even_or_odd = |s: &str| {
+            i64::from_str_radix(s, 10).map(|i| {
+                if i % 2 == 0 {
+                    Either::Left(i)
+                } else {
+                    Either::Right(i)
+                }
+            })
+        };
+
+        let lst = ["23", "24", "not-a-number", "75", "9320"];
+        assert!(fold_partition(lst, even_or_odd).is_err());
+    }
+
+    #[test]
+    fn test_est_policyset_encoding() {
+        let mut pset = PolicySet::default();
+        let policy: Policy = r"permit(principal, action, resource) when { principal.foo };"
+            .parse()
+            .unwrap();
+        pset.add(policy.new_id(PolicyId::new("policy"))).unwrap();
+        let template: Template =
+            r"permit(principal == ?principal, action, resource) when { principal.bar };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([(SlotId::principal(), r#"User::"Joe""#.parse().unwrap())]),
+        )
+        .unwrap();
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("Link2"),
+            HashMap::from_iter([(SlotId::principal(), r#"User::"Sally""#.parse().unwrap())]),
+        )
+        .unwrap();
+
+        let json = pset.to_json().unwrap();
+
+        let pset2 = PolicySet::from_json_value(json).unwrap();
+
+        // There should be 2 policies, one static and two links
+        assert_eq!(pset2.policies().count(), 3);
+        let static_policy = pset2.policy(&PolicyId::new("policy")).unwrap();
+        assert!(static_policy.is_static());
+
+        let link = pset2.policy(&PolicyId::new("Link1")).unwrap();
+        assert!(!link.is_static());
+        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
+        assert_eq!(
+            link.template_links(),
+            Some(HashMap::from_iter([(
+                SlotId::principal(),
+                r#"User::"Joe""#.parse().unwrap()
+            )]))
+        );
+
+        let link = pset2.policy(&PolicyId::new("Link2")).unwrap();
+        assert!(!link.is_static());
+        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
+        assert_eq!(
+            link.template_links(),
+            Some(HashMap::from_iter([(
+                SlotId::principal(),
+                r#"User::"Sally""#.parse().unwrap()
+            )]))
+        );
+
+        let template = pset2.template(&PolicyId::new("template")).unwrap();
+        assert_eq!(template.slots().count(), 1);
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_empty() {
+        let empty = serde_json::json!({
+            "templates" : [],
+            "static_policies" : [],
+            "links" : []
+        });
+        let empty = PolicySet::from_json_value(empty).unwrap();
+        assert_eq!(empty, PolicySet::default());
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_single() {
+        let value = serde_json::json!({
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+        ],
+        "links" : [
+        ]});
+
+        let policyset = PolicySet::from_json_value(value).unwrap();
+        assert_eq!(policyset.templates().count(), 0);
+        assert_eq!(policyset.policies().count(), 1);
+        assert!(policyset.policy(&PolicyId::new("policy1")).is_some());
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates() {
+        let value = serde_json::json!({
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" }
+                }
+            }
+        ]});
+
+        let policyset = PolicySet::from_json_value(value).unwrap();
+        assert_eq!(policyset.policies().count(), 2);
+        assert_eq!(policyset.templates().count(), 1);
+        assert!(policyset.template(&PolicyId::new("template")).is_some());
+        let link = policyset.policy(&PolicyId::new("link")).unwrap();
+        assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
+        assert_eq!(
+            link.template_links(),
+            Some(HashMap::from_iter([(
+                SlotId::principal(),
+                r#"User::"John""#.parse().unwrap()
+            )]))
+        );
+        if let Err(_) = policyset
+            .get_linked_policies(PolicyId::new("template"))
+            .unwrap()
+            .exactly_one()
+        {
+            panic!("Should have exactly one");
+        };
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_link_name() {
+        let value = serde_json::json!({
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "non_existent",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" }
+                }
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).err().unwrap();
+        let template1 = PolicyId::new("non_existent").into();
+        assert_matches!(
+            err,
+            PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_empty_env() {
+        let value = serde_json::json!({
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {},
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).err().unwrap();
+        let just_principal = vec![SlotId::principal().into()];
+        assert_matches!(
+            err,
+            PolicySetError::LinkingError(ast::LinkingError::ArityError {
+                unbound_values,
+                extra_values
+            }) if extra_values.is_empty() && unbound_values == just_principal
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_extra_vals() {
+        let value = serde_json::json!({
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                    "?resource" : { "type" : "Box", "id" : "ABC" }
+                }
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).err().unwrap();
+        let just_resource = vec![SlotId::resource().into()];
+        assert_matches!(
+            err,
+            PolicySetError::LinkingError(ast::LinkingError::ArityError {
+                unbound_values,
+                extra_values
+            }) if unbound_values.is_empty() && extra_values == just_resource
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_dup_vals() {
+        let value = r#" {
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all"
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                    "?principal" : { "type" : "User", "id" : "Duplicate" }
+                }
+            }
+        ]}"#;
+
+        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
+        assert!(err.contains("found duplicate key"));
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_euid() {
+        let value = r#" {
+            "static_policies" : [
+                { "id" : "policy1",
+                   "policy" : {
+                        "effect": "permit",
+                        "principal": {
+                            "op": "==",
+                            "entity": { "type": "User", "id": "12UA45" }
+                        },
+                        "action": {
+                            "op": "==",
+                            "entity": { "type": "Action", "id": "view" }
+                        },
+                        "resource": {
+                            "op": "in",
+                            "entity": { "type": "Folder", "id": "abc" }
+                        },
+                        "conditions": [
+                            {
+                                "kind": "when",
+                                "body": {
+                                    "==": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                            "attr": "tls_version"
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": "1.3"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+            }
+        }],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all"
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User" }
+                }
+            }
+        ]}"#;
+
+        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
+        assert!(err.contains("while parsing a template link, expected a literal entity reference"));
     }
 }

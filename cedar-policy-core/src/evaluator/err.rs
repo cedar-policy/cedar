@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,6 @@ use thiserror::Error;
 pub struct EvaluationError {
     /// The kind of error that occurred
     error_kind: EvaluationErrorKind,
-    /// Optional advice on how to fix the error
-    advice: Option<String>,
     /// Source location of the error. (This overrides other sources if present,
     /// but if this is `None`, we'll check for location info in the
     /// `.error_kind`.)
@@ -40,12 +38,7 @@ pub struct EvaluationError {
 // custom impl of `Diagnostic`
 impl Diagnostic for EvaluationError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match (self.error_kind.help(), self.advice.as_ref()) {
-            (Some(help), None) => Some(help),
-            (None, Some(advice)) => Some(Box::new(advice)),
-            (Some(help), Some(advice)) => Some(Box::new(format!("{help}; {advice}"))),
-            (None, None) => None,
-        }
+        self.error_kind.help()
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
@@ -92,19 +85,14 @@ impl EvaluationError {
         &self.error_kind
     }
 
+    /// (internal only) mutable access to the `EvaluationErrorKind`
+    pub(super) fn error_kind_mut(&mut self) -> &mut EvaluationErrorKind {
+        &mut self.error_kind
+    }
+
     /// Extract the source location of the error, if one is attached
     pub fn source_loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
-    }
-
-    /// Extract the advice attached to the error, if any
-    pub fn advice(&self) -> Option<&str> {
-        self.advice.as_deref()
-    }
-
-    /// Set the advice field of an error
-    pub fn set_advice(&mut self, advice: String) {
-        self.advice = Some(advice);
     }
 
     /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
@@ -116,7 +104,6 @@ impl EvaluationError {
     pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::EntityDoesNotExist(euid),
-            advice: None,
             source_loc,
         }
     }
@@ -129,7 +116,6 @@ impl EvaluationError {
     ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::EntityAttrDoesNotExist { entity, attr },
-            advice: None,
             source_loc,
         }
     }
@@ -138,7 +124,6 @@ impl EvaluationError {
     pub(crate) fn unspecified_entity_access(attr: SmolStr, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::UnspecifiedEntityAccess(attr),
-            advice: None,
             source_loc,
         }
     }
@@ -151,7 +136,6 @@ impl EvaluationError {
     ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
-            advice: None,
             source_loc,
         }
     }
@@ -162,8 +146,8 @@ impl EvaluationError {
             error_kind: EvaluationErrorKind::TypeError {
                 expected,
                 actual: actual.type_of(),
+                advice: None,
             },
-            advice: None,
             source_loc: actual.source_loc().cloned(),
         }
     }
@@ -182,8 +166,8 @@ impl EvaluationError {
             error_kind: EvaluationErrorKind::TypeError {
                 expected,
                 actual: actual.type_of(),
+                advice: Some(advice),
             },
-            advice: Some(advice),
             source_loc: actual.source_loc().cloned(),
         }
     }
@@ -209,7 +193,6 @@ impl EvaluationError {
                 expected,
                 actual,
             },
-            advice: None,
             source_loc,
         }
     }
@@ -218,7 +201,6 @@ impl EvaluationError {
     pub(crate) fn unlinked_slot(id: SlotId, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::UnlinkedSlot(id),
-            advice: None,
             source_loc,
         }
     }
@@ -234,7 +216,6 @@ impl EvaluationError {
                 extension_name,
                 msg,
             },
-            advice: None,
             source_loc,
         }
     }
@@ -244,16 +225,15 @@ impl EvaluationError {
         let source_loc = e.source_loc().cloned();
         Self {
             error_kind: EvaluationErrorKind::NonValue(e),
-            advice: Some("consider using the partial evaluation APIs".into()),
             source_loc,
         }
     }
 
     /// Construct a [`RecursionLimit`] error
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::RecursionLimit,
-            advice: None,
             source_loc,
         }
     }
@@ -264,7 +244,6 @@ impl EvaluationError {
     ) -> Self {
         Self {
             error_kind: err.into(),
-            advice: None,
             source_loc,
         }
     }
@@ -272,7 +251,6 @@ impl EvaluationError {
     pub(crate) fn integer_overflow(err: IntegerOverflowError, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: err.into(),
-            advice: None,
             source_loc,
         }
     }
@@ -282,7 +260,6 @@ impl From<RestrictedExprError> for EvaluationError {
     fn from(err: RestrictedExprError) -> Self {
         Self {
             error_kind: err.into(),
-            advice: None,
             source_loc: None, // defer to the source information embedded in the `RestrictedExprError` and thus stored in `error_kind`
         }
     }
@@ -329,6 +306,9 @@ pub enum EvaluationErrorKind {
         expected: NonEmpty<Type>,
         /// Encountered this type instead
         actual: Type,
+        /// Optional advice for how to fix this error
+        #[help]
+        advice: Option<String>,
     },
 
     /// Wrong number of arguments provided to an extension function
@@ -370,6 +350,7 @@ pub enum EvaluationErrorKind {
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
     #[error("the expression contains unknown(s): `{0}`")]
+    #[diagnostic(help("consider using the partial evaluation APIs"))]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation

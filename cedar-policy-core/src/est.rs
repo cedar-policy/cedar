@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,13 @@ mod err;
 pub use err::*;
 mod expr;
 pub use expr::*;
-mod head_constraints;
-pub use head_constraints::*;
+mod policy_set;
+pub use policy_set::*;
+mod scope_constraints;
+pub use scope_constraints::*;
 
 use crate::ast;
-use crate::entities::EntityUidJson;
+use crate::entities::json::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use serde::{Deserialize, Serialize};
@@ -44,11 +46,11 @@ extern crate tsify;
 pub struct Policy {
     /// `Effect` of the policy or template
     effect: ast::Effect,
-    /// Principal head constraint
+    /// Principal scope constraint
     principal: PrincipalConstraint,
-    /// Action head constraint
+    /// Action scope constraint
     action: ActionConstraint,
-    /// Resource head constraint
+    /// Resource scope constraint
     resource: ResourceConstraint,
     /// `when` and/or `unless` clauses
     conditions: Vec<Clause>,
@@ -80,19 +82,16 @@ impl Policy {
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
     /// `self` is an inline policy (in which case it is returned unchanged).
-    pub fn link(
-        self,
-        vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         Ok(Policy {
             effect: self.effect,
-            principal: self.principal.instantiate(vals)?,
-            action: self.action.instantiate(vals)?,
-            resource: self.resource.instantiate(vals)?,
+            principal: self.principal.link(vals)?,
+            action: self.action.link(vals)?,
+            resource: self.resource.link(vals)?,
             conditions: self
                 .conditions
                 .into_iter()
-                .map(|clause| clause.instantiate(vals))
+                .map(|clause| clause.link(vals))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
         })
@@ -103,10 +102,7 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn instantiate(
-        self,
-        _vals: &HashMap<ast::SlotId, EntityUidJson>,
-    ) -> Result<Self, InstantiationError> {
+    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in clauses
         Ok(self)
     }
@@ -117,7 +113,7 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
-        let (principal, action, resource) = policy.extract_head(&mut errs);
+        let (principal, action, resource) = policy.extract_scope(&mut errs);
         let (annot_success, annotations) = policy.get_ast_annotations(&mut errs);
         let conditions = match policy
             .conds
@@ -246,6 +242,7 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
+            None,
             self.annotations
                 .into_iter()
                 .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
@@ -261,10 +258,10 @@ impl Policy {
 
 impl Clause {
     fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next().cloned();
+        let first_slot = e.slots().next();
         if let Some(slot) = first_slot {
             Err(FromJsonError::SlotsInConditionClause {
-                slot,
+                slot: slot.id,
                 clausetype: if is_when { "when" } else { "unless" },
             })
         } else {
@@ -290,7 +287,7 @@ impl From<ast::Policy> for Policy {
             principal: ast.principal_constraint().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().into(),
-            conditions: vec![ast.non_head_constraints().clone().into()],
+            conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
                 .map(|(k, v)| (k.clone(), v.val.clone()))
@@ -307,7 +304,7 @@ impl From<ast::Template> for Policy {
             principal: ast.principal_constraint().clone().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().clone().into(),
-            conditions: vec![ast.non_head_constraints().clone().into()],
+            conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
                 .map(|(k, v)| (k.clone(), v.val.clone()))
@@ -356,9 +353,8 @@ impl std::fmt::Display for Clause {
 mod test {
     use super::*;
     use crate::parser::{self, parse_policy_or_template_to_est};
-    use crate::test_utils::ExpectedErrorMessage;
+    use crate::test_utils::ExpectedErrorMessageBuilder;
     use cool_asserts::assert_matches;
-    use miette::Diagnostic;
     use serde_json::json;
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
@@ -686,10 +682,7 @@ mod test {
             .node
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
-            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&policy[expected_span.clone()], r#"@foo("2")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("2")"#).build());
         });
 
         let policy = r#"
@@ -702,10 +695,7 @@ mod test {
             .node
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
-            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&policy[expected_span.clone()], r#"@foo("1")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("1")"#).build());
         });
 
         let policy = r#"
@@ -723,12 +713,9 @@ mod test {
             .unwrap();
         assert_matches!(Policy::try_from(cst), Err(e) => {
             assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
-            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @bar"));
-            for ((err, expected_span), expected_snippet) in e.iter().zip([62..73, 116..127, 140..151]).zip([r#"@foo("abc")"#, r#"@bar("123")"#, r#"@foo("def")"#]) {
-                assert_eq!(&policy[expected_span.clone()], expected_snippet);
-                itertools::assert_equal(err.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
-            }
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("abc")"#).build());
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("def")"#).build());
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @bar").exactly_one_underline(r#"@bar("123")"#).build());
         });
 
         // the above tests ensure that we give the correct errors for CSTs
@@ -2239,7 +2226,7 @@ mod test {
         let policy = r#"
         permit(principal, action, resource)
         when {
-            
+
             "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         };
     "#;
@@ -2932,7 +2919,7 @@ mod test {
     }
 
     #[test]
-    fn instantiate() {
+    fn link() {
         let template = r#"
             permit(
                 principal == ?principal,
@@ -2953,7 +2940,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::principal()
             }
         );
@@ -2966,7 +2953,7 @@ mod test {
             .expect_err("didn't fill all the slots");
         assert_eq!(
             err,
-            InstantiationError::MissedSlot {
+            LinkingError::MissedSlot {
                 slot: ast::SlotId::resource()
             }
         );
@@ -3232,7 +3219,7 @@ mod test {
             ast,
             Err(FromJsonError::TemplateToPolicy(
                 ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s, ast::SlotId::principal())
+            )) => assert_eq!(s.id, ast::SlotId::principal())
         );
     }
 
@@ -3903,7 +3890,7 @@ mod test {
         }
 
         #[test]
-        fn instantiate() {
+        fn link() {
             let template = r#"
             permit(
                 principal is User in ?principal,
@@ -3919,7 +3906,7 @@ mod test {
             let err = est.clone().link(&HashMap::from_iter([]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::principal()
                 })
             );
@@ -3929,7 +3916,7 @@ mod test {
             )]));
             assert_eq!(
                 err,
-                Err(InstantiationError::MissedSlot {
+                Err(LinkingError::MissedSlot {
                     slot: ast::SlotId::resource()
                 })
             );
@@ -3972,7 +3959,7 @@ mod test {
         }
 
         #[test]
-        fn instantiate_no_slot() {
+        fn link_no_slot() {
             let template = r#"permit(principal is User, action, resource is Doc);"#;
             let cst = parser::text_to_cst::parse_policy(template)
                 .unwrap()

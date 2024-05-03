@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -625,6 +625,7 @@ mod tests {
                         name: Name::parse_unqualified_name("decimal")
                             .expect("should be a valid identifier")
                     },
+                    advice: None,
                 }
             )
         );
@@ -641,9 +642,9 @@ mod tests {
                                 .expect("should be a valid identifier")
                         }],
                         actual: Type::String,
+                        advice: Some(ADVICE_MSG.into()),
                     }
                 );
-                assert_eq!(e.advice(), Some(ADVICE_MSG));
             }
         );
         // bad use of `lessThan` as function

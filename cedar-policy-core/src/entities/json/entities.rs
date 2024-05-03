@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,16 @@
  */
 
 use super::{
-    CedarValueJson, EntityTypeDescription, EntityUidJson, JsonDeserializationError,
-    JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
+    err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
+    CedarValueJson, EntityTypeDescription, EntityUidJson, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue, RestrictedExpr,
 };
 use crate::entities::{
-    schematype_of_partialvalue, Entities, EntitiesError, EntitySchemaConformanceError,
-    GetSchemaTypeError, TCComputation, UnexpectedEntityTypeError,
+    conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
+    schematype_of_partialvalue, Entities, EntitiesError, GetSchemaTypeError, TCComputation,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -243,7 +243,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 if etype.is_action() {
                     EntitySchemaInfo::Action(schema.action(&uid).ok_or(
                         JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::UndeclaredAction { uid: uid.clone() },
+                            EntitySchemaConformanceError::undeclared_action(uid.clone()),
                         ),
                     )?)
                 } else {
@@ -295,10 +295,10 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                 })?
                             } else {
                                 return Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::UnexpectedEntityAttr {
-                                        uid: uid.clone(),
-                                        attr: k,
-                                    },
+                                    EntitySchemaConformanceError::unexpected_entity_attr(
+                                        uid.clone(),
+                                        k,
+                                    ),
                                 ));
                             }
                         }
@@ -323,9 +323,9 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         // copy of the action entity
                         None => {
                             return Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::ActionDeclarationMismatch {
-                                    uid: uid.clone(),
-                                },
+                                EntitySchemaConformanceError::action_declaration_mismatch(
+                                    uid.clone(),
+                                ),
                             ))
                         }
                         Some(v) => v,
@@ -335,20 +335,20 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                             Ok(ty) => Ok(Some(ty)),
                             Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
                                 Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::HeterogeneousSet {
-                                        uid: uid.clone(),
-                                        attr: k.clone(),
+                                    EntitySchemaConformanceError::heterogeneous_set(
+                                        uid.clone(),
+                                        k.clone(),
                                         err,
-                                    },
+                                    ),
                                 ))
                             }
                             Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
                                 Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
-                                        uid: uid.clone(),
-                                        attr: k.clone(),
+                                    EntitySchemaConformanceError::extension_function_lookup(
+                                        uid.clone(),
+                                        k.clone(),
                                         err,
-                                    },
+                                    ),
                                 ))
                             }
                             Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
@@ -376,10 +376,10 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 if parent_euid.is_action() {
                     Ok(())
                 } else {
-                    Err(JsonDeserializationError::ActionParentIsNotAction {
-                        uid: uid.clone(),
-                        parent: parent_euid.clone(),
-                    })
+                    Err(JsonDeserializationError::action_parent_is_not_action(
+                        uid.clone(),
+                        parent_euid.clone(),
+                    ))
                 }
             } else {
                 Ok(()) // all parents are allowed
@@ -424,9 +424,7 @@ impl EntityJson {
                             let cedarvaluejson = CedarValueJson::from_expr(expr)?;
                             Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
                         }
-                        Err(_) => Err(JsonSerializationError::Residual {
-                            residual: expr.clone(),
-                        }),
+                        Err(_) => Err(JsonSerializationError::residual(expr.clone())),
                     },
                 })
                 .collect::<Result<_, JsonSerializationError>>()?,
@@ -470,7 +468,7 @@ mod test {
         let e = eparser.from_json_value(json);
         let bad_euid: EntityUID = r#"User::"alice""#.parse().unwrap();
         assert_matches!(e, Err(EntitiesError::Duplicate(euid)) => {
-          assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
+          assert_eq!(&bad_euid, euid.euid(), r#"Returned euid should be User::"alice""#);
         });
     }
 

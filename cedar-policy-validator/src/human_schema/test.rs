@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 // PANIC SAFETY: unit tests
 #[allow(clippy::panic)]
 #[cfg(test)]
@@ -26,7 +42,7 @@ mod demo_tests {
             action "Foo";
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), ..}), .. } => assert!(resources.is_empty() && principals.is_empty())
         );
@@ -38,7 +54,7 @@ mod demo_tests {
         action "Foo" appliesTo { context: {} };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(
             foo,
             ActionType {
@@ -59,12 +75,12 @@ mod demo_tests {
         action "Foo" appliesTo { principal: a, context: {}  };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), ..}), .. } =>
                 {
                     match principals.as_slice() {
-                        [a] if a == &"a".to_smolstr() => (),
+                        [a] if a == &"a".parse().unwrap() => (),
                         _ => panic!("Bad principals")
                     }
                 }
@@ -78,12 +94,12 @@ mod demo_tests {
         action "Foo" appliesTo { resource: a, context: {}  };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, ..}), .. } =>
                 {
                     match resources.as_slice() {
-                        [a] if a == &"a".to_smolstr() => (),
+                        [a] if a == &"a".parse().unwrap() => (),
                         _ => panic!("Bad principals")
                     }
                 }
@@ -99,11 +115,11 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
-                    assert_matches!(resources.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+                    assert_matches!(resources.as_slice(), [a] => assert_eq!(a, &"a".parse().unwrap()))
             ,
         );
     }
@@ -118,13 +134,13 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
                     assert_matches!(resources.as_slice(), [a, b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b")
+                        assert_eq!(a, &"a".parse().unwrap());
+                        assert_eq!(b, &"b".parse().unwrap())
                     })
             ,
         );
@@ -139,11 +155,11 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
-                    assert_matches!(principals.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+                    assert_matches!(principals.as_slice(), [a] => assert_eq!(a, &"a".parse().unwrap()))
             ,
         );
     }
@@ -158,13 +174,13 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a, &"a".parse().unwrap());
+                        assert_eq!(b, &"b".parse().unwrap());
                 })
             ,
         );
@@ -183,18 +199,18 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
                 {
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a, &"a".parse().unwrap());
+                        assert_eq!(b, &"b".parse().unwrap());
                 });
                 assert_matches!(resources.as_slice(), [c,d] =>  {
-                        assert_eq!(c.as_ref(), "c");
-                        assert_eq!(d.as_ref(), "d");
+                        assert_eq!(c, &"c".parse().unwrap());
+                        assert_eq!(d, &"d".parse().unwrap());
 
                 })
             }
@@ -215,18 +231,18 @@ mod demo_tests {
             };
         "#;
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let unqual = schema.0.get("").unwrap();
+        let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
                 {
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a, &"a".parse().unwrap());
+                        assert_eq!(b, &"b".parse().unwrap());
                 });
                 assert_matches!(resources.as_slice(), [c,d] =>  {
-                        assert_eq!(c.as_ref(), "c");
-                        assert_eq!(d.as_ref(), "d");
+                        assert_eq!(c, &"c".parse().unwrap());
+                        assert_eq!(d, &"d".parse().unwrap());
 
                 })
             }
@@ -310,9 +326,10 @@ mod demo_tests {
             member_of: None,
         };
         let namespace = NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
-        let fragment = SchemaFragment(HashMap::from([("bar".to_smolstr(), namespace)]));
+        let fragment = SchemaFragment(HashMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.as_natural_schema().unwrap();
-        let expected = r#"action "foo" appliesTo {  context: {}
+        let expected = r#"action "foo" appliesTo {
+  context: {}
 };"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
     }
@@ -379,7 +396,7 @@ namespace Baz {action "Foo" appliesTo {
         let namespace = NamespaceDefinition {
             common_types: HashMap::new(),
             entity_types: HashMap::from([(
-                "a".to_smolstr(),
+                "a".parse().unwrap(),
                 EntityType {
                     member_of_types: vec![],
                     shape: AttributesOrContext::default(),
@@ -391,16 +408,16 @@ namespace Baz {action "Foo" appliesTo {
                     attributes: None,
                     applies_to: Some(ApplySpec {
                         resource_types: Some(vec![]),
-                        principal_types: Some(vec!["a".to_smolstr()]),
+                        principal_types: Some(vec!["a".parse().unwrap()]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
                 },
             )]),
         };
-        let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
+        let fragment = SchemaFragment(HashMap::from([(None, namespace)]));
         let src = fragment.as_natural_schema().unwrap();
-        assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+        assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 
     #[test]
@@ -473,26 +490,32 @@ namespace Baz {action "Foo" appliesTo {
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let github = fragment
             .0
-            .get("GitHub")
+            .get(&Some("GitHub".parse().unwrap()))
             .expect("`Github` name space did not exist");
         // User
-        let user = github.entity_types.get("User").expect("No `User`");
+        let user = github
+            .entity_types
+            .get(&"User".parse().unwrap())
+            .expect("No `User`");
         assert_empty_records(user);
         assert_eq!(
             &user.member_of_types,
-            &vec!["UserGroup".to_smolstr(), "Team".to_smolstr()]
+            &vec!["UserGroup".parse().unwrap(), "Team".parse().unwrap()]
         );
         // UserGroup
         let usergroup = github
             .entity_types
-            .get("UserGroup")
+            .get(&"UserGroup".parse().unwrap())
             .expect("No `UserGroup`");
         assert_empty_records(usergroup);
-        assert_eq!(&usergroup.member_of_types, &vec!["UserGroup".to_smolstr()]);
+        assert_eq!(
+            &usergroup.member_of_types,
+            &vec!["UserGroup".parse().unwrap()]
+        );
         // Repository
         let repo = github
             .entity_types
-            .get("Repository")
+            .get(&"Repository".parse().unwrap())
             .expect("No `Repository`");
         assert!(repo.member_of_types.is_empty());
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
@@ -503,7 +526,7 @@ namespace Baz {action "Foo" appliesTo {
                     additional_attributes: false,
                 }) => {
                     let expected = SchemaTypeVariant::Entity {
-                        name: "UserGroup".into(),
+                        name: "UserGroup".parse().unwrap(),
                     };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
@@ -511,7 +534,10 @@ namespace Baz {action "Foo" appliesTo {
                 _ => panic!("Shape was not a record"),
             }
         }
-        let issue = github.entity_types.get("Issue").expect("No `Issue`");
+        let issue = github
+            .entity_types
+            .get(&"Issue".parse().unwrap())
+            .expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
         match &issue.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
@@ -522,20 +548,23 @@ namespace Baz {action "Foo" appliesTo {
                 assert_has_type(
                     attribute,
                     SchemaTypeVariant::Entity {
-                        name: "Repository".into(),
+                        name: "Repository".parse().unwrap(),
                     },
                 );
                 let attribute = attributes.get("reporter").expect("No `repo`");
                 assert_has_type(
                     attribute,
                     SchemaTypeVariant::Entity {
-                        name: "User".into(),
+                        name: "User".parse().unwrap(),
                     },
                 );
             }
             _ => panic!("bad type on `Issue`"),
         }
-        let org = github.entity_types.get("Org").expect("No `Org`");
+        let org = github
+            .entity_types
+            .get(&"Org".parse().unwrap())
+            .expect("No `Org`");
         assert!(org.member_of_types.is_empty());
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
@@ -545,7 +574,7 @@ namespace Baz {action "Foo" appliesTo {
                     additional_attributes: false,
                 }) => {
                     let expected = SchemaTypeVariant::Entity {
-                        name: "UserGroup".into(),
+                        name: "UserGroup".parse().unwrap(),
                     };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
@@ -599,9 +628,15 @@ namespace Baz {action "Foo" appliesTo {
         )
         .expect("failed to parse");
         assert!(warnings.collect::<Vec<_>>().is_empty());
-        let doccloud = fragment.0.get("DocCloud").expect("No `DocCloud` namespace");
-        let user = doccloud.entity_types.get("User").expect("No `User`");
-        assert_eq!(&user.member_of_types, &vec!["Group".to_smolstr()]);
+        let doccloud = fragment
+            .0
+            .get(&Some("DocCloud".parse().unwrap()))
+            .expect("No `DocCloud` namespace");
+        let user = doccloud
+            .entity_types
+            .get(&"User".parse().unwrap())
+            .expect("No `User`");
+        assert_eq!(&user.member_of_types, &vec!["Group".parse().unwrap()]);
         match &user.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -610,22 +645,28 @@ namespace Baz {action "Foo" appliesTo {
                 assert_has_type(
                     attributes.get("personalGroup").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "Group".into(),
+                        name: "Group".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("blocked").unwrap(),
                     SchemaTypeVariant::Set {
                         element: Box::new(crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                            name: "User".into(),
+                            name: "User".parse().unwrap(),
                         })),
                     },
                 );
             }
             _ => panic!("Wrong type"),
         }
-        let group = doccloud.entity_types.get("Group").expect("No `Group`");
-        assert_eq!(&group.member_of_types, &vec!["DocumentShare".to_smolstr()]);
+        let group = doccloud
+            .entity_types
+            .get(&"Group".parse().unwrap())
+            .expect("No `Group`");
+        assert_eq!(
+            &group.member_of_types,
+            &vec!["DocumentShare".parse().unwrap()]
+        );
         match &group.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -634,13 +675,16 @@ namespace Baz {action "Foo" appliesTo {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "User".into(),
+                        name: "User".parse().unwrap(),
                     },
                 );
             }
             _ => panic!("Wrong type"),
         }
-        let document = doccloud.entity_types.get("Document").expect("No `Group`");
+        let document = doccloud
+            .entity_types
+            .get(&"Document".parse().unwrap())
+            .expect("No `Group`");
         assert!(document.member_of_types.is_empty());
         match &document.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
@@ -650,7 +694,7 @@ namespace Baz {action "Foo" appliesTo {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "User".into(),
+                        name: "User".parse().unwrap(),
                     },
                 );
                 assert_has_type(
@@ -664,19 +708,19 @@ namespace Baz {action "Foo" appliesTo {
                 assert_has_type(
                     attributes.get("viewACL").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "DocumentShare".into(),
+                        name: "DocumentShare".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("modifyACL").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "DocumentShare".into(),
+                        name: "DocumentShare".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("manageACL").unwrap(),
                     SchemaTypeVariant::Entity {
-                        name: "DocumentShare".into(),
+                        name: "DocumentShare".parse().unwrap(),
                     },
                 );
             }
@@ -684,16 +728,25 @@ namespace Baz {action "Foo" appliesTo {
         }
         let document_share = doccloud
             .entity_types
-            .get("DocumentShare")
+            .get(&"DocumentShare".parse().unwrap())
             .expect("No `DocumentShare`");
         assert!(document_share.member_of_types.is_empty());
         assert_empty_records(document_share);
 
-        let public = doccloud.entity_types.get("Public").expect("No `Public`");
-        assert_eq!(&public.member_of_types, &vec!["DocumentShare".to_smolstr()]);
+        let public = doccloud
+            .entity_types
+            .get(&"Public".parse().unwrap())
+            .expect("No `Public`");
+        assert_eq!(
+            &public.member_of_types,
+            &vec!["DocumentShare".parse().unwrap()]
+        );
         assert_empty_records(public);
 
-        let drive = doccloud.entity_types.get("Drive").expect("No `Drive`");
+        let drive = doccloud
+            .entity_types
+            .get(&"Drive".parse().unwrap())
+            .expect("No `Drive`");
         assert!(drive.member_of_types.is_empty());
         assert_empty_records(drive);
     }
@@ -796,8 +849,11 @@ namespace Baz {action "Foo" appliesTo {
         "#;
         let (fragment, warnings) = SchemaFragment::from_str_natural(src).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
-        let service = fragment.0.get("Service").unwrap();
-        let resource = service.entity_types.get("Resource").unwrap();
+        let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
+        let resource = service
+            .entity_types
+            .get(&"Resource".parse().unwrap())
+            .unwrap();
         match &resource.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -808,7 +864,7 @@ namespace Baz {action "Foo" appliesTo {
                 assert!(required);
                 match ty {
                     crate::SchemaType::TypeDef { type_name } => {
-                        assert_eq!(type_name, &"AWS::Tag".to_smolstr())
+                        assert_eq!(type_name, &"AWS::Tag".parse().unwrap())
                     }
                     _ => panic!("Wrong type for attribute"),
                 }
@@ -1079,9 +1135,11 @@ mod parser_tests {
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
-    use smol_str::ToSmolStr;
 
-    use crate::{SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema};
+    use crate::{
+        types::{EntityLUB, Type},
+        SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
+    };
 
     #[test]
     fn use_reserved_namespace() {
@@ -1319,8 +1377,8 @@ mod translator_tests {
           }"#,
         )
         .unwrap();
-        let demo = schema.0.get("Demo").unwrap();
-        let user = demo.entity_types.get("User").unwrap();
+        let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
+        let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
         match &user.shape.0 {
             crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -1331,7 +1389,7 @@ mod translator_tests {
                 {
                     assert!(required);
                     let expected = crate::SchemaType::TypeDef {
-                        type_name: "id".into(),
+                        type_name: "id".parse().unwrap(),
                     };
                     assert_eq!(ty, &expected);
                 }
@@ -1339,7 +1397,7 @@ mod translator_tests {
                 {
                     assert!(required);
                     let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                        name: "email_address".into(),
+                        name: "email_address".parse().unwrap(),
                     });
                     assert_eq!(ty, &expected);
                 }
@@ -1384,19 +1442,23 @@ mod translator_tests {
                 entity C;
             }
             namespace X {
-                type Y = X::Y;
-                entity Y;
+                type Y = X::Z;
+                entity Z;
             }
             "#,
         )
         .unwrap();
-        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
-        assert!(
-            validator_schema.is_err()
-                && matches!(
-                    validator_schema.unwrap_err(),
-                    SchemaError::UndeclaredCommonTypes(_)
-                )
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::B".parse().unwrap())
+                .unwrap()
+                .attributes
+                .attrs["foo"]
+                .attr_type,
+            Type::EntityOrRecord(crate::types::EntityRecordKind::Entity(
+                EntityLUB::single_entity("X::Z".parse().unwrap())
+            ))
         );
     }
 
@@ -1408,9 +1470,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["namespace".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["namespace".parse().unwrap()]);
     }
 
     #[test]
@@ -1432,9 +1494,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["Set".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["Set".parse().unwrap()]);
     }
 
     #[test]
@@ -1445,9 +1507,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["appliesTo".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["appliesTo".parse().unwrap()]);
     }
 
     #[test]
@@ -1458,9 +1520,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["principal".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["principal".parse().unwrap()]);
     }
 
     #[test]
@@ -1471,9 +1533,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["resource".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["resource".parse().unwrap()]);
     }
 
     #[test]
@@ -1484,9 +1546,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["action".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["action".parse().unwrap()]);
     }
 
     #[test]
@@ -1497,9 +1559,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["context".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["context".parse().unwrap()]);
     }
 
     #[test]
@@ -1510,9 +1572,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["attributes".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["attributes".parse().unwrap()]);
     }
 
     #[test]
@@ -1523,9 +1585,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["Bool".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["Bool".parse().unwrap()]);
     }
 
     #[test]
@@ -1536,9 +1598,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["Long".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["Long".parse().unwrap()]);
     }
 
     #[test]
@@ -1549,9 +1611,9 @@ mod translator_tests {
         "#;
 
         let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
-        let ns = schema.0.get("").unwrap();
-        let foo = ns.entity_types.get("Foo").unwrap();
-        assert_eq!(foo.member_of_types, vec!["String".to_smolstr()]);
+        let ns = schema.0.get(&None).unwrap();
+        let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
+        assert_eq!(foo.member_of_types, vec!["String".parse().unwrap()]);
     }
 
     #[test]
@@ -1602,5 +1664,353 @@ mod translator_tests {
         "#;
 
         assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn multiple_principal_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: A, principal: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: A, resource: B, principal: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
+
+    #[test]
+    fn multiple_resource_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: A, resource: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: A, principal: B, resource: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
+
+    #[test]
+    fn multiple_context_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: C, context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: C, context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
+}
+
+#[cfg(test)]
+mod common_type_references {
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        types::{AttributeType, EntityRecordKind, Type},
+        SchemaError, SchemaFragment, ValidatorSchema,
+    };
+
+    #[test]
+    fn basic() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = b;
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = b;
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = b;
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Long;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::primitive_long(), true)
+        );
+    }
+
+    #[test]
+    fn set() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = Set<b>;
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::primitive_long()), true)
+        );
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = Set<b>;
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::primitive_long()), true)
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = Set<b>;
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Set<Long>;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            &AttributeType::new(Type::set(Type::set(Type::primitive_long())), true)
+        );
+    }
+
+    #[test]
+    fn record() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = {a: b};
+        type b = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"
+        type a = {a: b};
+        type b = c;
+        type c = Long;
+        entity foo {
+            a: a,
+        };
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = Set<Long>;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_matches!(
+            validator_schema
+                .get_entity_type(&"A::foo".parse().unwrap())
+                .unwrap()
+                .attr("a")
+                .unwrap(),
+            AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::set(Type::primitive_long())
+        );
+    }
+
+    #[test]
+    fn cycles() {
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = A::b;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = {a: b};
+            type b = c;
+            type c = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = A::a;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
+
+        let (schema, _) = SchemaFragment::from_str_natural(
+            r#"namespace A {
+            type a = B::a;
+            entity foo {
+                a: a,
+            };
+        }
+        namespace B {
+            type a = C::a;
+        }
+        namespace C {
+            type a = A::a;
+        }
+        "#,
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
+        assert_matches!(
+            validator_schema,
+            Err(SchemaError::CycleInCommonTypeReferences(_))
+        );
     }
 }

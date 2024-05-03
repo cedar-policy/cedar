@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ mod cst_to_ast;
 pub mod err;
 /// implementations for formatting, like `Display`
 mod fmt;
+pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
 pub use loc::Loc;
@@ -374,7 +375,7 @@ pub(crate) mod test_utils {
 
     /// Expect that the given `ParseErrors` contains at least one error with the given `ExpectedErrorMessage`.
     ///
-    /// `src` is the original input text, just for better assertion-failure messages
+    /// `src` is the original input text (which the miette labels index into).
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_some_error_matches(
         src: &str,
@@ -386,7 +387,7 @@ pub(crate) mod test_utils {
             "for the following input:\n{src}\nexpected an error, but the `ParseErrors` was empty"
         );
         assert!(
-            errs.iter().any(|e| msg.matches(e)),
+            errs.iter().any(|e| msg.matches(Some(src), e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
@@ -401,11 +402,7 @@ pub(crate) mod test_utils {
             0 => panic!("for the following input:\n{src}\nexpected an error, but the `ParseErrors` was empty"),
             1 => {
                 let err = errs.iter().next().expect("already checked that len was 1");
-                assert!(
-                    msg.matches(err),
-                    "for the following input:\n{src}\nexpected the error to match the following:\n{msg}\nbut actual error was:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
-                    miette::Report::new(err.clone()),
-                )
+                expect_err(src, &miette::Report::new(err.clone()), msg);
             }
             n => panic!(
                 "for the following input:\n{src}\nexpected only one error, but got {n}. Expected to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
@@ -444,11 +441,11 @@ mod test {
             assert_eq!(parsed.resource_constraint(), template.resource_constraint());
             assert!(
                 parsed
-                    .non_head_constraints()
-                    .eq_shape(template.non_head_constraints()),
+                    .non_scope_constraints()
+                    .eq_shape(template.non_scope_constraints()),
                 "{:?} and {:?} should have the same shape.",
-                parsed.non_head_constraints(),
-                template.non_head_constraints()
+                parsed.non_scope_constraints(),
+                template.non_scope_constraints()
             );
         }
     }
@@ -756,7 +753,7 @@ mod parse_tests {
             permit(principal, action, resource) when { principal.name.like == "3" };
             "#;
         let p = parse_policyset_to_ests_and_pset(src);
-        assert_matches!(p, Err(e) => expect_err(src, &e, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `like`")));
+        assert_matches!(p, Err(e) => expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `like`").exactly_one_underline("like").build()));
     }
 
     #[test]
@@ -766,14 +763,17 @@ mod parse_tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessage::error_and_help(
-            "found template slot ?resource in a `when` clause",
-            "slots are currently unsupported in `when` clauses",
-        );
-        let unexpected_template = ExpectedErrorMessage::error_and_help(
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline("?resource")
+                .build();
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
-            "try removing the template slot(s) from this policy",
-        );
+        )
+        .help("try removing the template slot(s) from this policy")
+        .exactly_one_underline("?resource")
+        .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
@@ -800,14 +800,17 @@ mod parse_tests {
                 resource == ?principal
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessage::error_and_help(
-            "found template slot ?principal in a `when` clause",
-            "slots are currently unsupported in `when` clauses",
-        );
-        let unexpected_template = ExpectedErrorMessage::error_and_help(
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline("?principal")
+                .build();
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
-            "try removing the template slot(s) from this policy",
-        );
+        )
+        .help("try removing the template slot(s) from this policy")
+        .exactly_one_underline("?principal")
+        .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
@@ -834,10 +837,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessage::error_and_help(
-            "`?blah` is not a valid template slot",
-            "a template slot may only be `?principal` or `?resource`",
-        );
+        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
+            .help("a template slot may only be `?principal` or `?resource`")
+            .exactly_one_underline("?blah")
+            .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
@@ -862,14 +865,18 @@ mod parse_tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_unless_clause = ExpectedErrorMessage::error_and_help(
+        let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
-            "slots are currently unsupported in `unless` clauses",
-        );
-        let unexpected_template = ExpectedErrorMessage::error_and_help(
+        )
+        .help("slots are currently unsupported in `unless` clauses")
+        .exactly_one_underline("?resource")
+        .build();
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
-            "try removing the template slot(s) from this policy",
-        );
+        )
+        .help("try removing the template slot(s) from this policy")
+        .exactly_one_underline("?resource")
+        .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
@@ -896,14 +903,18 @@ mod parse_tests {
                 resource == ?principal
             };
             "#;
-        let slot_in_unless_clause = ExpectedErrorMessage::error_and_help(
+        let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?principal in a `unless` clause",
-            "slots are currently unsupported in `unless` clauses",
-        );
-        let unexpected_template = ExpectedErrorMessage::error_and_help(
+        )
+        .help("slots are currently unsupported in `unless` clauses")
+        .exactly_one_underline("?principal")
+        .build();
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
-            "try removing the template slot(s) from this policy",
-        );
+        )
+        .help("try removing the template slot(s) from this policy")
+        .exactly_one_underline("?principal")
+        .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
@@ -930,10 +941,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessage::error_and_help(
-            "`?blah` is not a valid template slot",
-            "a template slot may only be `?principal` or `?resource`",
-        );
+        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
+            .help("a template slot may only be `?principal` or `?resource`")
+            .exactly_one_underline("?blah")
+            .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
@@ -960,18 +971,23 @@ mod parse_tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessage::error_and_help(
-            "found template slot ?resource in a `when` clause",
-            "slots are currently unsupported in `when` clauses",
-        );
-        let slot_in_unless_clause = ExpectedErrorMessage::error_and_help(
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline("?resource")
+                .build();
+        let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
-            "slots are currently unsupported in `unless` clauses",
-        );
-        let unexpected_template = ExpectedErrorMessage::error_and_help(
+        )
+        .help("slots are currently unsupported in `unless` clauses")
+        .exactly_one_underline("?resource")
+        .build();
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
-            "try removing the template slot(s) from this policy",
-        );
+        )
+        .help("try removing the template slot(s) from this policy")
+        .exactly_one_underline("?resource")
+        .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
@@ -1011,7 +1027,7 @@ mod parse_tests {
         // duplicate key
         let src = r#"permit(principal, action, resource) when { context.foo == { "spam": -341, foo: 2, "🦀": true, foo: "baz" } };"#;
         assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate key `foo` in record literal"));
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessageBuilder::error("duplicate key `foo` in record literal").exactly_one_underline(r#"{ "spam": -341, foo: 2, "🦀": true, foo: "baz" }"#).build());
         });
     }
 
@@ -1023,10 +1039,7 @@ mod parse_tests {
             permit(principal, action, resource);
         "#;
         assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&src[expected_span.clone()], r#"@foo("2")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("2")"#).build());
         });
 
         let src = r#"
@@ -1035,10 +1048,7 @@ mod parse_tests {
             permit(principal, action, resource);
         "#;
         assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            let expected_span = 35..44;
-            assert_eq!(&src[expected_span.clone()], r#"@foo("1")"#);
-            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("1")"#).build());
         });
 
         let src = r#"
@@ -1052,12 +1062,9 @@ mod parse_tests {
         "#;
         assert_matches!(parse_policy(None, src), Err(e) => {
             assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
-            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
-            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @bar"));
-            for ((err, expected_span), expected_snippet) in e.iter().zip([62..73, 116..127, 140..151]).zip([r#"@foo("abc")"#, r#"@bar("123")"#, r#"@foo("def")"#]) {
-                assert_eq!(&src[expected_span.clone()], expected_snippet);
-                itertools::assert_equal(err.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
-            }
+            expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("abc")"#).build());
+            expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("def")"#).build());
+            expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @bar").exactly_one_underline(r#"@bar("123")"#).build());
         })
     }
 

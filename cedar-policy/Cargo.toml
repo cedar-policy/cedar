@@ -1,6 +1,7 @@
 [package]
 name = "cedar-policy"
 edition = "2021"
+rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 
 version = "4.0.0"
 license = "Apache-2.0"
@@ -72,6 +73,7 @@ cedar-policy = { path = ".", default-features = false, features = [
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
+cedar-policy-core = { version = "=4.0.0", features = ["test-util"], path = "../cedar-policy-core" }
 
 proptest = "1.0.0"
 # Used to test the `euid` macro

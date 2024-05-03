@@ -49,8 +49,9 @@ pub fn euid(input_stream: TokenStream) -> TokenStream {
     #[allow(clippy::unwrap_used)]
     let (basename, path) = ids.split_last().unwrap();
     let euid: EntityUID = EntityUID::from_components(
-        Name::new(basename.clone(), path.into_iter().cloned()),
+        Name::new(basename.clone(), path.into_iter().cloned(), None),
         Eid::new(input.id.value()),
+        None
     );
     let euid_str = euid.to_string();
     // PANIC SAFETY: `#euid_str` should parse

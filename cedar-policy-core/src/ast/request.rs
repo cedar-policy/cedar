@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-use crate::entities::{ContextJsonDeserializationError, ContextJsonParser, NullContextSchema};
+use crate::entities::json::{
+    ContextJsonDeserializationError, ContextJsonParser, NullContextSchema,
+};
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
@@ -248,9 +250,7 @@ impl Context {
                     context: pval.into(),
                 })
             }
-            _ => Err(ContextCreationError::NotARecord {
-                expr: Box::new(expr.to_owned()),
-            }),
+            _ => Err(ContextCreationError::not_a_record(expr.to_owned())),
         }
     }
 
@@ -366,11 +366,8 @@ impl std::fmt::Display for Context {
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextCreationError {
     /// Tried to create a `Context` out of something other than a record
-    #[error("expression is not a record: `{expr}`")]
-    NotARecord {
-        /// Expression which is not a record
-        expr: Box<RestrictedExpr>,
-    },
+    #[error("expression is not a record: `{}`", .0.expr)]
+    NotARecord(NotARecord),
     /// Error evaluating the expression given for the `Context`
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -380,6 +377,21 @@ pub enum ContextCreationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExprConstruction(#[from] ExprConstructionError),
+}
+
+impl ContextCreationError {
+    pub(crate) fn not_a_record(expr: RestrictedExpr) -> Self {
+        Self::NotARecord(NotARecord {
+            expr: Box::new(expr),
+        })
+    }
+}
+
+/// Error type for an expression that is not a record
+#[derive(Debug)]
+pub struct NotARecord {
+    /// Expression which is not a record
+    expr: Box<RestrictedExpr>,
 }
 
 /// Trait for schemas capable of validating `Request`s

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{
     ast::{EntityAttrEvaluationError, EntityUID, Name},
-    parser::err::{ParseError, ParseErrors},
     transitive_closure,
 };
 use itertools::Itertools;
@@ -91,23 +90,9 @@ pub enum SchemaError {
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUID),
-    /// Parse errors occurring while parsing an entity type.
-    #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
-    #[diagnostic(transparent)]
-    ParseEntityType(ParseErrors),
-    /// Parse errors occurring while parsing a namespace identifier.
-    #[error("parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
-    #[diagnostic(transparent)]
-    ParseNamespace(ParseErrors),
-    /// Parse errors occurring while parsing an extension type.
-    #[error("parse error in extension type: {}", Self::format_parse_errs(.0))]
-    #[diagnostic(transparent)]
-    ParseExtensionType(ParseErrors),
-    /// Parse errors occurring while parsing the name of one of reusable
-    /// declared types.
-    #[error("parse error in common type identifier: {}", Self::format_parse_errs(.0))]
-    #[diagnostic(transparent)]
-    ParseCommonType(ParseErrors),
+    /// Cycle in the schema's common type declarations.
+    #[error("cycle in common type references containing `{0}`")]
+    CycleInCommonTypeReferences(Name),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
@@ -153,20 +138,14 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
             transitive_closure::TcError::MissingTcEdge { .. } => {
                 SchemaError::ActionTransitiveClosure(Box::new(e))
             }
-            transitive_closure::TcError::HasCycle { vertex_with_loop } => {
-                SchemaError::CycleInActionHierarchy(vertex_with_loop)
+            transitive_closure::TcError::HasCycle(err) => {
+                SchemaError::CycleInActionHierarchy(err.vertex_with_loop().clone())
             }
         }
     }
 }
 
 pub type Result<T> = std::result::Result<T, SchemaError>;
-
-impl SchemaError {
-    fn format_parse_errs(errs: &[ParseError]) -> String {
-        errs.iter().map(|e| e.to_string()).join(", ")
-    }
-}
 
 #[derive(Debug)]
 pub enum ContextOrShape {

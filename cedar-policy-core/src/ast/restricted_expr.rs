@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ use super::{
     EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue, Unknown, Value,
     ValueKind,
 };
-use crate::entities::JsonSerializationError;
+use crate::entities::json::err::JsonSerializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::{self, Loc};
 use miette::Diagnostic;
@@ -350,7 +350,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Used to output the context as a map from Strings to JSON Values
     pub fn to_natural_json(self) -> Result<serde_json::Value, JsonSerializationError> {
         Ok(serde_json::to_value(
-            crate::entities::CedarValueJson::from_expr(self)?,
+            crate::entities::json::CedarValueJson::from_expr(self)?,
         )?)
     }
 

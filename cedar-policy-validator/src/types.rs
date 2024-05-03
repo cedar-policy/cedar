@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ use cedar_policy_core::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
         RestrictedExpr, Value,
     },
-    entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
+    entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
 };
 
-use crate::ValidationMode;
+use crate::{LubHelp, ValidationMode};
 
 use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
@@ -346,12 +346,12 @@ impl Type {
         ty0: &Type,
         ty1: &Type,
         mode: ValidationMode,
-    ) -> Option<Type> {
+    ) -> Result<Type, LubHelp> {
         match (ty0, ty1) {
-            _ if Type::is_subtype(schema, ty0, ty1, mode) => Some(ty1.clone()),
-            _ if Type::is_subtype(schema, ty1, ty0, mode) => Some(ty0.clone()),
+            _ if Type::is_subtype(schema, ty0, ty1, mode) => Ok(ty1.clone()),
+            _ if Type::is_subtype(schema, ty1, ty0, mode) => Ok(ty0.clone()),
 
-            (Type::True | Type::False, Type::True | Type::False) => Some(Type::primitive_boolean()),
+            (Type::True | Type::False, Type::True | Type::False) => Ok(Type::primitive_boolean()),
 
             // `None` as an element type represents the top type for the set
             // element, so every other set is a subtype of set<None>, making a
@@ -360,7 +360,7 @@ impl Type {
             // subtype checks in the first two match cases, but we handle it
             // explicitly as an alternative to panicking if it occurs.
             (ty_lub @ Type::Set { element_type: None }, Type::Set { .. })
-            | (Type::Set { .. }, ty_lub @ Type::Set { element_type: None }) => Some(ty_lub.clone()),
+            | (Type::Set { .. }, ty_lub @ Type::Set { element_type: None }) => Ok(ty_lub.clone()),
 
             // The least upper bound of two set types is a set with
             // an element type that is the element type least upper bound.
@@ -371,13 +371,13 @@ impl Type {
                 Type::Set {
                     element_type: Some(te1),
                 },
-            ) => Some(Type::set(Type::least_upper_bound(schema, te0, te1, mode)?)),
+            ) => Ok(Type::set(Type::least_upper_bound(schema, te0, te1, mode)?)),
 
-            (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => Some(Type::EntityOrRecord(
+            (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => Ok(Type::EntityOrRecord(
                 EntityRecordKind::least_upper_bound(schema, rk0, rk1, mode)?,
             )),
 
-            _ => None,
+            _ => Err(LubHelp::None),
         }
     }
 
@@ -412,7 +412,7 @@ impl Type {
         schema: &ValidatorSchema,
         tys: &[Type],
         mode: ValidationMode,
-    ) -> Option<Type> {
+    ) -> Result<Type, LubHelp> {
         tys.iter().try_fold(Type::Never, |lub, next| {
             Type::least_upper_bound(schema, &lub, next, mode)
         })
@@ -1099,8 +1099,11 @@ impl Attributes {
             self.attrs
                 .get(k)
                 .map(|self_ty| {
-                    (self_ty.is_required || !other_ty.is_required)
-                        && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
+                    (if mode.is_strict() {
+                        self_ty.is_required == other_ty.is_required
+                    } else {
+                        self_ty.is_required || !other_ty.is_required
+                    }) && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
                 })
                 .unwrap_or(false)
         })
@@ -1124,11 +1127,11 @@ impl Attributes {
         attrs0: &Attributes,
         attrs1: &Attributes,
         mode: ValidationMode,
-    ) -> Option<Attributes> {
+    ) -> Result<Attributes, LubHelp> {
         if mode.is_strict() {
             Self::strict_least_upper_bound(schema, attrs0, attrs1)
         } else {
-            Some(Self::permissive_least_upper_bound(schema, attrs0, attrs1))
+            Ok(Self::permissive_least_upper_bound(schema, attrs0, attrs1))
         }
     }
 
@@ -1137,12 +1140,16 @@ impl Attributes {
         attrs0: &'a Attributes,
         attrs1: &'a Attributes,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = Option<(SmolStr, AttributeType)>> + 'a {
+    ) -> impl Iterator<Item = Result<(SmolStr, AttributeType), LubHelp>> + 'a {
         attrs0.attrs.iter().map(move |(attr, ty0)| {
-            let ty1 = attrs1.attrs.get(attr)?;
-            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).map(|lub| {
+            let ty1 = attrs1.attrs.get(attr).ok_or(LubHelp::RecordWidth)?;
+            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
                 let is_lub_required = ty0.is_required && ty1.is_required;
-                (attr.clone(), AttributeType::new(lub, is_lub_required))
+                if mode.is_strict() && ty0.is_required != ty1.is_required {
+                    Err(LubHelp::AttributeQualifier)
+                } else {
+                    Ok((attr.clone(), AttributeType::new(lub, is_lub_required)))
+                }
             })
         })
     }
@@ -1151,27 +1158,13 @@ impl Attributes {
         schema: &ValidatorSchema,
         attrs0: &Attributes,
         attrs1: &Attributes,
-    ) -> Option<Attributes> {
+    ) -> Result<Attributes, LubHelp> {
         if attrs0.keys().collect::<HashSet<_>>() != attrs1.keys().collect::<HashSet<_>>() {
-            return None;
+            return Err(LubHelp::RecordWidth);
         }
-
-        let mut any_err = false;
-        let attrs: Vec<_> =
-            Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Strict)
-                .filter_map(|e| {
-                    if e.is_none() {
-                        any_err = true;
-                    }
-                    e
-                })
-                .collect();
-
-        if any_err {
-            None
-        } else {
-            Some(Attributes::with_attributes(attrs))
-        }
+        Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Strict)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Attributes::with_attributes)
     }
 
     pub(crate) fn permissive_least_upper_bound(
@@ -1319,7 +1312,7 @@ impl EntityRecordKind {
         rk0: &EntityRecordKind,
         rk1: &EntityRecordKind,
         mode: ValidationMode,
-    ) -> Option<EntityRecordKind> {
+    ) -> Result<EntityRecordKind, LubHelp> {
         use EntityRecordKind::*;
         match (rk0, rk1) {
             (
@@ -1353,7 +1346,7 @@ impl EntityRecordKind {
                 } else {
                     OpenTag::ClosedAttributes
                 };
-                Some(Record {
+                Ok(Record {
                     attrs,
                     open_attributes,
                 })
@@ -1387,45 +1380,47 @@ impl EntityRecordKind {
                             attrs,
                         })
                 } else if mode.is_strict() {
-                    None
+                    Err(LubHelp::EntityType)
                 } else {
-                    Some(AnyEntity)
+                    Ok(AnyEntity)
                 }
             }
             (Entity(lub0), Entity(lub1)) => {
                 if mode.is_strict() && lub0 != lub1 {
-                    None
+                    Err(LubHelp::EntityType)
                 } else {
-                    Some(Entity(lub0.least_upper_bound(lub1)))
+                    Ok(Entity(lub0.least_upper_bound(lub1)))
                 }
             }
 
-            (AnyEntity, AnyEntity) => Some(AnyEntity),
+            (AnyEntity, AnyEntity) => Ok(AnyEntity),
 
             (AnyEntity, Entity(_))
             | (Entity(_), AnyEntity)
             | (AnyEntity, ActionEntity { .. })
             | (ActionEntity { .. }, AnyEntity) => {
                 if mode.is_strict() {
-                    None
+                    Err(LubHelp::EntityType)
                 } else {
-                    Some(AnyEntity)
+                    Ok(AnyEntity)
                 }
             }
 
             // Entity and record types do not have a least upper bound to avoid
             // a non-terminating case.
-            (AnyEntity, Record { .. }) | (Record { .. }, AnyEntity) => None,
-            (Record { .. }, Entity(_)) | (Entity(_), Record { .. }) => None,
+            (AnyEntity, Record { .. }) | (Record { .. }, AnyEntity) => Err(LubHelp::EntityRecord),
+            (Record { .. }, Entity(_)) | (Entity(_), Record { .. }) => Err(LubHelp::EntityRecord),
 
             //Likewise, we can't mix action entities and records
-            (ActionEntity { .. }, Record { .. }) | (Record { .. }, ActionEntity { .. }) => None,
+            (ActionEntity { .. }, Record { .. }) | (Record { .. }, ActionEntity { .. }) => {
+                Err(LubHelp::EntityRecord)
+            }
             //Action entities can be mixed with Entities. In this case, the LUB is AnyEntity
             (ActionEntity { .. }, Entity(_)) | (Entity(_), ActionEntity { .. }) => {
                 if mode.is_strict() {
-                    None
+                    Err(LubHelp::EntityType)
                 } else {
-                    Some(AnyEntity)
+                    Ok(AnyEntity)
                 }
             }
         }
@@ -1626,7 +1621,12 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound(schema: ValidatorSchema, lhs: Type, rhs: Type, lub: Option<Type>) {
+    fn assert_least_upper_bound(
+        schema: ValidatorSchema,
+        lhs: Type,
+        rhs: Type,
+        lub: Result<Type, LubHelp>,
+    ) {
         assert_eq!(
             Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive),
             lub,
@@ -1646,7 +1646,7 @@ mod test {
         lub_attrs: &[(&str, Type)],
     ) {
         let lub = Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive);
-        assert_matches!(lub, Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
+        assert_matches!(lub, Ok(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
             assert_eq!(
                 lub_names
                     .iter()
@@ -1676,7 +1676,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_empty_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
+    fn assert_least_upper_bound_empty_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
         assert_least_upper_bound(empty_schema(), lhs, rhs, lub);
     }
 
@@ -1685,72 +1685,88 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::False,
             Type::True,
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(Type::False, Type::False, Some(Type::False));
+        assert_least_upper_bound_empty_schema(Type::False, Type::False, Ok(Type::False));
         assert_least_upper_bound_empty_schema(
             Type::False,
             Type::primitive_boolean(),
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
 
-        assert_least_upper_bound_empty_schema(Type::True, Type::True, Some(Type::True));
+        assert_least_upper_bound_empty_schema(Type::True, Type::True, Ok(Type::True));
         assert_least_upper_bound_empty_schema(
             Type::True,
             Type::False,
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound_empty_schema(
             Type::True,
             Type::primitive_boolean(),
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::False,
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::True,
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::primitive_boolean(),
-            Some(Type::primitive_boolean()),
+            Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_string(),
             Type::primitive_string(),
-            Some(Type::primitive_string()),
+            Ok(Type::primitive_string()),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::primitive_long(),
             Type::primitive_long(),
-            Some(Type::primitive_long()),
+            Ok(Type::primitive_long()),
         );
 
-        assert_least_upper_bound_empty_schema(Type::False, Type::primitive_string(), None);
-        assert_least_upper_bound_empty_schema(Type::False, Type::primitive_long(), None);
-        assert_least_upper_bound_empty_schema(Type::True, Type::primitive_string(), None);
-        assert_least_upper_bound_empty_schema(Type::True, Type::primitive_long(), None);
+        assert_least_upper_bound_empty_schema(
+            Type::False,
+            Type::primitive_string(),
+            Err(LubHelp::None),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::False,
+            Type::primitive_long(),
+            Err(LubHelp::None),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::True,
+            Type::primitive_string(),
+            Err(LubHelp::None),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::True,
+            Type::primitive_long(),
+            Err(LubHelp::None),
+        );
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::primitive_string(),
-            None,
+            Err(LubHelp::None),
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::primitive_long(),
-            None,
+            Err(LubHelp::None),
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_string(),
             Type::primitive_long(),
-            None,
+            Err(LubHelp::None),
         );
     }
 
@@ -1760,23 +1776,27 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::extension(ipaddr.clone()),
             Type::extension(ipaddr.clone()),
-            Some(Type::extension(ipaddr.clone())),
+            Ok(Type::extension(ipaddr.clone())),
         );
         assert_least_upper_bound_empty_schema(
             Type::extension(ipaddr.clone()),
             Type::extension("test".parse().expect("should be a valid identifier")),
-            None,
+            Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(Type::extension(ipaddr.clone()), Type::False, None);
+        assert_least_upper_bound_empty_schema(
+            Type::extension(ipaddr.clone()),
+            Type::False,
+            Err(LubHelp::None),
+        );
         assert_least_upper_bound_empty_schema(
             Type::extension(ipaddr.clone()),
             Type::primitive_string(),
-            None,
+            Err(LubHelp::None),
         );
         assert_least_upper_bound_empty_schema(
             Type::extension(ipaddr),
             Type::any_entity_reference(),
-            None,
+            Err(LubHelp::None),
         );
     }
 
@@ -1785,23 +1805,23 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::set(Type::True),
             Type::set(Type::True),
-            Some(Type::set(Type::True)),
+            Ok(Type::set(Type::True)),
         );
         assert_least_upper_bound_empty_schema(
             Type::set(Type::False),
             Type::set(Type::True),
-            Some(Type::set(Type::primitive_boolean())),
+            Ok(Type::set(Type::primitive_boolean())),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::set(Type::primitive_boolean()),
             Type::set(Type::primitive_long()),
-            None,
+            Err(LubHelp::None),
         );
         assert_least_upper_bound_empty_schema(
             Type::set(Type::primitive_boolean()),
             Type::primitive_boolean(),
-            None,
+            Err(LubHelp::None),
         );
     }
 
@@ -1810,19 +1830,19 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::open_record_with_attributes(None),
             Type::primitive_string(),
-            None,
+            Err(LubHelp::None),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_attributes(None),
             Type::primitive_string(),
-            None,
+            Err(LubHelp::None),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_attributes(None),
             Type::set(Type::primitive_boolean()),
-            None,
+            Err(LubHelp::None),
         );
     }
 
@@ -1831,22 +1851,22 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_attributes(None),
             Type::closed_record_with_attributes(None),
-            Some(Type::closed_record_with_attributes(None)),
+            Ok(Type::closed_record_with_attributes(None)),
         );
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_attributes(None),
             Type::open_record_with_attributes(None),
-            Some(Type::open_record_with_attributes(None)),
+            Ok(Type::open_record_with_attributes(None)),
         );
         assert_least_upper_bound_empty_schema(
             Type::open_record_with_attributes(None),
             Type::closed_record_with_attributes(None),
-            Some(Type::open_record_with_attributes(None)),
+            Ok(Type::open_record_with_attributes(None)),
         );
         assert_least_upper_bound_empty_schema(
             Type::open_record_with_attributes(None),
             Type::open_record_with_attributes(None),
-            Some(Type::open_record_with_attributes(None)),
+            Ok(Type::open_record_with_attributes(None)),
         );
 
         assert_least_upper_bound_empty_schema(
@@ -1858,7 +1878,7 @@ mod test {
                 ("foo".into(), Type::primitive_string()),
                 ("bar".into(), Type::primitive_long()),
             ]),
-            Some(Type::open_record_with_required_attributes([(
+            Ok(Type::open_record_with_required_attributes([(
                 "bar".into(),
                 Type::primitive_long(),
             )])),
@@ -1870,7 +1890,7 @@ mod test {
                 ("foo".into(), Type::primitive_string()),
                 ("bar".into(), Type::primitive_long()),
             ]),
-            Some(Type::open_record_with_required_attributes([(
+            Ok(Type::open_record_with_required_attributes([(
                 "bar".into(),
                 Type::primitive_long(),
             )])),
@@ -1885,7 +1905,7 @@ mod test {
                 ("foo".into(), Type::True),
                 ("baz".into(), Type::primitive_long()),
             ]),
-            Some(Type::open_record_with_required_attributes([(
+            Ok(Type::open_record_with_required_attributes([(
                 "foo".into(),
                 Type::primitive_boolean(),
             )])),
@@ -1894,7 +1914,7 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([("foo".into(), Type::False)]),
             Type::closed_record_with_required_attributes([("foo".into(), Type::True)]),
-            Some(Type::closed_record_with_required_attributes([(
+            Ok(Type::closed_record_with_required_attributes([(
                 "foo".into(),
                 Type::primitive_boolean(),
             )])),
@@ -1921,7 +1941,7 @@ mod test {
                     AttributeType::new(Type::primitive_long(), false),
                 ),
             ]),
-            Some(Type::closed_record_with_attributes([
+            Ok(Type::closed_record_with_attributes([
                 (
                     "foo".into(),
                     AttributeType::new(Type::primitive_long(), false),
@@ -1936,7 +1956,7 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
             Type::closed_record_with_attributes([]),
-            Some(Type::open_record_with_attributes([])),
+            Ok(Type::open_record_with_attributes([])),
         );
     }
 
@@ -1958,7 +1978,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_simple_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
+    fn assert_least_upper_bound_simple_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
         assert_least_upper_bound(simple_schema(), lhs, rhs, lub);
     }
 
@@ -1977,7 +1997,7 @@ mod test {
         assert_least_upper_bound_simple_schema(
             Type::any_entity_reference(),
             Type::any_entity_reference(),
-            Some(Type::any_entity_reference()),
+            Ok(Type::any_entity_reference()),
         );
         assert_entity_lub_attrs_simple_schema(
             Type::named_entity_reference_from_str("foo"),
@@ -1994,17 +2014,17 @@ mod test {
         assert_least_upper_bound_simple_schema(
             Type::any_entity_reference(),
             Type::named_entity_reference_from_str("foo"),
-            Some(Type::any_entity_reference()),
+            Ok(Type::any_entity_reference()),
         );
         assert_least_upper_bound_simple_schema(
             Type::named_entity_reference_from_str("foo"),
             Type::primitive_boolean(),
-            None,
+            Err(LubHelp::None),
         );
         assert_least_upper_bound_simple_schema(
             Type::named_entity_reference_from_str("foo"),
             Type::set(Type::any_entity_reference()),
-            None,
+            Err(LubHelp::None),
         );
     }
 
@@ -2027,7 +2047,7 @@ mod test {
         assert_least_upper_bound_simple_schema(
             Type::named_entity_reference_from_str("Action"),
             Type::any_entity_reference(),
-            Some(Type::any_entity_reference()),
+            Ok(Type::any_entity_reference()),
         );
     }
 
@@ -2069,7 +2089,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_attr_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
+    fn assert_least_upper_bound_attr_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
         assert_least_upper_bound(attr_schema(), lhs, rhs, lub);
     }
 
@@ -2125,12 +2145,12 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::any_entity_reference(),
             Type::any_record(),
-            None,
+            Err(LubHelp::EntityRecord),
         );
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_attributes(None),
             Type::any_entity_reference(),
-            None,
+            Err(LubHelp::EntityRecord),
         );
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([
@@ -2138,17 +2158,17 @@ mod test {
                 ("bar".into(), Type::primitive_long()),
             ]),
             Type::any_entity_reference(),
-            None,
+            Err(LubHelp::EntityRecord),
         );
         assert_least_upper_bound_attr_schema(
             Type::named_entity_reference_from_str("foo"),
             Type::any_record(),
-            None,
+            Err(LubHelp::EntityRecord),
         );
         assert_least_upper_bound_attr_schema(
             Type::named_entity_reference_from_str("baz"),
             Type::any_record(),
-            None,
+            Err(LubHelp::EntityRecord),
         );
         assert_least_upper_bound_attr_schema(
             Type::named_entity_reference_from_str("buz"),
@@ -2157,7 +2177,7 @@ mod test {
                 ("b".into(), Type::primitive_long()),
                 ("c".into(), Type::named_entity_reference_from_str("bar")),
             ]),
-            None,
+            Err(LubHelp::EntityRecord),
         );
     }
 
@@ -2200,7 +2220,7 @@ mod test {
                 "foo".into(),
                 Type::named_entity_reference_from_str("U"),
             )]),
-            None,
+            Err(LubHelp::EntityRecord),
         );
     }
 

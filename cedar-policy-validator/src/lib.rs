@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,11 +92,7 @@ impl Validator {
 
     /// Validate all templates, links, and static policies in a policy set.
     /// Return a `ValidationResult`.
-    pub fn validate<'a>(
-        &'a self,
-        policies: &'a PolicySet,
-        mode: ValidationMode,
-    ) -> ValidationResult<'a> {
+    pub fn validate(&self, policies: &PolicySet, mode: ValidationMode) -> ValidationResult {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy(p, mode))
@@ -122,8 +118,8 @@ impl Validator {
         p: &'a Template,
         mode: ValidationMode,
     ) -> (
-        impl Iterator<Item = ValidationError<'a>>,
-        impl Iterator<Item = ValidationWarning<'a>>,
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let validation_errors = if mode.is_partial() {
             // We skip `validate_entity_types`, `validate_action_ids`, and
@@ -139,12 +135,7 @@ impl Validator {
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_action_application(
-                        p.principal_constraint(),
-                        p.action_constraint(),
-                        p.resource_constraint(),
-                    ))
-                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                    .chain(self.validate_template_action_application(p)),
             )
         }
         .into_iter()
@@ -175,12 +166,8 @@ impl Validator {
         // the slot filled by the appropriate value.
         Some(
             self.validate_entity_types_in_slots(p.env())
-                .chain(self.validate_action_application(
-                    &p.principal_constraint(),
-                    p.action_constraint(),
-                    &p.resource_constraint(),
-                ))
-                .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
+                .chain(self.validate_linked_action_application(p)),
         )
     }
 
@@ -194,8 +181,8 @@ impl Validator {
         t: &'a Template,
         mode: ValidationMode,
     ) -> (
-        impl Iterator<Item = ValidationError<'a>>,
-        impl Iterator<Item = ValidationWarning<'a>>,
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
@@ -205,14 +192,12 @@ impl Validator {
             type_errors.into_iter().map(|type_error| {
                 let (kind, location) = type_error.kind_and_location();
                 ValidationError::with_policy_id(
-                    t.id(),
+                    t.id().clone(),
                     location,
                     ValidationErrorKind::type_error(kind),
                 )
             }),
-            warnings
-                .into_iter()
-                .map(|kind| ValidationWarning::with_policy_id(t.id(), None, kind)),
+            warnings.into_iter(),
         )
     }
 }
@@ -238,14 +223,14 @@ mod test {
         let schema_file = NamespaceDefinition::new(
             [
                 (
-                    foo_type.into(),
+                    foo_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    bar_type.into(),
+                    bar_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
@@ -282,7 +267,7 @@ mod test {
 
         let result = validator.validate(&set, ValidationMode::default());
         let principal_err = ValidationError::with_policy_id(
-            policy_b.id(),
+            policy_b.id().clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "foo_tye".to_string(),
@@ -290,7 +275,7 @@ mod test {
             ),
         );
         let resource_err = ValidationError::with_policy_id(
-            policy_b.id(),
+            policy_b.id().clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "br_type".to_string(),
@@ -298,23 +283,30 @@ mod test {
             ),
         );
         let action_err = ValidationError::with_policy_id(
-            policy_a.id(),
+            policy_a.id().clone(),
             None,
             ValidationErrorKind::unrecognized_action_id(
                 "Action::\"actin\"".to_string(),
                 Some("Action::\"action\"".to_string()),
             ),
         );
+
         assert!(!result.validation_passed());
-        assert!(result.validation_errors().any(|x| x == &principal_err));
-        assert!(result.validation_errors().any(|x| x == &resource_err));
-        assert!(result.validation_errors().any(|x| x == &action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == principal_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == resource_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == action_err.error_kind()));
 
         Ok(())
     }
 
     #[test]
-    fn top_level_validate_with_instantiations() -> Result<()> {
+    fn top_level_validate_with_links() -> Result<()> {
         let mut set = PolicySet::new();
         let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment>(
             r#"
@@ -366,6 +358,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
+        let loc = t.loc().clone();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
@@ -376,13 +369,14 @@ mod test {
             Vec::<&ValidationError>::new()
         );
 
-        // a valid instantiation is valid
+        // a valid link is valid
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
             ast::EntityUID::from_components(
                 "some_namespace::Photo".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -394,13 +388,14 @@ mod test {
         let result = validator.validate(&set, ValidationMode::default());
         assert!(result.validation_passed());
 
-        // an invalid instantiation results in an error
+        // an invalid link results in an error
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
             ast::EntityUID::from_components(
                 "some_namespace::Undefined".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -414,7 +409,7 @@ mod test {
         assert_eq!(result.validation_errors().count(), 2);
         let id = ast::PolicyID::from_string("link2");
         let undefined_err = ValidationError::with_policy_id(
-            &id,
+            id.clone(),
             None,
             ValidationErrorKind::unrecognized_entity_type(
                 "some_namespace::Undefined".to_string(),
@@ -422,20 +417,21 @@ mod test {
             ),
         );
         let invalid_action_err = ValidationError::with_policy_id(
-            &id,
-            None,
+            id,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));
 
-        // this is also an invalid instantiation (not a valid resource type for any action in the schema)
+        // this is also an invalid link (not a valid resource type for any action in the schema)
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
             ast::EntityUID::from_components(
                 "some_namespace::User".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -450,11 +446,13 @@ mod test {
         assert_eq!(result.validation_errors().count(), 3);
         let id = ast::PolicyID::from_string("link3");
         let invalid_action_err = ValidationError::with_policy_id(
-            &id,
-            None,
+            id,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
-        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == invalid_action_err.error_kind()));
 
         Ok(())
     }
