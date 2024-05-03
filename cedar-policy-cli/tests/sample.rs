@@ -496,7 +496,7 @@ fn run_validate_test(
             .expect("`schema_file` should be the JSON schema")
             .to_string(),
         policies: PoliciesArgs {
-            policies_file: Some(policies_file.into()),
+            policies_file: Some(policies_file),
             policy_format: PolicyFormat::Human,
             template_linked_file: None,
         },
@@ -998,7 +998,7 @@ fn test_write_check_are_mutually_exclusive() {
         .expect("bin exists")
         .arg("format")
         .arg("-p")
-        .arg(&POLICY_SOURCE)
+        .arg(POLICY_SOURCE)
         .arg("-w")
         .arg("-c")
         .assert()

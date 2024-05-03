@@ -2844,7 +2844,7 @@ mod schema_based_parsing_tests {
             }
         }}
         );
-        let schema = Schema::from_json_value(json.clone()).expect("should be a valid schema");
+        let schema = Schema::from_json_value(json).expect("should be a valid schema");
 
         let entitiesjson = json!(
             [

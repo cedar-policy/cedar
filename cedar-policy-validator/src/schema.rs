@@ -804,7 +804,7 @@ impl<'a> CommonTypeResolver<'a> {
     fn resolve(&self) -> Result<HashMap<Name, Type>> {
         let sorted_names = self
             .topo_sort()
-            .map_err(|name| SchemaError::CycleInCommonTypeReferences(name))?;
+            .map_err(SchemaError::CycleInCommonTypeReferences)?;
 
         let mut resolve_table = HashMap::new();
         let mut tys = HashMap::new();
