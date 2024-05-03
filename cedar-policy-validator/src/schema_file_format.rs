@@ -291,7 +291,7 @@ impl SchemaType {
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = Name>> {
         match self {
             SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
-                .into_iter()
+                .iter()
                 .map(|(_, ty)| ty.ty.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
                     Box::new(it.chain(tys))
