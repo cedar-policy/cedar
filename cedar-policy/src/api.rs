@@ -1896,24 +1896,7 @@ impl PolicySet {
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         let mut entity_uids = HashSet::new();
         for policy in self.policies.values() {
-            let ids: Vec<EntityUid> = policy
-                .ast
-                .condition()
-                .unknowns()
-                .filter_map(
-                    |ast::Unknown {
-                         name,
-                         type_annotation,
-                     }| {
-                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
-                            EntityUid::from_str(name.as_str()).ok()
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect();
-            entity_uids.extend(ids);
+            entity_uids.extend(policy.unknown_entities());
         }
         entity_uids
     }
@@ -2588,6 +2571,28 @@ impl Policy {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get all the unknown entities from the policy
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        self.ast
+            .condition()
+            .unknowns()
+            .filter_map(
+                |ast::Unknown {
+                     name,
+                     type_annotation,
+                 }| {
+                    if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                        EntityUid::from_str(name.as_str()).ok()
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect()
     }
 
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
