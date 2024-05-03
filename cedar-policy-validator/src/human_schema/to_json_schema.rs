@@ -433,7 +433,7 @@ impl<'a> ConversionContext<'a> {
                 loc.clone(),
                 &Some(Name::new(
                     prefix_base.clone(),
-                    prefix_prefix.into_iter().cloned(),
+                    prefix_prefix.iter().cloned(),
                     None,
                 )),
             ),

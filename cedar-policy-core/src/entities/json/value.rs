@@ -778,7 +778,7 @@ impl<C: DeserializationContext> EntityUidJson<C> {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::EntityEscape { __entity };
-                let expr = jvalue.into_expr(ctx.clone())?;
+                let expr = jvalue.into_expr(ctx)?;
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::expected_entity_ref(

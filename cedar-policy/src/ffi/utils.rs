@@ -132,11 +132,11 @@ impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
             source_locations: diag
                 .labels()
                 .map(|labels| labels.map(Into::into).collect())
-                .unwrap_or_else(|| vec![]),
+                .unwrap_or_default(),
             related: diag
                 .related()
-                .map(|errs| errs.map(|e| e.into()).collect())
-                .unwrap_or_else(|| vec![]),
+                .map(|errs| errs.map(std::convert::Into::into).collect())
+                .unwrap_or_default(),
         }
     }
 }
