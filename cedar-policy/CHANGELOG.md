@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Overhauled the FFI interface in the `frontend` module, and renamed it to
-  `ffi`; see #757. (#760, #793, #794, #800, #824, more coming)
+  `ffi`; see #757. (#760, #793, #794, #800, #824, #837, more coming)
 - Much richer error information in the FFI interface (#800)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
