@@ -51,7 +51,7 @@ pub fn euid(input_stream: TokenStream) -> TokenStream {
     let euid: EntityUID = EntityUID::from_components(
         Name::new(basename.clone(), path.into_iter().cloned(), None),
         Eid::new(input.id.value()),
-        None
+        None,
     );
     let euid_str = euid.to_string();
     // PANIC SAFETY: `#euid_str` should parse
