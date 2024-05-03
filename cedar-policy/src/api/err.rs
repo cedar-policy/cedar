@@ -20,6 +20,7 @@ use crate::EntityTypeName;
 use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
+use cedar_policy_core::ast::Name;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::json::ContextJsonDeserializationError;
 use cedar_policy_core::est;
@@ -135,6 +136,9 @@ pub enum SchemaError {
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUid),
+    /// Cycle in the schema's common type declarations.
+    #[error("cycle in common type references containing `{0}`")]
+    CycleInCommonTypeReferences(Name),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
@@ -307,6 +311,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             }
             cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
                 Self::CycleInActionHierarchy(EntityUid::new(e))
+            }
+            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(n) => {
+                Self::CycleInCommonTypeReferences(n)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
