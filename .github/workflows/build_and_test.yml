@@ -75,6 +75,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
 
+  # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: taiki-e/install-action@cargo-hack
+    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+
   wasm-build:
     name: run wasm build script
     runs-on: ubuntu-latest
