@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 
 /// Return type for `CedarTestImplementation` methods
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult<T> {
     /// The request succeeded
     Success(T),
@@ -65,11 +66,13 @@ impl<T> TestResult<T> {
 
 /// Simple wrapper around u128 to remind ourselves that timing info is in microseconds.
 #[derive(Debug, Deserialize)]
+#[serde(transparent)]
 pub struct Micros(pub u128);
 
 /// Version of `Response` used for testing. Includes a
 /// `ffi::Response` and a map with timing information.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestResponse {
     /// Actual response
     pub response: ffi::Response,
@@ -80,6 +83,7 @@ pub struct TestResponse {
 
 /// Version of `ValidationResult` used for testing.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestValidationResult {
     /// Validation errors
     pub errors: Vec<String>,

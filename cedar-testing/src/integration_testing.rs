@@ -43,6 +43,7 @@ use std::{
 /// JSON representation of our integration test file format
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct JsonTest {
     /// Filename of the policies to use (in pure Cedar syntax)
     pub policies: String,
@@ -55,7 +56,6 @@ pub struct JsonTest {
     pub should_validate: bool,
     /// Requests to perform on that data, along with their expected results
     /// Alias for backwards compatibility
-    #[serde(alias = "queries")]
     pub requests: Vec<JsonRequest>,
 }
 
@@ -63,9 +63,10 @@ pub struct JsonTest {
 /// in our integration test file format
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct JsonRequest {
     /// Description for the request
-    pub desc: String,
+    pub description: String,
     /// Principal for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
@@ -92,11 +93,10 @@ pub struct JsonRequest {
     pub context: JsonValueWithNoDuplicateKeys,
     /// Whether to enable request validation for this request
     #[serde(default = "constant_true")]
-    pub enable_request_validation: bool,
+    pub validate_request: bool,
     /// Expected decision for the request
     pub decision: Decision,
     /// Expected policies that led to the decision
-    #[serde(alias = "reasons")]
     pub reason: Vec<PolicyId>,
     /// Expected policies that resulted in errors
     pub errors: Vec<PolicyId>,
@@ -214,7 +214,7 @@ pub fn parse_request_from_test(
         .map(|json| {
             let error_string = format!(
                 "Failed to parse principal for request \"{}\" in {}",
-                json_request.desc, test_name
+                json_request.description, test_name
             );
             parse_entity_uid(json, error_string)
         })
@@ -225,7 +225,7 @@ pub fn parse_request_from_test(
         .map(|json| {
             let error_string = format!(
                 "Failed to parse action for request \"{}\" in {}",
-                json_request.desc, test_name
+                json_request.description, test_name
             );
             parse_entity_uid(json, error_string)
         })
@@ -236,7 +236,7 @@ pub fn parse_request_from_test(
         .map(|json| {
             let error_string = format!(
                 "Failed to parse resource for request \"{}\" in {}",
-                json_request.desc, test_name
+                json_request.description, test_name
             );
             parse_entity_uid(json, error_string)
         })
@@ -245,7 +245,7 @@ pub fn parse_request_from_test(
         .unwrap_or_else(|| {
             panic!(
                 "Unknown action {} for request \"{}\" in {}",
-                action, json_request.desc, test_name
+                action, json_request.description, test_name
             )
         });
     let context =
@@ -254,7 +254,7 @@ pub fn parse_request_from_test(
             .unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse context for request \"{}\" in {}: {e}",
-                    json_request.desc, test_name
+                    json_request.description, test_name
                 )
             });
     Request::new(
@@ -262,7 +262,7 @@ pub fn parse_request_from_test(
         (action, None),
         (resource, None),
         context,
-        if json_request.enable_request_validation {
+        if json_request.validate_request {
             Some(schema)
         } else {
             None
@@ -272,7 +272,7 @@ pub fn parse_request_from_test(
     .unwrap_or_else(|e| {
         panic!(
             "error validating request \"{}\" in {}: {e}",
-            json_request.desc, test_name
+            json_request.description, test_name
         )
     })
 }
@@ -324,7 +324,7 @@ pub fn perform_integration_test(
             response.response.decision(),
             json_request.decision,
             "test {test_name} failed for request \"{}\": unexpected decision",
-            &json_request.desc
+            &json_request.description
         );
         // check reason
         let reason: HashSet<PolicyId> = response
@@ -337,7 +337,7 @@ pub fn perform_integration_test(
             reason,
             json_request.reason.into_iter().collect(),
             "test {test_name} failed for request \"{}\": unexpected reason",
-            &json_request.desc
+            &json_request.description
         );
         // check errors, if applicable
         // for now, the integration tests only support the `PolicyIds` comparison mode
@@ -355,7 +355,7 @@ pub fn perform_integration_test(
                 errors,
                 json_request.errors.into_iter().collect(),
                 "test {test_name} failed for request \"{}\": unexpected errors",
-                &json_request.desc
+                &json_request.description
             );
         }
     }
