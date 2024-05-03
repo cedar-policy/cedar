@@ -22,7 +22,6 @@ use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     Request, SlotId,
 };
-use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
 use miette::{miette, Diagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -154,10 +153,10 @@ pub struct Response {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostics {
-    /// `PolicyId`s of the policies that contributed to the decision.
+    /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
-    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
-    reason: HashSet<PolicyId>,
+    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))] // REVIEW: still needed?
+    reason: HashSet<SmolStr>,
     /// Set of errors that occurred
     errors: HashSet<AuthorizationError>,
 }
@@ -166,7 +165,7 @@ impl Response {
     /// Construct a `Response`
     pub fn new(
         decision: Decision,
-        reason: HashSet<PolicyId>,
+        reason: HashSet<SmolStr>,
         errors: HashSet<AuthorizationError>,
     ) -> Self {
         Self {
@@ -191,7 +190,7 @@ impl From<crate::Response> for Response {
         let (reason, errors) = response.diagnostics.into_components();
         Self::new(
             response.decision,
-            reason.collect(),
+            reason.map(|id| id.to_smolstr()).collect(),
             errors.map(Into::into).collect(),
         )
     }
@@ -208,7 +207,7 @@ impl TryFrom<crate::PartialResponse> for Response {
 
 impl Diagnostics {
     /// Get the policies that contributed to the decision
-    pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn reason(&self) -> impl Iterator<Item = &SmolStr> {
         self.reason.iter()
     }
 
@@ -254,7 +253,7 @@ impl From<crate::AuthorizationError> for AuthorizationError {
     fn from(e: crate::AuthorizationError) -> Self {
         match e {
             crate::AuthorizationError::PolicyEvaluationError { id, error } => {
-                AuthorizationError::new(id.to_smolstr(), error)
+                Self::new(id.to_smolstr(), error)
             }
         }
     }
@@ -276,12 +275,12 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[serde(rename_all = "camelCase")]
 pub struct ResidualResponse {
     decision: Option<Decision>,
-    satisfied: HashSet<PolicyId>,
-    errored: HashSet<PolicyId>,
-    may_be_determining: HashSet<PolicyId>,
-    must_be_determining: HashSet<PolicyId>,
-    residuals: HashMap<PolicyId, serde_json::Value>,
-    nontrivial_residuals: HashSet<PolicyId>,
+    satisfied: HashSet<SmolStr>,
+    errored: HashSet<SmolStr>,
+    may_be_determining: HashSet<SmolStr>,
+    must_be_determining: HashSet<SmolStr>,
+    residuals: HashMap<SmolStr, serde_json::Value>,
+    nontrivial_residuals: HashSet<SmolStr>,
 }
 
 #[cfg(feature = "partial-eval")]
@@ -292,22 +291,22 @@ impl ResidualResponse {
     }
 
     /// Set of all satisfied policy Ids
-    pub fn satisfied(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn satisfied(&self) -> impl Iterator<Item = &SmolStr> {
         self.satisfied.iter()
     }
 
     /// Set of all policy ids for policies that errored
-    pub fn errored(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn errored(&self) -> impl Iterator<Item = &SmolStr> {
         self.errored.iter()
     }
 
     /// Over approximation of policies that determine the auth decision
-    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn may_be_determining(&self) -> impl Iterator<Item = &SmolStr> {
         self.may_be_determining.iter()
     }
 
     /// Under approximation of policies that determine the auth decision
-    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn must_be_determining(&self) -> impl Iterator<Item = &SmolStr> {
         self.must_be_determining.iter()
     }
 
@@ -321,8 +320,8 @@ impl ResidualResponse {
         self.residuals.into_values()
     }
 
-    /// Get the residual policy for a specified [`PolicyId`] if it exists
-    pub fn residual(&self, p: &PolicyId) -> Option<&serde_json::Value> {
+    /// Get the residual policy for a specified id if it exists
+    pub fn residual(&self, p: &SmolStr) -> Option<&serde_json::Value> {
         self.residuals.get(p)
     }
 
@@ -338,7 +337,7 @@ impl ResidualResponse {
     }
 
     ///  Iterator over the set of non-trivial residual policy ids
-    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &PolicyId> {
+    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &SmolStr> {
         self.nontrivial_residuals.iter()
     }
 }
@@ -352,24 +351,27 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
             decision: partial_response.decision(),
             satisfied: partial_response
                 .definitely_satisfied()
-                .map(|p| p.id().clone())
+                .map(|p| p.id().to_smolstr())
                 .collect(),
-            errored: partial_response.definitely_errored().cloned().collect(),
+            errored: partial_response
+                .definitely_errored()
+                .map(ToSmolStr::to_smolstr)
+                .collect(),
             may_be_determining: partial_response
                 .may_be_determining()
-                .map(|p| p.id().clone())
+                .map(|p| p.id().to_smolstr())
                 .collect(),
             must_be_determining: partial_response
                 .must_be_determining()
-                .map(|p| p.id().clone())
+                .map(|p| p.id().to_smolstr())
                 .collect(),
             nontrivial_residuals: partial_response
                 .nontrivial_residuals()
-                .map(|p| p.id().clone())
+                .map(|p| p.id().to_smolstr())
                 .collect(),
             residuals: partial_response
                 .all_residuals()
-                .map(|e| e.to_json().map(|json| (e.id().clone(), json)))
+                .map(|e| e.to_json().map(|json| (e.id().to_smolstr(), json)))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -444,18 +446,18 @@ pub enum PartialAuthorizationAnswer {
 pub struct AuthorizationCall {
     /// The principal taking action
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
-    principal: Option<JsonValueWithNoDuplicateKeys>,
+    principal: Option<serde_json::Value>,
     /// The action the principal is taking
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
-    action: JsonValueWithNoDuplicateKeys,
+    action: serde_json::Value,
     /// The resource being acted on by the principal
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
-    resource: Option<JsonValueWithNoDuplicateKeys>,
+    resource: Option<serde_json::Value>,
     /// The context details specific to the request
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     /// The context details specific to the request
-    context: HashMap<String, JsonValueWithNoDuplicateKeys>,
+    context: HashMap<String, serde_json::Value>,
     /// Optional schema.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
@@ -479,11 +481,11 @@ fn constant_true() -> bool {
 /// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
 /// appropriate error to `errs` and returns `None`.
 fn parse_entity_uid(
-    entity_uid_json: JsonValueWithNoDuplicateKeys,
+    entity_uid_json: serde_json::Value,
     category: &str,
     errs: &mut Vec<miette::Report>,
 ) -> Option<EntityUid> {
-    match EntityUid::from_json(entity_uid_json.into())
+    match EntityUid::from_json(entity_uid_json)
         .wrap_err_with(|| format!("Failed to parse {category}"))
     {
         Ok(euid) => Some(euid),
@@ -497,7 +499,7 @@ fn parse_entity_uid(
 /// Parses the given JSON context into a [`Context`], or if it fails, adds
 /// appropriate error(s) to `errs` and returns an empty context.
 fn parse_context(
-    context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
+    context_map: HashMap<String, serde_json::Value>,
     schema_ref: Option<&crate::Schema>,
     action_ref: Option<&EntityUid>,
     errs: &mut Vec<miette::Report>,
@@ -749,7 +751,7 @@ struct RecvdSlice {
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
     #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
-    entities: JsonValueWithNoDuplicateKeys,
+    entities: serde_json::Value,
 
     /// Optional template policies.
     #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
@@ -816,7 +818,7 @@ impl RecvdSlice {
                 crate::PolicySet::new()
             }
         };
-        let entities = match Entities::from_json_value(entities.into(), schema) {
+        let entities = match Entities::from_json_value(entities, schema) {
             Ok(entities) => entities,
             Err(e) => {
                 errs.push(miette::Report::new(e));
@@ -1906,12 +1908,12 @@ mod partial_test {
             assert_eq!(response.decision(), None);
             let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
-            let actual_residuals: HashSet<_> = response.nontrivial_residual_ids().collect();
+            let actual_residuals: HashSet<&str> = response.nontrivial_residual_ids().map(|id| id.as_str()).collect();
             for id in &expected_residuals {
-                assert!(actual_residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected nontrivial residual for {id}, but it's missing")
+                assert!(actual_residuals.contains(id), "expected nontrivial residual for {id}, but it's missing")
             }
             for id in &actual_residuals {
-                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}")
+                assert!(expected_residuals.contains(id),"found unexpected nontrivial residual for {id}")
             }
         });
     }

@@ -373,7 +373,11 @@ pub fn perform_integration_test_from_json_custom(
                 &json_request.desc
             );
             // check reasons
-            let reasons: HashSet<PolicyId> = response.diagnostics().reason().cloned().collect();
+            let reasons: HashSet<PolicyId> = response
+                .diagnostics()
+                .reason()
+                .map(|s| PolicyId::from_str(s).unwrap())
+                .collect();
             assert_eq!(
                 reasons,
                 json_request.reason.into_iter().collect(),

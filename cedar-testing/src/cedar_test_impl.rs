@@ -202,7 +202,11 @@ impl CedarTestImplementation for RustEngine {
         let response = cedar_policy::Response::from(response);
         let response = ffi::Response::new(
             response.decision(),
-            response.diagnostics().reason().cloned().collect(),
+            response
+                .diagnostics()
+                .reason()
+                .map(|id| id.to_smolstr())
+                .collect(),
             response
                 .diagnostics()
                 .errors()

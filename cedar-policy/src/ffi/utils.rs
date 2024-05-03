@@ -16,7 +16,6 @@
 
 //! Utility functions and types for JSON interface
 use crate::{Policy, SchemaWarning, Template};
-use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
@@ -131,12 +130,10 @@ impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
             severity: diag.severity().map(Into::into),
             source_locations: diag
                 .labels()
-                .map(|labels| labels.map(Into::into).collect())
-                .unwrap_or_else(|| vec![]),
+                .map_or_else(Vec::new, |labels| labels.map(Into::into).collect()),
             related: diag
                 .related()
-                .map(|errs| errs.map(|e| e.into()).collect())
-                .unwrap_or_else(|| vec![]),
+                .map_or_else(Vec::new, |errs| errs.map(Into::into).collect()),
         }
     }
 }
@@ -237,11 +234,9 @@ impl PolicySet {
 #[serde(rename_all = "camelCase")]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
-    #[serde(rename = "human")]
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    #[serde(rename = "json")]
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(serde_json::Value),
 }
 
 impl Schema {
@@ -257,7 +252,7 @@ impl Schema {
                     )
                 })
                 .map_err(miette::Report::new),
-            Self::Json(val) => crate::Schema::from_json_value(val.into())
+            Self::Json(val) => crate::Schema::from_json_value(val)
                 .map(|sch| {
                     (
                         sch,
