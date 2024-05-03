@@ -289,6 +289,7 @@ pub enum TypeErrorKind {
     #[error("empty set literals are forbidden in policies")]
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
+    #[diagnostic(help("consider applying extension constructors to attributes when constructing entity or context data"))]
     NonLitExtConstructor,
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
