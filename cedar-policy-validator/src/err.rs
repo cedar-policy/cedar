@@ -90,6 +90,9 @@ pub enum SchemaError {
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUID),
+    /// Cycle in the schema's common type declarations.
+    #[error("cycle in common type references containing `{0}`")]
+    CycleInCommonTypeReferences(Name),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no

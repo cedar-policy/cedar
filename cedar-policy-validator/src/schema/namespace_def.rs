@@ -84,10 +84,11 @@ pub struct ValidatorNamespaceDef {
 }
 
 /// Holds a map from `Name`s of common type definitions to their corresponding
-/// `Type`.
+/// `SchemaType`. Note that the schema type should have all common type
+/// references fully qualified.
 #[derive(Debug)]
 pub struct TypeDefs {
-    pub(super) type_defs: HashMap<Name, Type>,
+    pub(super) type_defs: HashMap<Name, SchemaType>,
 }
 
 /// Entity type declarations held in a `ValidatorNamespaceDef`. Entity type
@@ -266,9 +267,11 @@ impl ValidatorNamespaceDef {
                 }
                 let name =
                     Name::from(name).prefix_namespace_if_unqualified(schema_namespace.cloned());
-                let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
-                    .resolve_type_defs(&HashMap::new())?;
-                Ok((name, ty))
+                Ok((
+                    name,
+                    schema_ty
+                        .prefix_common_type_references_with_namespace(schema_namespace.cloned()),
+                ))
             })
             .collect::<Result<HashMap<_, _>>>()?;
         Ok(TypeDefs { type_defs })
