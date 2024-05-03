@@ -375,7 +375,7 @@ pub struct LinkArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// Id of the template to instantiate
+    /// Id of the template to link
     #[arg(long)]
     pub template_id: String,
     /// Id for the new template linked policy

@@ -230,7 +230,7 @@ impl<T> Expr<T> {
 
     /// Check whether this expression is an entity reference
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference.
     pub fn is_ref(&self) -> bool {
         match &self.expr_kind {
@@ -246,7 +246,7 @@ impl<T> Expr<T> {
 
     /// Check whether this expression is a set of entity references
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference set.
     pub fn is_ref_set(&self) -> bool {
         match &self.expr_kind {

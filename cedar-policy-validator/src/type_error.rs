@@ -19,7 +19,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{join_with_conjunction, Loc};
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
@@ -127,12 +127,19 @@ impl TypeError {
 
     /// Construct a type error for when a least upper bound cannot be found for
     /// a collection of types.
-    pub(crate) fn incompatible_types(on_expr: Expr, types: impl IntoIterator<Item = Type>) -> Self {
+    pub(crate) fn incompatible_types(
+        on_expr: Expr,
+        types: impl IntoIterator<Item = Type>,
+        hint: LubHelp,
+        context: LubContext,
+    ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
             kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
+                hint,
+                context,
             }),
         }
     }
@@ -241,7 +248,8 @@ pub enum TypeErrorKind {
     #[diagnostic(transparent)]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
-    #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
@@ -281,6 +289,7 @@ pub enum TypeErrorKind {
     #[error("empty set literals are forbidden in policies")]
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
+    #[diagnostic(help("consider applying extension constructors to literal values when constructing entity or context data"))]
     NonLitExtConstructor,
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
@@ -331,9 +340,48 @@ pub(crate) enum UnexpectedTypeHelp {
 }
 
 /// Structure containing details about an incompatible type error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
+#[diagnostic(help("{context} must have compatible types. {hint}"))]
 pub struct IncompatibleTypes {
     pub(crate) types: BTreeSet<Type>,
+    pub(crate) hint: LubHelp,
+    pub(crate) context: LubContext,
+}
+
+impl Display for IncompatibleTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the types ")?;
+        join_with_conjunction(f, "and", self.types.iter(), |f, t| write!(f, "{t}"))?;
+        write!(f, " are not compatible")
+    }
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubHelp {
+    #[error("Corresponding attributes of compatible record types must have the same optionality, either both being required or both being optional")]
+    AttributeQualifier,
+    #[error("Compatible record types must have exactly the same attributes")]
+    RecordWidth,
+    #[error("Different entity types are never compatible even when their attributes would be compatible")]
+    EntityType,
+    #[error("Entity and record types are never compatible even when their attributes would be compatible")]
+    EntityRecord,
+    #[error("Types must be exactly equal to be compatible")]
+    None,
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum LubContext {
+    #[error("elements of a set")]
+    Set,
+    #[error("both branches of a conditional")]
+    Conditional,
+    #[error("both operands to a `==` expression")]
+    Equality,
+    #[error("elements of the first operand and the second operand to a `contains` expression")]
+    Contains,
+    #[error("elements of both set operands to a `containsAll` or `containsAny` expression")]
+    ContainsAnyAll,
 }
 
 /// Structure containing details about a missing attribute error.

@@ -184,7 +184,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(help(
         "a policy must have exactly `principal`, `action`, and `resource` constraints"
     ))]
-    ExtraHeadConstraints(cst::VariableDef),
+    ExtraScopeConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: `{0}`")]
     ReservedIdentifier(cst::Ident),

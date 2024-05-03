@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+#![cfg_attr(feature = "wasm", allow(non_snake_case))]
+
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
-pub use utils::{PolicySet, Schema};
+pub use utils::{DetailedError, PolicySet, Schema, Severity, SourceLabel, SourceLocation};
 mod validate;
 pub use validate::*;

@@ -453,7 +453,7 @@ impl std::fmt::Display for Slot {
 
 /// Format an iterator as a natural-language string, separating items with
 /// commas and a conjunction (e.g., "and", "or") between the last two items.
-pub(crate) fn join_with_conjunction<T, W: Write>(
+pub fn join_with_conjunction<T, W: Write>(
     f: &mut W,
     conjunction: &str,
     items: impl IntoIterator<Item = T>,
@@ -495,7 +495,7 @@ mod test {
 
     #[test]
     fn idempotent1() {
-        // Note: the context field in the head is no longer supported and
+        // Note: the context field in the scope is no longer supported and
         // will produce an error during CST -> AST conversion. But it is
         // still correctly parsed & displayed by the CST code.
         let cstnode1 = text_to_cst::parse_policies(

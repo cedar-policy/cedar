@@ -38,7 +38,8 @@ use crate::{
     type_error::TypeError,
     typecheck::{test_utils::static_to_template, PolicyCheck},
     types::{EntityLUB, Type},
-    AttributeAccess, NamespaceDefinition, ValidationMode, ValidationWarningKind,
+    AttributeAccess, LubContext, LubHelp, NamespaceDefinition, ValidationMode,
+    ValidationWarningKind,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -396,7 +397,7 @@ fn policy_lub_entity_type_attr() {
 }
 
 #[test]
-fn policy_impossible_head() {
+fn policy_impossible_scope() {
     let p = parse_policy(
         Some("0".to_string()),
         r#"permit(principal == Group::"foo", action == Action::"delete_group", resource);"#,
@@ -716,7 +717,9 @@ fn entity_record_lub_is_none() {
                 [
                     Type::closed_record_with_required_attributes([("name".into(), Type::primitive_string())]),
                     Type::named_entity_reference_from_str("User"),
-                ]
+                ],
+                LubHelp::EntityRecord,
+                LubContext::Conditional,
             )
         ],
     );
@@ -937,6 +940,8 @@ fn record_entity_lub_non_term() {
                 )]),
                 Type::named_entity_reference_from_str("U"),
             ],
+            LubHelp::EntityRecord,
+            LubContext::Conditional,
         )],
     );
 }

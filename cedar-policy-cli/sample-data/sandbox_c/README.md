@@ -27,7 +27,8 @@ cargo run authorize \
 
 We should get `DENY`, as there is no policy that allows this.
 
-## Instantiating a template
+## Linking a template
+
 Our policy store contains a Policy Template that we can use to grant `alice` access:
 ```
 @id("AccessVacation")

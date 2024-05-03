@@ -17,9 +17,10 @@
 //! This module contains the validator entry points that other language FFIs can
 //! call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{PolicySet, Schema, WithWarnings};
+use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
+use smol_str::{SmolStr, ToSmolStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -35,39 +36,34 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
             warnings,
         } => {
             let validator = Validator::new(schema);
-            let validation_result = validator.validate(&policies, ValidationMode::default());
-            let validation_errors: Vec<ValidationError> = validation_result
-                .validation_errors()
+            let (validation_errors, validation_warnings) = validator
+                .validate(&policies, ValidationMode::default())
+                .into_errors_and_warnings();
+            let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_string(),
-                    source_location: error
-                        .location()
-                        .range_start_and_end()
-                        .map(|(start, end)| SourceLocation { start, end }),
-                    error: format!("{}", error.error_kind()),
+                    policy_id: error.location().policy_id().to_smolstr(),
+                    error: miette::Report::new(error).into(),
                 })
                 .collect();
-            let validation_warnings: Vec<ValidationWarning> = validation_result
-                .validation_warnings()
-                .map(|error| ValidationWarning {
-                    policy_id: error.location().policy_id().to_string(),
-                    source_location: error
-                        .location()
-                        .range_start_and_end()
-                        .map(|(start, end)| SourceLocation { start, end }),
-                    warning: format!("{}", error.warning_kind()),
+            let validation_warnings: Vec<ValidationError> = validation_warnings
+                .map(|error| ValidationError {
+                    policy_id: error.location().policy_id().to_smolstr(),
+                    error: miette::Report::new(error).into(),
                 })
                 .collect();
             ValidationAnswer::Success {
                 validation_errors,
                 validation_warnings,
-                other_warnings: warnings,
+                other_warnings: warnings.into_iter().map(Into::into).collect(),
             }
         }
         WithWarnings {
             t: Err(errors),
             warnings,
-        } => ValidationAnswer::Failure { errors, warnings },
+        } => ValidationAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
     }
 }
 
@@ -91,34 +87,41 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationCall {
+    /// Validation settings
     #[serde(default)]
-    #[serde(rename = "validationSettings")]
-    validation_settings: ValidationSettings,
+    pub validation_settings: ValidationSettings,
+    /// Schema to use for validation
     #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
-    schema: Schema,
-    #[serde(rename = "policySet")]
-    policy_set: PolicySet,
+    pub schema: Schema,
+    /// Policies to validate
+    pub policy_set: PolicySet,
 }
 
 impl ValidationCall {
     fn get_components(
         self,
-    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<String>>> {
+    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<miette::Report>>> {
+        let mut errs = vec![];
         let policies = match self.policy_set.parse(None) {
             Ok(policies) => policies,
-            Err(errs) => {
-                return WithWarnings {
-                    t: Err(errs),
-                    warnings: vec![],
-                }
+            Err(e) => {
+                errs.extend(e);
+                crate::PolicySet::new()
             }
         };
-        match Schema::parse(self.schema).map_err(|e| vec![e]) {
-            Ok((schema, warnings)) => WithWarnings {
+        let pair = match self.schema.parse() {
+            Ok((schema, warnings)) => Some((schema, warnings)),
+            Err(e) => {
+                errs.push(e);
+                None
+            }
+        };
+        match (errs.is_empty(), pair) {
+            (true, Some((schema, warnings))) => WithWarnings {
                 t: Ok((policies, schema)),
-                warnings: warnings.map(|w| w.to_string()).collect(),
+                warnings: warnings.map(miette::Report::new).collect(),
             },
-            Err(errs) => WithWarnings {
+            _ => WithWarnings {
                 t: Err(errs),
                 warnings: vec![],
             },
@@ -143,11 +146,9 @@ pub struct ValidationSettings {
 #[serde(rename_all = "camelCase")]
 pub enum ValidationEnabled {
     /// Setting for which policies will be validated against the schema
-    #[serde(rename = "on")]
     #[serde(alias = "regular")]
     On,
     /// Setting for which no validation will be done
-    #[serde(rename = "off")]
     Off,
 }
 
@@ -157,60 +158,45 @@ impl Default for ValidationEnabled {
     }
 }
 
-/// A range of source code denoted by an offset and length.
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct SourceLocation {
-    start: usize,
-    end: usize,
-}
-
-/// Error for a specified policy after validation
-#[derive(Debug, Serialize, Deserialize)]
+/// Error (or warning) for a specified policy after validation
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationError {
-    policy_id: String,
-    /// Represents a location in Cedar policy source.
-    source_location: Option<SourceLocation>,
-    error: String,
-}
-
-/// Warning for a specified policy after validation
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-pub struct ValidationWarning {
-    policy_id: String,
-    /// Represents a location in Cedar policy source.
-    source_location: Option<SourceLocation>,
-    warning: String,
+    /// Id of the policy where the error (or warning) occurred
+    pub policy_id: SmolStr,
+    /// Error (or warning) itself.
+    /// You can look at the `severity` field to see whether it is actually an
+    /// error or a warning.
+    pub error: DetailedError,
 }
 
 /// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
+    #[serde(rename_all = "camelCase")]
     Failure {
         /// Parsing errors
-        errors: Vec<String>,
+        errors: Vec<DetailedError>,
         /// Warnings encountered
-        warnings: Vec<String>,
+        warnings: Vec<DetailedError>,
     },
     /// Represents a successful validation call
+    #[serde(rename_all = "camelCase")]
     Success {
         /// Errors from any issues found during validation
         validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
-        validation_warnings: Vec<ValidationWarning>,
+        validation_warnings: Vec<ValidationError>,
         /// Other warnings, not associated with specific policies.
         /// For instance, warnings about your schema itself.
-        other_warnings: Vec<String>,
+        other_warnings: Vec<DetailedError>,
     },
 }
 
@@ -238,6 +224,8 @@ mod test {
     #[track_caller]
     fn assert_validates_with_errors(json: serde_json::Value, expected_num_errors: usize) {
         let ans_val = validate_json(json).unwrap();
+        assert_matches!(ans_val.get("validationErrors"), Some(_)); // should be present, with this camelCased name
+        assert_matches!(ans_val.get("validationWarnings"), Some(_)); // should be present, with this camelCased name
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
             assert_eq!(validation_errors.len(), expected_num_errors, "actual validation errors were: {validation_errors:?}");
@@ -245,7 +233,8 @@ mod test {
     }
 
     /// Assert that [`validate_json()`] returns `ValidationAnswer::Failure`
-    /// where some error contains the expected error string `err`
+    /// where some error contains the expected error string `err` (in its main
+    /// error message)
     #[track_caller]
     fn assert_is_failure(json: serde_json::Value, err: &str) {
         let ans_val =
@@ -253,7 +242,7 @@ mod test {
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => {
             assert!(
-                errors.iter().any(|e| e.contains(err)),
+                errors.iter().any(|e| e.message.contains(err)),
                 "Expected to see error(s) containing `{err}`, but saw {errors:?}",
             );
         });
@@ -350,7 +339,10 @@ mod test {
             }
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policy with id `policy0`: unexpected end of input",
+        );
     }
 
     #[test]
@@ -446,7 +438,10 @@ mod test {
             "policySet": "azfghbjknnhbud"
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policies from string: unexpected end of input",
+        );
     }
 
     #[test]
@@ -486,7 +481,10 @@ mod test {
             "policySet": "permit(principal, action, resource);forbid"
         });
 
-        assert_is_failure(json, "unexpected end of input");
+        assert_is_failure(
+            json,
+            "failed to parse policies from string: unexpected end of input",
+        );
     }
 
     #[test]
