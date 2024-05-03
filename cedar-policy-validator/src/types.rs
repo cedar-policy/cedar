@@ -30,7 +30,7 @@ use cedar_policy_core::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
         RestrictedExpr, Value,
     },
-    entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
+    entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
 };
 

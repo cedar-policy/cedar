@@ -25,6 +25,8 @@ use cedar_policy_core::ast;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{self};
 use cedar_policy_core::parser::err::ParseErrors;
+use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+use miette::Report;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
@@ -164,11 +166,18 @@ permit(principal ==  A :: B
 
     #[test]
     fn malformed_entity_type_name_should_fail() {
-        let result = EntityTypeName::from_str("I'm an invalid name");
+        let src = "I'm an invalid name";
+        let result = EntityTypeName::from_str(src);
 
         assert_matches!(result, Err(ParseErrors(_)));
         let error = result.err().unwrap();
-        assert!(error.to_string().contains("invalid token"));
+        expect_err(
+            src,
+            &Report::new(error),
+            &ExpectedErrorMessageBuilder::error("invalid token")
+                .exactly_one_underline("")
+                .build(),
+        );
     }
 
     /// parsing an `EntityUid` from string
@@ -1496,6 +1505,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use entities::err::EntitiesError;
     use serde_json::json;
 
     fn schema() -> Schema {
@@ -1542,7 +1552,7 @@ mod entity_validate_tests {
         .expect("should be a valid schema")
     }
 
-    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), entities::EntitiesError> {
+    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), EntitiesError> {
         let _ = Entities::from_entities([entity], Some(schema))?;
         Ok(())
     }
@@ -1666,10 +1676,7 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#),
-                    "actual error message was {e}",
-                );
+                expect_err("", &Report::new(e), &ExpectedErrorMessageBuilder::error(r#"entity does not conform to the schema: `Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#).build());
             }
         }
 
@@ -1818,6 +1825,9 @@ mod entity_validate_tests {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use entities::conformance::err::EntitySchemaConformanceError;
+    use entities::err::EntitiesError;
+
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -2028,7 +2038,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
             err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was {err}"
+            "actual error message was: `{err}`"
         );
 
         // another simple type mismatch with expected type
@@ -2773,10 +2783,18 @@ mod schema_based_parsing_tests {
                 "parents": []
             }
         ]);
-        let r = Entities::from_json_value(json, None).err().unwrap();
-        let expected_euid: cedar_policy_core::ast::EntityUID = r#"User::"alice""#.parse().unwrap();
+        let r = Entities::from_json_value(json.clone(), None).err().unwrap();
         match r {
-            EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
+            EntitiesError::Duplicate(euid) => {
+                expect_err(
+                    &json,
+                    &Report::new(euid),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"duplicate entity entry `User::"alice"`"#,
+                    )
+                    .build(),
+                );
+            }
             e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
         }
     }
@@ -2784,7 +2802,7 @@ mod schema_based_parsing_tests {
     /// Test that schema-based parsing accepts unknowns in any position where any type is expected
     #[test]
     fn issue_418() {
-        let schema = Schema::from_json_value(json!(
+        let json = json!(
         {"": {
             "entityTypes": {
                 "Employee": {
@@ -2825,8 +2843,8 @@ mod schema_based_parsing_tests {
                 "view": { }
             }
         }}
-        ))
-        .expect("should be a valid schema");
+        );
+        let schema = Schema::from_json_value(json.clone()).expect("should be a valid schema");
 
         let entitiesjson = json!(
             [
@@ -3013,7 +3031,7 @@ mod schema_based_parsing_tests {
         assert!(matches!(
             Entities::from_json_value(entitiesjson_bad, Some(&schema)),
             Err(EntitiesError::InvalidEntity(
-                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+                EntitySchemaConformanceError::ActionDeclarationMismatch(_)
             ))
         ));
 
@@ -3027,7 +3045,7 @@ mod schema_based_parsing_tests {
         assert!(matches!(
             parser_assume_computed.from_json_value(entitiesjson_no_tc.clone()),
             Err(EntitiesError::InvalidEntity(
-                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+                EntitySchemaConformanceError::ActionDeclarationMismatch(_)
             ))
         ));
 

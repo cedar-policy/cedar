@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- significantly reworked `EntitiesError` to bring into conformance
 - for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Overhauled the FFI interface in the `frontend` module, and renamed it to

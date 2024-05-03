@@ -124,11 +124,11 @@ where
             if let Some(parent) = entities.get(parent_uid) {
                 for grandparent in parent.out_edges() {
                     if !entity.has_edge_to(grandparent) {
-                        return Err(TcError::MissingTcEdge {
-                            child: entity.get_key(),
-                            parent: parent_uid.clone(),
-                            grandparent: grandparent.clone(),
-                        });
+                        return Err(TcError::missing_tc_edge(
+                            entity.get_key(),
+                            parent_uid.clone(),
+                            grandparent.clone(),
+                        ));
                     }
                 }
             }
@@ -174,9 +174,7 @@ where
     for entity in entities.values() {
         let key = entity.get_key();
         if entity.out_edges().contains(&key) {
-            return Err(TcError::HasCycle {
-                vertex_with_loop: key,
-            });
+            return Err(TcError::has_cycle(key));
         }
     }
     Ok(())
@@ -574,8 +572,8 @@ mod tests {
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
-                assert!(vertex_with_loop == EntityUID::with_eid("B"));
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
@@ -591,8 +589,8 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
-                assert!(vertex_with_loop == EntityUID::with_eid("B"));
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
@@ -625,11 +623,11 @@ mod tests {
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("A")
-                        || vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -648,11 +646,11 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("A")
-                        || vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -701,14 +699,14 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 // two possible cycles
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
-                        || vertex_with_loop == EntityUID::with_eid("D")
-                        || vertex_with_loop == EntityUID::with_eid("E")
-                        || vertex_with_loop == EntityUID::with_eid("H")
+                    err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("D")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("E")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("H")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -757,9 +755,7 @@ mod tests {
         // but still fail cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle {
-                vertex_with_loop: _,
-            }) => (), // Every vertex is in a cycle
+            Err(TcError::HasCycle(_)) => (), // Every vertex is in a cycle
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
     }

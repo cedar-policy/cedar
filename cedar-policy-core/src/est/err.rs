@@ -15,7 +15,7 @@
  */
 
 use crate::ast;
-use crate::entities::JsonDeserializationError;
+use crate::entities::json::err::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
 use miette::Diagnostic;
