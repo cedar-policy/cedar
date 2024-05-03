@@ -1,6 +1,7 @@
 [package]
 name = "cedar-policy-cli"
 edition = "2021"
+rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 
 version = "3.1.3"
 license = "Apache-2.0"
@@ -31,7 +32,7 @@ glob = "0.3.1"
 predicates = "3.1.0"
 
 # We override the name of the binary for src/main.rs, which otherwise would be
-# cedar-cli (matching the crate name).
+# cedar-policy-cli (matching the crate name).
 [[bin]]
 name = "cedar"
 path = "src/main.rs"
