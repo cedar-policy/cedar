@@ -286,6 +286,58 @@ pub enum SchemaType {
     },
 }
 
+impl SchemaType {
+    /// Return an iterator of common type references ocurred in the type
+    pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = Name>> {
+        match self {
+            SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
+                .into_iter()
+                .map(|(_, ty)| ty.ty.common_type_references())
+                .fold(Box::new(std::iter::empty()), |it, tys| {
+                    Box::new(it.chain(tys))
+                }),
+            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
+                element.common_type_references()
+            }
+            SchemaType::TypeDef { type_name } => Box::new(std::iter::once(type_name.clone())),
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+
+    /// Prefix unqualified common type references with the namespace they are in
+    pub(crate) fn prefix_common_type_references_with_namespace(
+        self,
+        ns: Option<Name>,
+    ) -> SchemaType {
+        match self {
+            Self::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => Self::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(attributes.into_iter().map(
+                    |(attr, TypeOfAttribute { ty, required })| {
+                        (
+                            attr,
+                            TypeOfAttribute {
+                                ty: ty.prefix_common_type_references_with_namespace(ns.clone()),
+                                required,
+                            },
+                        )
+                    },
+                )),
+                additional_attributes,
+            }),
+            Self::Type(SchemaTypeVariant::Set { element }) => Self::Type(SchemaTypeVariant::Set {
+                element: Box::new(element.prefix_common_type_references_with_namespace(ns)),
+            }),
+            Self::TypeDef { type_name } => Self::TypeDef {
+                type_name: type_name.prefix_namespace_if_unqualified(ns),
+            },
+            _ => self,
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for SchemaType {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where

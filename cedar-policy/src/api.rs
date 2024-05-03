@@ -1637,6 +1637,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
                 Self::CycleInActionHierarchy(EntityUid(e))
             }
+            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(_) => {
+                Self::Serde(serde::de::Error::custom(value))
+            }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
             }
