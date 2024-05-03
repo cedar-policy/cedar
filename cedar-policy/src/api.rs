@@ -112,41 +112,6 @@ pub mod entities {
 
 use entities::json::err::JsonDeserializationError;
 
-/// Identifier for a Template slot
-#[repr(transparent)]
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
-pub struct SlotId(ast::SlotId);
-
-impl SlotId {
-    /// Get the slot for `principal`
-    pub fn principal() -> Self {
-        Self(ast::SlotId::principal())
-    }
-
-    /// Get the slot for `resource`
-    pub fn resource() -> Self {
-        Self(ast::SlotId::resource())
-    }
-}
-
-impl std::fmt::Display for SlotId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<ast::SlotId> for SlotId {
-    fn from(a: ast::SlotId) -> Self {
-        Self(a)
-    }
-}
-
-impl From<SlotId> for ast::SlotId {
-    fn from(s: SlotId) -> Self {
-        s.0
-    }
-}
-
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
