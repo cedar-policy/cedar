@@ -24,25 +24,100 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::human_schema::parser::HumanSyntaxParseErrors;
+use crate::human_schema;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum HumanSchemaError {
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
     Core(#[from] SchemaError),
-    #[error("{0}")]
+    #[error(transparent)]
     IO(#[from] std::io::Error),
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    Parsing(#[from] HumanSyntaxParseErrors),
+    Parsing(#[from] HumanSyntaxParseError),
+}
+
+/// Error parsing a human-syntax schema
+#[derive(Debug, Error)]
+#[error("error parsing schema: {errs}")]
+pub struct HumanSyntaxParseError {
+    /// Underlying parse error(s)
+    errs: human_schema::parser::HumanSyntaxParseErrors,
+    /// Did the schema look like it was intended to be JSON format instead of
+    /// human?
+    suspect_json_format: bool,
+}
+
+impl Diagnostic for HumanSyntaxParseError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        let suspect_json_help = if self.suspect_json_format {
+            Some(Box::new("this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"))
+        } else {
+            None
+        };
+        match (suspect_json_help, self.errs.help()) {
+            (Some(json), Some(inner)) => Some(Box::new(format!("{inner}\n{json}"))),
+            (Some(h), None) => Some(h),
+            (None, Some(h)) => Some(h),
+            (None, None) => None,
+        }
+    }
+
+    // Everything else is forwarded to `errs`
+
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.errs.code()
+    }
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.errs.labels()
+    }
+    fn severity(&self) -> Option<miette::Severity> {
+        self.errs.severity()
+    }
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.errs.url()
+    }
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.errs.source_code()
+    }
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.errs.diagnostic_source()
+    }
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.errs.related()
+    }
+}
+
+impl HumanSyntaxParseError {
+    /// `errs`: the `human_schema::parser::HumanSyntaxParseErrors` that were thrown
+    ///
+    /// `src`: the human-syntax text that we were trying to parse
+    pub(crate) fn new(errs: human_schema::parser::HumanSyntaxParseErrors, src: &str) -> Self {
+        // let's see what the first non-whitespace character is
+        let suspect_json_format = match src.trim_start().chars().next() {
+            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+            Some('{') => true, // yes, this looks like it was intended to be a JSON schema
+            Some(_) => true, // any character other than '{', not likely it was intended to be a JSON schema
+        };
+        Self {
+            errs,
+            suspect_json_format,
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
+        &self.errs
+    }
 }
 
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
-    /// Error thrown by the `serde_json` crate during deserialization
-    #[error("failed to parse schema: {0}")]
-    Serde(#[from] serde_json::Error),
+    /// This error is thrown when `serde_json` fails to deserialize the JSON
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] JsonDeserializationError),
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
     #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
@@ -171,4 +246,51 @@ pub enum UnsupportedFeature {
     // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
     #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
     ActionAttributes(Vec<String>),
+}
+
+/// This error is thrown when `serde_json` fails to deserialize the JSON
+#[derive(Debug, Error)]
+#[error("failed to parse schema in JSON format: {err}")]
+pub struct JsonDeserializationError {
+    /// Error thrown by the `serde_json` crate
+    err: serde_json::Error,
+    /// Did the schema look like it was intended to be human format instead of
+    /// JSON?
+    suspect_human_format: bool,
+}
+
+impl Diagnostic for JsonDeserializationError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        if self.suspect_human_format {
+            Some(Box::new("this API was expecting a schema in the JSON format; did you mean to use `from_natural_str()` or similar, which expects the Cedar schema format?"))
+        } else {
+            None
+        }
+    }
+}
+
+impl JsonDeserializationError {
+    /// `err`: the `serde_json::Error` that was thrown
+    ///
+    /// `src`: the JSON that we were trying to deserialize (if available in string form)
+    pub(crate) fn new(err: serde_json::Error, src: Option<&str>) -> Self {
+        match src {
+            None => Self {
+                err,
+                suspect_human_format: false,
+            },
+            Some(src) => {
+                // let's see what the first non-whitespace character is
+                let suspect_human_format = match src.trim_start().chars().next() {
+                    None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+                    Some('{') => false, // yes, this looks like it was intended to be a JSON schema
+                    Some(_) => true, // any character other than '{', we suspect it might be a human-format schema
+                };
+                Self {
+                    err,
+                    suspect_human_format,
+                }
+            }
+        }
+    }
 }

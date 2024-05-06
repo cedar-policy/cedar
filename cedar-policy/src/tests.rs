@@ -1476,7 +1476,7 @@ mod schema_tests {
                 }
             }}"#
             )),
-            Err(SchemaError::Serde(_))
+            Err(SchemaError::JsonDeserialization(_))
         );
     }
 }
@@ -2451,7 +2451,10 @@ mod schema_based_parsing_tests {
     #[test]
     fn schema_sanity_check() {
         let src = "{ , .. }";
-        assert_matches!(Schema::from_str(src), Err(super::SchemaError::Serde(_)));
+        assert_matches!(
+            Schema::from_str(src),
+            Err(super::SchemaError::JsonDeserialization(_))
+        );
     }
 
     #[test]
