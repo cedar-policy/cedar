@@ -98,7 +98,7 @@ impl HumanSyntaxParseError {
         let suspect_json_format = match src.trim_start().chars().next() {
             None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
             Some('{') => true, // yes, this looks like it was intended to be a JSON schema
-            Some(_) => true, // any character other than '{', not likely it was intended to be a JSON schema
+            Some(_) => false, // any character other than '{', not likely it was intended to be a JSON schema
         };
         Self {
             errs,
@@ -106,7 +106,7 @@ impl HumanSyntaxParseError {
         }
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub(crate) fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
         &self.errs
     }
@@ -262,7 +262,7 @@ pub struct JsonDeserializationError {
 impl Diagnostic for JsonDeserializationError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         if self.suspect_human_format {
-            Some(Box::new("this API was expecting a schema in the JSON format; did you mean to use `from_natural_str()` or similar, which expects the Cedar schema format?"))
+            Some(Box::new("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"))
         } else {
             None
         }
