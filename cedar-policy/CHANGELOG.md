@@ -6,49 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-### Added
 
-- `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, and `RestrictedExpression::new_decimal` (#661, resolving #659)
-- `wasm` Cargo feature for targeting Wasm
-- `Entity::into_inner` (resolving #636)
-- `Entities::into_iter` (resolving #680)
-- Adds an JSON representation for Policy Sets (#783, resolving #549),
-    along with methods like `::from_json_value/file/str` and `::to_json`
-    for `PolicySet`.
-- `Policy::unknown_entities`
+## [3.1.3] - 2024-04-15
 
 ### Changed
 
-- significantly reworked `EntitiesError` to bring into conformance
-- for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
-- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Overhauled the FFI interface in the `frontend` module, and renamed it to
-  `ffi`; see #757. (#760, #793, #794, #800, #824, more coming)
-- Much richer error information in the FFI interface (#800)
-- Deprecated the integration testing harness code. It will be removed from the
-  `cedar-policy` crate in the next major version.
-- Removed unnecessary lifetimes from some validation related structs (#715)
-- Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
-  `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
-  typing precision will not result in breaking changes. (resolving #539)
-- Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
-- Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional.
-- Improved validation error messages when incompatible types appear in
-  `if`, `==`, `contains`, `containsAll`, and `containsAny` expressions.
-- Validation error for invalid use of an action now includes a source location
-  containing the offending policy.
-- Validation error messages for unknown entity types and action entities now
-  report the precise source location where the unknown type was encountered.
+- Many changes to experimental "partial-eval" API.
+- Improve parser errors on unexpected tokens. (#698, partially resolving #176)
+- Validation error messages render types in the new, more readable, schema
+  syntax. (#708, resolving #242)
+- Improved error messages when `null` occurs in entity json data. (#751,
+  resolving #530)
+- Improved source location reporting for error `found template slot in a when clause`.
+  (#758, resolving #736)
+- Improved `Display` implementation for Cedar schemas, both JSON and human
+  syntax. (#780)
 
 ### Fixed
 
-- Validation error message for an invalid attribute access now reports the
-  correct attribute and entity type when accessing an optional attribute that is
-  itself an entity.
-- The error message returend when parsing an invalid action scope constraint
-  `action == ?action` no longer suggests that `action == [...]` would be a
-  valid scope constraint.
+- Support identifiers in context declarations in the human-readable schema
+  format. (#734, resolving #681)
+
 
 ## [3.1.3] - 2024-04-15
 
