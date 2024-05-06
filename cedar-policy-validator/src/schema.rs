@@ -169,6 +169,16 @@ impl ValidatorSchema {
         )
     }
 
+    /// Construct a `ValidatorSchema` from a string containing JSON in the
+    /// appropriate shape.
+    pub fn from_json_str(json: &str, extensions: Extensions<'_>) -> Result<Self> {
+        Self::from_schema_frag(
+            SchemaFragment::from_json_str(json)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
     /// Construct a `ValidatorSchema` directly from a file containing JSON
     /// in the appropriate shape.
     pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {

@@ -1304,7 +1304,19 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` directly from a file.
+    /// Create a `Schema` from a string containing JSON in the appropriate
+    /// shape.
+    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_validator::ValidatorSchema::from_json_str(
+                json,
+                Extensions::all_available(),
+            )?,
+        ))
+    }
+
+    /// Create a `Schema` directly from a file containing JSON in the
+    /// appropriate shape.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,

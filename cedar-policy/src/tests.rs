@@ -3248,11 +3248,9 @@ mod error_source_tests {
         let entities = Entities::empty();
         for src in srcs {
             let expr = Expression::from_str(src).unwrap();
-            assert_matches!(eval_expression(&req, &entities, &expr), Err(_e) => {
-                /* TODO(#485): evaluation errors don't currently have source locations
+            assert_matches!(eval_expression(&req, &entities, &expr), Err(e) => {
                 assert!(e.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
                 assert!(e.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
-                */
             });
         }
 
@@ -3294,6 +3292,35 @@ mod error_source_tests {
                 assert!(warn.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
             }
         }
+    }
+}
+
+mod issue_779 {
+    use crate::Schema;
+    use cool_asserts::assert_matches;
+    use miette::Diagnostic;
+
+    #[test]
+    fn issue_779() {
+        let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
+        let human = r#"namespace Foo { entity User; action View; invalid }"#;
+
+        assert_matches!(Schema::from_json_str(human), Err(e) => {
+            assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
+        });
+        assert_matches!(Schema::from_json_str(json), Err(e) => {
+            assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant non-JSON format, because this looks like JSON
+        });
+        assert_matches!(Schema::from_json_str("    "), Err(e) => {
+            assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant non-JSON format
+        });
+        assert_matches!(Schema::from_str_natural(json).map(|(s, _warnings)| s), Err(e) => {
+            assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"));
+        });
+        assert_matches!(Schema::from_str_natural(human).map(|(s, _warnings)| s), Err(e) => {
+            assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant JSON format, because this doesn't look like JSON
+        });
+        assert_matches!(Schema::from_str_natural("    ").map(|(s, _warnings)| s), Ok(_));
     }
 }
 
