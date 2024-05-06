@@ -20,7 +20,7 @@ and `ScreenTime` entities, but only `Photo` entities have an owner. Policy
 validation detects this issue.
 
 ```console
-sample9$ cedar validate --policies policy_bad.cedar --schema schema.cedarschema.json
+sample9$ cedar validate --policies policy_bad.cedar --schema schema.cedarschema
 Validation Results:
 validation error on policy `policy0` at offset 83-97: attribute `owner` for entity type ScreenTime not found
 ```
@@ -37,7 +37,7 @@ when { principal == resource.owner };
 ```
 
 ```console
-sample9$ cedar validate --policies policy.cedar --schema schema.cedarschema.json
+sample9$ cedar validate --policies policy.cedar --schema schema.cedarschema
 Validation Passed
 ```
 
