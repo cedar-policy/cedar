@@ -707,6 +707,7 @@ pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     }
 }
 
+/// Write a schema (in JSON format) to `path`
 fn generate_schema(path: &Path) -> Result<()> {
     std::fs::write(
         path,
