@@ -1493,6 +1493,31 @@ pub enum SchemaError {
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
+    /// Parse errors occurring while parsing an entity type.
+    /// This error variant is not reachable since version 3.2.
+    /// Instead, it becomes a `Serde` error.
+    #[error("parse error in entity type: {0}")]
+    #[diagnostic(transparent)]
+    ParseEntityType(ParseErrors),
+    /// Parse errors occurring while parsing a namespace identifier.
+    /// This error variant is not reachable since version 3.2.
+    /// Instead, it becomes a `Serde` error.
+    #[error("parse error in namespace identifier: {0}")]
+    #[diagnostic(transparent)]
+    ParseNamespace(ParseErrors),
+    /// Parse errors occurring while parsing an extension type.
+    /// This error variant is not reachable since version 3.2.
+    /// Instead, it becomes a `Serde` error.
+    #[error("parse error in extension type: {0}")]
+    #[diagnostic(transparent)]
+    ParseExtensionType(ParseErrors),
+    /// Parse errors occurring while parsing the name of a reusable
+    /// declared type.
+    /// This error variant is not reachable since version 3.2.
+    /// Instead, it becomes a `Serde` error.
+    #[error("parse error in common type identifier: {0}")]
+    #[diagnostic(transparent)]
+    ParseCommonType(ParseErrors),
 }
 
 /// Errors serializing Schemas to the natural syntax
