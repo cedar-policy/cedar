@@ -6,34 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-
-## [3.1.3] - 2024-04-15
+## [3.2.0] - Not released
 
 ### Changed
 
 - Many changes to experimental "partial-eval" API.
-- Improve parser errors on unexpected tokens. (#698, partially resolving #176)
-- Validation error messages render types in the new, more readable, schema
-  syntax. (#708, resolving #242)
-- Improved error messages when `null` occurs in entity json data. (#751,
-  resolving #530)
-- Improved source location reporting for error `found template slot in a when clause`.
-  (#758, resolving #736)
-- Improved `Display` implementation for Cedar schemas, both JSON and human
-  syntax. (#780)
-
-### Fixed
-
-- Support identifiers in context declarations in the human-readable schema
-  format. (#734, resolving #681)
-
 
 ## [3.1.3] - 2024-04-15
 
 ### Changed
 
 - Improve parser errors on unexpected tokens. (#698, partially resolving #176)
-- for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
 - Improved error messages when `null` occurs in entity json data. (#751,
@@ -462,3 +445,4 @@ Cedar Language Version: 2.0.0
 [2.3.2]: https://github.com/cedar-policy/cedar/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/cedar-policy/cedar/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/cedar-policy/cedar/releases/tag/v2.3.0
+
