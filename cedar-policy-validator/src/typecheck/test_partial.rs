@@ -82,11 +82,9 @@ pub(crate) fn assert_partial_typecheck_warns(
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
-    let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
-        &mut type_errors,
-        &mut warnings,
-    );
+    let static_policy = Template::link_static_policy(policy.clone());
+    let typechecked =
+        typechecker.typecheck_policy(&static_policy.0, &mut type_errors, &mut warnings);
     assert_expected_warnings(&expected_warnings, &warnings);
     assert!(
         typechecked,
