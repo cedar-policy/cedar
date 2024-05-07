@@ -1961,7 +1961,7 @@ mod test {
     }
 
     fn simple_schema() -> ValidatorSchema {
-        ValidatorSchema::from_schema_file(
+        ValidatorSchema::from_schema_frag(
             serde_json::from_value(serde_json::json!({ "":
             {
                 "entityTypes": {
@@ -2052,7 +2052,7 @@ mod test {
     }
 
     fn attr_schema() -> ValidatorSchema {
-        ValidatorSchema::from_schema_file(
+        ValidatorSchema::from_schema_frag(
             serde_json::from_value(serde_json::json!(
             {"": {
                 "entityTypes": {
@@ -2184,7 +2184,7 @@ mod test {
     // Direct test of LUB computation which causes a non-termination bug.
     #[test]
     fn record_entity_lub_non_term() {
-        let schema = ValidatorSchema::from_schema_file(
+        let schema = ValidatorSchema::from_schema_frag(
             serde_json::from_value(serde_json::json!(
             {"": {
                 "entityTypes": {
@@ -2225,7 +2225,7 @@ mod test {
     }
 
     fn rec_schema() -> ValidatorSchema {
-        ValidatorSchema::from_schema_file(
+        ValidatorSchema::from_schema_frag(
             serde_json::from_value(serde_json::json!(
                 {"": {
                     "entityTypes": {

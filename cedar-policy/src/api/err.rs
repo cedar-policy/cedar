@@ -97,8 +97,12 @@ pub enum ReAuthorizeError {
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
-    #[error("failed to parse schema: {0}")]
-    Serde(#[from] serde_json::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] cedar_policy_validator::JsonDeserializationError),
+    /// Error thrown by the `serde_json` crate during serialization
+    #[error(transparent)]
+    JsonSerialization(serde_json::Error), // no #[from], because if you just have a serde_json::Error you should choose between JsonDeserialization and JsonSerialization appropriately
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
     #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
@@ -190,11 +194,11 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
 #[derive(Debug, Diagnostic, Error)]
 pub enum HumanSchemaError {
     /// Error parsing a schema in natural syntax
-    #[error("Error parsing schema: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
+    ParseError(#[from] cedar_policy_validator::HumanSyntaxParseError),
     /// Errors combining fragments into full schemas
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
     Core(#[from] SchemaError),
     /// IO errors while parsing
@@ -285,7 +289,9 @@ impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
 impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         match value {
-            cedar_policy_validator::SchemaError::Serde(e) => Self::Serde(e),
+            cedar_policy_validator::SchemaError::JsonDeserialization(e) => {
+                Self::JsonDeserialization(e)
+            }
             cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
                 Self::ActionTransitiveClosure(e.to_string())
             }

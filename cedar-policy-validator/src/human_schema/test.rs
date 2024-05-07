@@ -267,11 +267,10 @@ mod demo_tests {
             Err(e) => e,
             _ => panic!("Should have failed to parse"),
         };
-        assert_matches!(err,
-        crate::HumanSchemaError::Parsing(err) => assert_matches!(err,
-            human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
+        assert_matches!(err, crate::HumanSchemaError::Parsing(err) => {
+            assert_matches!(err.inner(), human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
-                    .into_iter()
+                    .iter()
                     .any(|err| {
                         matches!(
                             err,
@@ -280,8 +279,10 @@ mod demo_tests {
                                 ..
                             }
                         )
-                    }));
-            }));
+                    })
+                );
+            });
+        });
     }
 
     #[test]
@@ -302,10 +303,10 @@ mod demo_tests {
             _ => panic!("Should have failed to parse"),
         };
         assert_matches!(err,
-        crate::HumanSchemaError::Parsing(err) => assert_matches!(err,
+        crate::HumanSchemaError::Parsing(err) => assert_matches!(err.inner(),
             human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
-                    .into_iter()
+                    .iter()
                     .any(|err| {
                         matches!(
                             err,
@@ -429,8 +430,8 @@ namespace Baz {action "Foo" appliesTo {
         action "Group1" ;
         }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
         action "Group1" in [NS1::Action::"Group1"];
-        action "Action1" in [Action::"Group1"]appliesTo {  principal: [NS1::PrincipalEntity], 
-          resource: [NS2::SystemEntity1], 
+        action "Action1" in [Action::"Group1"]appliesTo {  principal: [NS1::PrincipalEntity],
+          resource: [NS2::SystemEntity1],
           context: {  }
         };
         }
@@ -448,8 +449,8 @@ namespace Baz {action "Foo" appliesTo {
         action "Group1" ;
         }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
         action "Group1" in [NS1::Action::"Group1"];
-        action "Action1" in [Action::"\6"]appliesTo {  principal: [NS1::PrincipalEntity], 
-          resource: [NS2::SystemEntity1], 
+        action "Action1" in [Action::"\6"]appliesTo {  principal: [NS1::PrincipalEntity],
+          resource: [NS2::SystemEntity1],
           context: {  }
         };
         }
@@ -457,7 +458,11 @@ namespace Baz {action "Foo" appliesTo {
         ) {
             Ok(_) => panic!("this is not a valid schema"),
             Err(err) => {
-                assert_matches!(err, HumanSchemaError::Parsing(human_schema::parser::HumanSyntaxParseErrors::NaturalSyntaxError(errs)) => assert!(errs.to_smolstr().contains("Invalid escape codes")))
+                assert_matches!(err, HumanSchemaError::Parsing(err) => {
+                    assert_matches!(err.inner(), human_schema::parser::HumanSyntaxParseErrors::NaturalSyntaxError(errs) => {
+                        assert!(errs.to_smolstr().contains("Invalid escape codes"));
+                    });
+                });
             }
         }
     }
@@ -779,7 +784,7 @@ namespace Baz {action "Foo" appliesTo {
             editors : Team,
             Tasks : Set<{ name : String, id : Long, state : String }>
         };
-        
+
         action CreateList appliesTo {
             principal : User,
             resource : Application
@@ -840,7 +845,7 @@ namespace Baz {action "Foo" appliesTo {
                 value: String
             };
         }
-        
+
         namespace Service {
             entity Resource {
                 tag: AWS::Tag
@@ -1359,12 +1364,12 @@ mod translator_tests {
             group: String,
             name: String,
           };
-          
+
           type email_address = {
             id: String,
             domain: String,
           };
-          
+
           namespace Demo {
             entity User {
               name: id,

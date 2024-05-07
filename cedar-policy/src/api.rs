@@ -1214,14 +1214,12 @@ impl SchemaFragment {
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
-        let v = serde_json::to_value(self.lossless)?;
-        Ok(v)
+        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn as_json_string(&self) -> Result<String, SchemaError> {
-        let str = serde_json::to_string(&self.lossless)?;
-        Ok(str)
+        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
@@ -1253,7 +1251,7 @@ impl FromStr for SchemaFragment {
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        let lossless = serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)?;
+        let lossless = cedar_policy_validator::SchemaFragment::from_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1306,7 +1304,19 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` directly from a file.
+    /// Create a `Schema` from a string containing JSON in the appropriate
+    /// shape.
+    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_validator::ValidatorSchema::from_json_str(
+                json,
+                Extensions::all_available(),
+            )?,
+        ))
+    }
+
+    /// Create a `Schema` directly from a file containing JSON in the
+    /// appropriate shape.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,

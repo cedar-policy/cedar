@@ -32,7 +32,7 @@ use crate::{
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
-    HumanSchemaError, Result,
+    HumanSchemaError, HumanSyntaxParseError, JsonDeserializationError, Result,
 };
 
 #[cfg(feature = "wasm")]
@@ -97,23 +97,28 @@ impl Serialize for SchemaFragment {
 }
 
 impl SchemaFragment {
+    /// Cretae a [`SchemaFragment`] from a string containing JSON (which should
+    /// be an object of the appropriate shape).
+    pub fn from_json_str(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(|e| JsonDeserializationError::new(e, Some(json)).into())
+    }
+
     /// Create a [`SchemaFragment`] from a JSON value (which should be an object
     /// of the appropriate shape).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(json).map_err(Into::into)
+        serde_json::from_value(json).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
     /// Create a [`SchemaFragment`] directly from a file containing a JSON object.
     pub fn from_file(file: impl std::io::Read) -> Result<Self> {
-        serde_json::from_reader(file).map_err(Into::into)
+        serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
     /// Parse the schema (in natural schema syntax) from a string
     pub fn from_str_natural(
         src: &str,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let tup = parse_natural_schema_fragment(src)?;
-        Ok(tup)
+        parse_natural_schema_fragment(src).map_err(|e| HumanSyntaxParseError::new(e, src).into())
     }
 
     /// Parse the schema (in natural schema syntax) from a reader

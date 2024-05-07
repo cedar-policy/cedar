@@ -126,7 +126,9 @@ impl std::str::FromStr for ValidatorSchema {
     type Err = SchemaError;
 
     fn from_str(s: &str) -> Result<Self> {
-        serde_json::from_str::<SchemaFragment>(s)?.try_into()
+        serde_json::from_str::<SchemaFragment>(s)
+            .map_err(|e| JsonDeserializationError::new(e, Some(s)))?
+            .try_into()
     }
 }
 
@@ -157,48 +159,64 @@ impl ValidatorSchema {
         }
     }
 
-    /// Construct a `ValidatorSchema` from a JSON value (which should be an
-    /// object matching the `SchemaFileFormat` shape).
+    /// Construct a `ValidatorSchema` from a JSON value in the appropriate
+    /// shape.
     pub fn from_json_value(json: serde_json::Value, extensions: Extensions<'_>) -> Result<Self> {
-        Self::from_schema_file(
+        Self::from_schema_frag(
             SchemaFragment::from_json_value(json)?,
             ActionBehavior::default(),
             extensions,
         )
     }
 
-    /// Construct a `ValidatorSchema` directly from a file.
+    /// Construct a `ValidatorSchema` from a string containing JSON in the
+    /// appropriate shape.
+    pub fn from_json_str(json: &str, extensions: Extensions<'_>) -> Result<Self> {
+        Self::from_schema_frag(
+            SchemaFragment::from_json_str(json)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
+    /// Construct a `ValidatorSchema` directly from a file containing JSON
+    /// in the appropriate shape.
     pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
-        Self::from_schema_file(
+        Self::from_schema_frag(
             SchemaFragment::from_file(file)?,
             ActionBehavior::default(),
             extensions,
         )
     }
 
+    /// Construct a `ValidatorSchema` directly from a file containing Cedar
+    /// "natural" schema syntax.
     pub fn from_file_natural(
         r: impl std::io::Read,
         extensions: Extensions<'_>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (fragment, warnings) = SchemaFragment::from_file_natural(r)?;
         let schema_and_warnings =
-            Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
+    /// Constructor a `ValidatorSchema` from a string containing Cedar "natural"
+    /// schema syntax.
     pub fn from_str_natural(
         src: &str,
         extensions: Extensions<'_>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (fragment, warnings) = SchemaFragment::from_str_natural(src)?;
         let schema_and_warnings =
-            Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
-    pub fn from_schema_file(
+    /// Helper function to construct a `ValidatorSchema` from a single `SchemaFragment`
+    pub(crate) fn from_schema_frag(
         schema_file: SchemaFragment,
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
@@ -919,8 +937,8 @@ mod test {
         }}"#;
 
         match ValidatorSchema::from_str(src) {
-            Err(SchemaError::Serde(_)) => (),
-            _ => panic!("Expected serde error due to duplicate entity type."),
+            Err(SchemaError::JsonDeserialization(_)) => (),
+            _ => panic!("Expected JSON deserialization error due to duplicate entity type."),
         }
     }
 
@@ -954,8 +972,8 @@ mod test {
             }
         }"#;
         match ValidatorSchema::from_str(src) {
-            Err(SchemaError::Serde(_)) => (),
-            _ => panic!("Expected serde error due to duplicate action type."),
+            Err(SchemaError::JsonDeserialization(_)) => (),
+            _ => panic!("Expected JSON deserialization error due to duplicate action type."),
         }
     }
 
