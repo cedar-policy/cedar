@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 
 use crate::{
     type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
-    NamespaceDefinition, SchemaFragment, UnexpectedTypeHelp, ValidationMode,
+    LubContext, LubHelp, NamespaceDefinition, SchemaFragment, UnexpectedTypeHelp, ValidationMode,
 };
 
 use super::test_utils::{
@@ -60,7 +60,7 @@ fn slot_in_typechecks() {
         member_of_types: vec![],
         shape: AttributesOrContext::default(),
     };
-    let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
+    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
@@ -93,7 +93,7 @@ fn slot_equals_typechecks() {
     // typechecker doesn't have access to a schema, so it can't instantiate
     // the template slots with appropriate types. Similar policies that pass
     // strict typechecking are in the test_policy file.
-    let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
+    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
@@ -144,6 +144,8 @@ fn heterogeneous_set() {
         vec![TypeError::incompatible_types(
             set,
             vec![Type::singleton_boolean(true), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Set,
         )],
     );
 }
@@ -671,6 +673,8 @@ fn record_get_attr_lub_typecheck_fails() {
                 )]),
                 Type::primitive_long(),
             ],
+            LubHelp::None,
+            LubContext::Conditional,
         )],
     );
 }
@@ -1025,6 +1029,8 @@ fn if_no_lub_error() {
         vec![TypeError::incompatible_types(
             if_expr,
             vec![Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Conditional,
         )],
     );
 }
@@ -1038,6 +1044,8 @@ fn if_typecheck_fails() {
             TypeError::incompatible_types(
                 if_expr,
                 vec![Type::primitive_long(), Type::primitive_string()],
+                LubHelp::None,
+                LubContext::Conditional,
             ),
             TypeError::expected_type(
                 Expr::val("fail"),

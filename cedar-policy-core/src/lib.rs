@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,5 +33,5 @@ pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;
 
-#[cfg(test)]
-mod test_utils;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_utils;

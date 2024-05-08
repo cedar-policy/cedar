@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -180,11 +180,11 @@ pub enum ToASTErrorKind {
     #[error("this policy is missing the `{0}` variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra head constraint in the scope: `{0}`")]
+    #[error("this policy has an extra constraint in the scope: `{0}`")]
     #[diagnostic(help(
         "a policy must have exactly `principal`, `action`, and `resource` constraints"
     ))]
-    ExtraHeadConstraints(cst::VariableDef),
+    ExtraScopeConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: `{0}`")]
     ReservedIdentifier(cst::Ident),
@@ -233,12 +233,6 @@ pub enum ToASTErrorKind {
         "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
     ))]
     InvalidConstraintOperator(cst::RelOp),
-    /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
-    /// This is valid in Cedar conditions, but not in the Scope
-    #[error(
-        "the right hand side of equality in the policy scope must be a single entity uid or a template slot"
-    )]
-    InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
     #[error("expected an entity uid with the type `Action` but got `{0}`")]
     #[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]

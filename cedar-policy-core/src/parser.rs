@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ mod cst_to_ast;
 pub mod err;
 /// implementations for formatting, like `Display`
 mod fmt;
+pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
 pub use loc::Loc;
@@ -440,11 +441,11 @@ mod test {
             assert_eq!(parsed.resource_constraint(), template.resource_constraint());
             assert!(
                 parsed
-                    .non_head_constraints()
-                    .eq_shape(template.non_head_constraints()),
+                    .non_scope_constraints()
+                    .eq_shape(template.non_scope_constraints()),
                 "{:?} and {:?} should have the same shape.",
-                parsed.non_head_constraints(),
-                template.non_head_constraints()
+                parsed.non_scope_constraints(),
+                template.non_scope_constraints()
             );
         }
     }

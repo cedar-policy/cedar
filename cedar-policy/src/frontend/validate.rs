@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -284,7 +284,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 4);
+        assert_validates_with_notes(result, 2);
     }
 
     #[test]
@@ -388,7 +388,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 2);
+        assert_validates_with_notes(result, 1);
     }
 
     #[test]

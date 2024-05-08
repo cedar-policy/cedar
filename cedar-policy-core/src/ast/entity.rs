@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ use crate::ast::*;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
@@ -62,13 +63,43 @@ impl std::fmt::Display for EntityType {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
     /// EID of the entity
     eid: Eid,
+    /// Location of the entity in policy source
+    #[serde(skip)]
+    loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`.
+impl PartialEq for EntityUID {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.eid == other.eid
+    }
+}
+impl Eq for EntityUID {}
+
+impl std::hash::Hash for EntityUID {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash the ty and eid, in line with the `PartialEq` impl which compares
+        // the ty and eid.
+        self.ty.hash(state);
+        self.eid.hash(state);
+    }
+}
+
+impl PartialOrd for EntityUID {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for EntityUID {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ty.cmp(&other.ty).then(self.eid.cmp(&other.eid))
+    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -87,6 +118,7 @@ impl EntityUID {
         Self {
             ty: Self::test_entity_type(),
             eid: Eid(eid.into()),
+            loc: None,
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -113,6 +145,7 @@ impl EntityUID {
         Ok(Self {
             ty: EntityType::Specified(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
+            loc: None,
         })
     }
 
@@ -122,11 +155,17 @@ impl EntityUID {
         (self.ty, self.eid)
     }
 
+    /// Get the source location for this `EntityUID`.
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
+    }
+
     /// Create a nominally-typed `EntityUID` with the given typename and EID
-    pub fn from_components(name: Name, eid: Eid) -> Self {
+    pub fn from_components(name: Name, eid: Eid, loc: Option<Loc>) -> Self {
         Self {
             ty: EntityType::Specified(name),
             eid,
+            loc,
         }
     }
 
@@ -135,6 +174,7 @@ impl EntityUID {
         Self {
             ty: EntityType::Unspecified,
             eid,
+            loc: None,
         }
     }
 
@@ -172,6 +212,17 @@ impl std::str::FromStr for EntityUID {
 impl FromNormalizedStr for EntityUID {
     fn describe_self() -> &'static str {
         "Entity UID"
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            ty: u.arbitrary()?,
+            eid: u.arbitrary()?,
+            loc: None,
+        })
     }
 }
 
@@ -356,6 +407,26 @@ impl Entity {
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
+
+    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    pub fn into_inner(
+        self,
+    ) -> (
+        EntityUID,
+        HashMap<SmolStr, PartialValue>,
+        HashSet<EntityUID>,
+    ) {
+        let Self {
+            uid,
+            attrs,
+            ancestors,
+        } = self;
+        (
+            uid,
+            attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
+            ancestors,
+        )
+    }
 }
 
 impl PartialEq for Entity {
@@ -477,12 +548,14 @@ mod test {
         let e2 = EntityUID::from_components(
             Name::parse_unqualified_name("test_entity_type").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
         let e3 = EntityUID::unspecified_from_eid(Eid("foo".into()));
         let e4 = EntityUID::unspecified_from_eid(Eid("bar".into()));
         let e5 = EntityUID::from_components(
             Name::parse_unqualified_name("Unspecified").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
 
         // an EUID is equal to itself

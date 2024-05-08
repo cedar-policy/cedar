@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ mod err;
 pub use err::*;
 mod expr;
 pub use expr::*;
-mod head_constraints;
-pub use head_constraints::*;
+mod scope_constraints;
+pub use scope_constraints::*;
 
 use crate::ast;
 use crate::entities::EntityUidJson;
@@ -39,11 +39,11 @@ use std::collections::{BTreeMap, HashMap};
 pub struct Policy {
     /// `Effect` of the policy or template
     effect: ast::Effect,
-    /// Principal head constraint
+    /// Principal scope constraint
     principal: PrincipalConstraint,
-    /// Action head constraint
+    /// Action scope constraint
     action: ActionConstraint,
-    /// Resource head constraint
+    /// Resource scope constraint
     resource: ResourceConstraint,
     /// `when` and/or `unless` clauses
     conditions: Vec<Clause>,
@@ -109,7 +109,7 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
-        let (principal, action, resource) = policy.extract_head(&mut errs);
+        let (principal, action, resource) = policy.extract_scope(&mut errs);
         let (annot_success, annotations) = policy.get_ast_annotations(&mut errs);
         let conditions = match policy
             .conds
@@ -245,6 +245,7 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
+            None,
             self.annotations
                 .into_iter()
                 .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
@@ -289,7 +290,7 @@ impl From<ast::Policy> for Policy {
             principal: ast.principal_constraint().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().into(),
-            conditions: vec![ast.non_head_constraints().clone().into()],
+            conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
                 .map(|(k, v)| (k.clone(), v.val.clone()))
@@ -306,7 +307,7 @@ impl From<ast::Template> for Policy {
             principal: ast.principal_constraint().clone().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().clone().into(),
-            conditions: vec![ast.non_head_constraints().clone().into()],
+            conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
                 .map(|(k, v)| (k.clone(), v.val.clone()))

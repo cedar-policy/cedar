@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,16 +23,20 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
+#[cfg(feature = "partial-eval")]
+use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{
-    self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
+    ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::Evaluator;
+#[cfg(feature = "partial-eval")]
+use cedar_policy_core::evaluator::RestrictedEvaluator;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
@@ -55,6 +59,27 @@ use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use thiserror::Error;
+
+/// Extended functionality for `Entities` struct
+pub mod entities {
+
+    /// `IntoIter` iterator for `Entities`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = super::Entity;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(super::Entity)
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
+    }
+}
 
 /// Identifier for a Template slot
 #[repr(transparent)]
@@ -210,6 +235,40 @@ impl Entity {
         };
         Some(Ok(EvalResult::from(v)))
     }
+
+    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    pub fn into_inner(
+        self,
+    ) -> (
+        EntityUid,
+        HashMap<String, RestrictedExpression>,
+        HashSet<EntityUid>,
+    ) {
+        let (uid, attrs, ancestors) = self.0.into_inner();
+
+        let attrs = attrs
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    match v {
+                        ast::PartialValue::Value(val) => RestrictedExpression(
+                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
+                        ),
+                        ast::PartialValue::Residual(exp) => {
+                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
+                        }
+                    },
+                )
+            })
+            .collect();
+
+        (
+            EntityUid(uid),
+            attrs,
+            ancestors.into_iter().map(EntityUid).collect(),
+        )
+    }
 }
 
 impl std::fmt::Display for Entity {
@@ -222,9 +281,9 @@ impl std::fmt::Display for Entity {
 /// Uid.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
-pub struct Entities(pub(crate) entities::Entities);
+pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-pub use entities::EntitiesError;
+pub use cedar_policy_core::entities::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
@@ -233,7 +292,7 @@ impl Entities {
     /// let entities = Entities::empty();
     /// ```
     pub fn empty() -> Self {
-        Self(entities::Entities::new())
+        Self(cedar_policy_core::entities::Entities::new())
     }
 
     /// Get the `Entity` with the given Uid, if any
@@ -276,13 +335,13 @@ impl Entities {
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
-        entities::Entities::from_entities(
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+        cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
                 .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                 .as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )
         .map(Entities)
@@ -310,7 +369,7 @@ impl Entities {
                 schema
                     .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                     .as_ref(),
-                entities::TCComputation::ComputeNow,
+                cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
             )?,
         ))
@@ -335,16 +394,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -368,16 +427,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -401,16 +460,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -462,12 +521,12 @@ impl Entities {
     pub fn from_json_str(
         json: &str,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_str(json).map(Entities)
     }
@@ -514,12 +573,12 @@ impl Entities {
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_value(json).map(Entities)
     }
@@ -544,12 +603,12 @@ impl Entities {
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_file(json).map(Entities)
     }
@@ -587,8 +646,19 @@ impl Entities {
     pub fn write_to_json(
         &self,
         f: impl std::io::Write,
-    ) -> std::result::Result<(), entities::EntitiesError> {
+    ) -> std::result::Result<(), cedar_policy_core::entities::EntitiesError> {
         self.0.write_to_json(f)
+    }
+}
+
+impl IntoIterator for Entities {
+    type Item = Entity;
+    type IntoIter = entities::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            inner: self.0.into_iter(),
+        }
     }
 }
 
@@ -731,38 +801,7 @@ impl Authorizer {
         let response = self
             .0
             .is_authorized_core(query.0.clone(), &policy_set.ast, &entities.0);
-        match response {
-            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(a.into()),
-            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
-        }
-    }
-
-    /// Evaluate an authorization request and respond with results that always includes
-    /// residuals even if the [`Authorizer`] already reached a decision.
-    #[doc = include_str!("../experimental_warning.md")]
-    #[cfg(feature = "partial-eval")]
-    pub fn evaluate_policies_partial(
-        &self,
-        query: &Request,
-        policy_set: &PolicySet,
-        entities: &Entities,
-    ) -> EvaluationResponse {
-        let authorizer::EvaluationResponse {
-            satisfied_permits,
-            satisfied_forbids,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        } = self
-            .0
-            .evaluate_policies(&policy_set.ast, query.0.clone(), &entities.0);
-        EvaluationResponse {
-            satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
-            satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
-            errors: errors.into_iter().map(|e| e.into()).collect(),
-            permit_residuals: PolicySet::from_ast(permit_residuals),
-            forbid_residuals: PolicySet::from_ast(forbid_residuals),
-        }
+        PartialResponse(response)
     }
 }
 
@@ -810,44 +849,125 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Authorization response returned from `is_authorized_partial`.
-/// It can either be a full concrete response, or a residual response.
+/// A partially evaluated authorization response.
+/// Splits the results into several categories: satisfied, false, and residual for each policy effect.
+/// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum PartialResponse {
-    /// A full, concrete response.
-    Concrete(Response),
-    /// A residual response. Determining the concrete response requires further processing.
-    Residual(ResidualResponse),
+#[repr(transparent)]
+#[derive(Debug, PartialEq, Eq, Clone, RefCast)]
+pub struct PartialResponse(cedar_policy_core::authorizer::PartialResponse);
+
+#[cfg(feature = "partial-eval")]
+impl PartialResponse {
+    /// Attempt to reach a partial decision; the presence of residuals may result in returning [`None`],
+    /// indicating that a decision could not be reached given the unknowns
+    pub fn decision(&self) -> Option<Decision> {
+        self.0.decision()
+    }
+
+    /// Convert this response into a concrete evaluation response.
+    /// All residuals are treated as errors
+    pub fn concretize(self) -> Response {
+        self.0.concretize().into()
+    }
+
+    /// Returns the set of [`Policy`]s that were definitely satisfied.
+    /// This will be the set of policies (both `permit` and `forbid`) that evaluated to `true`
+    pub fn definitely_satisfied(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.definitely_satisfied().map(Policy::from_ast)
+    }
+
+    /// Returns the set of [`PolicyId`]s that encountered errors
+    pub fn definitely_errored(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0.definitely_errored().map(PolicyId::ref_cast)
+    }
+
+    /// Returns an over-approximation of the set of determining policies
+    ///
+    /// This is all policies that may be determining for any substitution of the unknowns.
+    /// Policies not in this set will not affect the final decision, regardless of any
+    /// substitutions.
+    ///
+    /// For more information on what counts as "determining" see: <https://docs.cedarpolicy.com/auth/authorization.html#request-authorization>
+    pub fn may_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.may_be_determining().map(Policy::from_ast)
+    }
+
+    /// Returns an under-approximation of the set of determining policies
+    ///
+    /// This is all policies that must be determining for all possible substitutions of the unknowns.
+    /// This set will include policies that evaluated to `true` and are guaranteed to be
+    /// contributing to the final authorization decision.
+    ///
+    /// For more information on what counts as "determining" see: <https://docs.cedarpolicy.com/auth/authorization.html#request-authorization>
+    pub fn must_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.must_be_determining().map(Policy::from_ast)
+    }
+
+    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
+    pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.nontrivial_residuals().map(Policy::from_ast)
+    }
+
+    /// Returns every policy as a residual expression
+    pub fn all_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
+        self.0.all_residuals().map(Policy::from_ast)
+    }
+
+    /// Return the residual for a given [`PolicyId`], if it exists in the response
+    pub fn get(&self, id: &PolicyId) -> Option<Policy> {
+        self.0.get(&id.0).map(Policy::from_ast)
+    }
+
+    /// Attempt to re-authorize this response given a mapping from unknowns to values
+    pub fn reauthorize(
+        &self,
+        mapping: HashMap<SmolStr, RestrictedExpression>,
+        auth: &Authorizer,
+        r: Request,
+        es: &Entities,
+    ) -> Result<Self, ReAuthorizeError> {
+        let exts = Extensions::all_available();
+        let evaluator = RestrictedEvaluator::new(&exts);
+        let mapping = mapping
+            .into_iter()
+            .map(|(name, expr)| {
+                evaluator
+                    .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
+                    .map(|v| (name, v))
+            })
+            .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
+        let r = self.0.reauthorize(&mapping, &auth.0, r.0, &es.0)?;
+        Ok(Self(r))
+    }
 }
 
-/// A residual response obtained from `is_authorized_partial`.
-#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ResidualResponse {
-    /// Residual policies
-    residuals: PolicySet,
-    /// Diagnostics
-    diagnostics: Diagnostics,
+#[doc(hidden)]
+impl From<cedar_policy_core::authorizer::PartialResponse> for PartialResponse {
+    fn from(pr: cedar_policy_core::authorizer::PartialResponse) -> Self {
+        Self(pr)
+    }
 }
 
-/// A policy evaluation response obtained from `evaluate_policies_partial`.
-#[doc = include_str!("../experimental_warning.md")]
-#[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct EvaluationResponse {
-    /// `PolicyId`s of fully evaluated policies with a permit [`Effect`]
-    satisfied_permits: HashSet<PolicyId>,
-    /// `PolicyId`s of fully evaluated policies with a forbid [`Effect`]
-    satisfied_forbids: HashSet<PolicyId>,
-    /// Errors that occurred during policy evaluation.
-    errors: Vec<AuthorizationError>,
-    /// Partially evaluated policies with a permit [`Effect`]
-    permit_residuals: PolicySet,
-    /// Partially evaluated policies with a forbid [`Effect`]
-    forbid_residuals: PolicySet,
+/// Errors that can be encountered when re-evaluating a partial response
+#[derive(Debug, Error)]
+pub enum ReAuthorizeError {
+    /// An evaluation error was encountered
+    #[error("{err}")]
+    Evaluation {
+        /// The evaluation error
+        #[from]
+        err: EvaluationError,
+    },
+    /// A policy id conflict was found
+    #[error("{err}")]
+    PolicySet {
+        /// The conflicting ids
+        #[from]
+        err: cedar_policy_core::ast::PolicySetError,
+    },
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
@@ -1021,86 +1141,6 @@ impl From<authorizer::Response> for Response {
             decision: a.decision,
             diagnostics: a.diagnostics.into(),
         }
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl ResidualResponse {
-    /// Create a new `ResidualResponse`
-    pub fn new(
-        residuals: PolicySet,
-        reason: HashSet<PolicyId>,
-        errors: Vec<AuthorizationError>,
-    ) -> Self {
-        Self {
-            residuals,
-            diagnostics: Diagnostics { reason, errors },
-        }
-    }
-
-    /// Get the residual policies needed to reach an authorization decision.
-    pub fn residuals(&self) -> &PolicySet {
-        &self.residuals
-    }
-
-    /// Get the authorization diagnostics
-    pub fn diagnostics(&self) -> &Diagnostics {
-        &self.diagnostics
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl From<authorizer::PartialResponse> for ResidualResponse {
-    fn from(p: authorizer::PartialResponse) -> Self {
-        Self {
-            residuals: PolicySet::from_ast(p.residuals),
-            diagnostics: p.diagnostics.into(),
-        }
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-impl EvaluationResponse {
-    /// Create a new `EvaluationResponse`.
-    pub fn new(
-        satisfied_permits: HashSet<PolicyId>,
-        satisfied_forbids: HashSet<PolicyId>,
-        errors: Vec<AuthorizationError>,
-        permit_residuals: PolicySet,
-        forbid_residuals: PolicySet,
-    ) -> Self {
-        Self {
-            satisfied_permits,
-            satisfied_forbids,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        }
-    }
-
-    /// Get the `PolicyId`s of fully evaluated policies with a permit [`Effect`].
-    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
-        self.satisfied_permits.iter()
-    }
-
-    /// Get the `PolicyId`s of fully evaluated policies with a forbid [`Effect`].
-    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
-        self.satisfied_forbids.iter()
-    }
-
-    /// Get the redisual policies with a permit [`Effect`].
-    pub fn permit_residuals(&self) -> &PolicySet {
-        &self.permit_residuals
-    }
-
-    /// Get the redisual policies with a permit [`Effect`].
-    pub fn forbid_residuals(&self) -> &PolicySet {
-        &self.forbid_residuals
-    }
-
-    /// Get the evaluation errors.
-    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> {
-        self.errors.iter()
     }
 }
 
@@ -1404,19 +1444,35 @@ pub enum SchemaError {
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {0}")]
     #[diagnostic(transparent)]
+    #[deprecated(
+        since = "3.2.0",
+        note = "Entity type parse errors are now detected during JSON parsing and reported as `SchemaError::Serde`"
+    )]
     ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {0}")]
     #[diagnostic(transparent)]
+    #[deprecated(
+        since = "3.2.0",
+        note = "Namespace parse errors are now detected during JSON parsing and reported as `SchemaError::Serde`"
+    )]
     ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {0}")]
     #[diagnostic(transparent)]
+    #[deprecated(
+        since = "3.2.0",
+        note = "Extension type parse errors are now detected during JSON parsing and reported as `SchemaError::Serde`"
+    )]
     ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of a reusable
     /// declared type.
     #[error("parse error in common type identifier: {0}")]
     #[diagnostic(transparent)]
+    #[deprecated(
+        since = "3.2.0",
+        note = "Common type parse errors are now detected during JSON parsing and reported as `SchemaError::Serde`"
+    )]
     ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
@@ -1587,11 +1643,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
                 Self::CycleInActionHierarchy(EntityUid(e))
             }
-            cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::ParseEntityType(e),
-            cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::ParseNamespace(e),
-            cedar_policy_validator::SchemaError::ParseCommonType(e) => Self::ParseCommonType(e),
-            cedar_policy_validator::SchemaError::ParseExtensionType(e) => {
-                Self::ParseExtensionType(e)
+            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(_) => {
+                Self::Serde(serde::de::Error::custom(value))
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
@@ -2160,7 +2213,7 @@ impl EntityUid {
     /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         // INVARIANT: `from_components` always constructs a Concrete id
-        Self(ast::EntityUID::from_components(name.0, id.0))
+        Self(ast::EntityUID::from_components(name.0, id.0, None))
     }
 
     /// Creates `EntityUid` from a JSON value, which should have
@@ -2175,9 +2228,9 @@ impl EntityUid {
     /// ```
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
-        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
+        let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, entities::JsonDeserializationError>(Self(
+        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
     }
@@ -2570,24 +2623,7 @@ impl PolicySet {
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         let mut entity_uids = HashSet::new();
         for policy in self.policies.values() {
-            let ids: Vec<EntityUid> = policy
-                .ast
-                .condition()
-                .unknowns()
-                .filter_map(
-                    |ast::Unknown {
-                         name,
-                         type_annotation,
-                     }| {
-                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
-                            EntityUid::from_str(name.as_str()).ok()
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect();
-            entity_uids.extend(ids);
+            entity_uids.extend(policy.unknown_entities());
         }
         entity_uids
     }
@@ -2611,28 +2647,6 @@ impl PolicySet {
             Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
                 panic!("Found linked policy in self.policies but not in self.ast")
             }
-        }
-    }
-
-    /// Create a `PolicySet` from its AST representation only. The EST will
-    /// reflect the AST structure. When possible, don't use this method and
-    /// create the ESTs from the policy text or CST instead, as the conversion
-    /// to AST is lossy. ESTs generated by this method will reflect the AST and
-    /// not the original policy syntax.
-    #[cfg_attr(not(feature = "partial-eval"), allow(unused))]
-    fn from_ast(ast: ast::PolicySet) -> Self {
-        let policies = ast
-            .policies()
-            .map(|p| (PolicyId(p.id().clone()), Policy::from_ast(p.clone())))
-            .collect();
-        let templates = ast
-            .templates()
-            .map(|t| (PolicyId(t.id().clone()), Template::from_ast(t.clone())))
-            .collect();
-        Self {
-            ast,
-            policies,
-            templates,
         }
     }
 }
@@ -2723,7 +2737,7 @@ impl Template {
         self.ast.slots().map(|slot| SlotId::ref_cast(&slot.id))
     }
 
-    /// Get the head constraint on this policy's principal
+    /// Get the scope constraint on this policy's principal
     pub fn principal_constraint(&self) -> TemplatePrincipalConstraint {
         match self.ast.principal_constraint().as_inner() {
             ast::PrincipalOrResourceConstraint::Any => TemplatePrincipalConstraint::Any,
@@ -2754,7 +2768,7 @@ impl Template {
         }
     }
 
-    /// Get the head constraint on this policy's action
+    /// Get the scope constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistent with the other constraints
         match self.ast.action_constraint() {
@@ -2768,7 +2782,7 @@ impl Template {
         }
     }
 
-    /// Get the head constraint on this policy's resource
+    /// Get the scope constraint on this policy's resource
     pub fn resource_constraint(&self) -> TemplateResourceConstraint {
         match self.ast.resource_constraint().as_inner() {
             ast::PrincipalOrResourceConstraint::Any => TemplateResourceConstraint::Any,
@@ -2821,20 +2835,6 @@ impl Template {
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
     }
-
-    /// Create a `Template` from its AST representation only. The EST will
-    /// reflect the AST structure. When possible, don't use this method and
-    /// create the EST from the policy text or CST instead, as the conversion
-    /// to AST is lossy. ESTs generated by this method will reflect the AST and
-    /// not the original policy syntax.
-    #[cfg_attr(not(feature = "partial-eval"), allow(unused))]
-    fn from_ast(ast: ast::Template) -> Self {
-        let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
-        Self {
-            ast,
-            lossless: LosslessPolicy::policy_or_template_text(text),
-        }
-    }
 }
 
 impl std::fmt::Display for Template {
@@ -2852,36 +2852,36 @@ impl FromStr for Template {
     }
 }
 
-/// Head constraint on policy principals.
+/// Scope constraint on policy principals.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid`]
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given [`EntityTypeName`]
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`]
     IsIn(EntityTypeName, EntityUid),
 }
 
-/// Head constraint on policy principals for templates.
+/// Scope constraint on policy principals for templates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplatePrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given [`EntityTypeName`].
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`].
+    /// If the [`EntityUid`] is [`Option::None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 
@@ -2895,47 +2895,47 @@ impl TemplatePrincipalConstraint {
     }
 }
 
-/// Head constraint on policy actions.
+/// Scope constraint on policy actions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(Vec<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid]`
     Eq(EntityUid),
 }
 
-/// Head constraint on policy resources.
+/// Scope constraint on policy resources.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given [`EntityUid`]
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given [`EntityUid`]
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given [`EntityTypeName`]
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`]
     IsIn(EntityTypeName, EntityUid),
 }
 
-/// Head constraint on policy resources for templates.
+/// Scope constraint on policy resources for templates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplateResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given [`EntityUid`].
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given [`EntityTypeName`].
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given [`EntityTypeName`], and `in` the [`EntityUid`].
+    /// If the [`EntityUid`] is [`Option::None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 
@@ -3080,7 +3080,7 @@ impl Policy {
         self.ast.is_static()
     }
 
-    /// Get the head constraint on this policy's principal
+    /// Get the scope constraint on this policy's principal
     pub fn principal_constraint(&self) -> PrincipalConstraint {
         let slot_id = ast::SlotId::principal();
         match self.ast.template().principal_constraint().as_inner() {
@@ -3103,7 +3103,7 @@ impl Policy {
         }
     }
 
-    /// Get the head constraint on this policy's action
+    /// Get the scope constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistant with the other constraints
         // INVARIANT: all of the EntityUids come from a policy, which must have Concrete EntityUids
@@ -3119,7 +3119,7 @@ impl Policy {
         }
     }
 
-    /// Get the head constraint on this policy's resource
+    /// Get the scope constraint on this policy's resource
     pub fn resource_constraint(&self) -> ResourceConstraint {
         let slot_id = ast::SlotId::resource();
         match self.ast.template().resource_constraint().as_inner() {
@@ -3280,6 +3280,28 @@ impl Policy {
         Ok::<_, PolicyToJsonError>(json)
     }
 
+    /// Get all the unknown entities from the policy
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        self.ast
+            .condition()
+            .unknowns()
+            .filter_map(
+                |ast::Unknown {
+                     name,
+                     type_annotation,
+                 }| {
+                    if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                        EntityUid::from_str(name.as_str()).ok()
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect()
+    }
+
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
     /// will reflect the AST structure. When possible, don't use this method and
     /// create the `Policy` from the policy text, CST, or EST instead, as the
@@ -3365,8 +3387,10 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
-                    vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                let unwrapped_est_vals: HashMap<
+                    ast::SlotId,
+                    cedar_policy_core::entities::EntityUidJson,
+                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
             Self::Text { text, slots } => {
@@ -3456,6 +3480,28 @@ impl Expression {
     pub fn new_set(values: impl IntoIterator<Item = Self>) -> Self {
         Self(ast::Expr::set(values.into_iter().map(|v| v.0)))
     }
+
+    /// Create an expression representing an ip address.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `ip` constructor.
+    pub fn new_ip(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            ip_extension_name(),
+            vec![src_expr],
+        ))
+    }
+
+    /// Create an expression representing a fixed precision decimal number.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `decimal` constructor.
+    pub fn new_decimal(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            decimal_extension_name(),
+            vec![src_expr],
+        ))
+    }
 }
 
 impl FromStr for Expression {
@@ -3522,6 +3568,40 @@ impl RestrictedExpression {
     pub fn new_set(values: impl IntoIterator<Item = Self>) -> Self {
         Self(ast::RestrictedExpr::set(values.into_iter().map(|v| v.0)))
     }
+
+    /// Create an expression representing an ip address.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `ip` constructor.
+    pub fn new_ip(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            ip_extension_name(),
+            [src_expr],
+        ))
+    }
+
+    /// Create an expression representing a fixed precision decimal number.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `decimal` constructor.
+    pub fn new_decimal(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            decimal_extension_name(),
+            [src_expr],
+        ))
+    }
+}
+
+fn decimal_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("decimal".parse().unwrap())
+}
+
+fn ip_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("ip".parse().unwrap())
 }
 
 impl FromStr for RestrictedExpression {
@@ -3869,9 +3949,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_str(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_str(json)?;
         Ok(Self(context))
     }
 
@@ -3931,9 +4013,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_value(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_value(json)?;
         Ok(Self(context))
     }
 
@@ -3975,9 +4059,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_file(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_file(json)?;
         Ok(Self(context))
     }
 
@@ -4168,28 +4254,11 @@ pub fn eval_expression(
 }
 
 #[cfg(test)]
-#[cfg(feature = "partial-eval")]
-mod partial_eval_test {
-    use std::collections::HashSet;
-
-    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
-
-    #[test]
-    fn test_pe_response_constructor() {
-        let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
-        let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
-        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
-        assert_eq!(a.diagnostics().errors, errors);
-        assert_eq!(a.diagnostics().reason, reason);
-        assert_eq!(a.residuals(), &p);
-    }
-}
-
-#[cfg(test)]
 // PANIC SAFETY: unit tests
 #[allow(clippy::unwrap_used)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     #[test]
@@ -4280,5 +4349,180 @@ mod test {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
         assert!(Policy::from_json(None, v).is_err());
+    }
+
+    #[test]
+    fn ip_name_correct() {
+        assert_eq!(ip_extension_name(), ast::Name::from_str("ip").unwrap());
+    }
+
+    #[test]
+    fn expr_ip_constructor() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(ip.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_ip() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(evaluate_empty(&ip),
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
+        );
+    }
+
+    #[test]
+    fn expr_ip_network() {
+        let ip = Expression::new_ip("10.10.10.10/16");
+        assert_matches!(evaluate_empty(&ip),
+            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
+        );
+    }
+
+    #[test]
+    fn expr_bad_ip() {
+        let ip = Expression::new_ip("192.168.312.3");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_bad_cidr() {
+        let ip = Expression::new_ip("192.168.0.3/100");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_nonsense_ip() {
+        let ip = Expression::new_ip("foobar");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
+        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let e = Entities::empty();
+        eval_expression(&r, &e, expr)
+    }
+
+    #[test]
+    fn rexpr_ip_constructor() {
+        let ip = RestrictedExpression::new_ip("10.10.10.10");
+        assert_matches!(ip.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn decimal_name_correct() {
+        assert_eq!(
+            decimal_extension_name(),
+            ast::Name::from_str("decimal").unwrap()
+        );
+    }
+
+    #[test]
+    fn expr_decimal_constructor() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(decimal.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_decimal_constructor() {
+        let decimal = RestrictedExpression::new_decimal("1234.1234");
+        assert_matches!(decimal.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn valid_decimal() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(evaluate_empty(&decimal),
+         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
+    }
+
+    #[test]
+    fn invalid_decimal() {
+        let decimal = Expression::new_decimal("1234.12345");
+        assert_matches!(evaluate_empty(&decimal),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn into_iter_entities() {
+        let test_data = r#"
+        [
+        {
+        "uid": {"type":"User","id":"alice"},
+        "attrs": {
+            "age":19,
+            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+        },
+        "parents": [{"type":"Group","id":"admin"}]
+        },
+        {
+        "uid": {"type":"Group","id":"admin"},
+        "attrs": {},
+        "parents": []
+        }
+        ]
+        "#;
+
+        let list = Entities::from_json_str(test_data, None).unwrap();
+        let mut list_out: Vec<String> = list
+            .into_iter()
+            .map(|entity| entity.uid().id().to_string())
+            .collect();
+        list_out.sort();
+        assert_eq!(list_out, &["admin", "alice"]);
     }
 }

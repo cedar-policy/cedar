@@ -1,3 +1,19 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 //! Contains test for typechecking with partial schema files.
 #![cfg(test)]
 #![cfg(feature = "partial-validate")]
@@ -8,11 +24,14 @@ use std::collections::HashSet;
 use cedar_policy_core::ast::{Expr, Template, Var};
 use cedar_policy_core::{ast::StaticPolicy, parser::parse_policy};
 
-use crate::typecheck::test_utils::assert_expected_type_errors;
+use crate::typecheck::test_utils::{assert_expected_type_errors, assert_expected_warnings};
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::UnexpectedTypeHelp;
-use crate::{AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidatorSchema};
+use crate::{
+    AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidationWarning,
+    ValidationWarningKind, ValidatorSchema,
+};
 
 use super::test_utils::empty_schema_file;
 
@@ -24,16 +43,18 @@ pub(crate) fn assert_partial_typecheck(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
         &mut type_errors,
+        &mut warnings,
     );
     assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
     assert!(typechecked, "Expected that policy would typecheck.");
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_partial_typecheck_fail(
+pub(crate) fn assert_partial_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
     expected_type_errors: Vec<TypeError>,
@@ -41,12 +62,34 @@ pub(crate) fn assert_partial_typecheck_fail(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut type_errors: HashSet<TypeError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
         &mut type_errors,
+        &mut warnings,
     );
     assert_expected_type_errors(&expected_type_errors, &type_errors);
     assert!(!typechecked, "Expected that policy would not typecheck.");
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_partial_typecheck_warns(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    policy: StaticPolicy,
+    expected_warnings: Vec<ValidationWarningKind>,
+) {
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
+    let mut type_errors: HashSet<TypeError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let static_policy = Template::link_static_policy(policy.clone());
+    let typechecked =
+        typechecker.typecheck_policy(&static_policy.0, &mut type_errors, &mut warnings);
+    assert_expected_warnings(&expected_warnings, &warnings);
+    assert!(
+        typechecked,
+        "Expected that policy would typecheck (with warnings)."
+    );
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -59,7 +102,15 @@ pub(crate) fn assert_typecheck_fails_empty_schema(
     policy: StaticPolicy,
     expected_type_errors: Vec<TypeError>,
 ) {
-    assert_partial_typecheck_fail(empty_schema_file(), policy, expected_type_errors)
+    assert_partial_typecheck_fails(empty_schema_file(), policy, expected_type_errors)
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_typecheck_warns_empty_schema(
+    policy: StaticPolicy,
+    expected_warnings: Vec<ValidationWarningKind>,
+) {
+    assert_partial_typecheck_warns(empty_schema_file(), policy, expected_warnings)
 }
 
 mod passes_empty_schema {
@@ -418,9 +469,9 @@ mod fails_empty_schema {
             r#"permit(principal, action, resource) when { resource.bar && false };"#,
         )
         .unwrap();
-        assert_typecheck_fails_empty_schema(
+        assert_typecheck_warns_empty_schema(
             p.clone(),
-            vec![TypeError::impossible_policy(p.condition())],
+            vec![ValidationWarningKind::ImpossiblePolicy],
         )
     }
 
@@ -502,7 +553,7 @@ pub(crate) fn assert_typecheck_fails_partial_schema(
     policy: StaticPolicy,
     expected_type_errors: Vec<TypeError>,
 ) {
-    assert_partial_typecheck_fail(partial_schema_file(), policy, expected_type_errors)
+    assert_partial_typecheck_fails(partial_schema_file(), policy, expected_type_errors)
 }
 
 mod passes_partial_schema {
@@ -600,6 +651,7 @@ mod fail_partial_schema {
     use std::str::FromStr;
 
     use super::*;
+    use crate::{LubContext, LubHelp};
 
     #[test]
     fn error_on_declared_attr() {
@@ -641,6 +693,8 @@ mod fail_partial_schema {
             vec![TypeError::incompatible_types(
                 Expr::from_str("if resource.foo then principal.age else (if resource.bar then principal.name else principal.unknown)").unwrap(),
                 vec![Type::primitive_long(), Type::primitive_string()],
+                LubHelp::None,
+                LubContext::Conditional,
             )],
         );
     }

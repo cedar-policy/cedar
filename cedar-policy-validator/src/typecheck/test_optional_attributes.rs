@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,17 +20,19 @@
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{
-    ast::{BinaryOp, EntityUID, Expr, StaticPolicy, Var},
+    ast::{Expr, StaticPolicy, Var},
     parser::parse_policy,
 };
 use smol_str::SmolStr;
 
 use crate::{
     type_error::TypeError, types::EntityLUB, AttributeAccess, NamespaceDefinition,
-    NamespaceDefinitionWithActionAttributes,
+    NamespaceDefinitionWithActionAttributes, ValidationWarningKind,
 };
 
-use super::test_utils::{assert_policy_typecheck_fails, assert_policy_typechecks};
+use super::test_utils::{
+    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
+};
 
 fn schema_with_optionals() -> NamespaceDefinition {
     serde_json::from_str::<NamespaceDefinition>(
@@ -776,32 +778,21 @@ fn action_attrs_failing() {
         )],
     );
 
-    // Doesn't fail do to imprecision in ActionEntity LUB computation requiring `may_have_attr` to return true for ActionEntity types
-
+    // No error is returned, but the typechecker identifies that `action has ""`
+    // is always false.
     let failing_policy = parse_policy(
         Some("0".to_string()),
         r#"permit(principal, action == Action::"view", resource) when { action has "" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         failing_policy,
-        vec![TypeError::impossible_policy(Expr::and(
-            Expr::and(
-                Expr::and(
-                    Expr::val(true),
-                    Expr::binary_app(
-                        BinaryOp::Eq,
-                        Expr::var(Var::Action),
-                        Expr::val(EntityUID::with_eid_and_type("Action", "view").unwrap()),
-                    ),
-                ),
-                Expr::val(true),
-            ),
-            Expr::has_attr(Expr::var(Var::Action), "".into()),
-        ))],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
+    // Fails because OtherNamespace::Action::"view" is not defined in the schema.
+    // However, this will be detected by a different pass, so no error is reported.
     let failing_policy = parse_policy(
         Some("0".to_string()),
         r#"
@@ -816,5 +807,5 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema, failing_policy, vec![]); //fails because OtherNamespace::Action::"view" doesn't have defined attributes
+    assert_policy_typecheck_fails(schema, failing_policy, vec![]);
 }

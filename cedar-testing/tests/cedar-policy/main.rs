@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,25 +14,16 @@
  * limitations under the License.
  */
 
-//! Integration tests targeting the decimal extension
-//!
+#![cfg(feature = "integration-testing")]
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::panic)]
 
-use cedar_policy::integration_testing::perform_integration_test_from_json;
-use std::path::Path;
-
-/// Path of the folder containing the JSON tests
-fn folder() -> &'static Path {
-    Path::new("tests/decimal")
-}
-
-#[test]
+mod corpus_tests;
 #[cfg(feature = "decimal")]
-fn decimal_1() {
-    perform_integration_test_from_json(folder().join("1.json"));
-}
-
-#[test]
-#[cfg(feature = "decimal")]
-fn decimal_2() {
-    perform_integration_test_from_json(folder().join("2.json"));
-}
+mod decimal;
+mod example_use_cases;
+#[cfg(feature = "ipaddr")]
+mod ip;
+mod multi;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,4 +49,5 @@ mod prop_test_policy_set;
 mod tests;
 
 #[cfg(feature = "integration_testing")]
+#[deprecated(since = "3.2.0", note = "please use the `cedar-testing` crate instead")]
 pub mod integration_testing;

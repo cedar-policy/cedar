@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ pub use schema::*;
 mod schema_file_format;
 pub use schema_file_format::*;
 mod str_checks;
-pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarningKind};
+pub use str_checks::confusable_string_checks;
 mod type_error;
 pub use type_error::*;
 pub mod human_schema;
@@ -91,34 +91,41 @@ impl Validator {
     }
 
     /// Validate all templates, links, and static policies in a policy set.
-    /// Return an iterator of policy notes associated with each policy id.
+    /// Return a `ValidationResult`.
     pub fn validate<'a>(
         &'a self,
         policies: &'a PolicySet,
         mode: ValidationMode,
     ) -> ValidationResult<'a> {
-        let template_and_static_policy_errs = policies
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .flat_map(|p| self.validate_policy(p, mode));
+            .map(|p| self.validate_policy(p, mode))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
         let link_errs = policies
             .policies()
             .filter_map(|p| self.validate_slots(p, mode))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
-            confusable_string_checks(policies.all_templates()),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
         )
     }
 
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
-    /// validation notes together in the returned iterator.
+    /// validation errors and warnings in the returned iterators.
     fn validate_policy<'a>(
         &'a self,
         p: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
-        if mode.is_partial() {
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
+        let validation_errors = if mode.is_partial() {
             // We skip `validate_entity_types`, `validate_action_ids`, and
             // `validate_action_application` passes for partial schema
             // validation because there may be arbitrary extra entity types and
@@ -132,21 +139,17 @@ impl Validator {
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_action_application(
-                        p.principal_constraint(),
-                        p.action_constraint(),
-                        p.resource_constraint(),
-                    ))
-                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                    .chain(self.validate_template_action_application(p)),
             )
         }
         .into_iter()
-        .flatten()
-        .chain(self.typecheck_policy(p, mode))
+        .flatten();
+        let (type_errors, warnings) = self.typecheck_policy(p, mode);
+        (validation_errors.chain(type_errors), warnings)
     }
 
     /// Run relevant validations against a single template-linked policy,
-    /// gathering all validation notes together in the returned iterator.
+    /// gathering all validation errors together in the returned iterator.
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
@@ -167,12 +170,8 @@ impl Validator {
         // the slot filled by the appropriate value.
         Some(
             self.validate_entity_types_in_slots(p.env())
-                .chain(self.validate_action_application(
-                    &p.principal_constraint(),
-                    p.action_constraint(),
-                    &p.resource_constraint(),
-                ))
-                .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+                .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
+                .chain(self.validate_linked_action_application(p)),
         )
     }
 
@@ -185,14 +184,25 @@ impl Validator {
         &'a self,
         t: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
         let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
-        typecheck.typecheck_policy(t, &mut type_errors);
-        type_errors.into_iter().map(|type_error| {
-            let (kind, location) = type_error.kind_and_location();
-            ValidationError::with_policy_id(t.id(), location, ValidationErrorKind::type_error(kind))
-        })
+        let mut warnings = HashSet::new();
+        typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
+        (
+            type_errors.into_iter().map(|type_error| {
+                let (kind, location) = type_error.kind_and_location();
+                ValidationError::with_policy_id(
+                    t.id(),
+                    location,
+                    ValidationErrorKind::type_error(kind),
+                )
+            }),
+            warnings.into_iter(),
+        )
     }
 }
 
@@ -217,14 +227,14 @@ mod test {
         let schema_file = NamespaceDefinition::new(
             [
                 (
-                    foo_type.into(),
+                    foo_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    bar_type.into(),
+                    bar_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
@@ -284,10 +294,17 @@ mod test {
                 Some("Action::\"action\"".to_string()),
             ),
         );
+
         assert!(!result.validation_passed());
-        assert!(result.validation_errors().any(|x| x == &principal_err));
-        assert!(result.validation_errors().any(|x| x == &resource_err));
-        assert!(result.validation_errors().any(|x| x == &action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == principal_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == resource_err.error_kind()));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == action_err.error_kind()));
 
         Ok(())
     }
@@ -345,6 +362,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
+        let loc = t.loc().clone();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
@@ -362,6 +380,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::Photo".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -380,6 +399,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::Undefined".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -402,7 +422,7 @@ mod test {
         );
         let invalid_action_err = ValidationError::with_policy_id(
             &id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
@@ -415,6 +435,7 @@ mod test {
             ast::EntityUID::from_components(
                 "some_namespace::User".parse().unwrap(),
                 ast::Eid::new("foo"),
+                None,
             ),
         );
         set.link(
@@ -430,10 +451,12 @@ mod test {
         let id = ast::PolicyID::from_string("link3");
         let invalid_action_err = ValidationError::with_policy_id(
             &id,
-            None,
+            loc.clone(),
             ValidationErrorKind::invalid_action_application(false, false),
         );
-        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
+        assert!(result
+            .validation_errors()
+            .any(|x| x.error_kind() == invalid_action_err.error_kind()));
 
         Ok(())
     }

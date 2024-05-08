@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,13 +30,13 @@ use cedar_policy_core::{
 };
 
 use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typechecks, assert_typecheck_fails,
-    assert_typechecks,
+    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
+    assert_typecheck_fails, assert_typechecks,
 };
 use crate::{
     type_error::TypeError,
     types::{EntityLUB, Type},
-    AttributeAccess, SchemaError, SchemaFragment, ValidatorSchema,
+    AttributeAccess, SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
@@ -561,10 +561,10 @@ fn multi_namespace_action_eq() {
         r#"permit(principal, action, resource) when { NS1::Action::"Action" == NS2::Action::"Action" };"#,
     )
     .unwrap();
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -621,10 +621,10 @@ fn multi_namespace_action_in() {
         r#"permit(principal, action in NS4::Action::"Group", resource);"#,
     )
     .unwrap();
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 

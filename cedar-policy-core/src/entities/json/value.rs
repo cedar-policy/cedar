@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -185,6 +185,7 @@ impl TryFrom<TypeAndId> for EntityUID {
         Ok(EntityUID::from_components(
             Name::from_normalized_str(&e.entity_type)?,
             Eid::new(e.id),
+            None,
         ))
     }
 }
@@ -754,7 +755,7 @@ impl EntityUidJson {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::EntityEscape { __entity };
-                let expr = jvalue.into_expr(ctx.clone())?;
+                let expr = jvalue.into_expr(&ctx)?;
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {

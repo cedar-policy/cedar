@@ -1,4 +1,20 @@
-use serde::{Deserialize, Serialize};
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
@@ -9,7 +25,7 @@ use crate::{parser::err::ParseErrors, FromNormalizedStr};
 /// `true | false | if | then | else | in | is | like | has`).
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct Id(SmolStr);
 
 impl Id {
@@ -60,6 +76,35 @@ impl std::str::FromStr for Id {
 impl FromNormalizedStr for Id {
     fn describe_self() -> &'static str {
         "Id"
+    }
+}
+
+struct IdVisitor;
+
+impl<'de> serde::de::Visitor<'de> for IdVisitor {
+    type Value = Id;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a valid id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Id::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid id `{value}`: {err}")))
+    }
+}
+
+/// Deserialize an `Id` using `from_normalized_str`.
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(IdVisitor)
     }
 }
 

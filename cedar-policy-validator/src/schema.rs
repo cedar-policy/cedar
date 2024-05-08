@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 //! `member_of` relation from the schema is reversed and the transitive closure is
 //! computed to obtain a `descendants` relation.
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Name},
@@ -36,7 +36,7 @@ use crate::{
     err::*,
     human_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
-    SchemaFragment,
+    SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
 mod action;
@@ -92,7 +92,7 @@ impl ValidatorSchemaFragment {
                 .into_iter()
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
-                        Some(fragment_ns),
+                        fragment_ns,
                         ns_def,
                         action_behavior,
                         extensions,
@@ -251,6 +251,9 @@ impl ValidatorSchema {
                 };
             }
         }
+
+        let resolver = CommonTypeResolver::new(&type_defs);
+        let type_defs = resolver.resolve()?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -646,21 +649,205 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
     }
 }
 
+/// A common type reference resolver
+#[derive(Debug)]
+struct CommonTypeResolver<'a> {
+    /// Common type declarations to resolve
+    type_defs: &'a HashMap<Name, SchemaType>,
+    /// The dependency graph among common type names
+    /// The graph contains a vertex for each `Name` and `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a directed edge in the graph
+    /// A common type name is prefixed with the namespace id where it's declared
+    graph: HashMap<Name, HashSet<Name>>,
+}
+
+impl<'a> CommonTypeResolver<'a> {
+    /// Construct a the resolver
+    fn new(type_defs: &'a HashMap<Name, SchemaType>) -> Self {
+        let mut graph = HashMap::new();
+        for (name, ty) in type_defs {
+            graph.insert(
+                name.clone(),
+                HashSet::from_iter(ty.common_type_references()),
+            );
+        }
+        Self { type_defs, graph }
+    }
+
+    /// Perform topological sort on the dependency graph
+    /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
+    /// depends on `B`)
+    /// topo_sort(A -> B -> C) produces [C, B, A]
+    /// If there is a cycle, a type name involving in this cycle is the error
+    /// It implements a variant of Kahn's algorithm
+    fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
+        // The in-degree map
+        // Note that the keys of this map may be a superset of all common type
+        // names
+        let mut indegrees: HashMap<&Name, usize> = HashMap::new();
+        for (ty_name, deps) in self.graph.iter() {
+            // Ensure that declared common types have values in `indegrees`
+            indegrees.entry(ty_name).or_insert(0);
+            for dep in deps {
+                match indegrees.entry(dep) {
+                    std::collections::hash_map::Entry::Occupied(mut o) => {
+                        o.insert(o.get() + 1);
+                    }
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert(1);
+                    }
+                }
+            }
+        }
+
+        // The set that contains type names with zero incoming edges
+        let mut work_set: HashSet<&Name> = HashSet::new();
+        let mut res: Vec<Name> = Vec::new();
+
+        // Find all type names with zero in coming edges
+        for (name, degree) in indegrees.iter() {
+            let name = *name;
+            if *degree == 0 {
+                work_set.insert(name);
+                // The result only contains *declared* type names
+                if self.graph.contains_key(name) {
+                    res.push(name.clone());
+                }
+            }
+        }
+
+        // Pop a node
+        while let Some(name) = work_set.iter().next().cloned() {
+            work_set.remove(name);
+            if let Some(deps) = self.graph.get(name) {
+                for dep in deps {
+                    if let Some(degree) = indegrees.get_mut(dep) {
+                        // There will not be any underflows here because
+                        // in order for the in-degree to underflow, `dep`'s
+                        // in-degree must be 0 at this point
+                        // The only possibility where a node's in-degree
+                        // becomes 0 is through the subtraction below, which
+                        // means it has been visited and hence has 0 in-degrees
+                        // In other words, all its in-coming edges have been
+                        // "removed" and hence contradicts with the fact that
+                        // one of them is being "removed"
+                        *degree -= 1;
+                        if *degree == 0 {
+                            work_set.insert(dep);
+                            if self.graph.contains_key(dep) {
+                                res.push(dep.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // The set of nodes that have not been added to the result
+        // i.e., there are still in-coming edges and hence exists a cycle
+        let mut set: HashSet<&Name> = HashSet::from_iter(self.graph.keys().clone());
+        for name in res.iter() {
+            set.remove(name);
+        }
+
+        if let Some(cycle) = set.into_iter().next() {
+            Err(cycle.clone())
+        } else {
+            // We need to reverse the result because, e.g.,
+            // `res` is now [A,B,C] for A -> B -> C because no one depends on A
+            res.reverse();
+            Ok(res)
+        }
+    }
+
+    // Substitute common type references in `ty` according to `resolve_table`
+    fn resolve_type(
+        resolve_table: &HashMap<&Name, SchemaType>,
+        ty: SchemaType,
+    ) -> Result<SchemaType> {
+        match ty {
+            SchemaType::TypeDef { type_name } => resolve_table
+                .get(&type_name)
+                .ok_or(SchemaError::UndeclaredCommonTypes(HashSet::from_iter(
+                    std::iter::once(type_name.to_string()),
+                )))
+                .cloned(),
+            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
+                Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                    element: Box::new(Self::resolve_type(resolve_table, *element)?),
+                }))
+            }
+            SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => Ok(SchemaType::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(
+                    attributes
+                        .into_iter()
+                        .map(|(attr, attr_ty)| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    required: attr_ty.required,
+                                    ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                },
+                            ))
+                        })
+                        .collect::<Result<Vec<(_, _)>>>()?,
+                ),
+                additional_attributes,
+            })),
+            _ => Ok(ty),
+        }
+    }
+
+    // Resolve common type references
+    fn resolve(&self) -> Result<HashMap<Name, Type>> {
+        let sorted_names = self
+            .topo_sort()
+            .map_err(SchemaError::CycleInCommonTypeReferences)?;
+
+        let mut resolve_table = HashMap::new();
+        let mut tys = HashMap::new();
+
+        for name in sorted_names.iter() {
+            let ns: Option<Name> = if name.is_unqualified() {
+                None
+            } else {
+                // PANIC SAFETY: The namespace of qualified names should be a valid name
+                #[allow(clippy::unwrap_used)]
+                Some(name.namespace().parse().unwrap())
+            };
+            // PANIC SAFETY: `name.basename()` should be an existing common type id
+            #[allow(clippy::unwrap_used)]
+            let ty = self.type_defs.get(name).unwrap();
+            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
+            resolve_table.insert(name, substituted_ty.clone());
+            tys.insert(
+                name.clone(),
+                ValidatorNamespaceDef::try_schema_type_into_validator_type(
+                    ns.as_ref(),
+                    substituted_ty,
+                )?
+                .resolve_type_defs(&HashMap::new())?,
+            );
+        }
+
+        Ok(tys)
+    }
+}
+
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
     use std::{collections::BTreeMap, str::FromStr};
 
     use crate::types::Type;
     use crate::{SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
-    use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use cedar_policy_core::parser::Loc;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1024,10 +1211,8 @@ mod test {
             "actions": {}
         }
         "#;
-        let schema_file: NamespaceDefinition = serde_json::from_str(src).expect("Parse Error");
-        assert!(
-            matches!(TryInto::<ValidatorSchema>::try_into(schema_file), Err(SchemaError::ParseEntityType(_))),
-            "Expected that namespace in the entity type NS::User would cause a EntityType parse error.");
+        let schema_file: std::result::Result<NamespaceDefinition, _> = serde_json::from_str(src);
+        assert!(schema_file.is_err());
     }
 
     #[test]
@@ -1179,7 +1364,9 @@ mod test {
         let schema_ty: SchemaType = serde_json::from_value(src).expect("Parse Error");
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity { name: "Foo".into() })
+            SchemaType::Type(SchemaTypeVariant::Entity {
+                name: "Foo".parse().unwrap()
+            })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
@@ -1198,7 +1385,7 @@ mod test {
         assert_eq!(
             schema_ty,
             SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "NS::Foo".into()
+                name: "NS::Foo".parse().unwrap()
             })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
@@ -1214,20 +1401,8 @@ mod test {
     #[test]
     fn test_entity_type_namespace_parse_error() {
         let src = json!({"type": "Entity", "name": "::Foo"});
-        let schema_ty: SchemaType = serde_json::from_value(src).expect("Parse Error");
-        assert_eq!(
-            schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "::Foo".into()
-            })
-        );
-        match ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
-            schema_ty,
-        ) {
-            Err(SchemaError::ParseEntityType(_)) => (),
-            _ => panic!("Did not see expected entity type parse error."),
-        }
+        let schema_ty: std::result::Result<SchemaType, _> = serde_json::from_value(src);
+        assert!(schema_ty.is_err());
     }
 
     #[test]
@@ -1719,25 +1894,9 @@ mod test {
                 "actions": {}
             }
         });
-        let fragment = serde_json::from_value::<SchemaFragment>(bad1)
-            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
-        let err = ValidatorSchema::try_from(fragment)
-            .expect_err("should error due to invalid entity type name");
-        let problem_field = "User // comment";
-        let expected_err = ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::NonNormalizedString {
-                kind: "Id",
-                src: problem_field.to_string(),
-                normalized_src: "User".to_string(),
-            },
-            Loc::new(4, Arc::from(problem_field)),
-        ))
-        .into();
-
-        match err {
-            SchemaError::ParseEntityType(parse_error) => assert_eq!(parse_error, expected_err),
-            err => panic!("Incorrect error {err}"),
-        }
+        let fragment = serde_json::from_value::<SchemaFragment>(bad1); // should this fail in the future?
+                                                                       // The future has come?
+        assert!(fragment.is_err());
 
         // non-normalized schema namespace
         let bad2 = json!({
@@ -1750,24 +1909,9 @@ mod test {
                 "actions": {}
             }
         });
-        let fragment = serde_json::from_value::<SchemaFragment>(bad2)
-            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
-        let err = ValidatorSchema::try_from(fragment)
-            .expect_err("should error due to invalid schema namespace");
-        let problem_field = "ABC     :: //comment \n XYZ  ";
-        let expected_err = ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::NonNormalizedString {
-                kind: "Name",
-                src: problem_field.to_string(),
-                normalized_src: "ABC::XYZ".to_string(),
-            },
-            Loc::new(3, Arc::from(problem_field)),
-        ))
-        .into();
-        match err {
-            SchemaError::ParseNamespace(parse_error) => assert_eq!(parse_error, expected_err),
-            err => panic!("Incorrect error {:?}", err),
-        };
+        let fragment = serde_json::from_value::<SchemaFragment>(bad2); // should this fail in the future?
+                                                                       // The future has come?
+        assert!(fragment.is_err());
     }
 
     #[test]
@@ -2039,5 +2183,351 @@ mod test {
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
             assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+    }
+}
+
+#[cfg(test)]
+mod test_resolver {
+    use std::collections::HashMap;
+
+    use cedar_policy_core::ast::Name;
+    use cool_asserts::assert_matches;
+
+    use super::CommonTypeResolver;
+    use crate::{types::Type, SchemaError, SchemaFragment, ValidatorSchemaFragment};
+
+    fn resolve(schema: SchemaFragment) -> Result<HashMap<Name, Type>, SchemaError> {
+        let schema: ValidatorSchemaFragment = schema.try_into().unwrap();
+        let mut type_defs = HashMap::new();
+        for def in schema.0 {
+            type_defs.extend(def.type_defs.type_defs.into_iter());
+        }
+        let resolver = CommonTypeResolver::new(&type_defs);
+        resolver.resolve()
+    }
+
+    #[test]
+    fn test_simple() {
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                ("a".parse().unwrap(), Type::primitive_boolean()),
+                ("b".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b": {
+                            "type": "c"
+                        },
+                        "c": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                ("a".parse().unwrap(), Type::primitive_boolean()),
+                ("b".parse().unwrap(), Type::primitive_boolean()),
+                ("c".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_set() {
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Set",
+                            "element": {
+                                "type": "b"
+                            }
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                ("a".parse().unwrap(), Type::set(Type::primitive_boolean())),
+                ("b".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_record() {
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": {
+                                    "type": "b"
+                                }
+                            }
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                (
+                    "a".parse().unwrap(),
+                    Type::record_with_required_attributes(
+                        std::iter::once(("foo".into(), Type::primitive_boolean())),
+                        crate::types::OpenTag::ClosedAttributes
+                    )
+                ),
+                ("b".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_names() {
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema).unwrap();
+        assert_eq!(
+            res,
+            HashMap::from_iter([
+                ("A::a".parse().unwrap(), Type::primitive_boolean()),
+                ("B::a".parse().unwrap(), Type::primitive_boolean())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_cycles() {
+        // self reference
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // 2 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b" : {
+                            "type": "c"
+                        },
+                        "c" : {
+                            "type": "a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 2 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "C::a"
+                        }
+                    }
+                },
+                "C": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+
+        // cross-namespace 3 node loop
+        let schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "A": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "B::a"
+                        }
+                    }
+                },
+                "B": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "c"
+                        },
+                        "c": {
+                            "type": "A::a"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let res = resolve(schema);
+        assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
     }
 }

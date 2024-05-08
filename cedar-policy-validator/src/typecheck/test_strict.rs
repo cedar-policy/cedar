@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
 
 use crate::{
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
+    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeErrorKind, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -95,6 +95,8 @@ fn assert_types_must_match(
     e_strict: Expr,
     expected_type: Type,
     unequal_types: impl IntoIterator<Item = Type>,
+    hint: LubHelp,
+    context: LubContext,
 ) {
     assert_strict_type_error(
         schema,
@@ -104,6 +106,8 @@ fn assert_types_must_match(
         expected_type,
         TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
+            hint,
+            context,
         }),
     )
 }
@@ -224,6 +228,8 @@ fn eq_strict_types_mismatch() {
             Expr::from_str(r#"1 == "foo""#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_string(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         )
     })
 }
@@ -238,6 +244,8 @@ fn contains_strict_types_mismatch() {
             Expr::from_str(r#"[1].contains("test")"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Contains,
         )
     })
 }
@@ -255,6 +263,8 @@ fn contains_any_strict_types_mismatch() {
                 Type::set(Type::named_entity_reference_from_str("User")),
                 Type::set(Type::primitive_long()),
             ],
+            LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -272,6 +282,8 @@ fn contains_all_strict_types_mismatch() {
                 Type::set(Type::named_entity_reference_from_str("User")),
                 Type::set(Type::primitive_long()),
             ],
+            LubHelp::None,
+            LubContext::ContainsAnyAll,
         )
     })
 }
@@ -334,6 +346,8 @@ fn if_bool_strict_type_mismatch() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Conditional,
         )
     })
 }
@@ -351,6 +365,8 @@ fn set_strict_types_mismatch() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Set,
         )
     })
 }
@@ -418,6 +434,8 @@ fn entity_in_lub() {
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
             ],
+            LubHelp::EntityType,
+            LubContext::Conditional,
         )
     });
 }
@@ -443,6 +461,8 @@ fn test_and() {
             Expr::from_str(r#"(1 == (2 > 0)) && true"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
+            LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -451,6 +471,8 @@ fn test_and() {
             Expr::from_str(r#"true && (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -472,6 +494,8 @@ fn test_or() {
             Expr::from_str(r#"(1 == (2 > 0)) || false"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         );
         assert_types_must_match(
             s,
@@ -480,6 +504,8 @@ fn test_or() {
             Expr::from_str(r#"false || (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -501,6 +527,8 @@ fn test_unary() {
             Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -522,6 +550,8 @@ fn test_mul() {
             Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
             Type::primitive_long(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -543,6 +573,8 @@ fn test_like() {
             Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -564,6 +596,8 @@ fn test_get_attr() {
             Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }
@@ -601,6 +635,8 @@ fn test_has_attr() {
                     Type::primitive_long(),
                 )]),
             ],
+            LubHelp::RecordWidth,
+            LubContext::Conditional,
         );
     })
 }
@@ -622,7 +658,9 @@ fn test_extension() {
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::singleton_boolean(false)]
+            [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
         );
     })
 }

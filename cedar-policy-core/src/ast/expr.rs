@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -227,7 +227,7 @@ impl<T> Expr<T> {
 
     /// Check whether this expression is an entity reference
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference.
     pub fn is_ref(&self) -> bool {
         match &self.expr_kind {
@@ -243,7 +243,7 @@ impl<T> Expr<T> {
 
     /// Check whether this expression is a set of entity references
     ///
-    /// This is used for policy headers, where some syntax is
+    /// This is used for policy scopes, where some syntax is
     /// required to be an entity reference set.
     pub fn is_ref_set(&self) -> bool {
         match &self.expr_kind {
@@ -490,32 +490,38 @@ impl Expr {
             })
     }
 
-    /// Substitute unknowns with values
-    /// If a definition is missing, it will be left as an unknown,
-    /// and can be filled in later.
-    pub fn substitute(
+    /// Substitute unknowns with concrete values.
+    ///
+    /// Ignores unmapped unknowns.
+    /// Ignores type annotations on unknowns.
+    pub fn substitute(&self, definitions: &HashMap<SmolStr, Value>) -> Expr {
+        match self.substitute_general::<UntypedSubstitution>(definitions) {
+            Ok(e) => e,
+            Err(empty) => match empty {},
+        }
+    }
+
+    /// Substitute unknowns with concrete values.
+    ///
+    /// Ignores unmapped unknowns.
+    /// Errors if the substituted value does not match the type annotation on the unknown.
+    pub fn substitute_typed(
         &self,
         definitions: &HashMap<SmolStr, Value>,
     ) -> Result<Expr, SubstitutionError> {
+        self.substitute_general::<TypedSubstitution>(definitions)
+    }
+
+    /// Substitute unknowns with values
+    ///
+    /// Generic over the function implementing the substitution to allow for multiple error behaviors
+    fn substitute_general<T: SubstitutionFunction>(
+        &self,
+        definitions: &HashMap<SmolStr, Value>,
+    ) -> Result<Expr, T::Err> {
         match self.expr_kind() {
             ExprKind::Lit(_) => Ok(self.clone()),
-            ExprKind::Unknown(Unknown {
-                name,
-                type_annotation,
-            }) => match (definitions.get(name), type_annotation) {
-                (None, _) => Ok(self.clone()),
-                (Some(value), None) => Ok(value.clone().into()),
-                (Some(value), Some(t)) => {
-                    if &value.type_of() == t {
-                        Ok(value.clone().into())
-                    } else {
-                        Err(SubstitutionError::TypeError {
-                            expected: t.clone(),
-                            actual: value.type_of(),
-                        })
-                    }
-                }
-            },
+            ExprKind::Unknown(u @ Unknown { name, .. }) => T::substitute(u, definitions.get(name)),
             ExprKind::Var(_) => Ok(self.clone()),
             ExprKind::Slot(_) => Ok(self.clone()),
             ExprKind::If {
@@ -523,55 +529,58 @@ impl Expr {
                 then_expr,
                 else_expr,
             } => Ok(Expr::ite(
-                test_expr.substitute(definitions)?,
-                then_expr.substitute(definitions)?,
-                else_expr.substitute(definitions)?,
+                test_expr.substitute_general::<T>(definitions)?,
+                then_expr.substitute_general::<T>(definitions)?,
+                else_expr.substitute_general::<T>(definitions)?,
             )),
             ExprKind::And { left, right } => Ok(Expr::and(
-                left.substitute(definitions)?,
-                right.substitute(definitions)?,
+                left.substitute_general::<T>(definitions)?,
+                right.substitute_general::<T>(definitions)?,
             )),
             ExprKind::Or { left, right } => Ok(Expr::or(
-                left.substitute(definitions)?,
-                right.substitute(definitions)?,
+                left.substitute_general::<T>(definitions)?,
+                right.substitute_general::<T>(definitions)?,
             )),
-            ExprKind::UnaryApp { op, arg } => {
-                Ok(Expr::unary_app(*op, arg.substitute(definitions)?))
-            }
+            ExprKind::UnaryApp { op, arg } => Ok(Expr::unary_app(
+                *op,
+                arg.substitute_general::<T>(definitions)?,
+            )),
             ExprKind::BinaryApp { op, arg1, arg2 } => Ok(Expr::binary_app(
                 *op,
-                arg1.substitute(definitions)?,
-                arg2.substitute(definitions)?,
+                arg1.substitute_general::<T>(definitions)?,
+                arg2.substitute_general::<T>(definitions)?,
             )),
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
-                    .map(|e| e.substitute(definitions))
+                    .map(|e| e.substitute_general::<T>(definitions))
                     .collect::<Result<Vec<Expr>, _>>()?;
 
                 Ok(Expr::call_extension_fn(fn_name.clone(), args))
             }
-            ExprKind::GetAttr { expr, attr } => {
-                Ok(Expr::get_attr(expr.substitute(definitions)?, attr.clone()))
-            }
-            ExprKind::HasAttr { expr, attr } => {
-                Ok(Expr::has_attr(expr.substitute(definitions)?, attr.clone()))
-            }
+            ExprKind::GetAttr { expr, attr } => Ok(Expr::get_attr(
+                expr.substitute_general::<T>(definitions)?,
+                attr.clone(),
+            )),
+            ExprKind::HasAttr { expr, attr } => Ok(Expr::has_attr(
+                expr.substitute_general::<T>(definitions)?,
+                attr.clone(),
+            )),
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
-                expr.substitute(definitions)?,
+                expr.substitute_general::<T>(definitions)?,
                 pattern.iter().cloned(),
             )),
             ExprKind::Set(members) => {
                 let members = members
                     .iter()
-                    .map(|e| e.substitute(definitions))
+                    .map(|e| e.substitute_general::<T>(definitions))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::set(members))
             }
             ExprKind::Record(map) => {
                 let map = map
                     .iter()
-                    .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
+                    .map(|(name, e)| Ok((name.clone(), e.substitute_general::<T>(definitions)?)))
                     .collect::<Result<BTreeMap<_, _>, _>>()?;
                 // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
                 #[allow(clippy::expect_used)]
@@ -579,10 +588,57 @@ impl Expr {
                     .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
             ExprKind::Is { expr, entity_type } => Ok(Expr::is_entity_type(
-                expr.substitute(definitions)?,
+                expr.substitute_general::<T>(definitions)?,
                 entity_type.clone(),
             )),
         }
+    }
+}
+
+/// A trait for customizing the error behavior of substitution
+trait SubstitutionFunction {
+    /// The potential errors this substitution function can return
+    type Err;
+    /// The function for implementing the substitution.
+    ///
+    /// Takes the expression being substituted,
+    /// The substitution from the map (if present)
+    /// and the type annotation from the unknown (if present)
+    fn substitute(value: &Unknown, substitute: Option<&Value>) -> Result<Expr, Self::Err>;
+}
+
+struct TypedSubstitution {}
+
+impl SubstitutionFunction for TypedSubstitution {
+    type Err = SubstitutionError;
+
+    fn substitute(value: &Unknown, substitute: Option<&Value>) -> Result<Expr, Self::Err> {
+        match (substitute, &value.type_annotation) {
+            (None, _) => Ok(Expr::unknown(value.clone())),
+            (Some(v), None) => Ok(v.clone().into()),
+            (Some(v), Some(t)) => {
+                if v.type_of() == *t {
+                    Ok(v.clone().into())
+                } else {
+                    Err(SubstitutionError::TypeError {
+                        expected: t.clone(),
+                        actual: v.type_of(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+struct UntypedSubstitution {}
+
+impl SubstitutionFunction for UntypedSubstitution {
+    type Err = std::convert::Infallible;
+
+    fn substitute(value: &Unknown, substitute: Option<&Value>) -> Result<Expr, Self::Err> {
+        Ok(substitute
+            .map(|v| v.clone().into())
+            .unwrap_or_else(|| Expr::unknown(value.clone())))
     }
 }
 
@@ -1358,11 +1414,9 @@ impl std::fmt::Display for Var {
 
 #[cfg(test)]
 mod test {
+    use cool_asserts::assert_matches;
     use itertools::Itertools;
-    use std::{
-        collections::{hash_map::DefaultHasher, HashSet},
-        sync::Arc,
-    };
+    use std::collections::{hash_map::DefaultHasher, HashSet};
 
     use super::{var_generator::all_vars, *};
 
@@ -1707,5 +1761,103 @@ mod test {
         let expr1 = ExprBuilder::with_data(1).val(1);
         let expr2 = ExprBuilder::with_data(1).val(2);
         assert_ne!(ExprShapeOnly::new(&expr1), ExprShapeOnly::new(&expr2));
+    }
+
+    #[test]
+    fn untyped_subst_present() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: None,
+        };
+        let r = UntypedSubstitution::substitute(&u, Some(&Value::new(1, None)));
+        match r {
+            Ok(e) => assert_eq!(e, Expr::val(1)),
+            Err(empty) => match empty {},
+        }
+    }
+
+    #[test]
+    fn untyped_subst_present_correct_type() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: Some(Type::Long),
+        };
+        let r = UntypedSubstitution::substitute(&u, Some(&Value::new(1, None)));
+        match r {
+            Ok(e) => assert_eq!(e, Expr::val(1)),
+            Err(empty) => match empty {},
+        }
+    }
+
+    #[test]
+    fn untyped_subst_present_wrong_type() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: Some(Type::Bool),
+        };
+        let r = UntypedSubstitution::substitute(&u, Some(&Value::new(1, None)));
+        match r {
+            Ok(e) => assert_eq!(e, Expr::val(1)),
+            Err(empty) => match empty {},
+        }
+    }
+
+    #[test]
+    fn untyped_subst_not_present() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: Some(Type::Bool),
+        };
+        let r = UntypedSubstitution::substitute(&u, None);
+        match r {
+            Ok(n) => assert_eq!(n, Expr::unknown(u)),
+            Err(empty) => match empty {},
+        }
+    }
+
+    #[test]
+    fn typed_subst_present() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: None,
+        };
+        let e = TypedSubstitution::substitute(&u, Some(&Value::new(1, None))).unwrap();
+        assert_eq!(e, Expr::val(1));
+    }
+
+    #[test]
+    fn typed_subst_present_correct_type() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: Some(Type::Long),
+        };
+        let e = TypedSubstitution::substitute(&u, Some(&Value::new(1, None))).unwrap();
+        assert_eq!(e, Expr::val(1));
+    }
+
+    #[test]
+    fn typed_subst_present_wrong_type() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: Some(Type::Bool),
+        };
+        let r = TypedSubstitution::substitute(&u, Some(&Value::new(1, None))).unwrap_err();
+        assert_matches!(
+            r,
+            SubstitutionError::TypeError {
+                expected: Type::Bool,
+                actual: Type::Long,
+            }
+        );
+    }
+
+    #[test]
+    fn typed_subst_not_present() {
+        let u = Unknown {
+            name: "foo".into(),
+            type_annotation: None,
+        };
+        let r = TypedSubstitution::substitute(&u, None).unwrap();
+        assert_eq!(r, Expr::unknown(u));
     }
 }

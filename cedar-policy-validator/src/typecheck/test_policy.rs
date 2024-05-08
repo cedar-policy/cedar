@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,15 +30,16 @@ use smol_str::SmolStr;
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_fails_for_mode,
+    assert_policy_typecheck_warns, assert_policy_typecheck_warns_for_mode,
     assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks,
     with_typechecker_from_schema,
 };
 use crate::{
     type_error::TypeError,
-    typecheck::test_utils::static_to_template,
-    typecheck::PolicyCheck,
+    typecheck::{test_utils::static_to_template, PolicyCheck},
     types::{EntityLUB, Type},
-    AttributeAccess, NamespaceDefinition, ValidationMode,
+    AttributeAccess, LubContext, LubHelp, NamespaceDefinition, ValidationMode,
+    ValidationWarningKind,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -132,6 +133,14 @@ fn assert_policy_typecheck_fails_simple_schema(
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+fn assert_policy_typecheck_warns_simple_schema(
+    p: impl Into<Arc<Template>>,
+    expected_warnings: Vec<ValidationWarningKind>,
+) {
+    assert_policy_typecheck_warns(simple_schema_file(), p, expected_warnings)
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_permissive_fails_simple_schema(
     p: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,
@@ -140,6 +149,19 @@ fn assert_policy_typecheck_permissive_fails_simple_schema(
         simple_schema_file(),
         p,
         expected_type_errors,
+        ValidationMode::Permissive,
+    )
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+fn assert_policy_typecheck_permissive_warns_simple_schema(
+    p: impl Into<Arc<Template>>,
+    expected_warnings: Vec<ValidationWarningKind>,
+) {
+    assert_policy_typecheck_warns_for_mode(
+        simple_schema_file(),
+        p,
+        expected_warnings,
         ValidationMode::Permissive,
     )
 }
@@ -375,15 +397,15 @@ fn policy_lub_entity_type_attr() {
 }
 
 #[test]
-fn policy_impossible_head() {
+fn policy_impossible_scope() {
     let p = parse_policy(
         Some("0".to_string()),
         r#"permit(principal == Group::"foo", action == Action::"delete_group", resource);"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -394,9 +416,9 @@ fn policy_impossible_literal_euids() {
         r#"permit(principal, action, resource) when { Group::"foo" in User::"bar" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -407,9 +429,9 @@ fn policy_impossible_not_has() {
         r#"permit(principal, action, resource) when { ! ({name: "alice"} has name)};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -428,9 +450,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { User::"alice" in [action] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -438,9 +460,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { User::"alice" in [Action::"view_photo"] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -448,9 +470,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { principal in [action] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -458,9 +480,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { principal in action };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -468,9 +490,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { principal in Action::"view_photo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -478,9 +500,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Action::"delete_group"] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let p = parse_policy(
@@ -488,9 +510,9 @@ fn policy_in_action_impossible() {
         r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Photo::"bar"] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_permissive_fails_simple_schema(
+    assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -501,9 +523,9 @@ fn policy_action_in_impossible() {
         r#"permit(principal, action, resource) when { action in [User::"alice"] };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -595,9 +617,9 @@ fn entity_lub_cant_have_undeclared_attribute() {
         r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has foo};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_permissive_fails_simple_schema(
+    assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -620,14 +642,14 @@ fn is_typechecks_singleton() {
 #[test]
 fn is_impossible() {
     let p = parse_policy(None, r#"permit(principal is Photo, action, resource);"#).unwrap();
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
     let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -653,9 +675,9 @@ fn is_entity_lub() {
         "#,
     )
     .unwrap();
-    assert_policy_typecheck_permissive_fails_simple_schema(
+    assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -677,9 +699,9 @@ fn is_action() {
         "#,
     )
     .unwrap();
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![TypeError::impossible_policy(p.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -695,7 +717,9 @@ fn entity_record_lub_is_none() {
                 [
                     Type::closed_record_with_required_attributes([("name".into(), Type::primitive_string())]),
                     Type::named_entity_reference_from_str("User"),
-                ]
+                ],
+                LubHelp::EntityRecord,
+                LubContext::Conditional,
             )
         ],
     );
@@ -829,10 +853,10 @@ fn action_groups() {
         r#"permit(principal, action, resource) when { action in Entity::"group" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let policy = parse_policy(
@@ -840,10 +864,10 @@ fn action_groups() {
         r#"permit(principal, action, resource) when { action in Entity::"act" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let policy = parse_policy(
@@ -851,10 +875,10 @@ fn action_groups() {
         r#"permit(principal, action, resource) when { Entity::"group" in action };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
     let policy = parse_policy(
@@ -862,10 +886,10 @@ fn action_groups() {
         r#"permit(principal, action, resource) when { Entity::"act" in action };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(
+    assert_policy_typecheck_warns(
         schema,
         policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
+        vec![ValidationWarningKind::ImpossiblePolicy],
     );
 }
 
@@ -916,6 +940,8 @@ fn record_entity_lub_non_term() {
                 )]),
                 Type::named_entity_reference_from_str("U"),
             ],
+            LubHelp::EntityRecord,
+            LubContext::Conditional,
         )],
     );
 }
@@ -1086,9 +1112,9 @@ mod templates {
             r#"permit(principal == ?principal, action, resource) when { false };"#,
         )
         .unwrap();
-        assert_policy_typecheck_fails_simple_schema(
+        assert_policy_typecheck_warns_simple_schema(
             template.clone(),
-            vec![TypeError::impossible_policy(template.condition())],
+            vec![ValidationWarningKind::ImpossiblePolicy],
         );
     }
 }

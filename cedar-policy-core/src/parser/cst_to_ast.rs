@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -235,8 +235,8 @@ impl Node<Option<cst::Policy>> {
         let (annot_success, annotations) = policy.get_ast_annotations(errs);
         let mut failure = !annot_success;
 
-        // convert head
-        let (maybe_principal, maybe_action, maybe_resource) = policy.extract_head(errs);
+        // convert scope
+        let (maybe_principal, maybe_action, maybe_resource) = policy.extract_scope(errs);
 
         // convert conditions
         let conds: Vec<_> = policy
@@ -284,8 +284,8 @@ impl Node<Option<cst::Policy>> {
 }
 
 impl cst::Policy {
-    /// get the head constraints from the `cst::Policy`
-    pub fn extract_head(
+    /// get the scope constraints from the `cst::Policy`
+    pub fn extract_scope(
         &self,
         errs: &mut ParseErrors,
     ) -> (
@@ -298,9 +298,9 @@ impl cst::Policy {
         let mut end_of_last_var = self.effect.loc.end();
 
         let mut vars = self.variables.iter().peekable();
-        let principal = if let Some(head1) = vars.next() {
-            end_of_last_var = head1.loc.end();
-            head1.to_principal_constraint(errs)
+        let principal = if let Some(scope1) = vars.next() {
+            end_of_last_var = scope1.loc.end();
+            scope1.to_principal_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Principal),
@@ -308,9 +308,9 @@ impl cst::Policy {
             ));
             None
         };
-        let action = if let Some(head2) = vars.next() {
-            end_of_last_var = head2.loc.end();
-            head2.to_action_constraint(errs)
+        let action = if let Some(scope2) = vars.next() {
+            end_of_last_var = scope2.loc.end();
+            scope2.to_action_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Action),
@@ -318,8 +318,8 @@ impl cst::Policy {
             ));
             None
         };
-        let resource = if let Some(head3) = vars.next() {
-            head3.to_resource_constraint(errs)
+        let resource = if let Some(scope3) = vars.next() {
+            scope3.to_resource_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Resource),
@@ -333,7 +333,7 @@ impl cst::Policy {
             for extra_var in vars {
                 if let Some(def) = extra_var.as_inner() {
                     errs.push(
-                        extra_var.to_ast_err(ToASTErrorKind::ExtraHeadConstraints(def.clone())),
+                        extra_var.to_ast_err(ToASTErrorKind::ExtraScopeConstraints(def.clone())),
                     )
                 }
             }
@@ -679,26 +679,22 @@ impl Node<Option<cst::VariableDef>> {
         }
 
         let action_constraint = if let Some((op, rel_expr)) = &vardef.ineq {
-            let refs = rel_expr.to_refs(errs, ast::Var::Action)?;
-            match (op, refs) {
-                (cst::RelOp::In, OneOrMultipleRefs::Multiple(euids)) => {
-                    Some(ActionConstraint::is_in(euids))
+            match op {
+                cst::RelOp::In => match rel_expr.to_refs(errs, ast::Var::Action)? {
+                    OneOrMultipleRefs::Single(single_ref) => {
+                        Some(ActionConstraint::is_in([single_ref]))
+                    }
+                    OneOrMultipleRefs::Multiple(refs) => Some(ActionConstraint::is_in(refs)),
+                },
+                cst::RelOp::Eq => {
+                    let single_ref = rel_expr.to_ref(ast::Var::Action, errs)?;
+                    Some(ActionConstraint::is_eq(single_ref))
                 }
-                (cst::RelOp::In, OneOrMultipleRefs::Single(euid)) => {
-                    Some(ActionConstraint::is_in([euid]))
-                }
-                (cst::RelOp::Eq, OneOrMultipleRefs::Single(euid)) => {
-                    Some(ActionConstraint::is_eq(euid))
-                }
-                (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
-                    errs.push(rel_expr.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
-                    None
-                }
-                (cst::RelOp::InvalidSingleEq, _) => {
+                cst::RelOp::InvalidSingleEq => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
                     None
                 }
-                (op, _) => {
+                op => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op)));
                     None
                 }
@@ -2122,7 +2118,9 @@ impl Node<Option<cst::Name>> {
 
         // computation and error generation is complete, so fail or construct
         match (maybe_name, path.len()) {
-            (Some(r), len) if len == name.path.len() => Some(construct_name(path, r)),
+            (Some(r), len) if len == name.path.len() => {
+                Some(construct_name(path, r, self.loc.clone()))
+            }
             _ => None,
         }
     }
@@ -2231,7 +2229,7 @@ impl Node<Option<cst::Ref>> {
                 };
 
                 match (maybe_path, maybe_eid) {
-                    (Some(p), Some(e)) => Some(construct_refr(p, e)),
+                    (Some(p), Some(e)) => Some(construct_refr(p, e, self.loc.clone())),
                     _ => None,
                 }
             }
@@ -2314,15 +2312,16 @@ fn construct_template_policy(
     conds: Vec<ast::Expr>,
     loc: &Loc,
 ) -> ast::Template {
-    let construct_template = |non_head_constraint| {
+    let construct_template = |non_scope_constraint| {
         ast::Template::new(
             id,
+            Some(loc.clone()),
             annotations,
             effect,
             principal,
             action,
             resource,
-            non_head_constraint,
+            non_scope_constraint,
         )
     };
     let mut conds_iter = conds.into_iter();
@@ -2334,7 +2333,7 @@ fn construct_template_policy(
             None => first_expr,
         })
     } else {
-        // use `true` to mark the absence of non-head constraints
+        // use `true` to mark the absence of non-scope constraints
         construct_template(construct_expr_bool(true, loc.clone()))
     }
 }
@@ -2346,15 +2345,16 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id) -> ast::Name {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
     ast::Name {
         id,
         path: Arc::new(path),
+        loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
+fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
-    ast::EntityUID::from_components(p, eid)
+    ast::EntityUID::from_components(p, eid, Some(loc))
 }
 fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).val(r)
@@ -3065,7 +3065,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head1() {
+    fn fail_scope1() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
@@ -3085,7 +3085,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head2() {
+    fn fail_scope2() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
@@ -3105,7 +3105,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_head3() {
+    fn fail_scope3() {
         let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
@@ -5040,7 +5040,7 @@ mod tests {
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
@@ -5048,7 +5048,7 @@ mod tests {
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action in ?principal, resource);"#,
@@ -5056,7 +5056,7 @@ mod tests {
             ),
             (
                 r#"permit(principal, action == ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in ?resource, resource);"#,
@@ -5203,7 +5203,7 @@ mod tests {
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
 

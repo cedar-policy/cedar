@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,26 @@
  * limitations under the License.
  */
 
-//! Cedar integration tests are stored in the `CedarIntegrationTests`
-//! package, and shared among multiple interfaces (Rust bindings, Java bindings,
-//! CLI [here], etc).
+//! Helper code to run Cedar integration tests through the CLI
 
+#![cfg(feature = "integration-testing")]
 // PANIC SAFETY tests
 #![allow(clippy::expect_used)]
 // PANIC SAFETY tests
 #![allow(clippy::panic)]
+
 mod corpus_tests;
+#[cfg(feature = "decimal")]
 mod decimal;
-mod example_use_cases_doc;
+mod example_use_cases;
+#[cfg(feature = "ipaddr")]
 mod ip;
 mod multi;
 
-use cedar_policy::integration_testing::JsonTest;
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
+use cedar_testing::integration_testing::JsonTest;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -114,6 +116,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&schema_file)
             .arg("--policies")
             .arg(&policy_file)
+            .arg("--schema-format")
+            .arg("human")
             .assert()
             .append_context("validation", json_request.desc.clone());
 
@@ -158,6 +162,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&entity_file)
             .arg("--schema")
             .arg(&schema_file)
+            .arg("--schema-format")
+            .arg("human")
             .arg("--verbose") // so that reasons are displayed
             .assert()
             .append_context("authorization", json_request.desc.clone());

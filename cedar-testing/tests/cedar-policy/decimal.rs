@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,29 +14,22 @@
  * limitations under the License.
  */
 
-//! Integration tests targeting the ipaddr extension
-//!
-//! These files exist separately in the `CedarIntegrationTests` package
+//! Integration tests targeting the decimal extension
 
-use super::perform_integration_test_from_json;
+use cedar_testing::integration_testing::perform_integration_test_from_json;
 use std::path::Path;
 
 /// Path of the folder containing the JSON tests
 fn folder() -> &'static Path {
-    Path::new("tests/ip")
+    Path::new("tests/decimal")
 }
 
 #[test]
-fn ip_1() {
+fn decimal_1() {
     perform_integration_test_from_json(folder().join("1.json"));
 }
 
 #[test]
-fn ip_2() {
+fn decimal_2() {
     perform_integration_test_from_json(folder().join("2.json"));
-}
-
-#[test]
-fn ip_3() {
-    perform_integration_test_from_json(folder().join("3.json"));
 }

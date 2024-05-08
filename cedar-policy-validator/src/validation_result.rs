@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{TypeErrorKind, ValidationWarning};
+use crate::TypeErrorKind;
 
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
@@ -112,7 +112,7 @@ impl<'a> ValidationError<'a> {
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyID,
     source_loc: Option<Loc>,
@@ -150,9 +150,9 @@ pub enum ValidationErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnrecognizedActionId(#[from] UnrecognizedActionId),
-    /// There is no action satisfying the action head constraint that can be
+    /// There is no action satisfying the action scope constraint that can be
     /// applied to a principal and resources that both satisfy their respective
-    /// head conditions.
+    /// scope conditions.
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] InvalidActionApplication),
@@ -255,7 +255,7 @@ impl Diagnostic for UnrecognizedActionId {
 /// Structure containing details about an invalid action application error.
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-#[error("unable to find an applicable action given the policy head constraints")]
+#[error("unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
     pub(crate) would_in_fix_principal: bool,
     pub(crate) would_in_fix_resource: bool,
@@ -286,4 +286,76 @@ impl Diagnostic for InvalidActionApplication {
 pub struct UnspecifiedEntityError {
     /// EID of the unspecified entity.
     pub(crate) entity_id: String,
+}
+
+/// The structure for validation warnings.
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct ValidationWarning<'a> {
+    pub(crate) location: SourceLocation<'a>,
+    pub(crate) kind: ValidationWarningKind,
+}
+
+impl<'a> ValidationWarning<'a> {
+    pub(crate) fn with_policy_id(
+        id: &'a PolicyID,
+        source_loc: Option<Loc>,
+        warning_kind: ValidationWarningKind,
+    ) -> Self {
+        Self {
+            kind: warning_kind,
+            location: SourceLocation::new(id, source_loc),
+        }
+    }
+
+    pub fn location(&self) -> &SourceLocation<'a> {
+        &self.location
+    }
+
+    pub fn kind(&self) -> &ValidationWarningKind {
+        &self.kind
+    }
+
+    pub fn to_kind_and_location(self) -> (SourceLocation<'a>, ValidationWarningKind) {
+        (self.location, self.kind)
+    }
+}
+
+impl std::fmt::Display for ValidationWarning<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "validation warning on policy `{}`: {}",
+            self.location.policy_id(),
+            self.kind
+        )
+    }
+}
+
+/// Represents the different kinds of validation warnings and information
+/// specific to that warning. Marked as `non_exhaustive` to allow adding
+/// additional warnings in the future as a non-breaking change.
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
+#[non_exhaustive]
+#[diagnostic(severity(Warning))]
+pub enum ValidationWarningKind {
+    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    #[error("string `\"{0}\"` contains mixed scripts")]
+    MixedScriptString(String),
+    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("string `\"{0}\"` contains BIDI control characters")]
+    BidiCharsInString(String),
+    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("identifier `{0}` contains BIDI control characters")]
+    BidiCharsInIdentifier(String),
+    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    #[error("identifier `{0}` contains mixed scripts")]
+    MixedScriptIdentifier(String),
+    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    #[error("identifier `{0}` contains characters that fall outside of the General Security Profile for Identifiers")]
+    ConfusableIdentifier(String),
+    /// The typechecker found that a policy condition will always evaluate to false.
+    #[error(
+        "policy is impossible: the policy expression evaluates to false for all valid requests"
+    )]
+    ImpossiblePolicy,
 }

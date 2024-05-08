@@ -1,9 +1,26 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use std::{collections::HashSet, fmt::Display};
 
+use cedar_policy_core::ast::Name;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{
@@ -13,10 +30,9 @@ use crate::{
 impl Display for SchemaFragment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
-            if ns.is_empty() {
-                write!(f, "{def}")?
-            } else {
-                write!(f, "namespace {ns} {{\n{def}}}")?
+            match ns {
+                None => write!(f, "{def}")?,
+                Some(ns) => write!(f, "namespace {ns} {{{def}}}")?,
             }
         }
         Ok(())
@@ -181,16 +197,24 @@ pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
 ) -> Result<String, ToHumanSchemaStrError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
-    for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_empty()) {
+    for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
         let entity_types: HashSet<SmolStr> = ns
             .entity_types
             .keys()
-            .map(|ty_name| format!("{name}::{ty_name}").into())
+            .map(|ty_name| {
+                Name::unqualified_name(ty_name.clone())
+                    .prefix_namespace_if_unqualified(name.clone())
+                    .to_smolstr()
+            })
             .collect();
         let common_types: HashSet<SmolStr> = ns
             .common_types
             .keys()
-            .map(|ty_name| format!("{name}::{ty_name}").into())
+            .map(|ty_name| {
+                Name::unqualified_name(ty_name.clone())
+                    .prefix_namespace_if_unqualified(name.clone())
+                    .to_smolstr()
+            })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }

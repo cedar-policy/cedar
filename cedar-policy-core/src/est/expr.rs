@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1038,6 +1038,7 @@ fn interpret_primary(
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid.clone()),
+                                None,
                             )),
                         })))
                     }
@@ -1065,6 +1066,7 @@ fn interpret_primary(
                                 .and_then(|id| id.to_string().parse().map_err(Into::into))
                         })
                         .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                    Some(node.loc.clone()),
                 ))),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {
