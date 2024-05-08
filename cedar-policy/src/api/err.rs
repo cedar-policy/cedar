@@ -22,7 +22,6 @@ use crate::PolicyId;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::Name;
 use cedar_policy_core::authorizer;
-use cedar_policy_core::entities::json::ContextJsonDeserializationError;
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::parser;
@@ -618,11 +617,54 @@ pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] ContextJsonDeserializationError),
+    JsonDeserialization(#[from] context_json_errors::ContextJsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MissingAction(#[from] context_json_errors::MissingActionError),
+}
+
+impl ContextJsonError {
+    /// Construct a `ContextJsonError::MissingAction`
+    pub(crate) fn missing_action(action: EntityUid) -> Self {
+        Self::MissingAction(context_json_errors::MissingActionError { action })
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
+    fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
+        context_json_errors::ContextJsonDeserializationError::from(error).into()
+    }
+}
+
+/// Error subtypes for [`ContextJsonError`]
+pub mod context_json_errors {
+    use super::EntityUid;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Error deserializing the JSON into a Context
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    pub struct ContextJsonDeserializationError {
+        #[diagnostic(transparent)]
+        #[from]
+        error: cedar_policy_core::entities::json::ContextJsonDeserializationError,
+    }
+
+    /// The supplied action doesn't exist in the supplied schema
+    #[derive(Debug, Diagnostic, Error)]
     #[error("action `{action}` does not exist in the supplied schema")]
-    MissingAction {
+    pub struct MissingActionError {
         /// UID of the action which doesn't exist
-        action: EntityUid,
-    },
+        pub(super) action: EntityUid,
+    }
+
+    impl MissingActionError {
+        /// Get the [`EntityUid`] of the action which doesn't exist
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
+    }
 }

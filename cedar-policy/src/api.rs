@@ -3373,11 +3373,8 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref()).ok_or_else(
-            || ContextJsonError::MissingAction {
-                action: action.clone(),
-            },
-        )
+        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
+            .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
     }
 }
 
