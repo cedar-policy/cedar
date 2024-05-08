@@ -156,7 +156,7 @@ impl Name {
     /// When the name is an `Id`, prefix it with the optional namespace
     /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
     /// prefix `A` with `Some(B::C)` yields `B::C::A`
-    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<Name>) -> Name {
+    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<&Name>) -> Name {
         if self.is_unqualified() {
             // Ideally, we want to implement `IntoIterator` for `Name`
             match namespace {
@@ -384,28 +384,28 @@ mod test {
             "foo::bar::baz",
             Name::from_normalized_str("baz")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some("foo::bar".parse().unwrap()))
+                .prefix_namespace_if_unqualified(Some(&"foo::bar".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "C::D",
             Name::from_normalized_str("C::D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some("A::B".parse().unwrap()))
+                .prefix_namespace_if_unqualified(Some(&"A::B".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A::B::C::D",
             Name::from_normalized_str("D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some("A::B::C".parse().unwrap()))
+                .prefix_namespace_if_unqualified(Some(&"A::B::C".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "B::C::D",
             Name::from_normalized_str("B::C::D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some("A".parse().unwrap()))
+                .prefix_namespace_if_unqualified(Some(&"A".parse().unwrap()))
                 .to_smolstr()
         );
     }

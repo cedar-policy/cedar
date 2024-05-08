@@ -334,7 +334,7 @@ impl SchemaType {
     /// Prefix unqualified common type references with the namespace they are in
     pub(crate) fn prefix_common_type_references_with_namespace(
         self,
-        ns: Option<Name>,
+        ns: Option<&Name>,
     ) -> SchemaType {
         match self {
             Self::Type(SchemaTypeVariant::Record {

@@ -203,7 +203,7 @@ pub fn json_schema_to_custom_schema_str(
             .keys()
             .map(|ty_name| {
                 Name::unqualified_name(ty_name.clone())
-                    .prefix_namespace_if_unqualified(name.clone())
+                    .prefix_namespace_if_unqualified(name.as_ref())
                     .to_smolstr()
             })
             .collect();
@@ -212,7 +212,7 @@ pub fn json_schema_to_custom_schema_str(
             .keys()
             .map(|ty_name| {
                 Name::unqualified_name(ty_name.clone())
-                    .prefix_namespace_if_unqualified(name.clone())
+                    .prefix_namespace_if_unqualified(name.as_ref())
                     .to_smolstr()
             })
             .collect();
