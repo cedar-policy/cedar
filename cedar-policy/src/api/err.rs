@@ -69,12 +69,12 @@ pub struct PolicyEvaluationError {
 }
 
 impl PolicyEvaluationError {
-    /// Get the id of the erroring policy
+    /// Get the [`PolicyId`] of the erroring policy
     pub fn id(&self) -> &PolicyId {
         PolicyId::ref_cast(&self.id)
     }
 
-    /// Get the underlying `EvaluationError`
+    /// Get the underlying [`EvaluationError`]
     pub fn inner(&self) -> &EvaluationError {
         &self.error
     }
