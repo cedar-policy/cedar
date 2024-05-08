@@ -30,9 +30,7 @@ pub use cedar_policy_validator::human_schema::SchemaWarning;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
-use itertools::Itertools;
 use miette::Diagnostic;
-use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -196,8 +194,38 @@ pub enum SchemaError {
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToHumanSyntaxError {
     /// Duplicate names were found in the schema
-    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
-    NameCollisions(NonEmpty<SmolStr>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NameCollisions(#[from] to_human_syntax_errors::NameCollisionsError),
+}
+
+/// Error subtypes for [`ToHumanSyntaxError`]
+pub mod to_human_syntax_errors {
+    use itertools::Itertools;
+    use miette::Diagnostic;
+    use nonempty::NonEmpty;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// Duplicate names were found in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("There are name collisions: [{}]", .names.iter().join(", "))]
+    pub struct NameCollisionsError {
+        /// Names that had collisions
+        names: NonEmpty<SmolStr>,
+    }
+
+    impl NameCollisionsError {
+        /// Construct a new [`NameCollisionsError`]
+        pub(crate) fn new(names: NonEmpty<SmolStr>) -> Self {
+            Self { names }
+        }
+
+        /// Get the names that had collisions
+        pub fn names(&self) -> impl Iterator<Item = &str> {
+            self.names.iter().map(|n| n.as_str())
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -206,7 +234,7 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
         match value {
             cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
                 collisions,
-            ) => Self::NameCollisions(collisions),
+            ) => Self::NameCollisions(to_human_syntax_errors::NameCollisionsError::new(collisions)),
         }
     }
 }
