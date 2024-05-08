@@ -240,7 +240,7 @@ impl ValidatorNamespaceDef {
         schema_file_type_def: HashMap<Id, SchemaType>,
         schema_namespace: Option<&Name>,
     ) -> Result<TypeDefs> {
-        let mut type_defs = HashMap::new();
+        let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
             if Self::is_builtin_type_name(id.as_ref()) {
                 return Err(SchemaError::DuplicateCommonType(id.to_string()));
@@ -267,7 +267,7 @@ impl ValidatorNamespaceDef {
         schema_files_types: HashMap<Id, schema_file_format::EntityType>,
         schema_namespace: Option<&Name>,
     ) -> Result<EntityTypesDef> {
-        let mut entity_types = HashMap::new();
+        let mut entity_types = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
             match entity_types.entry(name) {
@@ -303,7 +303,7 @@ impl ValidatorNamespaceDef {
             CedarValueJson::Long(_) => Ok(Type::primitive_long()),
             CedarValueJson::String(_) => Ok(Type::primitive_string()),
             CedarValueJson::Record(r) => {
-                let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
+                let mut required_attrs: HashMap<SmolStr, Type> = HashMap::with_capacity(r.len());
                 for (k, v_prime) in r {
                     let t = Self::jsonval_to_type_helper(v_prime, action_id);
                     match t {
@@ -361,8 +361,9 @@ impl ValidatorNamespaceDef {
         action_id: &EntityUID,
         extensions: Extensions<'_>,
     ) -> Result<(Attributes, HashMap<SmolStr, PartialValueSerializedAsExpr>)> {
-        let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
-        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> = HashMap::new();
+        let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
+        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> =
+            HashMap::with_capacity(m.len());
         let evaluator = RestrictedEvaluator::new(&extensions);
 
         for (k, v) in m {
@@ -408,7 +409,7 @@ impl ValidatorNamespaceDef {
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<ActionsDef> {
-        let mut actions = HashMap::new();
+        let mut actions = HashMap::with_capacity(schema_file_actions.len());
         for (action_id_str, action_type) in schema_file_actions {
             let action_id = Self::parse_action_id_with_namespace(
                 &ActionEntityUID::default_type(action_id_str.clone()),
