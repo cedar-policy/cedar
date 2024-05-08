@@ -43,23 +43,45 @@ use thiserror::Error;
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
-    #[error("while evaluating policy `{id}`: {error}")]
-    PolicyEvaluationError {
-        /// Id of the policy with an error
-        #[doc(hidden)]
-        id: ast::PolicyID,
-        /// Underlying evaluation error
-        #[diagnostic(transparent)]
-        error: EvaluationError,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyEvaluationError(#[from] PolicyEvaluationError),
 }
 
 impl AuthorizationError {
     /// Get the id of the erroring policy
     pub fn id(&self) -> &PolicyId {
         match self {
-            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+            Self::PolicyEvaluationError(e) => e.id(),
         }
+    }
+}
+
+/// An error occurred when evaluating a policy
+#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+#[error("while evaluating policy `{id}`: {error}")]
+pub struct PolicyEvaluationError {
+    /// Id of the policy with an error
+    id: ast::PolicyID,
+    /// Underlying evaluation error
+    #[diagnostic(transparent)]
+    error: EvaluationError,
+}
+
+impl PolicyEvaluationError {
+    /// Get the [`PolicyId`] of the erroring policy
+    pub fn id(&self) -> &PolicyId {
+        PolicyId::ref_cast(&self.id)
+    }
+
+    /// Get the underlying [`EvaluationError`]
+    pub fn inner(&self) -> &EvaluationError {
+        &self.error
+    }
+
+    /// Consume this error, producing the underlying [`EvaluationError`]
+    pub fn into_inner(self) -> EvaluationError {
+        self.error
     }
 }
 
@@ -68,7 +90,7 @@ impl From<authorizer::AuthorizationError> for AuthorizationError {
     fn from(value: authorizer::AuthorizationError) -> Self {
         match value {
             authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
-                Self::PolicyEvaluationError { id, error }
+                Self::PolicyEvaluationError(PolicyEvaluationError { id, error })
             }
         }
     }
