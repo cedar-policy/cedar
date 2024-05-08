@@ -45,7 +45,7 @@ pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PolicyEvaluationError(PolicyEvaluationError),
+    PolicyEvaluationError(#[from] PolicyEvaluationError),
 }
 
 impl AuthorizationError {
@@ -77,6 +77,11 @@ impl PolicyEvaluationError {
     /// Get the underlying [`EvaluationError`]
     pub fn inner(&self) -> &EvaluationError {
         &self.error
+    }
+
+    /// Consume this error, producing the underlying [`EvaluationError`]
+    pub fn into_inner(self) -> EvaluationError {
+        self.error
     }
 }
 
