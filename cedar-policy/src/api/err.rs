@@ -592,13 +592,14 @@ impl ContextJsonError {
     }
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
     fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
         context_json_errors::ContextJsonDeserializationError::from(error).into()
     }
 }
 
-/// Error subtypes for `ContextJsonError`
+/// Error subtypes for [`ContextJsonError`]
 pub mod context_json_errors {
     use super::EntityUid;
     use miette::Diagnostic;
