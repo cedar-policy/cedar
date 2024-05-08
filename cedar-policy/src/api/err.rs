@@ -229,12 +229,29 @@ impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
 #[error("in attribute `{attr}` of `{uid}`: {err}")]
 pub struct EntityAttrEvaluationError {
     /// Action that had the attribute with the error
-    pub uid: EntityUid,
+    uid: EntityUid,
     /// Attribute that had the error
-    pub attr: SmolStr,
+    attr: SmolStr,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
-    pub err: EvaluationError,
+    err: EvaluationError,
+}
+
+impl EntityAttrEvaluationError {
+    /// Get the [`EntityUid`] of the action that had the attribute with the error
+    pub fn action(&self) -> &EntityUid {
+        &self.uid
+    }
+
+    /// Get the name of the attribute that had the error
+    pub fn attr(&self) -> &SmolStr {
+        &self.attr
+    }
+
+    /// Get the underlying evaluation error
+    pub fn inner(&self) -> &EvaluationError {
+        &self.err
+    }
 }
 
 #[doc(hidden)]
