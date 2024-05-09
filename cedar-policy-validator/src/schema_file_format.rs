@@ -32,7 +32,7 @@ use crate::{
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
-    HumanSchemaError, Result,
+    HumanSchemaError, HumanSyntaxParseError, JsonDeserializationError, Result,
 };
 
 #[cfg(feature = "wasm")]
@@ -97,23 +97,28 @@ impl Serialize for SchemaFragment {
 }
 
 impl SchemaFragment {
+    /// Cretae a [`SchemaFragment`] from a string containing JSON (which should
+    /// be an object of the appropriate shape).
+    pub fn from_json_str(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(|e| JsonDeserializationError::new(e, Some(json)).into())
+    }
+
     /// Create a [`SchemaFragment`] from a JSON value (which should be an object
     /// of the appropriate shape).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(json).map_err(Into::into)
+        serde_json::from_value(json).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
     /// Create a [`SchemaFragment`] directly from a file containing a JSON object.
     pub fn from_file(file: impl std::io::Read) -> Result<Self> {
-        serde_json::from_reader(file).map_err(Into::into)
+        serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
     /// Parse the schema (in natural schema syntax) from a string
     pub fn from_str_natural(
         src: &str,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let tup = parse_natural_schema_fragment(src)?;
-        Ok(tup)
+        parse_natural_schema_fragment(src).map_err(|e| HumanSyntaxParseError::new(e, src).into())
     }
 
     /// Parse the schema (in natural schema syntax) from a reader
@@ -306,6 +311,58 @@ pub enum SchemaType {
         #[serde(rename = "type")]
         type_name: Name,
     },
+}
+
+impl SchemaType {
+    /// Return an iterator of common type references ocurred in the type
+    pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = Name>> {
+        match self {
+            SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
+                .iter()
+                .map(|(_, ty)| ty.ty.common_type_references())
+                .fold(Box::new(std::iter::empty()), |it, tys| {
+                    Box::new(it.chain(tys))
+                }),
+            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
+                element.common_type_references()
+            }
+            SchemaType::TypeDef { type_name } => Box::new(std::iter::once(type_name.clone())),
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+
+    /// Prefix unqualified common type references with the namespace they are in
+    pub(crate) fn prefix_common_type_references_with_namespace(
+        self,
+        ns: Option<&Name>,
+    ) -> SchemaType {
+        match self {
+            Self::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => Self::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(attributes.into_iter().map(
+                    |(attr, TypeOfAttribute { ty, required })| {
+                        (
+                            attr,
+                            TypeOfAttribute {
+                                ty: ty.prefix_common_type_references_with_namespace(ns.clone()),
+                                required,
+                            },
+                        )
+                    },
+                )),
+                additional_attributes,
+            }),
+            Self::Type(SchemaTypeVariant::Set { element }) => Self::Type(SchemaTypeVariant::Set {
+                element: Box::new(element.prefix_common_type_references_with_namespace(ns)),
+            }),
+            Self::TypeDef { type_name } => Self::TypeDef {
+                type_name: type_name.prefix_namespace_if_unqualified(ns),
+            },
+            _ => self,
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for SchemaType {

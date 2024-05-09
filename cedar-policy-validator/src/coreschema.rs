@@ -15,7 +15,7 @@
  */
 
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::GetSchemaTypeError;
+use cedar_policy_core::entities::json::GetSchemaTypeError;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;

@@ -15,131 +15,20 @@
  */
 
 use super::{
-    schematype_of_restricted_expr, EntityTypeDescription, GetSchemaTypeError,
-    HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
+    json::err::TypeMismatchError, schematype_of_restricted_expr, EntityTypeDescription,
+    GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue,
-    PartialValueToRestrictedExprError, RestrictedExpr,
+    BorrowedRestrictedExpr, Entity, EntityType, PartialValue, PartialValueToRestrictedExprError,
+    RestrictedExpr,
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
 use miette::Diagnostic;
-use smol_str::SmolStr;
 use thiserror::Error;
+pub mod err;
 
-/// Errors raised when entities do not conform to the schema
-#[derive(Debug, Diagnostic, Error)]
-pub enum EntitySchemaConformanceError {
-    /// Encountered attribute that shouldn't exist on entities of this type
-    #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
-    UnexpectedEntityAttr {
-        /// Entity that had the unexpected attribute
-        uid: EntityUID,
-        /// Name of the attribute that was unexpected
-        attr: SmolStr,
-    },
-    /// Didn't encounter attribute that should exist
-    #[error("expected entity `{uid}` to have attribute `{attr}`, but it does not")]
-    MissingRequiredEntityAttr {
-        /// Entity that is missing a required attribute
-        uid: EntityUID,
-        /// Name of the attribute which was expected
-        attr: SmolStr,
-    },
-    /// The given attribute on the given entity had a different type than the
-    /// schema indicated
-    #[error("in attribute `{attr}` on `{uid}`, {err}")]
-    TypeMismatch {
-        /// Entity where the type mismatch occurred
-        uid: EntityUID,
-        /// Name of the attribute where the type mismatch occurred
-        attr: SmolStr,
-        /// Underlying error
-        #[diagnostic(transparent)]
-        err: TypeMismatchError,
-    },
-    /// Found a set whose elements don't all have the same type. This doesn't match
-    /// any possible schema.
-    #[error("in attribute `{attr}` on `{uid}`, {err}")]
-    HeterogeneousSet {
-        /// Entity where the error occurred
-        uid: EntityUID,
-        /// Name of the attribute where the error occurred
-        attr: SmolStr,
-        /// Underlying error
-        #[diagnostic(transparent)]
-        err: HeterogeneousSetError,
-    },
-    /// Found an ancestor of a type that's not allowed for that entity
-    #[error(
-        "`{uid}` is not allowed to have an ancestor of type `{ancestor_ty}` according to the schema"
-    )]
-    InvalidAncestorType {
-        /// Entity that has an invalid ancestor type
-        uid: EntityUID,
-        /// Ancestor type which was invalid
-        ancestor_ty: Box<EntityType>, // boxed to avoid this variant being very large (and thus all EntitySchemaConformanceErrors being large)
-    },
-    /// Encountered an entity of a type which is not declared in the schema.
-    /// Note that this error is only used for non-Action entity types.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnexpectedEntityType(#[from] UnexpectedEntityTypeError),
-    /// Encountered an action which was not declared in the schema
-    #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
-    UndeclaredAction {
-        /// Action which was not declared in the schema
-        uid: EntityUID,
-    },
-    /// Encountered an action whose definition doesn't precisely match the
-    /// schema's declaration of that action
-    #[error("definition of action `{uid}` does not match its schema declaration")]
-    #[diagnostic(help(
-        "to use the schema's definition of `{uid}`, simply omit it from the entities input data"
-    ))]
-    ActionDeclarationMismatch {
-        /// Action whose definition mismatched between entity data and schema
-        uid: EntityUID,
-    },
-    /// Error looking up an extension function. This error can occur when
-    /// checking entity conformance because that may require getting information
-    /// about any extension functions referenced in entity attribute values.
-    #[error("in attribute `{attr}` on `{uid}`, {err}")]
-    ExtensionFunctionLookup {
-        /// Entity where the error occurred
-        uid: EntityUID,
-        /// Name of the attribute where the error occurred
-        attr: SmolStr,
-        /// Underlying error
-        #[diagnostic(transparent)]
-        err: ExtensionFunctionLookupError,
-    },
-}
-
-/// Encountered an entity of a type which is not declared in the schema.
-/// Note that this error is only used for non-Action entity types.
-#[derive(Debug, Error)]
-#[error("entity `{uid}` has type `{}` which is not declared in the schema", .uid.entity_type())]
-pub struct UnexpectedEntityTypeError {
-    /// Entity that had the unexpected type
-    pub uid: EntityUID,
-    /// Suggested similar entity types that actually are declared in the schema (if any)
-    pub suggested_types: Vec<EntityType>,
-}
-
-impl Diagnostic for UnexpectedEntityTypeError {
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match self.suggested_types.as_slice() {
-            [] => None,
-            [ty] => Some(Box::new(format!("did you mean `{ty}`?"))),
-            tys => Some(Box::new(format!(
-                "did you mean one of {:?}?",
-                tys.iter().map(ToString::to_string).collect::<Vec<String>>()
-            ))),
-        }
-    }
-}
+use err::{EntitySchemaConformanceError, UnexpectedEntityTypeError};
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
@@ -165,12 +54,12 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             let schema_action = self
                 .schema
                 .action(uid)
-                .ok_or(EntitySchemaConformanceError::UndeclaredAction { uid: uid.clone() })?;
+                .ok_or(EntitySchemaConformanceError::undeclared_action(uid.clone()))?;
             // check that the action exactly matches the schema's definition
             if !entity.deep_eq(&schema_action) {
-                return Err(EntitySchemaConformanceError::ActionDeclarationMismatch {
-                    uid: uid.clone(),
-                });
+                return Err(EntitySchemaConformanceError::action_declaration_mismatch(
+                    uid.clone(),
+                ));
             }
         } else {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
@@ -190,10 +79,10 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             // included in `entity`
             for required_attr in schema_etype.required_attrs() {
                 if entity.get(&required_attr).is_none() {
-                    return Err(EntitySchemaConformanceError::MissingRequiredEntityAttr {
-                        uid: uid.clone(),
-                        attr: required_attr,
-                    });
+                    return Err(EntitySchemaConformanceError::missing_entity_attr(
+                        uid.clone(),
+                        required_attr,
+                    ));
                 }
             }
             // For each attribute that actually appears in `entity`, ensure it
@@ -204,10 +93,10 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
                         if !schema_etype.open_attributes() {
-                            return Err(EntitySchemaConformanceError::UnexpectedEntityAttr {
-                                uid: uid.clone(),
-                                attr: attr.clone(),
-                            });
+                            return Err(EntitySchemaConformanceError::unexpected_entity_attr(
+                                uid.clone(),
+                                attr.clone(),
+                            ));
                         }
                     }
                     Some(expected_ty) => {
@@ -217,26 +106,26 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         {
                             Ok(()) => {} // typecheck passes
                             Err(TypecheckError::TypeMismatch(err)) => {
-                                return Err(EntitySchemaConformanceError::TypeMismatch {
-                                    uid: uid.clone(),
-                                    attr: attr.clone(),
+                                return Err(EntitySchemaConformanceError::type_mistmatch(
+                                    uid.clone(),
+                                    attr.clone(),
                                     err,
-                                });
+                                ));
                             }
                             Err(TypecheckError::HeterogeneousSet(err)) => {
-                                return Err(EntitySchemaConformanceError::HeterogeneousSet {
-                                    uid: uid.clone(),
-                                    attr: attr.clone(),
+                                return Err(EntitySchemaConformanceError::heterogeneous_set(
+                                    uid.clone(),
+                                    attr.clone(),
                                     err,
-                                });
+                                ));
                             }
                             Err(TypecheckError::ExtensionFunctionLookup(err)) => {
                                 return Err(
-                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
-                                        uid: uid.clone(),
-                                        attr: attr.clone(),
+                                    EntitySchemaConformanceError::extension_function_lookup(
+                                        uid.clone(),
+                                        attr.clone(),
                                         err,
-                                    },
+                                    ),
                                 );
                             }
                         }
@@ -253,10 +142,10 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     //
                     // thus, the check passes in this case
                 } else {
-                    return Err(EntitySchemaConformanceError::InvalidAncestorType {
-                        uid: uid.clone(),
-                        ancestor_ty: Box::new(ancestor_type.clone()),
-                    });
+                    return Err(EntitySchemaConformanceError::invalid_ancestor_type(
+                        uid.clone(),
+                        ancestor_type.clone(),
+                    ));
                 }
             }
         }

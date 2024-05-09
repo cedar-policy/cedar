@@ -1,6 +1,6 @@
 ## sample 5
 
-### Authorize 
+### Authorize
 
  Can User::bob  view Photo:VacationPhoto94.jpg
 
@@ -16,12 +16,12 @@ cargo run  authorize \
 
 ### Validation
 
-Is `policy.cedar` valid based on the schema `schema.cedarschema.json`
+Is `policy.cedar` valid based on the schema `schema.cedarschema`
 
 ```
 cargo run  validate \
     --policies policy.cedar \
-    --schema schema.cedarschema.json
+    --schema schema.cedarschema
 ```
 
 ### Evaluate:

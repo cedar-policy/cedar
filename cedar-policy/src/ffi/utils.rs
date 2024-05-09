@@ -130,10 +130,12 @@ impl<'a, E: miette::Diagnostic + ?Sized> From<&'a E> for DetailedError {
             severity: diag.severity().map(Into::into),
             source_locations: diag
                 .labels()
-                .map_or_else(Vec::new, |labels| labels.map(Into::into).collect()),
+                .map(|labels| labels.map(Into::into).collect())
+                .unwrap_or_default(),
             related: diag
                 .related()
-                .map_or_else(Vec::new, |errs| errs.map(Into::into).collect()),
+                .map(|errs| errs.map(std::convert::Into::into).collect())
+                .unwrap_or_default(),
         }
     }
 }

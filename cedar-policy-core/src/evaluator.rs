@@ -466,15 +466,12 @@ impl<'e> Evaluator<'e> {
                                 // If arg1 is not an entity and arg2 is a set, then possibly
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                match e.error_kind_mut() {
-                                    EvaluationErrorKind::TypeError { advice, .. } => {
-                                        match arg2.type_of() {
-                                            Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                                            Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
-                                            _ => {}
-                                        }
+                                if let EvaluationErrorKind::TypeError { advice, .. } = e.error_kind_mut() {
+                                    match arg2.type_of() {
+                                        Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+                                        _ => {}
                                     }
-                                    _ => {}
                                 };
                                 e
                             })?;

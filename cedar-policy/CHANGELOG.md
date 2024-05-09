@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adds an JSON representation for Policy Sets (#783, resolving #549),
     along with methods like `::from_json_value/file/str` and `::to_json`
     for `PolicySet`.
+- `Policy::unknown_entities`
 
 ### Changed
 
+- significantly reworked `EntitiesError` to bring into conformance
 - for the `partial-eval` experimental feature: `PartialResponse` api has changed significantly
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Overhauled the FFI interface in the `frontend` module, and renamed it to

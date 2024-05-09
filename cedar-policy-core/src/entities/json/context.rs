@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use super::{JsonDeserializationError, JsonDeserializationErrorContext, SchemaType, ValueParser};
+use super::{
+    err::{JsonDeserializationError, JsonDeserializationErrorContext},
+    SchemaType, ValueParser,
+};
 use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
 use miette::Diagnostic;
@@ -69,7 +72,8 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
 
     /// Parse context JSON (in `&str` form) into a `Context` object
     pub fn from_json_str(&self, json: &str) -> Result<Context, ContextJsonDeserializationError> {
-        let val = serde_json::from_str(json).map_err(JsonDeserializationError::Serde)?;
+        let val =
+            serde_json::from_str(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
         self.from_json_value(val)
     }
 

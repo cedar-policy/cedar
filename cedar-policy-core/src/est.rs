@@ -26,7 +26,7 @@ mod scope_constraints;
 pub use scope_constraints::*;
 
 use crate::ast;
-use crate::entities::EntityUidJson;
+use crate::entities::json::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use serde::{Deserialize, Serialize};

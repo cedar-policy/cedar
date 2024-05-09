@@ -20,9 +20,8 @@ use crate::EntityTypeName;
 use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
+use cedar_policy_core::ast::Name;
 use cedar_policy_core::authorizer;
-use cedar_policy_core::entities::ContextJsonDeserializationError;
-pub use cedar_policy_core::entities::EntitiesError;
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::parser;
@@ -31,9 +30,7 @@ pub use cedar_policy_validator::human_schema::SchemaWarning;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
-use itertools::Itertools;
 use miette::Diagnostic;
-use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -43,23 +40,45 @@ use thiserror::Error;
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
-    #[error("while evaluating policy `{id}`: {error}")]
-    PolicyEvaluationError {
-        /// Id of the policy with an error
-        #[doc(hidden)]
-        id: ast::PolicyID,
-        /// Underlying evaluation error
-        #[diagnostic(transparent)]
-        error: EvaluationError,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyEvaluationError(#[from] PolicyEvaluationError),
 }
 
 impl AuthorizationError {
     /// Get the id of the erroring policy
     pub fn id(&self) -> &PolicyId {
         match self {
-            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+            Self::PolicyEvaluationError(e) => e.id(),
         }
+    }
+}
+
+/// An error occurred when evaluating a policy
+#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+#[error("while evaluating policy `{id}`: {error}")]
+pub struct PolicyEvaluationError {
+    /// Id of the policy with an error
+    id: ast::PolicyID,
+    /// Underlying evaluation error
+    #[diagnostic(transparent)]
+    error: EvaluationError,
+}
+
+impl PolicyEvaluationError {
+    /// Get the [`PolicyId`] of the erroring policy
+    pub fn id(&self) -> &PolicyId {
+        PolicyId::ref_cast(&self.id)
+    }
+
+    /// Get the underlying [`EvaluationError`]
+    pub fn inner(&self) -> &EvaluationError {
+        &self.error
+    }
+
+    /// Consume this error, producing the underlying [`EvaluationError`]
+    pub fn into_inner(self) -> EvaluationError {
+        self.error
     }
 }
 
@@ -68,7 +87,7 @@ impl From<authorizer::AuthorizationError> for AuthorizationError {
     fn from(value: authorizer::AuthorizationError) -> Self {
         match value {
             authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
-                Self::PolicyEvaluationError { id, error }
+                Self::PolicyEvaluationError(PolicyEvaluationError { id, error })
             }
         }
     }
@@ -97,8 +116,12 @@ pub enum ReAuthorizeError {
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
-    #[error("failed to parse schema: {0}")]
-    Serde(#[from] serde_json::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] cedar_policy_validator::JsonDeserializationError),
+    /// Error thrown by the `serde_json` crate during serialization
+    #[error(transparent)]
+    JsonSerialization(serde_json::Error), // no #[from], because if you just have a serde_json::Error you should choose between JsonDeserialization and JsonSerialization appropriately
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
     #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
@@ -136,6 +159,9 @@ pub enum SchemaError {
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUid),
+    /// Cycle in the schema's common type declarations.
+    #[error("cycle in common type references containing `{0}`")]
+    CycleInCommonTypeReferences(Name),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
@@ -168,8 +194,38 @@ pub enum SchemaError {
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToHumanSyntaxError {
     /// Duplicate names were found in the schema
-    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
-    NameCollisions(NonEmpty<SmolStr>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NameCollisions(#[from] to_human_syntax_errors::NameCollisionsError),
+}
+
+/// Error subtypes for [`ToHumanSyntaxError`]
+pub mod to_human_syntax_errors {
+    use itertools::Itertools;
+    use miette::Diagnostic;
+    use nonempty::NonEmpty;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// Duplicate names were found in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("There are name collisions: [{}]", .names.iter().join(", "))]
+    pub struct NameCollisionsError {
+        /// Names that had collisions
+        names: NonEmpty<SmolStr>,
+    }
+
+    impl NameCollisionsError {
+        /// Construct a new [`NameCollisionsError`]
+        pub(crate) fn new(names: NonEmpty<SmolStr>) -> Self {
+            Self { names }
+        }
+
+        /// Get the names that had collisions
+        pub fn names(&self) -> impl Iterator<Item = &str> {
+            self.names.iter().map(|n| n.as_str())
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -178,7 +234,7 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
         match value {
             cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
                 collisions,
-            ) => Self::NameCollisions(collisions),
+            ) => Self::NameCollisions(to_human_syntax_errors::NameCollisionsError::new(collisions)),
         }
     }
 }
@@ -187,11 +243,11 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
 #[derive(Debug, Diagnostic, Error)]
 pub enum HumanSchemaError {
     /// Error parsing a schema in natural syntax
-    #[error("Error parsing schema: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
+    ParseError(#[from] cedar_policy_validator::HumanSyntaxParseError),
     /// Errors combining fragments into full schemas
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
     Core(#[from] SchemaError),
     /// IO errors while parsing
@@ -222,12 +278,29 @@ impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
 #[error("in attribute `{attr}` of `{uid}`: {err}")]
 pub struct EntityAttrEvaluationError {
     /// Action that had the attribute with the error
-    pub uid: EntityUid,
+    uid: EntityUid,
     /// Attribute that had the error
-    pub attr: SmolStr,
+    attr: SmolStr,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
-    pub err: EvaluationError,
+    err: EvaluationError,
+}
+
+impl EntityAttrEvaluationError {
+    /// Get the [`EntityUid`] of the action that had the attribute with the error
+    pub fn action(&self) -> &EntityUid {
+        &self.uid
+    }
+
+    /// Get the name of the attribute that had the error
+    pub fn attr(&self) -> &SmolStr {
+        &self.attr
+    }
+
+    /// Get the underlying evaluation error
+    pub fn inner(&self) -> &EvaluationError {
+        &self.err
+    }
 }
 
 #[doc(hidden)]
@@ -282,7 +355,9 @@ impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
 impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         match value {
-            cedar_policy_validator::SchemaError::Serde(e) => Self::Serde(e),
+            cedar_policy_validator::SchemaError::JsonDeserialization(e) => {
+                Self::JsonDeserialization(e)
+            }
             cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
                 Self::ActionTransitiveClosure(e.to_string())
             }
@@ -308,6 +383,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             }
             cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
                 Self::CycleInActionHierarchy(EntityUid::new(e))
+            }
+            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(n) => {
+                Self::CycleInCommonTypeReferences(n)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
@@ -567,11 +645,54 @@ pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] ContextJsonDeserializationError),
+    JsonDeserialization(#[from] context_json_errors::ContextJsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MissingAction(#[from] context_json_errors::MissingActionError),
+}
+
+impl ContextJsonError {
+    /// Construct a `ContextJsonError::MissingAction`
+    pub(crate) fn missing_action(action: EntityUid) -> Self {
+        Self::MissingAction(context_json_errors::MissingActionError { action })
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
+    fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
+        context_json_errors::ContextJsonDeserializationError::from(error).into()
+    }
+}
+
+/// Error subtypes for [`ContextJsonError`]
+pub mod context_json_errors {
+    use super::EntityUid;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Error deserializing the JSON into a Context
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    pub struct ContextJsonDeserializationError {
+        #[diagnostic(transparent)]
+        #[from]
+        error: cedar_policy_core::entities::json::ContextJsonDeserializationError,
+    }
+
+    /// The supplied action doesn't exist in the supplied schema
+    #[derive(Debug, Diagnostic, Error)]
     #[error("action `{action}` does not exist in the supplied schema")]
-    MissingAction {
+    pub struct MissingActionError {
         /// UID of the action which doesn't exist
-        action: EntityUid,
-    },
+        pub(super) action: EntityUid,
+    }
+
+    impl MissingActionError {
+        /// Get the [`EntityUid`] of the action which doesn't exist
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
+    }
 }

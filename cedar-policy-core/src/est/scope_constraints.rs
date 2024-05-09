@@ -15,7 +15,7 @@
  */
 
 use super::{FromJsonError, LinkingError};
-use crate::entities::{EntityUidJson, JsonDeserializationErrorContext};
+use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
 use crate::{ast, FromNormalizedStr};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;

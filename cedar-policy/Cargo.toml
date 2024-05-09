@@ -72,6 +72,7 @@ cedar-policy = { path = ".", default-features = false, features = [
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
+cedar-policy-core = { version = "=4.0.0", features = ["test-util"], path = "../cedar-policy-core" }
 
 proptest = "1.0.0"
 

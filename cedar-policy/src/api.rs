@@ -36,7 +36,7 @@ use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
-use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
+use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est;
 use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
@@ -74,7 +74,44 @@ pub mod entities {
             self.inner.size_hint()
         }
     }
+
+    /// Errors around entities
+    pub mod err {
+        pub use cedar_policy_core::entities::err::{
+            Duplicate, EntitiesError, TransitiveClosureError,
+        };
+    }
+
+    /// Entity JSON format
+    pub mod json {
+        /// Errors related to serializing/deserializing entities
+        pub mod err {
+            pub use cedar_policy_core::entities::json::err::{
+                ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
+                ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
+                ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
+                JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr,
+                ParseEscape, ReservedKey, Residual, TypeMismatch, TypeMismatchError,
+                UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
+                UnknownInImplicitConstructorArg,
+            };
+        }
+    }
+
+    /// Schema conformance checking for entities
+    pub mod conformance {
+        /// Errors around conformance
+        pub mod err {
+            pub use cedar_policy_core::entities::conformance::err::{
+                ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
+                HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
+                UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+            };
+        }
+    }
 }
+
+use entities::json::err::JsonDeserializationError;
 
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
@@ -243,6 +280,8 @@ impl std::fmt::Display for Entity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
+use entities::err::EntitiesError;
+
 impl Entities {
     /// Create a fresh `Entities` with no entities
     /// ```
@@ -293,7 +332,7 @@ impl Entities {
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
-    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+    ) -> Result<Self, EntitiesError> {
         cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
@@ -476,10 +515,7 @@ impl Entities {
     /// # let ip = entity.attr("ip_addr").unwrap().unwrap();
     /// # assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
-    pub fn from_json_str(
-        json: &str,
-        schema: Option<&Schema>,
-    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+    pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
@@ -531,7 +567,7 @@ impl Entities {
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
-    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+    ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
@@ -561,7 +597,7 @@ impl Entities {
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
-    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+    ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
@@ -601,10 +637,7 @@ impl Entities {
     ///
     /// To read an `Entities` object from an entities JSON file, use
     /// `from_json_file`.
-    pub fn write_to_json(
-        &self,
-        f: impl std::io::Write,
-    ) -> std::result::Result<(), cedar_policy_core::entities::EntitiesError> {
+    pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
     }
 }
@@ -1185,14 +1218,12 @@ impl SchemaFragment {
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
-        let v = serde_json::to_value(self.lossless)?;
-        Ok(v)
+        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn as_json_string(&self) -> Result<String, SchemaError> {
-        let str = serde_json::to_string(&self.lossless)?;
-        Ok(str)
+        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
@@ -1224,7 +1255,7 @@ impl FromStr for SchemaFragment {
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        let lossless = serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)?;
+        let lossless = cedar_policy_validator::SchemaFragment::from_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1277,7 +1308,19 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` directly from a file.
+    /// Create a `Schema` from a string containing JSON in the appropriate
+    /// shape.
+    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_validator::ValidatorSchema::from_json_str(
+                json,
+                Extensions::all_available(),
+            )?,
+        ))
+    }
+
+    /// Create a `Schema` directly from a file containing JSON in the
+    /// appropriate shape.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
@@ -1867,24 +1910,7 @@ impl PolicySet {
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         let mut entity_uids = HashSet::new();
         for policy in self.policies.values() {
-            let ids: Vec<EntityUid> = policy
-                .ast
-                .condition()
-                .unknowns()
-                .filter_map(
-                    |ast::Unknown {
-                         name,
-                         type_annotation,
-                     }| {
-                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
-                            EntityUid::from_str(name.as_str()).ok()
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect();
-            entity_uids.extend(ids);
+            entity_uids.extend(policy.unknown_entities());
         }
         entity_uids
     }
@@ -2133,7 +2159,7 @@ impl Template {
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
-            serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
+            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2524,7 +2550,7 @@ impl Policy {
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
-            serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
+            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2559,6 +2585,28 @@ impl Policy {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get all the unknown entities from the policy
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        self.ast
+            .condition()
+            .unknowns()
+            .filter_map(
+                |ast::Unknown {
+                     name,
+                     type_annotation,
+                 }| {
+                    if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                        EntityUid::from_str(name.as_str()).ok()
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect()
     }
 
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
@@ -3329,11 +3377,8 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref()).ok_or_else(
-            || ContextJsonError::MissingAction {
-                action: action.clone(),
-            },
-        )
+        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
+            .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
     }
 }
 

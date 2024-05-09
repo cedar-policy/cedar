@@ -17,14 +17,14 @@
 //! This module contains the definition of `ValidatorNamespaceDef` and of types
 //! it relies on
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
         Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
         PartialValueSerializedAsExpr,
     },
-    entities::{CedarValueJson, JsonDeserializationErrorContext},
+    entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     FromNormalizedStr,
@@ -45,12 +45,13 @@ use crate::{
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
-/// This string must be parsable by as an entity type name.
+/// This string must be parsable as an unqualified entity type name.
 pub(crate) static ACTION_ENTITY_TYPE: &str = "Action";
 
 #[test]
 fn action_entity_type_parses() {
     Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
+    Name::parse_unqualified_name(ACTION_ENTITY_TYPE).unwrap();
 }
 
 /// Return true when an entity type is an action entity type. This compares the
@@ -60,52 +61,52 @@ pub(crate) fn is_action_entity_type(ty: &Name) -> bool {
     ty.basename().as_ref() == ACTION_ENTITY_TYPE
 }
 
-/// A single namespace definition from the schema json processed into a form
-/// which is closer to that used by the validator. The processing includes
-/// detection of some errors, for example, parse errors in entity type names or
-/// entity type which are declared multiple times. This does not detect
-/// references to undeclared entity types because any entity type may be
-/// declared in a different fragment that will only be known about when building
-/// the complete `ValidatorSchema`.
+/// A single namespace definition from the schema json or human syntax,
+/// processed into a form which is closer to that used by the validator.
+/// The processing includes detection of some errors, for example, parse errors
+/// in entity/common type names or entity/common types which are declared
+/// multiple times.
+/// This does not detect references to undeclared entity/common types because
+/// any entity/common type may be declared in a different fragment that will
+/// only be known about when building the complete `ValidatorSchema`.
 #[derive(Debug)]
 pub struct ValidatorNamespaceDef {
-    /// The namespace declared for the schema fragment. We track a namespace for
-    /// fragments because they have at most one namespace that is applied
-    /// everywhere. It would be less useful to track all namespaces for a
-    /// complete schema.
+    /// The name of the namespace this is a definition of, or `None` if this is
+    /// a definition for the empty namespace.
     namespace: Option<Name>,
     /// Preprocessed common type definitions which can be used to define entity
     /// type attributes and action contexts.
     pub(super) type_defs: TypeDefs,
-    /// The preprocessed entity type declarations from the schema fragment json.
+    /// The preprocessed entity type declarations from the schema fragment.
     pub(super) entity_types: EntityTypesDef,
-    /// The preprocessed action declarations from the schema fragment json.
+    /// The preprocessed action declarations from the schema fragment.
     pub(super) actions: ActionsDef,
 }
 
 /// Holds a map from `Name`s of common type definitions to their corresponding
-/// `Type`.
+/// `SchemaType`. Note that the schema type should have all common type
+/// references fully qualified.
 #[derive(Debug)]
 pub struct TypeDefs {
-    pub(super) type_defs: HashMap<Name, Type>,
+    pub(super) type_defs: HashMap<Name, SchemaType>,
 }
 
 /// Entity type declarations held in a `ValidatorNamespaceDef`. Entity type
-/// parents and attributes may reference undeclared entity types.
+/// parents and attributes may reference undeclared entity/common types.
 #[derive(Debug)]
 pub struct EntityTypesDef {
     pub(super) entity_types: HashMap<Name, EntityTypeFragment>,
 }
 
 /// Defines an EntityType where we have not resolved typedefs occurring in the
-/// attributes or verified that the parent entity types and entity types
+/// attributes or verified that the parent entity types and entity/common types
 /// occurring in attributes are defined.
 #[derive(Debug)]
 pub struct EntityTypeFragment {
     /// The attributes record type for this entity type.  The type is wrapped in
-    /// a `WithUnresolvedTypeDefs` because it may contain typedefs which are not
-    /// defined in this schema fragment. All entity type `Name` keys in this map
-    /// are declared in this schema fragment.
+    /// a `WithUnresolvedTypeDefs` because it may refer to common types which
+    /// are not defined in this schema fragment. All entity type `Name` keys in
+    /// this map are declared in this schema fragment.
     pub(super) attributes: WithUnresolvedTypeDefs<Type>,
     /// The direct parent entity types for this entity type come from the
     /// `memberOfTypes` list. These types might be declared in a different
@@ -123,9 +124,9 @@ pub struct ActionsDef {
 
 #[derive(Debug)]
 pub struct ActionFragment {
-    /// The type of the context record for this actions. The types is wrapped in
+    /// The type of the context record for this action. The type is wrapped in
     /// a `WithUnresolvedTypeDefs` because it may refer to common types which
-    /// are not defined in this fragment.
+    /// are not defined in this schema fragment.
     pub(super) context: WithUnresolvedTypeDefs<Type>,
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec,
@@ -202,31 +203,13 @@ impl TryInto<ValidatorNamespaceDef> for NamespaceDefinition {
 }
 
 impl ValidatorNamespaceDef {
-    // We need to treat this as if it had `pub(crate)` visibility to avoid sharing
-    // the file format. However, our fuzzing library currently needs it to be public.
-    /// Construct a new `ValidatorSchema` from the underlying `SchemaFragment`.
+    /// Construct a new `ValidatorNamespaceDef` from the underlying `NamespaceDefinition`
     pub fn from_namespace_definition(
         namespace: Option<Name>,
         namespace_def: NamespaceDefinition,
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorNamespaceDef> {
-        // Check that each entity types and action is only declared once.
-        let mut e_types_ids: HashSet<Id> = HashSet::new();
-        for name in namespace_def.entity_types.keys() {
-            if !e_types_ids.insert(name.clone()) {
-                // insert returns false for duplicates
-                return Err(SchemaError::DuplicateEntityType(name.to_string()));
-            }
-        }
-        let mut a_name_eids: HashSet<SmolStr> = HashSet::new();
-        for name in namespace_def.actions.keys() {
-            if !a_name_eids.insert(name.clone()) {
-                // insert returns false for duplicates
-                return Err(SchemaError::DuplicateAction(name.to_string()));
-            }
-        }
-
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
         Self::check_action_behavior(&namespace_def, action_behavior)?;
@@ -247,30 +230,33 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    fn is_builtin_type_name(name: &SmolStr) -> bool {
+    fn is_builtin_type_name(name: &str) -> bool {
         SCHEMA_TYPE_VARIANT_TAGS
             .iter()
-            .any(|type_name| name == type_name)
+            .any(|type_name| &name == type_name)
     }
 
     fn build_type_defs(
         schema_file_type_def: HashMap<Id, SchemaType>,
         schema_namespace: Option<&Name>,
     ) -> Result<TypeDefs> {
-        let type_defs = schema_file_type_def
-            .into_iter()
-            .map(|(name, schema_ty)| -> Result<_> {
-                let name_str = name.clone().into_smolstr();
-                if Self::is_builtin_type_name(&name_str) {
-                    return Err(SchemaError::DuplicateCommonType(name_str.to_string()));
+        let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
+        for (id, schema_ty) in schema_file_type_def {
+            if Self::is_builtin_type_name(id.as_ref()) {
+                return Err(SchemaError::DuplicateCommonType(id.to_string()));
+            }
+            let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
+            match type_defs.entry(name) {
+                Entry::Vacant(ventry) => {
+                    ventry.insert(
+                        schema_ty.prefix_common_type_references_with_namespace(schema_namespace),
+                    );
                 }
-                let name =
-                    Name::from(name).prefix_namespace_if_unqualified(schema_namespace.cloned());
-                let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
-                    .resolve_type_defs(&HashMap::new())?;
-                Ok((name, ty))
-            })
-            .collect::<Result<HashMap<_, _>>>()?;
+                Entry::Occupied(_) => {
+                    return Err(SchemaError::DuplicateCommonType(id.to_string()));
+                }
+            }
+        }
         Ok(TypeDefs { type_defs })
     }
 
@@ -281,34 +267,29 @@ impl ValidatorNamespaceDef {
         schema_files_types: HashMap<Id, schema_file_format::EntityType>,
         schema_namespace: Option<&Name>,
     ) -> Result<EntityTypesDef> {
-        Ok(EntityTypesDef {
-            entity_types: schema_files_types
-                .into_iter()
-                .map(|(id, entity_type)| -> Result<_> {
-                    let name =
-                        Name::from(id).prefix_namespace_if_unqualified(schema_namespace.cloned());
-
-                    let parents = entity_type
-                        .member_of_types
-                        .into_iter()
-                        .map(|ty| ty.prefix_namespace_if_unqualified(schema_namespace.cloned()))
-                        .collect();
-
-                    let attributes = Self::try_schema_type_into_validator_type(
-                        schema_namespace,
-                        entity_type.shape.into_inner(),
-                    )?;
-
-                    Ok((
-                        name,
-                        EntityTypeFragment {
-                            attributes,
-                            parents,
-                        },
-                    ))
-                })
-                .collect::<Result<HashMap<_, _>>>()?,
-        })
+        let mut entity_types = HashMap::with_capacity(schema_files_types.len());
+        for (id, entity_type) in schema_files_types {
+            let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
+            match entity_types.entry(name) {
+                Entry::Vacant(ventry) => {
+                    ventry.insert(EntityTypeFragment {
+                        attributes: Self::try_schema_type_into_validator_type(
+                            schema_namespace,
+                            entity_type.shape.into_inner(),
+                        )?,
+                        parents: entity_type
+                            .member_of_types
+                            .into_iter()
+                            .map(|ty| ty.prefix_namespace_if_unqualified(schema_namespace))
+                            .collect(),
+                    });
+                }
+                Entry::Occupied(_) => {
+                    return Err(SchemaError::DuplicateEntityType(id.to_string()));
+                }
+            }
+        }
+        Ok(EntityTypesDef { entity_types })
     }
 
     // Helper to get types from `CedarValueJson`s. Currently doesn't support all
@@ -322,7 +303,7 @@ impl ValidatorNamespaceDef {
             CedarValueJson::Long(_) => Ok(Type::primitive_long()),
             CedarValueJson::String(_) => Ok(Type::primitive_string()),
             CedarValueJson::Record(r) => {
-                let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
+                let mut required_attrs: HashMap<SmolStr, Type> = HashMap::with_capacity(r.len());
                 for (k, v_prime) in r {
                     let t = Self::jsonval_to_type_helper(v_prime, action_id);
                     match t {
@@ -375,14 +356,14 @@ impl ValidatorNamespaceDef {
         }
     }
 
-    //Convert jsonval map to attributes
     fn convert_attr_jsonval_map_to_attributes(
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
         extensions: Extensions<'_>,
     ) -> Result<(Attributes, HashMap<SmolStr, PartialValueSerializedAsExpr>)> {
-        let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
-        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> = HashMap::new();
+        let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
+        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> =
+            HashMap::with_capacity(m.len());
         let evaluator = RestrictedEvaluator::new(&extensions);
 
         for (k, v) in m {
@@ -428,15 +409,14 @@ impl ValidatorNamespaceDef {
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<ActionsDef> {
-        Ok(ActionsDef {
-            actions: schema_file_actions
-                .into_iter()
-                .map(|(action_id_str, action_type)| -> Result<_> {
-                    let action_id = Self::parse_action_id_with_namespace(
-                        &ActionEntityUID::default_type(action_id_str),
-                        schema_namespace,
-                    );
-
+        let mut actions = HashMap::with_capacity(schema_file_actions.len());
+        for (action_id_str, action_type) in schema_file_actions {
+            let action_id = Self::parse_action_id_with_namespace(
+                &ActionEntityUID::default_type(action_id_str.clone()),
+                schema_namespace,
+            );
+            match actions.entry(action_id) {
+                Entry::Vacant(ventry) => {
                     let (principal_types, resource_types, context) = action_type
                         .applies_to
                         .map(|applies_to| {
@@ -473,23 +453,24 @@ impl ValidatorNamespaceDef {
                     let (attribute_types, attributes) =
                         Self::convert_attr_jsonval_map_to_attributes(
                             action_type.attributes.unwrap_or_default(),
-                            &action_id,
+                            ventry.key(),
                             extensions,
                         )?;
 
-                    Ok((
-                        action_id,
-                        ActionFragment {
-                            context,
-                            applies_to,
-                            parents,
-                            attribute_types,
-                            attributes,
-                        },
-                    ))
-                })
-                .collect::<Result<HashMap<_, _>>>()?,
-        })
+                    ventry.insert(ActionFragment {
+                        context,
+                        applies_to,
+                        parents,
+                        attribute_types,
+                        attributes,
+                    });
+                }
+                Entry::Occupied(_) => {
+                    return Err(SchemaError::DuplicateAction(action_id_str.to_string()));
+                }
+            }
+        }
+        Ok(ActionsDef { actions })
     }
 
     // Check that `schema_file` uses actions in a way consistent with the
@@ -576,11 +557,7 @@ impl ValidatorNamespaceDef {
                     // Parse each type name string into a `Name`, generating an
                     // `EntityTypeParseError` when the string is not a valid
                     // name.
-                    .map(|ty| {
-                        EntityType::Specified(
-                            ty.prefix_namespace_if_unqualified(namespace.cloned()),
-                        )
-                    })
+                    .map(|ty| EntityType::Specified(ty.prefix_namespace_if_unqualified(namespace)))
                     // Fail if any of the types failed.
                     .collect::<HashSet<_>>()
             })
@@ -597,7 +574,7 @@ impl ValidatorNamespaceDef {
         namespace: Option<&Name>,
     ) -> EntityUID {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            action_ty.prefix_namespace_if_unqualified(namespace.cloned())
+            action_ty.prefix_namespace_if_unqualified(namespace)
         } else {
             // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
             #[allow(clippy::expect_used)]
@@ -656,7 +633,7 @@ impl ValidatorNamespaceDef {
             }
             SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
                 Ok(Type::named_entity_reference(
-                    name.prefix_namespace_if_unqualified(default_namespace.cloned()),
+                    name.prefix_namespace_if_unqualified(default_namespace),
                 )
                 .into())
             }
@@ -666,7 +643,7 @@ impl ValidatorNamespaceDef {
             }
             SchemaType::TypeDef { type_name } => {
                 let defined_type_name =
-                    type_name.prefix_namespace_if_unqualified(default_namespace.cloned());
+                    type_name.prefix_namespace_if_unqualified(default_namespace);
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
                         SchemaError::UndeclaredCommonTypes(HashSet::from([
