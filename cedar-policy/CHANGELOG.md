@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - upcoming
+
+### Added
+
+- New `ffi` module with an improved FFI interface. This will replace the
+  `frontend` module in the 4.0 release, but is available now for early adopters;
+  the `frontend` module is now deprecated.
+
 ## [3.1.3] - 2024-04-15
 
 ### Changed
@@ -423,7 +431,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.3...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main
+[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.2.0
 [3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
