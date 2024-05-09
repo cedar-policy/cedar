@@ -15,6 +15,9 @@
  */
 
 //! Utility functions and types for JSON interface
+
+#![allow(deprecated)] // all the functions and types in this module are deprecated. This `allow` ensures we don't get warnings about this module using its own functions and types.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

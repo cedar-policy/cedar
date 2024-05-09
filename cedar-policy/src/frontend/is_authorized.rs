@@ -16,7 +16,10 @@
 
 //! This module contains the `json_is_authorized` entry point that other language
 //! FFI's can call in order to use Cedar functionality
+
 #![allow(clippy::module_name_repetitions)]
+#![allow(deprecated)] // all the functions and types in this module are deprecated. This `allow` ensures we don't get warnings about this module using its own functions and types.
+
 use super::utils::{InterfaceResult, PolicySpecification};
 use crate::api::EntityId;
 use crate::api::EntityTypeName;
@@ -681,6 +684,8 @@ fn parse_policy_set_from_individual_policies(
 
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
+// all the functions and types in the parent module are deprecated. This `allow` ensures we don't get warnings about these tests using the parent module's functions and types.
+#[allow(deprecated)]
 #[cfg(test)]
 mod test {
     use super::*;

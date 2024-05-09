@@ -15,8 +15,10 @@
  */
 
 //! This module exposes a JSON-based validate function used by other language FFI's
-//!
+
 #![allow(clippy::module_name_repetitions)]
+#![allow(deprecated)] // all the functions and types in this module are deprecated. This `allow` ensures we don't get warnings about this module using its own functions and types.
+
 use super::utils::{InterfaceResult, PolicySpecification};
 use cedar_policy_core::{
     ast::PolicySet,
@@ -143,6 +145,8 @@ enum ValidateAnswer {
 
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
+// all the functions and types in the parent module are deprecated. This `allow` ensures we don't get warnings about these tests using the parent module's functions and types.
+#[allow(deprecated)]
 #[cfg(test)]
 mod test {
     use super::*;

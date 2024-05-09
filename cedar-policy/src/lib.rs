@@ -42,7 +42,13 @@ mod api;
 
 pub use api::*;
 
+pub mod ffi;
+
 /// Frontend utilities, see comments in the module itself
+#[deprecated(
+    since = "3.2.0",
+    note = "Use the functions in the `ffi` module instead"
+)]
 pub mod frontend;
 
 mod prop_test_policy_set;
