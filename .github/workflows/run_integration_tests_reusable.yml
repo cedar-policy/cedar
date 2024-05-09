@@ -24,7 +24,7 @@ jobs:
     # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
     # doesn't trigger a fresh build.
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code -W deprecated'
+      RUSTFLAGS: '-D warnings -F unsafe-code --force-warn deprecated'
 
     steps:
       - name: Checkout cedar
