@@ -22,7 +22,7 @@ jobs:
       - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
 
-      # All targets are run with the same `RUSTFLAGS
+      # All targets are run with the same `RUSTFLAGS`
       - run: cargo build --verbose
       - run: cargo test --verbose
       - run: cargo bench --no-run --profile=dev
@@ -37,7 +37,7 @@ jobs:
       cedar_policy_ref: ${{ github.ref }}
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
-  # don't effect it. As a side effect, this will run in parallel, saving some
+  # don't affect it. As a side effect, this will run in parallel, saving some
   # time.
   clippy:
     runs-on: ubuntu-latest
