@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - Coming Soon
+
+### Added
+
+- `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`,
+   and `RestrictedExpression::new_decimal` (#661, resolving #659)
+- `Entities::into_iter` (#713, resolving #680)
+- `Entity::into_inner` (#685, resolving #636)
+
+### Changed
+
+- Common type definitions in both human-readable and JSON schemas may now
+  reference other common type definitions. There may not be any cycles formed by
+  these references. (#766, resolving #154)
+- Improved validation error messages when incompatible types appear in
+  `if`, `==`, `contains`, `containsAll`, and `containsAny` expressions. (#809, resolving #346)
+- Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
+  `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
+  typing precision will not result in breaking changes. (#716, resolving #539)
+- Rework API for the `partial-eval` experimental feature (#714, #817, #838).
+- Validation errors for unknown entity types and action entities now
+  report the precise source location where the unknown type was encountered.
+  Error for invalid use of an action now includes a source location containing
+  the offending policy. (#802, #808, resolving #522)
+
+### Fixed
+
+- Validation error message for an invalid attribute access now reports the
+  correct attribute and entity type when accessing an optional attribute that is
+  itself an entity. (#811)
+- The error message returned when parsing an invalid action scope constraint
+  `action == ?action` no longer suggests that `action == [...]` would be a
+  valid scope constraint. (#818, resolving #563)
+
 ## [3.1.3] - 2024-04-15
 
 ### Changed
@@ -423,7 +457,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.3...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main
+[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.2.0
 [3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
