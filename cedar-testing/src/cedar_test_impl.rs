@@ -19,7 +19,7 @@
 //! running the integration tests and for performing randomized differential
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
-#![allow(deprecated)] // Functionality in this module depends on `frontend`. probably covered by https://github.com/cedar-policy/cedar/issues/821 ?
+#![allow(deprecated)] // Functionality in this module depends on `frontend`. https://github.com/cedar-policy/cedar/issues/821
 
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
