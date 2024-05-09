@@ -1913,7 +1913,7 @@ mod partial_test {
                 assert!(actual_residuals.contains(id), "expected nontrivial residual for {id}, but it's missing")
             }
             for id in &actual_residuals {
-                assert!(expected_residuals.contains(id),"found unexpected nontrivial residual for {id}")
+                assert!(expected_residuals.contains(id), "found unexpected nontrivial residual for {id}")
             }
         });
     }
