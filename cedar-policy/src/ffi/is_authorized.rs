@@ -190,7 +190,7 @@ impl From<crate::Response> for Response {
         let (reason, errors) = response.diagnostics.into_components();
         Self::new(
             response.decision,
-            reason.map(|id| id.to_smolstr()).collect(),
+            reason.map(PolicyId::into_smolstr).collect(),
             errors.map(Into::into).collect(),
         )
     }

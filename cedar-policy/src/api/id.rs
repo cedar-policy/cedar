@@ -24,6 +24,7 @@ use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
 use cedar_policy_core::FromNormalizedStr;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::convert::Infallible;
 use std::str::FromStr;
 
@@ -321,6 +322,11 @@ impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
     pub fn new(id: impl AsRef<str>) -> Self {
         Self(ast::PolicyID::from_string(id.as_ref()))
+    }
+
+    /// Get the underlying `SmolStr`
+    pub(crate) fn into_smolstr(self) -> SmolStr {
+        self.0.into_smolstr()
     }
 }
 
