@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2.0 - Coming Soon
+
+### Added
+
+- A `--write` flag for the `format` subcommand. This flag writes the formatted
+  policy to the file specified by the `--policies` flag. (#795)
+- A `--check` flag for the `format` subcommand. This flag checks if the policy
+  is already formatted and exits with a non-zero status if it is not. (#798, resolving #796)
+
+
 ## 3.1.3
 
 - The `translate-schema` command now produces prettier output.
