@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `frontend` module is now deprecated.
   This should be considered a preview-release of `ffi`; more API breaking
   changes are anticipated for Cedar 4.0. (#852)
-- `wasm` Cargo feature for targeting Wasm
+- `wasm` Cargo feature for targeting Wasm (and the `cedar-wasm` crate was added
+  to this repo).
+  This should be considered a preview-release of `cedar-wasm`; more API
+  breaking changes are anticipated for Cedar 4.0. (#858)
 
 ### Changed
 
