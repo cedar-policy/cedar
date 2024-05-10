@@ -1,7 +1,0 @@
-forbid(
-  principal,
-  action,
-  resource in a::"7#\0\0\0\0\0\0\0"
-) when {
-  true
-};

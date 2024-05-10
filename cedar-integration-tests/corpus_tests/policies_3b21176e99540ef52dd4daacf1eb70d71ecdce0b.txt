@@ -1,7 +1,0 @@
-permit(
-  principal in A0::Fwww::"",
-  action,
-  resource
-) when {
-  true
-};

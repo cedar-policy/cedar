@@ -20,12 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Overhauled the FFI interface in the `frontend` module, and renamed it to
   `ffi`; see #757. (#760, #793, #794, #800, #824, more coming)
 - Much richer error information in the FFI interface (#800)
-- Deprecated the integration testing harness code. It will be removed from the
-  `cedar-policy` crate in the next major version.
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
+
+### Removed
+
+- Removed integration testing harness from the `cedar-policy` crate. It is now
+  in an internal crate, allowing us to make semver incompatible changes. (#857)
 
 ## [3.2.0] - Coming Soon
 
@@ -51,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report the precise source location where the unknown type was encountered.
   Error for invalid use of an action now includes a source location containing
   the offending policy. (#802, #808, resolving #522)
+- Deprecated the integration testing harness code. It will be removed from the
+  `cedar-policy` crate in the next major version. (#707)
 
 ### Fixed
 

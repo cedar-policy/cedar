@@ -1,7 +1,0 @@
-permit(
-  principal in W0N00::v::a::"",
-  action,
-  resource in W0N00::v::a::""
-) when {
-  true
-};

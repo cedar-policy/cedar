@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource
-) when {
-  (true && (principal in 822148866)) && principal
-};

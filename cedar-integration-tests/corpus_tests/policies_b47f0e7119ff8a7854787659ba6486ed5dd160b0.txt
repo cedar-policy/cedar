@@ -1,7 +1,0 @@
-forbid(
-  principal,
-  action,
-  resource
-) when {
-  false && (((if principal then principal else principal) || principal) || principal)
-};
