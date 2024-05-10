@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action == Action::"action",
-  resource
-) when {
-  true && (((A::Ass::"" in principal) in principal) in principal)
-};

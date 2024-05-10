@@ -1,7 +1,0 @@
-forbid(
-  principal in a::"",
-  action in [],
-  resource
-) when {
-  false && (!(!false))
-};

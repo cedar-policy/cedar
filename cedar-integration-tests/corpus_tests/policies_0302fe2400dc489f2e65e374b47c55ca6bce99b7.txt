@@ -1,7 +1,0 @@
-forbid(
-  principal == Gxtxxxxxj::a::"",
-  action in [],
-  resource
-) when {
-  true
-};

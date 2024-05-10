@@ -1,8 +1,0 @@
-@r("")
-forbid(
-  principal,
-  action,
-  resource
-) when {
-  ((true && [m0000000000000::"", principal, principal, principal, principal, principal, principal]) && principal) && principal
-};

@@ -1,7 +1,0 @@
-permit(
-  principal in A::D::a::"",
-  action in [A::D::Action::"action",A::D::Action::"action",A::D::Action::"action"],
-  resource
-) when {
-  (true && (!A::D::Action::"action")) && (principal && principal)
-};

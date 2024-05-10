@@ -1,7 +1,0 @@
-permit(
-  principal == a::"\u{2}\u{2}\u{2}\u{2}com/fast,er",
-  action == Action::"action",
-  resource == a::"\u{2}\u{2}\u{2}\u{2}com/fast,er"
-) when {
-  (true && (((principal == principal) == principal) == principal)) && principal
-};
