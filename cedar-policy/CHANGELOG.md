@@ -8,20 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `wasm` Cargo feature for targeting Wasm
-- Adds an JSON representation for Policy Sets (#783, resolving #549),
-    along with methods like `::from_json_value/file/str` and `::to_json`
-    for `PolicySet`.
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
 
 ### Changed
 
-- significantly reworked `EntitiesError` to bring into conformance
+- Significantly reworked all public-facing error types to address some issues
+  and improve consistency. See #745.
+- Finalized the `ffi` module which was preview-released in 3.2.0.
+  This involved a few additional API breaking changes in `ffi`. See #757.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Overhauled the FFI interface in the `frontend` module, and renamed it to
-  `ffi`; see #757. (#760, #793, #794, #800, #824, more coming)
-- Much richer error information in the FFI interface (#800)
 - Removed unnecessary lifetimes from some validation related structs (#715)
-- Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
 
@@ -29,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
+- Removed the (deprecated) `frontend` module in favor of the new `ffi` module
+  introduced in 3.2.0. See #757.
 
 ## [3.2.0] - Coming Soon
 
@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `Entities::into_iter` (#713, resolving #680)
 - `Entity::into_inner` (#685, resolving #636)
+- New `ffi` module with an improved FFI interface. This will replace the
+  `frontend` module in the 4.0 release, but is available now for early adopters;
+  the `frontend` module is now deprecated.
+  This should be considered a preview-release of `ffi`; more API breaking
+  changes are anticipated for Cedar 4.0. (#852)
+- `wasm` Cargo feature for targeting Wasm (and the `cedar-wasm` crate was added
+  to this repo).
+  This should be considered a preview-release of `cedar-wasm`; more API
+  breaking changes are anticipated for Cedar 4.0. (#858)
 
 ### Changed
 
@@ -54,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report the precise source location where the unknown type was encountered.
   Error for invalid use of an action now includes a source location containing
   the offending policy. (#802, #808, resolving #522)
+- Deprecated the `frontend` module in favor of the new `ffi` module. The
+  `frontend` module will be removed from `cedar-policy` in the next major version.
+  See notes above about `ffi`. (#852)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version. (#707)
 
