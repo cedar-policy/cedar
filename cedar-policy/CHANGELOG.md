@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report the precise source location where the unknown type was encountered.
   Error for invalid use of an action now includes a source location containing
   the offending policy. (#802, #808, resolving #522)
+- Deprecated the `frontend` module in favor of the new `ffi` module. The
+  `frontend` module will be removed from `cedar-policy` in the next major version.
+  See notes above about `ffi`. (#852)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version. (#707)
 
