@@ -1,3 +1,8 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/test.cedar
+---
 permit (principal, action, resource)
 // haha
 when

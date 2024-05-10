@@ -1,3 +1,8 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/is_policies.cedar
+---
 permit (principal is User, action, resource is Photo)
 when { User::"alice" is User };
 
@@ -62,4 +67,3 @@ when // 19
     "friends" // 29
 } // 30
 ; // 31
-
