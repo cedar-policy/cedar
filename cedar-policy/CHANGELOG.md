@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Removed integration testing harness from the `cedar-policy` crate. It is now
-  in an internal crate, allowing us to make semver incompatible changes.
+  in an internal crate, allowing us to make semver incompatible changes. (#857)
 
 ## [3.2.0] - Coming Soon
 
