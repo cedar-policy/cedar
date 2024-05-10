@@ -21,6 +21,8 @@
 
 #![allow(deprecated)] // Functionality in this module depends on `frontend`. https://github.com/cedar-policy/cedar/issues/821
 
+pub use cedar_policy::frontend::is_authorized::InterfaceResponse;
+
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::Entities;
