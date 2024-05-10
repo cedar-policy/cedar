@@ -25,6 +25,7 @@ pub mod partial_evaluation;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
+use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -86,12 +87,18 @@ impl<'a> Extensions<'a> {
             .filter_map(|ext| ext.get_func(name))
             .collect();
         match extension_funcs.first() {
-            None => Err(ExtensionFunctionLookupError::FuncDoesNotExist { name: name.clone() }),
+            None => Err(extension_function_lookup_errors::FuncDoesNotExistError {
+                name: name.clone(),
+                source_loc: None,
+            }
+            .into()),
             Some(first) if extension_funcs.len() == 1 => Ok(first),
-            _ => Err(ExtensionFunctionLookupError::FuncMultiplyDefined {
+            _ => Err(extension_function_lookup_errors::FuncMultiplyDefinedError {
                 name: name.clone(),
                 num_defs: extension_funcs.len(),
-            }),
+                source_loc: None,
+            }
+            .into()),
         }
     }
 
@@ -124,53 +131,212 @@ impl<'a> Extensions<'a> {
             None => Ok(None),
             Some(first) if matches.len() == 1 => Ok(Some(first)),
             _ => Err(
-                ExtensionFunctionLookupError::MultipleConstructorsSameSignature {
+                extension_function_lookup_errors::MultipleConstructorsSameSignatureError {
                     return_type: Box::new(return_type.clone()),
                     arg_type: Box::new(arg_type.clone()),
-                },
+                    source_loc: None,
+                }
+                .into(),
             ),
         }
     }
 }
 
 /// Errors thrown when looking up an extension function in [`Extensions`].
+//
+// CAUTION: this type is publically exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
-    #[error("extension function `{name}` does not exist")]
-    FuncDoesNotExist {
-        /// Name of the function that doesn't exist
-        name: Name,
-    },
-
-    /// Attempted to typecheck an expression that had no type
-    #[error("extension function `{name}` has no type")]
-    HasNoType {
-        /// Name of the function that returns no type
-        name: Name,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
 
     /// Tried to call a function but it was defined multiple times (e.g., by
     /// multiple different extensions)
-    #[error("extension function `{name}` is defined {num_defs} times")]
-    FuncMultiplyDefined {
-        /// Name of the function that is multiply defined
-        name: Name,
-        /// How many times that function is defined
-        num_defs: usize,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FuncMultiplyDefined(#[from] extension_function_lookup_errors::FuncMultiplyDefinedError),
+
+    /// Attempted to typecheck an expression that had no type
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    HasNoType(#[from] extension_function_lookup_errors::HasNoTypeError),
 
     /// Two extension constructors (in the same or different extensions) had
     /// exactly the same type signature.  This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultipleConstructorsSameSignature(
+        #[from] extension_function_lookup_errors::MultipleConstructorsSameSignatureError,
+    ),
+}
+
+impl ExtensionFunctionLookupError {
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
+        match self {
+            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::FuncMultiplyDefined(e) => e.source_loc.as_ref(),
+            Self::HasNoType(e) => e.source_loc.as_ref(),
+            Self::MultipleConstructorsSameSignature(e) => e.source_loc.as_ref(),
+        }
+    }
+
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        match self {
+            Self::FuncDoesNotExist(e) => {
+                Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::FuncMultiplyDefined(e) => Self::FuncMultiplyDefined(
+                extension_function_lookup_errors::FuncMultiplyDefinedError { source_loc, ..e },
+            ),
+            Self::HasNoType(e) => {
+                Self::HasNoType(extension_function_lookup_errors::HasNoTypeError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::MultipleConstructorsSameSignature(e) => Self::MultipleConstructorsSameSignature(
+                extension_function_lookup_errors::MultipleConstructorsSameSignatureError {
+                    source_loc,
+                    ..e
+                },
+            ),
+        }
+    }
+}
+
+/// Error subtypes for `ExtensionFunctionLookupError`
+pub mod extension_function_lookup_errors {
+    use crate::ast::Name;
+    use crate::entities::SchemaType;
+    use crate::parser::Loc;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Tried to call a function that doesn't exist
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("extension function `{name}` does not exist")]
+    pub struct FuncDoesNotExistError {
+        /// Name of the function that doesn't exist
+        pub(crate) name: Name,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for FuncDoesNotExistError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// Tried to call a function that doesn't exist
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("extension function `{name}` is defined {num_defs} times")]
+    pub struct FuncMultiplyDefinedError {
+        /// Name of the function that was multiply defined
+        pub(crate) name: Name,
+        /// How many times that function is defined
+        pub(crate) num_defs: usize,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for FuncMultiplyDefinedError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// Attempted to typecheck an expression that had no type
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("extension function `{name}` has no type")]
+    pub struct HasNoTypeError {
+        /// Name of the function that returns no type
+        pub(crate) name: Name,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for HasNoTypeError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// Two extension constructors (in the same or different extensions) had
+    /// exactly the same type signature.  This is currently not allowed.
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error(
         "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
     )]
-    MultipleConstructorsSameSignature {
+    pub struct MultipleConstructorsSameSignatureError {
         /// return type of the shared constructor signature
-        return_type: Box<SchemaType>,
+        pub(crate) return_type: Box<SchemaType>,
         /// argument type of the shared constructor signature
-        arg_type: Box<SchemaType>,
-    },
+        pub(crate) arg_type: Box<SchemaType>,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for MultipleConstructorsSameSignatureError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 }
 
 /// Type alias for convenience

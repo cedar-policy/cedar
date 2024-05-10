@@ -16,140 +16,216 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
-use itertools::Itertools;
-use miette::{Diagnostic, LabeledSpan};
+use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-/// An error generated while evaluating an expression
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
-#[error("{error_kind}")]
-pub struct EvaluationError {
-    /// The kind of error that occurred
-    error_kind: EvaluationErrorKind,
-    /// Source location of the error. (This overrides other sources if present,
-    /// but if this is `None`, we'll check for location info in the
-    /// `.error_kind`.)
-    source_loc: Option<Loc>,
-}
+/// Enumeration of the possible errors that can occur during evaluation
+//
+// CAUTION: this type is publically exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution when
+// adding public methods.
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+pub enum EvaluationError {
+    /// Tried to lookup an entity UID, but it didn't exist in the provided
+    /// entities
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDoesNotExist(#[from] evaluation_errors::EntityDoesNotExistError),
 
-// custom impl of `Diagnostic`
-impl Diagnostic for EvaluationError {
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.error_kind.help()
-    }
+    /// Tried to get an attribute, but the specified entity didn't
+    /// have that attribute
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityAttrDoesNotExist(#[from] evaluation_errors::EntityAttrDoesNotExistError),
 
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.source_loc
-            .as_ref()
-            .map(|loc| &loc.src as &dyn miette::SourceCode)
-            .or_else(|| self.error_kind.source_code())
-    }
+    /// Tried to access an attribute of an unspecified entity
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnspecifiedEntityAccess(#[from] evaluation_errors::UnspecifiedEntityAccessError),
 
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.source_loc
-            .as_ref()
-            .map(|loc| {
-                Box::new(std::iter::once(LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-            .or_else(|| self.error_kind.labels())
-    }
+    /// Tried to get an attribute of a (non-entity) record, but that record
+    /// didn't have that attribute
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RecordAttrDoesNotExist(#[from] evaluation_errors::RecordAttrDoesNotExistError),
 
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.error_kind.code()
-    }
+    /// An error occurred when looking up an extension function
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
 
-    fn severity(&self) -> Option<miette::Severity> {
-        self.error_kind.severity()
-    }
+    /// Tried to evaluate an operation on values with incorrect types for that
+    /// operation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeError(#[from] evaluation_errors::TypeError),
 
-    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.error_kind.url()
-    }
+    /// Wrong number of arguments provided to an extension function
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongNumArguments(#[from] evaluation_errors::WrongNumArgumentsError),
 
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error_kind.diagnostic_source()
-    }
+    /// Overflow during an integer operation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IntegerOverflow(#[from] evaluation_errors::IntegerOverflowError),
 
-    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        self.error_kind.related()
-    }
+    /// Error with the use of "restricted" expressions
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidRestrictedExpression(#[from] RestrictedExprError),
+
+    /// A policy was evaluated but not all template slots were linked
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnlinkedSlot(#[from] evaluation_errors::UnlinkedSlotError),
+
+    /// Evaluation error thrown by an extension function
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FailedExtensionFunctionExecution(#[from] evaluation_errors::ExtensionFunctionExecutionError),
+
+    /// This error is raised if an expression contains unknowns and cannot be
+    /// reduced to a [`Value`]. In order to return partial results, use the
+    /// partial evaluation APIs instead.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NonValue(#[from] evaluation_errors::NonValueError),
+
+    /// Maximum recursion limit reached for expression evaluation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RecursionLimit(#[from] evaluation_errors::RecursionLimitError),
 }
 
 impl EvaluationError {
-    /// Extract the kind of issue detected during evaluation
-    pub fn error_kind(&self) -> &EvaluationErrorKind {
-        &self.error_kind
-    }
-
-    /// (internal only) mutable access to the `EvaluationErrorKind`
-    pub(super) fn error_kind_mut(&mut self) -> &mut EvaluationErrorKind {
-        &mut self.error_kind
-    }
-
     /// Extract the source location of the error, if one is attached
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        match self {
+            Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::UnspecifiedEntityAccess(e) => e.source_loc.as_ref(),
+            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
+            Self::TypeError(e) => e.source_loc.as_ref(),
+            Self::WrongNumArguments(e) => e.source_loc.as_ref(),
+            Self::IntegerOverflow(e) => e.source_loc(),
+            Self::InvalidRestrictedExpression(e) => e.source_loc(),
+            Self::UnlinkedSlot(e) => e.source_loc.as_ref(),
+            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
+            Self::NonValue(e) => e.source_loc.as_ref(),
+            Self::RecursionLimit(e) => e.source_loc.as_ref(),
+        }
     }
 
     /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
     pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
-        Self { source_loc, ..self }
+        match self {
+            Self::EntityDoesNotExist(e) => {
+                Self::EntityDoesNotExist(evaluation_errors::EntityDoesNotExistError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::EntityAttrDoesNotExist(e) => {
+                Self::EntityAttrDoesNotExist(evaluation_errors::EntityAttrDoesNotExistError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::UnspecifiedEntityAccess(e) => {
+                Self::UnspecifiedEntityAccess(evaluation_errors::UnspecifiedEntityAccessError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::RecordAttrDoesNotExist(e) => {
+                Self::RecordAttrDoesNotExist(evaluation_errors::RecordAttrDoesNotExistError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::FailedExtensionFunctionLookup(e) => {
+                Self::FailedExtensionFunctionLookup(e.with_maybe_source_loc(source_loc))
+            }
+            Self::TypeError(e) => Self::TypeError(evaluation_errors::TypeError { source_loc, ..e }),
+            Self::WrongNumArguments(e) => {
+                Self::WrongNumArguments(evaluation_errors::WrongNumArgumentsError {
+                    source_loc,
+                    ..e
+                })
+            }
+            Self::IntegerOverflow(e) => Self::IntegerOverflow(e.with_maybe_source_loc(source_loc)),
+            Self::InvalidRestrictedExpression(e) => {
+                Self::InvalidRestrictedExpression(e.with_maybe_source_loc(source_loc))
+            }
+            Self::UnlinkedSlot(e) => {
+                Self::UnlinkedSlot(evaluation_errors::UnlinkedSlotError { source_loc, ..e })
+            }
+            Self::FailedExtensionFunctionExecution(e) => Self::FailedExtensionFunctionExecution(
+                evaluation_errors::ExtensionFunctionExecutionError { source_loc, ..e },
+            ),
+            Self::NonValue(e) => {
+                Self::NonValue(evaluation_errors::NonValueError { source_loc, ..e })
+            }
+            Self::RecursionLimit(e) => {
+                Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc, ..e })
+            }
+        }
     }
 
     /// Construct a [`EntityDoesNotExist`] error
-    pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::EntityDoesNotExist(euid),
-            source_loc,
-        }
+    pub(crate) fn entity_does_not_exist(uid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
+        evaluation_errors::EntityDoesNotExistError { uid, source_loc }.into()
     }
 
     /// Construct a [`EntityAttrDoesNotExist`] error
     pub(crate) fn entity_attr_does_not_exist(
         entity: Arc<EntityUID>,
         attr: SmolStr,
+        available_attrs: Vec<SmolStr>,
         source_loc: Option<Loc>,
     ) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::EntityAttrDoesNotExist { entity, attr },
+        evaluation_errors::EntityAttrDoesNotExistError {
+            entity,
+            attr,
+            available_attrs,
             source_loc,
         }
+        .into()
     }
 
     /// Construct a [`UnspecifiedEntityAccess`] error
     pub(crate) fn unspecified_entity_access(attr: SmolStr, source_loc: Option<Loc>) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::UnspecifiedEntityAccess(attr),
-            source_loc,
-        }
+        evaluation_errors::UnspecifiedEntityAccessError { attr, source_loc }.into()
     }
 
     /// Construct a [`RecordAttrDoesNotExist`] error
     pub(crate) fn record_attr_does_not_exist(
         attr: SmolStr,
-        alternatives: Vec<SmolStr>,
+        available_attrs: Vec<SmolStr>,
         source_loc: Option<Loc>,
     ) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
+        evaluation_errors::RecordAttrDoesNotExistError {
+            attr,
+            available_attrs,
             source_loc,
         }
+        .into()
     }
 
     /// Construct a [`TypeError`] error
     pub(crate) fn type_error(expected: NonEmpty<Type>, actual: &Value) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::TypeError {
-                expected,
-                actual: actual.type_of(),
-                advice: None,
-            },
+        evaluation_errors::TypeError {
+            expected,
+            actual: actual.type_of(),
+            advice: None,
             source_loc: actual.source_loc().cloned(),
         }
+        .into()
     }
 
     pub(crate) fn type_error_single(expected: Type, actual: &Value) -> Self {
@@ -162,14 +238,13 @@ impl EvaluationError {
         actual: &Value,
         advice: String,
     ) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::TypeError {
-                expected,
-                actual: actual.type_of(),
-                advice: Some(advice),
-            },
+        evaluation_errors::TypeError {
+            expected,
+            actual: actual.type_of(),
+            advice: Some(advice),
             source_loc: actual.source_loc().cloned(),
         }
+        .into()
     }
 
     pub(crate) fn type_error_with_advice_single(
@@ -187,22 +262,18 @@ impl EvaluationError {
         actual: usize,
         source_loc: Option<Loc>,
     ) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::WrongNumArguments {
-                function_name,
-                expected,
-                actual,
-            },
+        evaluation_errors::WrongNumArgumentsError {
+            function_name,
+            expected,
+            actual,
             source_loc,
         }
+        .into()
     }
 
     /// Construct a [`UnlinkedSlot`] error
-    pub(crate) fn unlinked_slot(id: SlotId, source_loc: Option<Loc>) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::UnlinkedSlot(id),
-            source_loc,
-        }
+    pub(crate) fn unlinked_slot(slot: SlotId, source_loc: Option<Loc>) -> Self {
+        evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
     }
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
@@ -211,186 +282,481 @@ impl EvaluationError {
         msg: String,
         source_loc: Option<Loc>,
     ) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::FailedExtensionFunctionApplication {
-                extension_name,
-                msg,
-            },
+        evaluation_errors::ExtensionFunctionExecutionError {
+            extension_name,
+            msg,
             source_loc,
         }
+        .into()
     }
 
     /// Construct a [`NonValue`] error
-    pub(crate) fn non_value(e: Expr) -> Self {
-        let source_loc = e.source_loc().cloned();
-        Self {
-            error_kind: EvaluationErrorKind::NonValue(e),
-            source_loc,
-        }
+    pub(crate) fn non_value(expr: Expr) -> Self {
+        let source_loc = expr.source_loc().cloned();
+        evaluation_errors::NonValueError { expr, source_loc }.into()
     }
 
     /// Construct a [`RecursionLimit`] error
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
-        Self {
-            error_kind: EvaluationErrorKind::RecursionLimit,
-            source_loc,
-        }
-    }
-
-    pub(crate) fn extension_function_lookup(
-        err: crate::extensions::ExtensionFunctionLookupError,
-        source_loc: Option<Loc>,
-    ) -> Self {
-        Self {
-            error_kind: err.into(),
-            source_loc,
-        }
-    }
-
-    pub(crate) fn integer_overflow(err: IntegerOverflowError, source_loc: Option<Loc>) -> Self {
-        Self {
-            error_kind: err.into(),
-            source_loc,
-        }
+        evaluation_errors::RecursionLimitError { source_loc }.into()
     }
 }
 
-impl From<RestrictedExprError> for EvaluationError {
-    fn from(err: RestrictedExprError) -> Self {
-        Self {
-            error_kind: err.into(),
-            source_loc: None, // defer to the source information embedded in the `RestrictedExprError` and thus stored in `error_kind`
+/// Error subtypes for `EvaluationError`
+pub mod evaluation_errors {
+    use crate::ast::{BinaryOp, EntityUID, Expr, Name, SlotId, Type, UnaryOp, Value};
+    use crate::parser::Loc;
+    use itertools::Itertools;
+    use miette::Diagnostic;
+    use nonempty::NonEmpty;
+    use smol_str::SmolStr;
+    use std::sync::Arc;
+    use thiserror::Error;
+
+    /// Tried to lookup an entity UID, but it didn't exist in the provided entities
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("entity `{uid}` does not exist")]
+    pub struct EntityDoesNotExistError {
+        /// Entity UID which didn't exist in the provided entities
+        pub(crate) uid: Arc<EntityUID>,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    // This and similar `Diagnostic` impls could just be derived with
+    //
+    // #[source_code]
+    // #[label]
+    // source_loc: Option<Loc>,
+    //
+    // if [miette#377](https://github.com/zkat/miette/issues/377) gets fixed.
+    // Or, we could have separate fields for source code and label instead of
+    // combining them into `Loc`, which would work around the issue.
+    impl Diagnostic for EntityDoesNotExistError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
         }
     }
-}
 
-/// Enumeration of the possible errors that can occur during evaluation
-#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum EvaluationErrorKind {
-    /// Tried to lookup this entity UID, but it didn't exist in the provided
-    /// entities
-    #[error("entity `{0}` does not exist")]
-    EntityDoesNotExist(Arc<EntityUID>),
-
-    /// Tried to get this attribute, but the specified entity didn't
-    /// have that attribute
-    #[error("`{}` does not have the attribute `{}`", &.entity, &.attr)]
-    EntityAttrDoesNotExist {
+    /// Tried to get an attribute, but the specified entity didn't have that
+    /// attribute
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("`{entity}` does not have the attribute `{attr}`")]
+    pub struct EntityAttrDoesNotExistError {
         /// Entity that didn't have the attribute
-        entity: Arc<EntityUID>,
+        pub(crate) entity: Arc<EntityUID>,
         /// Name of the attribute it didn't have
-        attr: SmolStr,
-    },
+        pub(crate) attr: SmolStr,
+        /// Available attributes on the entity
+        pub(crate) available_attrs: Vec<SmolStr>,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for EntityAttrDoesNotExistError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            if self.available_attrs.is_empty() {
+                Some(Box::new("entity does not have any attributes"))
+            } else {
+                Some(Box::new(format!(
+                    "available attributes: {:?}",
+                    self.available_attrs
+                )))
+            }
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 
     /// Tried to access an attribute of an unspecified entity
-    #[error("cannot access attribute `{0}` of unspecified entity")]
-    UnspecifiedEntityAccess(SmolStr),
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("cannot access attribute `{attr}` of unspecified entity")]
+    pub struct UnspecifiedEntityAccessError {
+        /// Name of the attribute we tried to access
+        pub(crate) attr: SmolStr,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
 
-    /// Tried to get an attribute of a (non-entity) record, but that record
-    /// didn't have that attribute
-    #[error("record does not have the attribute `{0}`")]
-    #[diagnostic(help("available attributes: {1:?}"))]
-    RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
+    impl Diagnostic for UnspecifiedEntityAccessError {
+        impl_diagnostic_from_source_loc_field!();
 
-    /// An error occurred when looking up an extension function
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// Tried to get an attribute of a (non-entity) record, but that record didn't
+    /// have that attribute
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("record does not have the attribute `{attr}`")]
+    pub struct RecordAttrDoesNotExistError {
+        /// Name of the attribute we tried to access
+        pub(crate) attr: SmolStr,
+        /// Available attributes on the record
+        pub(crate) available_attrs: Vec<SmolStr>,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for RecordAttrDoesNotExistError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            if self.available_attrs.is_empty() {
+                Some(Box::new("record does not have any attributes"))
+            } else {
+                Some(Box::new(format!(
+                    "available attributes: {:?}",
+                    self.available_attrs
+                )))
+            }
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
-    #[error("{}", pretty_type_error(expected, actual))]
-    TypeError {
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    pub struct TypeError {
         /// Expected one of these types
-        expected: NonEmpty<Type>,
+        pub(crate) expected: NonEmpty<Type>,
         /// Encountered this type instead
-        actual: Type,
+        pub(crate) actual: Type,
         /// Optional advice for how to fix this error
-        #[help]
-        advice: Option<String>,
-    },
+        pub(crate) advice: Option<String>,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for TypeError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            self.advice.as_ref().map(|advice| Box::new(advice) as _)
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    impl std::fmt::Display for TypeError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.expected.len() == 1 {
+                write!(
+                    f,
+                    "type error: expected {}, got {}",
+                    self.expected.first(),
+                    self.actual
+                )
+            } else {
+                write!(
+                    f,
+                    "type error: expected one of [{}], got {}",
+                    self.expected.iter().join(", "),
+                    self.actual
+                )
+            }
+        }
+    }
 
     /// Wrong number of arguments provided to an extension function
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
-    WrongNumArguments {
+    pub struct WrongNumArgumentsError {
         /// arguments to this function
-        function_name: Name,
+        pub(crate) function_name: Name,
         /// expected number of arguments
-        expected: usize,
+        pub(crate) expected: usize,
         /// actual number of arguments
-        actual: usize,
-    },
+        pub(crate) actual: usize,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for WrongNumArgumentsError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 
     /// Overflow during an integer operation
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    IntegerOverflow(#[from] IntegerOverflowError),
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+    pub enum IntegerOverflowError {
+        /// Overflow during a binary operation
+        #[error(transparent)]
+        #[diagnostic(transparent)]
+        BinaryOp(#[from] BinaryOpOverflowError),
 
-    /// Error with the use of "restricted" expressions
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExprError),
+        /// Overflow during a unary operation
+        #[error(transparent)]
+        #[diagnostic(transparent)]
+        UnaryOp(#[from] UnaryOpOverflowError),
+    }
 
-    /// Thrown when a policy is evaluated with a slot that is not linked to an
-    /// [`EntityUID`]
-    #[error("template slot `{0}` was not linked")]
-    UnlinkedSlot(SlotId),
+    impl IntegerOverflowError {
+        pub(crate) fn source_loc(&self) -> Option<&Loc> {
+            match self {
+                Self::BinaryOp(e) => e.source_loc.as_ref(),
+                Self::UnaryOp(e) => e.source_loc.as_ref(),
+            }
+        }
+
+        pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+            match self {
+                Self::BinaryOp(e) => Self::BinaryOp(BinaryOpOverflowError { source_loc, ..e }),
+                Self::UnaryOp(e) => Self::UnaryOp(UnaryOpOverflowError { source_loc, ..e }),
+            }
+        }
+    }
+
+    /// Overflow during a binary operation
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
+    pub struct BinaryOpOverflowError {
+        /// overflow while evaluating this operator
+        pub(crate) op: BinaryOp,
+        /// first argument to that operator
+        pub(crate) arg1: Value,
+        /// second argument to that operator
+        pub(crate) arg2: Value,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for BinaryOpOverflowError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// Overflow during a unary operation
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
+    pub struct UnaryOpOverflowError {
+        /// overflow while evaluating this operator
+        pub(crate) op: UnaryOp,
+        /// argument to that operator
+        pub(crate) arg: Value,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for UnaryOpOverflowError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    /// A policy was evaluated but not all template slots were linked
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("template slot `{slot}` was not linked")]
+    pub struct UnlinkedSlotError {
+        /// Slot which was not linked
+        pub(crate) slot: SlotId,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for UnlinkedSlotError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 
     /// Evaluation error thrown by an extension function
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("error while evaluating `{extension_name}` extension function: {msg}")]
-    FailedExtensionFunctionApplication {
+    pub struct ExtensionFunctionExecutionError {
         /// Name of the extension throwing the error
-        extension_name: Name,
+        pub(crate) extension_name: Name,
         /// Error message from the extension
-        msg: String,
-    },
+        pub(crate) msg: String,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for ExtensionFunctionExecutionError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
+
+    impl ExtensionFunctionExecutionError {
+        /// Get the name of the extension that threw this error
+        pub fn extension_name(&self) -> String {
+            self.extension_name.to_string()
+        }
+    }
 
     /// This error is raised if an expression contains unknowns and cannot be
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
-    #[error("the expression contains unknown(s): `{0}`")]
-    #[diagnostic(help("consider using the partial evaluation APIs"))]
-    NonValue(Expr),
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[error("the expression contains unknown(s): `{expr}`")]
+    pub struct NonValueError {
+        /// Expression that contained unknown(s)
+        pub(crate) expr: Expr,
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl Diagnostic for NonValueError {
+        impl_diagnostic_from_source_loc_field!();
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new("consider using the partial evaluation APIs"))
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 
     /// Maximum recursion limit reached for expression evaluation
+    //
+    // CAUTION: this type is publically exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("recursion limit reached")]
-    RecursionLimit,
-}
-
-/// helper function for pretty-printing type errors
-fn pretty_type_error(expected: &NonEmpty<Type>, actual: &Type) -> String {
-    if expected.len() == 1 {
-        format!("type error: expected {}, got {}", expected.first(), actual)
-    } else {
-        format!(
-            "type error: expected one of [{}], got {actual}",
-            expected.iter().join(", ")
-        )
+    pub struct RecursionLimitError {
+        /// Source location
+        pub(crate) source_loc: Option<Loc>,
     }
-}
 
-#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum IntegerOverflowError {
-    /// Overflow during a binary operation
-    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
-    BinaryOp {
-        /// overflow while evaluating this operator
-        op: BinaryOp,
-        /// first argument to that operator
-        arg1: Value,
-        /// second argument to that operator
-        arg2: Value,
-    },
+    impl Diagnostic for RecursionLimitError {
+        impl_diagnostic_from_source_loc_field!();
 
-    /// Overflow during a unary operation
-    #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
-    UnaryOp {
-        /// overflow while evaluating this operator
-        op: UnaryOp,
-        /// argument to that operator
-        arg: Value,
-    },
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            None
+        }
+    }
 }
 
 /// Type alias for convenience

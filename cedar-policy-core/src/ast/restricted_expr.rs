@@ -633,6 +633,26 @@ impl Diagnostic for RestrictedExprError {
     }
 }
 
+impl RestrictedExprError {
+    /// Get the `Loc` of this error
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
+        match self {
+            Self::InvalidRestrictedExpression { expr, .. } => expr.source_loc(),
+        }
+    }
+
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        match self {
+            Self::InvalidRestrictedExpression { feature, expr } => {
+                Self::InvalidRestrictedExpression {
+                    feature,
+                    expr: expr.with_maybe_source_loc(source_loc),
+                }
+            }
+        }
+    }
+}
+
 /// Errors possible from `RestrictedExpr::from_str()`
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExprParseError {

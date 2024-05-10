@@ -62,3 +62,39 @@ impl Loc {
         self.src.get(self.start()..self.end())
     }
 }
+
+impl From<Loc> for miette::SourceSpan {
+    fn from(loc: Loc) -> Self {
+        loc.span
+    }
+}
+
+impl From<&Loc> for miette::SourceSpan {
+    fn from(loc: &Loc) -> Self {
+        loc.span
+    }
+}
+
+impl miette::SourceCode for Loc {
+    fn read_span<'a>(
+        &'a self,
+        span: &miette::SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        self.src
+            .read_span(span, context_lines_before, context_lines_after)
+    }
+}
+
+impl miette::SourceCode for &Loc {
+    fn read_span<'a>(
+        &'a self,
+        span: &miette::SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        self.src
+            .read_span(span, context_lines_before, context_lines_after)
+    }
+}
