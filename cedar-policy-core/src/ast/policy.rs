@@ -24,6 +24,9 @@ use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
@@ -1738,6 +1741,8 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 /// the Effect of a policy
 #[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Effect {
     /// this is a Permit policy
     #[serde(rename = "permit")]

@@ -29,6 +29,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 mod err;
 mod partial_response;
 pub use err::AuthorizationError;
@@ -647,6 +650,8 @@ impl Response {
 
 /// Decision returned from the `Authorizer`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Decision {
     /// The `Authorizer` determined that the request should be allowed
     Allow,

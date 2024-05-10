@@ -26,6 +26,9 @@ use std::{
 };
 use thiserror::Error;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// Internal AST for expressions used by the policy evaluator.
 /// This structure is a wrapper around an `ExprKind`, which is the expression
 /// variant this object contains. It also contains source information about
@@ -1353,6 +1356,8 @@ impl<T> Expr<T> {
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Var {
     /// the Principal of the given request
     #[serde(rename = "principal")]

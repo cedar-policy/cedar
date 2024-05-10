@@ -35,6 +35,9 @@ use crate::{
     HumanSchemaError, Result,
 };
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// A SchemaFragment describe the types for a given instance of Cedar.
 /// SchemaFragments are composed of Entity Types and Action Types. The
 /// schema fragment is split into multiple namespace definitions, eac including
@@ -42,9 +45,12 @@ use crate::{
 /// `Action` entity type for all actions) in the schema.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SchemaFragment(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    pub  HashMap<Option<Name>, NamespaceDefinition>,
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
+    pub HashMap<Option<Name>, NamespaceDefinition>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
@@ -131,8 +137,11 @@ impl SchemaFragment {
 #[serde_as]
 #[serde(deny_unknown_fields)]
 #[doc(hidden)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition {
     #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     #[serde(rename = "commonTypes")]
     pub common_types: HashMap<Id, SchemaType>,
@@ -161,6 +170,8 @@ impl NamespaceDefinition {
 /// can/should be included on entities of each type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -173,6 +184,8 @@ pub struct EntityType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AttributesOrContext(
     // We use the usual `SchemaType` deserialization, but it will ultimately
     // need to be a `Record` or type def which resolves to a `Record`.
@@ -202,6 +215,8 @@ impl Default for AttributesOrContext {
 /// kinds of entities it can be used on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionType {
     /// This maps attribute names to
     /// `cedar_policy_core::entities::json::value::CedarValueJson` which is the
@@ -229,6 +244,8 @@ pub struct ActionType {
 /// applies to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -245,11 +262,14 @@ pub struct ApplySpec {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID {
     pub id: SmolStr,
 
     #[serde(rename = "type")]
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ty: Option<Name>,
 }
 
@@ -278,6 +298,8 @@ impl std::fmt::Display for ActionEntityUID {
 // then, have catch-all variant for any unrecognized tag in the same enum that
 // captures the name of the unrecognized tag.
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaType {
     Type(SchemaTypeVariant),
     TypeDef {
@@ -623,8 +645,10 @@ impl From<SchemaTypeVariant> for SchemaType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaTypeVariant {
     String,
     Long,

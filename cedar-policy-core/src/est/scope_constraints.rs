@@ -22,10 +22,15 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// Serde JSON structure for a principal scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PrincipalConstraint {
     /// No constraint (e.g., `principal,`)
     All,
@@ -44,6 +49,8 @@ pub enum PrincipalConstraint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ActionConstraint {
     /// No constraint (i.e., `action,`)
     All,
@@ -59,6 +66,8 @@ pub enum ActionConstraint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ResourceConstraint {
     /// No constraint (e.g., `resource,`)
     All,
@@ -76,6 +85,8 @@ pub enum ResourceConstraint {
 /// Serde JSON structure for a `==` scope constraint in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EqConstraint {
     /// `==` a literal entity
     Entity {
@@ -85,6 +96,7 @@ pub enum EqConstraint {
     /// Template slot
     Slot {
         /// slot
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
         slot: ast::SlotId,
     },
 }
@@ -93,6 +105,8 @@ pub enum EqConstraint {
 /// the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PrincipalOrResourceInConstraint {
     /// `in` a literal entity
     Entity {
@@ -102,6 +116,7 @@ pub enum PrincipalOrResourceInConstraint {
     /// Template slot
     Slot {
         /// slot
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
         slot: ast::SlotId,
     },
 }
@@ -110,7 +125,10 @@ pub enum PrincipalOrResourceInConstraint {
 /// the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PrincipalOrResourceIsConstraint {
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     entity_type: SmolStr,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "in")]
@@ -121,6 +139,8 @@ pub struct PrincipalOrResourceIsConstraint {
 /// format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ActionInConstraint {
     /// Single entity
     Single {

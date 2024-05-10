@@ -82,3 +82,18 @@ jobs:
     - uses: actions/checkout@v4
     - uses: taiki-e/install-action@cargo-hack
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+
+  wasm-build:
+    name: run wasm build script
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh
