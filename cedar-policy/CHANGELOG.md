@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
   introduced in 3.2.0. See #757.
 
+### Fixed
+
+- Fixed policy formatter reordering some comments around if-then-else and
+  entity identifier expressions. (#861, resolving #787)
+
 ## [3.2.0] - Coming Soon
 
 ### Added
