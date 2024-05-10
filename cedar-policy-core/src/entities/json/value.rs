@@ -34,6 +34,9 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
 /// Cedar values of some types, like entity references or extension values,
@@ -44,10 +47,13 @@ use std::sync::Arc;
 /// `EntityJsonParser`, when schema-based parsing is not used.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown when attempting to parse this
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
@@ -79,13 +85,15 @@ pub enum CedarValueJson {
     /// JSON int => Cedar long (64-bit signed integer)
     Long(i64),
     /// JSON string => Cedar string
-    String(SmolStr),
+    String(#[cfg_attr(feature = "wasm", tsify(type = "string"))] SmolStr),
     /// JSON list => Cedar set; can contain any `CedarValueJson`s, even
     /// heterogeneously
     Set(Vec<CedarValueJson>),
     /// JSON object => Cedar record; must have string keys, but values
     /// can be any `CedarValueJson`s, even heterogeneously
-    Record(JsonRecord),
+    Record(
+        #[cfg_attr(feature = "wasm", tsify(type = "{ [key: string]: CedarValueJson }"))] JsonRecord,
+    ),
     /// JSON null, which is never valid, but we put this here in order to
     /// provide a better error message.
     Null,
@@ -151,11 +159,15 @@ impl JsonRecord {
 
 /// Structure expected by the `__entity` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct TypeAndId {
     /// Entity typename
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     #[serde(rename = "type")]
     entity_type: SmolStr,
     /// Entity id
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     id: SmolStr,
 }
 
@@ -192,9 +204,12 @@ impl TryFrom<TypeAndId> for EntityUID {
 
 /// Structure expected by the `__extn` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct FnAndArg {
     /// Extension constructor function
     #[serde(rename = "fn")]
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     pub(crate) ext_fn: SmolStr,
     /// Argument to that constructor
     pub(crate) arg: Box<CedarValueJson>,
@@ -716,6 +731,8 @@ impl<'e> ValueParser<'e> {
 /// reference
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EntityUidJson {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
@@ -732,7 +749,7 @@ pub enum EntityUidJson {
     ImplicitEntityEscape(TypeAndId),
 
     /// Implicit catch-all case for error handling
-    FoundValue(serde_json::Value),
+    FoundValue(#[cfg_attr(feature = "wasm", tsify(type = "__skip"))] serde_json::Value),
 }
 
 impl EntityUidJson {

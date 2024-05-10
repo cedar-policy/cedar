@@ -1,0 +1,36 @@
+[package]
+name = "cedar-wasm"
+version = "3.2.0"
+edition = "2021"
+rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
+description = "WASM bindings and typescript types for Cedar lib"
+license = "Apache-2.0"
+
+exclude = ['/build']
+
+[dependencies]
+cedar-policy = { version = "=3.2.0", path = "../cedar-policy", features = ["wasm"] }
+cedar-policy-core = { version = "=3.2.0", path = "../cedar-policy-core", features = ["wasm"] }
+cedar-policy-formatter = { version = "=3.2.0", path = "../cedar-policy-formatter" }
+cedar-policy-validator = { version = "=3.2.0", path = "../cedar-policy-validator", features = ["wasm"] }
+
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde-wasm-bindgen = "0.6"
+serde_json = "1.0"
+wasm-bindgen = { version = "0.2.82" }
+console_error_panic_hook = { version = "0.1.6", optional = true }
+tsify = "0.4.5"
+
+[features]
+default = ["console_error_panic_hook"]
+
+[lib]
+crate_type = ["cdylib", "rlib"]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.13"
+cool_asserts = "2.0"
+
+[build-dependencies]
+cargo-lock = "9.0.0"
+itertools = "0.12.1"

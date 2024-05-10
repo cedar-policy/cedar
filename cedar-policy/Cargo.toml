@@ -26,6 +26,10 @@ dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
 nonempty = "0.10"
 
+# wasm dependencies
+serde-wasm-bindgen = { version = "0.6", optional = true }
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
@@ -47,9 +51,11 @@ experimental = ["partial-eval", "permissive-validate", "partial-validate"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [lib]
-crate_type = ["rlib"]
+# cdylib required for wasm
+crate_type = ["rlib", "cdylib"]
 
 [dev-dependencies]
 # Hack to enable the `integration_testing` feature for the `Cedar` integration

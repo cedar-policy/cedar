@@ -39,7 +39,7 @@ jobs:
         shell: bash
       # `cargo semver-checks` doesn't understand `rlib` crates.
       - run: >-
-          sed -i 's/^crate_type = \["rlib"\]$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
+          sed -i -E 's/^(crate_type = \["rlib", "cdylib"\]|crate_type = \["rlib"\])$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-semver-checks
       - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
