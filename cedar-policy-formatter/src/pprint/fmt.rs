@@ -150,42 +150,10 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use insta::{assert_snapshot, glob, with_settings};
+    use std::fs;
+
     use super::*;
-    const TEST_CONFIG: &Config = &Config {
-        line_width: 40,
-        indent_width: 2,
-    };
-
-    #[test]
-    fn trivial_permit() {
-        let policy = r#"permit (principal, action, resource);"#;
-        assert_eq!(policies_str_to_pretty(policy, TEST_CONFIG).unwrap(), policy);
-    }
-
-    #[test]
-    fn trivial_forbid() {
-        let policy = r#"forbid (principal, action, resource);"#;
-        assert_eq!(policies_str_to_pretty(policy, TEST_CONFIG).unwrap(), policy);
-    }
-
-    #[test]
-    fn action_in_set() {
-        let policy = r#"permit (
-        principal in UserGroup::"abc",
-        action in [Action::"viewPhoto", Action::"viewComments"],
-        resource in Album::"one"
-      );"#;
-        assert_eq!(
-            policies_str_to_pretty(policy, TEST_CONFIG).unwrap(),
-            r#"permit (
-  principal in UserGroup::"abc",
-  action in
-    [Action::"viewPhoto",
-     Action::"viewComments"],
-  resource in Album::"one"
-);"#
-        );
-    }
 
     #[test]
     fn test_soundness_check() {
@@ -232,29 +200,44 @@ mod tests {
 
     #[test]
     fn test_format_files() {
-        use std::fs::read_to_string;
-        use std::path::Path;
-
         let config = Config {
             line_width: 80,
             indent_width: 2,
         };
-        let dir_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        let pairs = vec![
-            ("test.cedar", "test_formatted.cedar"),
-            ("policies.cedar", "policies_formatted.cedar"),
-        ];
-        for (pf, ef) in pairs {
-            // editors or cargo run try to append a newline at the end of files
-            // we should remove them for equality testing
-            assert_eq!(
-                policies_str_to_pretty(&read_to_string(dir_path.join(pf)).unwrap(), &config)
-                    .unwrap()
-                    .trim_end_matches('\n'),
-                read_to_string(dir_path.join(ef))
-                    .unwrap()
-                    .trim_end_matches('\n')
-            );
-        }
+
+        // This test uses `insta` to test the current output of the formatter
+        // against the output from prior versions. Run the test as usual with
+        // `cargo test`.
+        //
+        // If it fails, then use `cargo insta review` to review the diff between
+        // the current output and the snapshot. If the change is expected, you
+        // can accept the changes to make `insta` update the snapshot which you
+        // should the commit to the repository.
+        //
+        // Add new tests by placing a `.cedar` file in the test directory. The
+        // next run of `cargo test` will fail. Use `cargo insta review` to check
+        // the formatted output is expected.
+        with_settings!(
+            { snapshot_path => "../../tests/snapshots/" },
+            {
+                glob!("../../tests", "*.cedar", |path| {
+                    let cedar_source = fs::read_to_string(path).unwrap();
+                    let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
+                    assert_snapshot!(formatted);
+                });
+            }
+        );
+
+        // Also check the CLI sample files.
+        with_settings!(
+            { snapshot_path => "../../tests/cli-snapshots/" },
+            {
+                glob!("../../../cedar-policy-cli/sample-data", "**/*.cedar", |path| {
+                    let cedar_source = fs::read_to_string(path).unwrap();
+                    let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
+                    assert_snapshot!(formatted);
+                });
+            }
+        )
     }
 }

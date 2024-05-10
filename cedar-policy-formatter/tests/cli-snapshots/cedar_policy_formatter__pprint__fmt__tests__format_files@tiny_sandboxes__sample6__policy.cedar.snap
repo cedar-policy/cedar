@@ -1,0 +1,11 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample6/policy.cedar
+---
+permit (
+  principal in UserGroup::"guardians",
+  action in [Action::"view"],
+  resource == ScreenTime::"activity"
+)
+when { principal.account.age >= 18 };

@@ -17,3 +17,6 @@ itertools = "0.10"
 smol_str = { version = "0.2", features = ["serde"] }
 regex = { version= "1.9.1", features = ["unicode"] }
 miette = { version = "5.9.0" }
+
+[dev-dependencies]
+insta = { version = "1.38.0", features = ["glob"] }

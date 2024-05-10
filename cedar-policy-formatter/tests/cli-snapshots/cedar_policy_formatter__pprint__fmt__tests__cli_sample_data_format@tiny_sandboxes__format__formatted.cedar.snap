@@ -1,0 +1,10 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/format/formatted.cedar
+---
+permit (
+  principal == User::"alice",
+  action == Action::"update",
+  resource == Photo::"VacationPhoto94.jpg"
+);
