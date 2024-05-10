@@ -34,3 +34,18 @@ cedar format -h
 
 Generated documentation for the latest version can be accessed on
 [docs.rs](https://docs.rs/cedar-policy-formatter).
+
+## Testing
+
+Tests for this package use [`insta`](https://insta.rs/) for snapshot testing.
+Tests are executed with the usual `cargo test`, but, if your changes introduce
+a difference in how we format any of the test policies, the tests will fail,
+printing a nicely formatted diff as the error message. You can then run `cargo insta review`
+to review how formatting has changed. If the change is expected, accept it
+and commit the updated snapshot file. Otherwise, reject the change, and fix it
+as you would any other failing test case.
+
+You can add new test cases just just by placing a `.cedar` file in the `tests`
+directory. The next run of `cargo test` will fail because there is no snapshot
+file. Run `cargo insta review` to review the formatted output for the new
+tests. Accept and commit the snapshot if it is correct.

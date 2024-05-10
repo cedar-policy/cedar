@@ -1,3 +1,8 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/policies.cedar
+---
 permit (
   principal == User::"alice",
   action == Action::"view",

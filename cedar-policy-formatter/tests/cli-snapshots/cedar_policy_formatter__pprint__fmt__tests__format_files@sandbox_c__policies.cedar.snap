@@ -1,0 +1,12 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/sandbox_c/policies.cedar
+---
+// Template for permitting vacation photo access
+@id("AccessVacation")
+permit (
+  principal in ?principal,
+  action == Action::"view",
+  resource == Photo::"VacationPhoto94.jpg"
+);

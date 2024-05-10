@@ -1,0 +1,17 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample7/policy.cedar
+---
+permit (
+  principal == PhotoFlash::Data::User::"alice",
+  action == PhotoFlash::Data::Action::"view",
+  resource in PhotoFlash::Data::Album::"jane_vacation"
+)
+when
+{
+  context.role.contains("admin") &&
+  context.person.age > 17 &&
+  context.addr.city == "DC" ||
+  context.addr == {city:"DC", street:"main"}
+};
