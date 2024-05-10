@@ -24,7 +24,7 @@ jobs:
     # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
     # doesn't trigger a fresh build.
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
+      RUSTFLAGS: '-D warnings -F unsafe-code --force-warn deprecated'
 
     steps:
       - name: Checkout cedar
@@ -53,4 +53,3 @@ jobs:
       - name: Run corpus tests
         working-directory: ./cedar
         run: cargo test --verbose --features "integration-testing" -- --ignored
-      

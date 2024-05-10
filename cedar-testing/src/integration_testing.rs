@@ -25,6 +25,7 @@
 #![allow(clippy::unwrap_used)]
 // PANIC SAFETY: This module is used only for testing.
 #![allow(clippy::expect_used)]
+#![allow(deprecated)] // Functionality in this module depends on `frontend`. https://github.com/cedar-policy/cedar/issues/821
 
 use crate::cedar_test_impl::*;
 use cedar_policy::{extensions::Extensions, Decision, PolicyId, ValidationMode};

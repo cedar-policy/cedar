@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `Entities::into_iter` (#713, resolving #680)
 - `Entity::into_inner` (#685, resolving #636)
+- New `ffi` module with an improved FFI interface. This will replace the
+  `frontend` module in the 4.0 release, but is available now for early adopters;
+  the `frontend` module is now deprecated. (#852)
 
 ### Changed
 
