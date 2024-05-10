@@ -1,0 +1,6 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/trivial_permit.cedar
+---
+permit (principal, action, resource);
