@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report the precise source location where the unknown type was encountered.
   Error for invalid use of an action now includes a source location containing
   the offending policy. (#802, #808, resolving #522)
+- Deprecated the integration testing harness code. It will be removed from the
+  `cedar-policy` crate in the next major version. (#707)
 
 ### Fixed
 
