@@ -1,7 +1,0 @@
-permit(
-  principal == R::Wj::A::AJHH::a::"",
-  action,
-  resource
-) when {
-  true
-};

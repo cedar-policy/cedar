@@ -1,7 +1,0 @@
-forbid(
-  principal in R77::"Z",
-  action in [Action::"action"],
-  resource
-) when {
-  true
-};
