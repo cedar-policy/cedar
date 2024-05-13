@@ -55,3 +55,6 @@ when // 19
     "friends" // 29
 } // 30
 ; // 31
+
+permit (principal, action, resource is List)
+when { resource.owner == principal };

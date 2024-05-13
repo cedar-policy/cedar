@@ -768,7 +768,7 @@ impl Doc for Node<Option<Policy>> {
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
             if let Some(v) = v.as_inner() {
-                v.ineq.is_none()
+                v.ineq.is_none() && v.entity_type.is_none()
             } else {
                 false
             }
