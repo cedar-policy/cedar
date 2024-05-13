@@ -38,9 +38,7 @@ impl Doc for ASTNode<Option<VariableDef>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let vd = self.as_inner()?;
         let start_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-        let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
-
         Some(match &vd.ineq {
             Some((op, rhs)) => get_leading_comment_doc_from_str(&start_comment.leading_comment)
                 .append(
@@ -57,16 +55,10 @@ impl Doc for ASTNode<Option<VariableDef>> {
                         .group()
                         .append(
                             RcDoc::line()
-                                .append(get_leading_comment_doc_from_str(
-                                    &end_comment.leading_comment,
-                                ))
                                 .append(rhs.to_doc(context))
                                 .nest(context.config.indent_width),
                         )
-                        .group()
-                        .append(get_trailing_comment_doc_from_str(
-                            &end_comment.trailing_comment,
-                        )),
+                        .group(),
                 ),
             None => add_comment(var_doc, start_comment, RcDoc::nil()),
         })
@@ -152,8 +144,8 @@ impl Doc for ASTNode<Option<Expr>> {
                     )
                 }
                 let if_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(c.info.0.end, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(t.info.0.end, &mut context.tokens)?;
+                let then_comment = get_comment_after_end(c.info.0.end, &mut context.tokens)?;
+                let else_comment = get_comment_after_end(t.info.0.end, &mut context.tokens)?;
                 Some(
                     pp_group("if", if_comment, c, context)
                         .append(RcDoc::line())
