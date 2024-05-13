@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
+use std::collections::BTreeMap;
+
 use miette::{miette, Result, WrapErr};
 
-use cedar_policy_core::ast::{PolicySet, Template};
+use cedar_policy_core::ast::PolicySet;
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
+use smol_str::ToSmolStr;
 
 use crate::token::get_comment;
 
@@ -42,15 +45,19 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<St
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
     let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
     let (formatted_policies, policies) = (
-        formatted_ast.templates().collect::<Vec<&Template>>(),
-        ast.templates().collect::<Vec<&Template>>(),
+        formatted_ast
+            .policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
+        ast.policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
     );
 
     if formatted_policies.len() != policies.len() {
         return Err(miette!("missing formatted policies"));
     }
-
-    for (f_p, p) in formatted_policies.into_iter().zip(policies.into_iter()) {
+    for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies.into_iter()) {
         let (f_anno, anno) = (
             f_p.annotations()
                 .map(|(k, v)| (k, &v.val))
@@ -59,7 +66,8 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .map(|(k, v)| (k, &v.val))
                 .collect::<std::collections::BTreeMap<_, _>>(),
         );
-        if !(f_anno == anno
+        if !(f_p_id == p_id
+            && f_anno == anno
             && f_p.effect() == p.effect()
             && f_p.principal_constraint() == p.principal_constraint()
             && f_p.action_constraint() == p.action_constraint()
@@ -69,7 +77,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .eq_shape(p.non_scope_constraints()))
         {
             return Err(miette!(
-                "policies differ in meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
+                "policies differ in policy ids or meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
             ));
         }
     }
