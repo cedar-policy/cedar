@@ -144,6 +144,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_soundness_check() {
+        let p1 = r#"permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"permit (principal, action, resource)
+        when { "
+        a
+        " };"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"};
+        permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"permit (principal, action, resource)
+        when { "
+        a
+        " };
+        permit (principal, action, resource)
+        when { "a"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"};
+        permit (principal, action, resource)
+        when { "b" };"#;
+        let p2 = r#"permit (principal, action, resource)
+        when { "b" };
+        permit (principal, action, resource)
+        when { "a"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+    }
+
+    #[test]
     fn test_format_files() {
         let config = Config {
             line_width: 80,
