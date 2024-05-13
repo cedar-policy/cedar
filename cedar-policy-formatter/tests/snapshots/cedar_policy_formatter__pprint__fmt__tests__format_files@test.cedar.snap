@@ -10,10 +10,10 @@ when
   // lol
   if // lol1
     true
-  // lol3
-  then // lol4
+  then // lol2
     1
-  else // lol2
+  // lol3
+  else // lol4
     2
 };
 
@@ -37,7 +37,8 @@ when
 permit (
   principal == User::"Bob", // "Bob"
   action in [Action::"read", Action::"write"],
-  resource in Folder::"Document" // "Document" folder
+  resource in
+    Folder::"Document" // "Document" folder
 )
 when { principal.is_authenticated };
 
@@ -71,7 +72,8 @@ permit // effect
   principal == User::"Alice", // this is principal
   action in
     [Action::"read", Action::"write", Action::"execute"], // this is action
-  resource in Shared::"Scripts" // this is resource
+  resource in
+    Shared::"Scripts" // this is resource
 )
 when
 // here comes condition
@@ -104,7 +106,8 @@ permit // hey 1
   // hi 5
   , // hi 6
   action == Action::"Do",
-  resource == Resource::"Something" // this is resource
+  resource ==
+    Resource::"Something" // this is resource
 ) // lol
 // here comes the condition
 when // when

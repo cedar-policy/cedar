@@ -1,0 +1,16 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/ite_comment.cedar
+---
+permit (principal, action, resource)
+when
+{
+  // 0
+  if // 1
+    true // 2
+  then // 3
+    1 // 4
+  else // 5
+    2 // 6
+};
