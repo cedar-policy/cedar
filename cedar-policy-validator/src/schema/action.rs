@@ -66,6 +66,16 @@ impl ValidatorActionId {
     pub fn context_type(&self) -> Type {
         self.context.clone()
     }
+
+    /// The `EntityType`s that can be the `principal` for this action.
+    pub fn applies_to_principals(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.principal_apply_spec.iter()
+    }
+
+    /// The `EntityType`s that can be the `resource` for this action.
+    pub fn applies_to_resources(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.resource_apply_spec.iter()
+    }
 }
 
 impl TCNode<EntityUID> for ValidatorActionId {

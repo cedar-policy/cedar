@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ValidatorActionId::applies_to_principals` and `ValidatorActionId::applies_to_resources`
+   to `cedar-policy-validator`
 - `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`,
    and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `Entities::into_iter` (#713, resolving #680)
