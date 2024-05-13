@@ -164,7 +164,8 @@ mod tests {
         
         a
         " };"#;
-        let p2 = r#"permit (principal, action, resource)
+        let p2 = r#"
+        permit (principal, action, resource)
         when { "
         a
         " };
@@ -174,14 +175,15 @@ mod tests {
 
         let p1 = r#"
         permit (principal, action, resource)
-        when { "a"};
+        when { "a"   };
         permit (principal, action, resource)
         when { "b" };"#;
-        let p2 = r#"permit (principal, action, resource)
-        when { "b" };
+        let p2 = r#"
         permit (principal, action, resource)
-        when { "a"};"#;
-        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+        when { "a" };
+        permit (principal, action, resource)
+        when { "b"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_ok());
     }
 
     #[test]
