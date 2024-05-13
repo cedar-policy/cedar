@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
+use std::collections::BTreeMap;
+
 use miette::{miette, Result, WrapErr};
 
-use cedar_policy_core::ast::{PolicySet, Template};
+use cedar_policy_core::ast::PolicySet;
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
+use smol_str::ToSmolStr;
 
 use crate::token::get_comment;
 
@@ -42,21 +45,26 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<St
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
     let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
     let (formatted_policies, policies) = (
-        formatted_ast.templates().collect::<Vec<&Template>>(),
-        ast.templates().collect::<Vec<&Template>>(),
+        formatted_ast
+            .policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
+        ast.policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
     );
 
     if formatted_policies.len() != policies.len() {
         return Err(miette!("missing formatted policies"));
     }
-
-    for (f_p, p) in formatted_policies.into_iter().zip(policies.into_iter()) {
+    for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies.into_iter()) {
         let (f_anno, anno) = (
             f_p.annotations()
                 .collect::<std::collections::HashMap<_, _>>(),
             p.annotations().collect::<std::collections::HashMap<_, _>>(),
         );
-        if !(f_anno == anno
+        if !(f_p_id == p_id
+            && f_anno == anno
             && f_p.effect() == p.effect()
             && f_p.principal_constraint() == p.principal_constraint()
             && f_p.action_constraint() == p.action_constraint()
@@ -66,9 +74,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .eq_shape(p.non_head_constraints()))
         {
             return Err(miette!(
-                "policies differ:\nformatted: {}\ninput: {}",
-                f_p,
-                p
+                "policies differ in policy ids or meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
             ));
         }
     }
@@ -164,6 +170,49 @@ mod tests {
   resource in Album::"one"
 );"#
         );
+    }
+
+    #[test]
+    fn test_soundness_check() {
+        let p1 = r#"permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"permit (principal, action, resource)
+        when { "
+        a
+        " };"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"};
+        permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"
+        permit (principal, action, resource)
+        when { "
+        a
+        " };
+        permit (principal, action, resource)
+        when { "a"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
+
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"   };
+        permit (principal, action, resource)
+        when { "b" };"#;
+        let p2 = r#"
+        permit (principal, action, resource)
+        when { "a" };
+        permit (principal, action, resource)
+        when { "b"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_ok());
     }
 
     #[test]
