@@ -1825,6 +1825,7 @@ mod entity_validate_tests {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use cedar_policy_core::extensions::Extensions;
     use entities::conformance::err::EntitySchemaConformanceError;
     use entities::err::EntitiesError;
 
@@ -3042,7 +3043,7 @@ mod schema_based_parsing_tests {
         let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
         let parser_assume_computed = entities::EntityJsonParser::new(
             Some(&schema),
-            extensions::Extensions::all_available(),
+            Extensions::all_available(),
             entities::TCComputation::AssumeAlreadyComputed,
         );
         assert!(matches!(
@@ -3054,7 +3055,7 @@ mod schema_based_parsing_tests {
 
         let parser_enforce_computed = entities::EntityJsonParser::new(
             Some(&schema),
-            extensions::Extensions::all_available(),
+            Extensions::all_available(),
             entities::TCComputation::EnforceAlreadyComputed,
         );
         assert!(matches!(

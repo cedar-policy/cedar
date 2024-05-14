@@ -42,7 +42,6 @@ use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
-pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;

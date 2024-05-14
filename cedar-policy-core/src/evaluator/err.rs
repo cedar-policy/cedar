@@ -24,7 +24,7 @@ use thiserror::Error;
 
 /// Enumeration of the possible errors that can occur during evaluation
 //
-// CAUTION: this type is publically exported in `cedar-policy`.
+// CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution when
 // adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
@@ -316,7 +316,7 @@ pub mod evaluation_errors {
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -354,7 +354,7 @@ pub mod evaluation_errors {
     /// Tried to get an attribute, but the specified entity didn't have that
     /// attribute
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -393,7 +393,7 @@ pub mod evaluation_errors {
 
     /// Tried to access an attribute of an unspecified entity
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -422,7 +422,7 @@ pub mod evaluation_errors {
     /// Tried to get an attribute of a (non-entity) record, but that record didn't
     /// have that attribute
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -460,7 +460,7 @@ pub mod evaluation_errors {
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -511,7 +511,7 @@ pub mod evaluation_errors {
 
     /// Wrong number of arguments provided to an extension function
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -543,7 +543,7 @@ pub mod evaluation_errors {
 
     /// Overflow during an integer operation
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
@@ -577,7 +577,7 @@ pub mod evaluation_errors {
 
     /// Overflow during a binary operation
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -609,7 +609,7 @@ pub mod evaluation_errors {
 
     /// Overflow during a unary operation
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -639,7 +639,7 @@ pub mod evaluation_errors {
 
     /// Not all template slots were linked
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -667,7 +667,7 @@ pub mod evaluation_errors {
 
     /// Evaluation error thrown by an extension function
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -706,7 +706,7 @@ pub mod evaluation_errors {
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -734,7 +734,7 @@ pub mod evaluation_errors {
 
     /// Maximum recursion limit reached for expression evaluation
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]

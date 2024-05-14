@@ -144,7 +144,7 @@ impl<'a> Extensions<'a> {
 
 /// Errors thrown when looking up an extension function in [`Extensions`].
 //
-// CAUTION: this type is publically exported in `cedar-policy`.
+// CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
@@ -221,7 +221,7 @@ pub mod extension_function_lookup_errors {
 
     /// Tried to call a function that doesn't exist
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -249,7 +249,7 @@ pub mod extension_function_lookup_errors {
 
     /// Tried to call a function that doesn't exist
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -279,7 +279,7 @@ pub mod extension_function_lookup_errors {
 
     /// Attempted to typecheck an expression that had no type
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
@@ -308,7 +308,7 @@ pub mod extension_function_lookup_errors {
     /// Two extension constructors (in the same or different extensions) had
     /// exactly the same type signature.  This is currently not allowed.
     //
-    // CAUTION: this type is publically exported in `cedar-policy`.
+    // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
