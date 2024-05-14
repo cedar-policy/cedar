@@ -637,7 +637,7 @@ pub mod evaluation_errors {
         }
     }
 
-    /// A policy was evaluated but not all template slots were linked
+    /// Not all template slots were linked
     //
     // CAUTION: this type is publically exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
