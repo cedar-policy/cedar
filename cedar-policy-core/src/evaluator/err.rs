@@ -78,7 +78,7 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     InvalidRestrictedExpression(#[from] RestrictedExprError),
 
-    /// A policy was evaluated but not all template slots were linked
+    /// Not all template slots were linked
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkedSlot(#[from] evaluation_errors::UnlinkedSlotError),
