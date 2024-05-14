@@ -145,7 +145,9 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         }
     };
     // add soundness check to make sure formatting doesn't alter policy ASTs
-    soundness_check(&formatted_policies, &ast).wrap_err("internal error: please file an issue at <https://github.com/cedar-policy/cedar/issues>")?;
+    soundness_check(&formatted_policies, &ast).wrap_err(
+        "internal error: please file an issue at <https://github.com/cedar-policy/cedar/issues>",
+    )?;
     Ok(formatted_policies)
 }
 
