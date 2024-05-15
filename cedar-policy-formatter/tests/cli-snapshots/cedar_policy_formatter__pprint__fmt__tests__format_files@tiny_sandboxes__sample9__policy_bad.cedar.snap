@@ -1,0 +1,11 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample9/policy_bad.cedar
+---
+permit (
+  principal,
+  action == Action::"view",
+  resource
+)
+when { principal == resource.owner };

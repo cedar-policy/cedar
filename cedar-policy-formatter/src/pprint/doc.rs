@@ -60,8 +60,6 @@ impl Doc for Node<Option<VariableDef>> {
             None => Some(RcDoc::nil()),
         }?;
 
-        let end_comment = get_comment_at_end(self.loc.span, &mut context.tokens)?;
-
         Some(match &vd.ineq {
             Some((op, rhs)) => {
                 let op_comment = match &vd.entity_type {
@@ -81,23 +79,13 @@ impl Doc for Node<Option<VariableDef>> {
                         .group()
                         .append(
                             RcDoc::line()
-                                .append(get_leading_comment_doc_from_str(
-                                    &end_comment.leading_comment,
-                                ))
                                 .append(rhs.to_doc(context))
                                 .nest(context.config.indent_width),
                         )
-                        .group()
-                        .append(get_trailing_comment_doc_from_str(
-                            &end_comment.trailing_comment,
-                        )),
+                        .group(),
                 )
             }
-            None => add_comment(var_doc, start_comment, RcDoc::nil())
-                .append(is_doc)
-                .append(get_trailing_comment_doc_from_str(
-                    &end_comment.trailing_comment,
-                )),
+            None => add_comment(var_doc, start_comment, RcDoc::nil()).append(is_doc),
         })
     }
 }
@@ -181,8 +169,8 @@ impl Doc for Node<Option<Expr>> {
                     )
                 }
                 let if_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
+                let then_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
+                let else_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
                 Some(
                     pp_group("if", if_comment, c, context)
                         .append(RcDoc::line())
@@ -780,7 +768,7 @@ impl Doc for Node<Option<Policy>> {
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
             if let Some(v) = v.as_inner() {
-                v.ineq.is_none()
+                v.ineq.is_none() && v.entity_type.is_none()
             } else {
                 false
             }

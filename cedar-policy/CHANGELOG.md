@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The error message returned when parsing an invalid action scope constraint
   `action == ?action` no longer suggests that `action == [...]` would be a
   valid scope constraint. (#818, resolving #563)
+- Fixed policy formatter reordering some comments around if-then-else and
+  entity identifier expressions. (#861, resolving #787)
 
 ## [3.1.3] - 2024-04-15
 

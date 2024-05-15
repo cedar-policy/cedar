@@ -1,0 +1,1 @@
+forbid (principal, action, resource);
