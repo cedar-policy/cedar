@@ -30,6 +30,7 @@ use cedar_policy_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use smol_str::ToSmolStr;
 
 use super::NamespaceDefinition;
 use crate::{
@@ -246,7 +247,7 @@ impl ValidatorSchema {
                 match type_defs.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateCommonType(o.key().to_string()));
+                        return Err(SchemaError::DuplicateCommonType(o.key().clone()));
                     }
                 };
             }
@@ -255,7 +256,7 @@ impl ValidatorSchema {
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateEntityType(o.key().to_string()))
+                        return Err(SchemaError::DuplicateEntityType(o.key().clone()))
                     }
                 };
             }
@@ -264,7 +265,7 @@ impl ValidatorSchema {
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
+                        return Err(SchemaError::DuplicateAction(o.key().to_smolstr()))
                     }
                 };
             }
@@ -393,7 +394,6 @@ impl ValidatorSchema {
         // any undeclared entity types which appeared in a `memberOf` list.
         let mut undeclared_e = undeclared_parent_entities
             .into_iter()
-            .map(|n| n.to_string())
             .collect::<HashSet<_>>();
         // Looking at entity types, we need to check entity references in
         // attribute types. We already know that all elements of the
@@ -413,7 +413,7 @@ impl ValidatorSchema {
         // Undeclared actions in a `memberOf` list.
         let undeclared_a = undeclared_parent_actions
             .into_iter()
-            .map(|n| n.to_string())
+            .map(|n| n.to_smolstr())
             .collect::<HashSet<_>>();
         // For actions, we check entity references in the context attribute
         // types and `appliesTo` lists. See the `entity_types` loop for why the
@@ -425,7 +425,7 @@ impl ValidatorSchema {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
                         if !entity_types.contains_key(p_entity) {
-                            undeclared_e.insert(p_entity.to_string());
+                            undeclared_e.insert(p_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),
@@ -436,7 +436,7 @@ impl ValidatorSchema {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
                         if !entity_types.contains_key(r_entity) {
-                            undeclared_e.insert(r_entity.to_string());
+                            undeclared_e.insert(r_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),
@@ -469,13 +469,13 @@ impl ValidatorSchema {
     fn check_undeclared_in_type(
         ty: &Type,
         entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_types: &mut HashSet<String>,
+        undeclared_types: &mut HashSet<Name>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !entity_types.contains_key(name) {
-                        undeclared_types.insert(name.to_string());
+                        undeclared_types.insert(name.clone());
                     }
                 }
             }
@@ -786,7 +786,7 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaType::TypeDef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(HashSet::from_iter(
-                    std::iter::once(type_name.to_string()),
+                    std::iter::once(type_name),
                 )))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
@@ -1030,7 +1030,7 @@ mod test {
         match schema {
             Ok(_) => panic!("try_into should have failed"),
             Err(SchemaError::UndeclaredEntityTypes(v)) => {
-                assert_eq!(v, HashSet::from(["Bar::Group".to_string()]))
+                assert_eq!(v, HashSet::from(["Bar::Group".parse().unwrap()]))
             }
             _ => panic!("Unexpected error from try_into"),
         }
@@ -1057,7 +1057,7 @@ mod test {
             Err(SchemaError::UndeclaredEntityTypes(v)) => {
                 assert_eq!(
                     v,
-                    HashSet::from(["Bar::Photo".to_string(), "Bar::User".to_string()])
+                    HashSet::from(["Bar::Photo".parse().unwrap(), "Bar::User".parse().unwrap()])
                 )
             }
             _ => panic!("Unexpected error from try_into"),
@@ -1257,7 +1257,7 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_json.try_into();
         match schema {
             Err(SchemaError::UndeclaredEntityTypes(tys)) => {
-                assert_eq!(tys, HashSet::from(["C::D::Foo".to_string()]))
+                assert_eq!(tys, HashSet::from(["C::D::Foo".parse().unwrap()]))
             }
             _ => panic!("Schema construction should have failed due to undeclared entity type."),
         }
@@ -1809,7 +1809,7 @@ mod test {
         let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]);
 
         match schema {
-            Err(SchemaError::DuplicateCommonType(s)) if s.contains("A::MyLong") => (),
+            Err(SchemaError::DuplicateCommonType(s)) if s == "A::MyLong".parse().unwrap() => (),
             _ => panic!("should have errored because schema fragments have duplicate types"),
         };
     }
@@ -2166,7 +2166,7 @@ mod test {
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
     }
 
     #[test]
@@ -2200,7 +2200,7 @@ mod test {
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
     }
 }
 

@@ -243,7 +243,7 @@ impl ValidatorNamespaceDef {
         let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
             if Self::is_builtin_type_name(id.as_ref()) {
-                return Err(SchemaError::DuplicateCommonType(id.to_string()));
+                return Err(SchemaError::DuplicateCommonType(Name::unqualified_name(id)));
             }
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
             match type_defs.entry(name) {
@@ -253,7 +253,7 @@ impl ValidatorNamespaceDef {
                     );
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateCommonType(id.to_string()));
+                    return Err(SchemaError::DuplicateCommonType(Name::unqualified_name(id)));
                 }
             }
         }
@@ -285,7 +285,7 @@ impl ValidatorNamespaceDef {
                     });
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateEntityType(id.to_string()));
+                    return Err(SchemaError::DuplicateEntityType(Name::unqualified_name(id)));
                 }
             }
         }
@@ -334,24 +334,24 @@ impl ValidatorNamespaceDef {
             CedarValueJson::EntityEscape { __entity: _ } => {
                 Err(SchemaError::UnsupportedActionAttribute(
                     action_id.clone(),
-                    "entity escape (`__entity`)".to_owned(),
+                    "entity escape (`__entity`)".into(),
                 ))
             }
             CedarValueJson::ExprEscape { __expr: _ } => {
                 Err(SchemaError::UnsupportedActionAttribute(
                     action_id.clone(),
-                    "expression escape (`__expr`)".to_owned(),
+                    "expression escape (`__expr`)".into(),
                 ))
             }
             CedarValueJson::ExtnEscape { __extn: _ } => {
                 Err(SchemaError::UnsupportedActionAttribute(
                     action_id.clone(),
-                    "extension function escape (`__extn`)".to_owned(),
+                    "extension function escape (`__extn`)".into(),
                 ))
             }
             CedarValueJson::Null => Err(SchemaError::UnsupportedActionAttribute(
                 action_id.clone(),
-                "null".to_owned(),
+                "null".into(),
             )),
         }
     }
@@ -466,7 +466,7 @@ impl ValidatorNamespaceDef {
                     });
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateAction(action_id_str.to_string()));
+                    return Err(SchemaError::DuplicateAction(action_id_str));
                 }
             }
         }
@@ -646,9 +646,7 @@ impl ValidatorNamespaceDef {
                     type_name.prefix_namespace_if_unqualified(default_namespace);
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
-                        SchemaError::UndeclaredCommonTypes(HashSet::from([
-                            defined_type_name.to_string()
-                        ])),
+                        SchemaError::UndeclaredCommonTypes(HashSet::from([defined_type_name])),
                     )
                 }))
             }

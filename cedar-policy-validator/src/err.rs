@@ -22,6 +22,7 @@ use cedar_policy_core::{
 };
 use itertools::Itertools;
 use miette::Diagnostic;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::human_schema;
@@ -140,28 +141,28 @@ pub enum SchemaError {
     #[diagnostic(help(
         "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
     ))]
-    UndeclaredEntityTypes(HashSet<String>),
+    UndeclaredEntityTypes(HashSet<Name>),
     /// Undeclared action(s) used in the `memberOf` field of an action.
     #[error("undeclared action(s): {0:?}")]
     #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
-    UndeclaredActions(HashSet<String>),
+    UndeclaredActions(HashSet<SmolStr>),
     /// This error occurs in either of the following cases (see discussion on #477):
     ///     - undeclared common type(s) appearing in entity or context attributes
     ///     - common type(s) (declared or not) appearing in declarations of other common types
     #[error("undeclared common type(s), or common type(s) used in the declaration of another common type: {0:?}")]
     #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`, and currently, common types may not reference other common types"))]
-    UndeclaredCommonTypes(HashSet<String>),
+    UndeclaredCommonTypes(HashSet<Name>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
     #[error("duplicate entity type `{0}`")]
-    DuplicateEntityType(String),
+    DuplicateEntityType(Name),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
     #[error("duplicate action `{0}`")]
-    DuplicateAction(String),
+    DuplicateAction(SmolStr),
     /// Duplicate specification for a reusable type declaration.
     #[error("duplicate common type `{0}`")]
-    DuplicateCommonType(String),
+    DuplicateCommonType(Name),
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUID),
@@ -192,7 +193,7 @@ pub enum SchemaError {
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
-    UnsupportedActionAttribute(EntityUID, String),
+    UnsupportedActionAttribute(EntityUID, SmolStr),
     /// Error when evaluating an action attribute
     #[error(transparent)]
     #[diagnostic(transparent)]

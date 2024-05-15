@@ -1214,12 +1214,14 @@ impl SchemaFragment {
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
-        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
+        serde_json::to_value(self.lossless)
+            .map_err(|e| SchemaError::JsonSerialization(JsonSerializationError { error: e }).into())
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
     pub fn as_json_string(&self) -> Result<String, SchemaError> {
-        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
+        serde_json::to_string(&self.lossless)
+            .map_err(|e| SchemaError::JsonSerialization(JsonSerializationError { error: e }).into())
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
