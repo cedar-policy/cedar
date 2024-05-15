@@ -43,7 +43,8 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<St
 }
 
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
-    let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
+    let formatted_ast =
+        parse_policyset(ps).wrap_err(format!("formatter produced an invalid policy set:\n{ps}"))?;
     let (formatted_policies, policies) = (
         formatted_ast
             .policies()
@@ -55,9 +56,18 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
     );
 
     if formatted_policies.len() != policies.len() {
-        return Err(miette!("missing formatted policies"));
+        return Err(miette!(
+            "formatter changed the number of policies from {} to {}",
+            policies.len(),
+            formatted_policies.len()
+        ));
     }
     for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies.into_iter()) {
+        if f_p_id != p_id {
+            return Err(miette!(
+                "formatter changed the policy id from {p_id} to {f_p_id}"
+            ));
+        }
         let (f_anno, anno) = (
             f_p.annotations()
                 .map(|(k, v)| (k, &v.val))
@@ -66,9 +76,12 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .map(|(k, v)| (k, &v.val))
                 .collect::<std::collections::BTreeMap<_, _>>(),
         );
-        if !(f_p_id == p_id
-            && f_anno == anno
-            && f_p.effect() == p.effect()
+        if f_anno != anno {
+            return Err(miette!(
+                "formatter changed the annotations from {anno:?} to {f_anno:?}"
+            ));
+        }
+        if !(f_p.effect() == p.effect()
             && f_p.principal_constraint() == p.principal_constraint()
             && f_p.action_constraint() == p.action_constraint()
             && f_p.resource_constraint() == p.resource_constraint()
@@ -77,7 +90,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .eq_shape(p.non_scope_constraints()))
         {
             return Err(miette!(
-                "policies differ in policy ids or meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
+                "formatter changed the policy structure:\noriginal:\n{p}\nformatted:\n{f_p}"
             ));
         }
     }
@@ -132,7 +145,9 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         }
     };
     // add soundness check to make sure formatting doesn't alter policy ASTs
-    soundness_check(&formatted_policies, &ast)?;
+    soundness_check(&formatted_policies, &ast).wrap_err(
+        "internal error: please file an issue at <https://github.com/cedar-policy/cedar/issues>",
+    )?;
     Ok(formatted_policies)
 }
 
