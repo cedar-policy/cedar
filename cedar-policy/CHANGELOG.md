@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.6
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics.
+
 ## 2.4.5
 
 ### Changed
