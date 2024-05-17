@@ -25,8 +25,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
+pub use err::evaluation_errors;
+pub use err::EvaluationError;
 pub(crate) use err::*;
-pub use err::{EvaluationError, EvaluationErrorKind};
+use evaluation_errors::*;
 use itertools::Either;
 use nonempty::nonempty;
 use smol_str::SmolStr;
@@ -165,7 +167,7 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
-                        let efunc = self.extensions.func(fn_name).map_err(|err| EvaluationError::extension_function_lookup(err, expr.source_loc().cloned()))?;
+                        let efunc = self.extensions.func(fn_name).map_err(|err| err.with_maybe_source_loc(expr.source_loc().cloned()))?;
                         efunc.call(&values)
                     },
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
@@ -376,10 +378,12 @@ impl<'e> Evaluator<'e> {
                         let i = arg.get_as_long()?;
                         match i.checked_neg() {
                             Some(v) => Ok(v.into()),
-                            None => Err(EvaluationError::integer_overflow(
-                                IntegerOverflowError::UnaryOp { op: *op, arg },
-                                loc.cloned(),
-                            )),
+                            None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+                                op: *op,
+                                arg,
+                                source_loc: loc.cloned(),
+                            })
+                            .into()),
                         }
                     }
                 },
@@ -421,36 +425,39 @@ impl<'e> Evaluator<'e> {
                             BinaryOp::LessEq => Ok((i1 <= i2).into()),
                             BinaryOp::Add => match i1.checked_add(i2) {
                                 Some(sum) => Ok(sum.into()),
-                                None => Err(EvaluationError::integer_overflow(
-                                    IntegerOverflowError::BinaryOp {
+                                None => {
+                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
-                                    },
-                                    loc.cloned(),
-                                )),
+                                        source_loc: loc.cloned(),
+                                    })
+                                    .into())
+                                }
                             },
                             BinaryOp::Sub => match i1.checked_sub(i2) {
                                 Some(diff) => Ok(diff.into()),
-                                None => Err(EvaluationError::integer_overflow(
-                                    IntegerOverflowError::BinaryOp {
+                                None => {
+                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
-                                    },
-                                    loc.cloned(),
-                                )),
+                                        source_loc: loc.cloned(),
+                                    })
+                                    .into())
+                                }
                             },
                             BinaryOp::Mul => match i1.checked_mul(i2) {
                                 Some(prod) => Ok(prod.into()),
-                                None => Err(EvaluationError::integer_overflow(
-                                    IntegerOverflowError::BinaryOp {
+                                None => {
+                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
-                                    },
-                                    loc.cloned(),
-                                )),
+                                        source_loc: loc.cloned(),
+                                    })
+                                    .into())
+                                }
                             },
                             // PANIC SAFETY `op` is checked to be one of the above
                             #[allow(clippy::unreachable)]
@@ -466,7 +473,7 @@ impl<'e> Evaluator<'e> {
                                 // If arg1 is not an entity and arg2 is a set, then possibly
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                if let EvaluationErrorKind::TypeError { advice, .. } = e.error_kind_mut() {
+                                if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
                                     match arg2.type_of() {
                                         Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
                                         Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
@@ -554,9 +561,10 @@ impl<'e> Evaluator<'e> {
                 match split(args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
-                        let efunc = self.extensions.func(fn_name).map_err(|err| {
-                            EvaluationError::extension_function_lookup(err, loc.cloned())
-                        })?;
+                        let efunc = self
+                            .extensions
+                            .func(fn_name)
+                            .map_err(|err| err.with_maybe_source_loc(loc.cloned()))?;
                         efunc.call(&vals)
                     }
                     Either::Right(residuals) => Ok(PartialValue::Residual(
@@ -797,6 +805,7 @@ impl<'e> Evaluator<'e> {
                         EvaluationError::entity_attr_does_not_exist(
                             uid,
                             attr.clone(),
+                            entity.attrs().map(|(k, _)| k.clone()).collect(),
                             source_loc.cloned(),
                         )
                     })
@@ -1332,16 +1341,19 @@ pub mod test {
             Ok(Value::from(true))
         );
         // get_attr on an attr which doesn't exist
-        assert_eq!(
+        assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "doesnotexist".into()
             )),
-            Err(EvaluationError::entity_attr_does_not_exist(
-                Arc::new(EntityUID::with_eid("entity_with_attrs")),
-                "doesnotexist".into(),
-                None,
-            ))
+            Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+                assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_attrs"));
+                assert_eq!(&e.attr, "doesnotexist");
+                assert_eq!(e.available_attrs.len(), 3);
+                assert!(e.available_attrs.contains(&"spoon".into()));
+                assert!(e.available_attrs.contains(&"address".into()));
+                assert!(e.available_attrs.contains(&"tags".into()));
+            }
         );
         // get_attr on an attr which does exist (and has integer type)
         assert_eq!(
@@ -1443,13 +1455,11 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
-                    actual: Type::String,
-                    advice: None,
-                },
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Bool]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // if principal then 3 else 8
         assert_matches!(
@@ -1458,15 +1468,13 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
-                    actual: Type::Entity {
-                        ty: EntityUID::test_entity_type(),
-                    },
-                    advice: None,
-                },
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Bool]);
+                assert_eq!(actual, Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                });
+                assert_eq!(advice, None);
+            }
         );
         // if true then "hello" else 2
         assert_eq!(
@@ -1649,36 +1657,32 @@ pub mod test {
                 Expr::set(vec![Expr::val(8)]),
                 "hello".into()
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                    assert_eq!(expected, nonempty![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
                                 .expect("should be a valid identifier")
                         ),
-                    ],
-                    actual: Type::Set,
-                    advice: None,
+                    ]);
+                    assert_eq!(actual, Type::Set);
+                    assert_eq!(advice, None);
                 }
-            )
         );
         // indexing into empty set
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
         // set("hello", 2, true, <entity foo>)
         let mixed_set = Expr::set(vec![
@@ -1716,19 +1720,17 @@ pub mod test {
         // set("hello", 2, true, <entity foo>)["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
         // set(set(8, 2), set(13, 702), set(3))
         let set_of_sets = Expr::set(vec![
@@ -1780,19 +1782,17 @@ pub mod test {
         // set(set(8, 2), set(13, 702), set(3))["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
         // set(set(8, 2), set(13, 702), set(3))["ham"]["eggs"]
         assert_matches!(
@@ -1800,19 +1800,17 @@ pub mod test {
                 Expr::get_attr(set_of_sets, "ham".into()),
                 "eggs".into()
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -2070,70 +2068,62 @@ pub mod test {
         // indexing into something that's not a record, 1010122["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
         // indexing into something that's not a record, "hello"["eggs"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // has_attr on something that's not a record, 1010122 has hello
         assert_matches!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
         // has_attr on something that's not a record, "hello" has eggs
         assert_matches!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -2156,26 +2146,22 @@ pub mod test {
         // not(8)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Bool]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
         // not(action)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::not(Expr::var(Var::Action))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
-                    actual: Type::Entity {
-                        ty: EntityUID::test_entity_type(),
-                    },
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Bool]);
+                assert_eq!(actual, Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                });
+                assert_eq!(advice, None);
+            }
         );
         // not(not(true))
         assert_eq!(
@@ -2240,24 +2226,21 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(Integer::MIN))),
-            Err(EvaluationError::integer_overflow(
-                IntegerOverflowError::UnaryOp {
-                    op: UnaryOp::Neg,
-                    arg: Value::from(Integer::MIN)
-                },
-                None
-            )),
+            Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+                op: UnaryOp::Neg,
+                arg: Value::from(Integer::MIN),
+                source_loc: None,
+            })
+            .into()),
         );
         // neg(false)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // neg([1, 2, 3])
         assert_matches!(
@@ -2266,13 +2249,11 @@ pub mod test {
                 Expr::val(2),
                 Expr::val(3)
             ]))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -2576,211 +2557,173 @@ pub mod test {
         // false < true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // false < false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // true <= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // false <= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // false > true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // true > true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // true >= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // true >= true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // bc < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // banana < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // "" < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // a < 1
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // a < A
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // A < A
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // zebra < zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // zebra <= zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // zebras <= zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // zebras <= Zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 123 > 78
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // <space>zebras >= zebras
         assert_matches!(
@@ -2788,90 +2731,74 @@ pub mod test {
                 Expr::val(" zebras"),
                 Expr::val("zebras")
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // "" >= ""
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // "" >= _hi
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 🦀 >= _hi
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 2 < "4"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // "4" < 2
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // false < 1
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // 1 < false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // [1, 2] < [47, 0]
         assert_matches!(
@@ -2879,13 +2806,11 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2)]),
                 Expr::set(vec![Expr::val(47), Expr::val(0)])
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -2904,13 +2829,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
 
         assert_matches!(
@@ -2918,13 +2841,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
 
         assert_matches!(
@@ -2932,13 +2853,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
 
         assert_matches!(
@@ -2946,13 +2865,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -2980,25 +2897,22 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(Integer::MAX), Expr::val(1))),
-            Err(EvaluationError::integer_overflow(
-                IntegerOverflowError::BinaryOp {
-                    op: BinaryOp::Add,
-                    arg1: Value::from(Integer::MAX),
-                    arg2: Value::from(1),
-                },
-                None
-            ))
+            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op: BinaryOp::Add,
+                arg1: Value::from(Integer::MAX),
+                arg2: Value::from(1),
+                source_loc: None,
+            })
+            .into())
         );
         // 7 + "3"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 44 - 31
         assert_eq!(
@@ -3013,25 +2927,22 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(Integer::MIN + 2), Expr::val(3))),
-            Err(EvaluationError::integer_overflow(
-                IntegerOverflowError::BinaryOp {
-                    op: BinaryOp::Sub,
-                    arg1: Value::from(Integer::MIN + 2),
-                    arg2: Value::from(3),
-                },
-                None
-            ))
+            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op: BinaryOp::Sub,
+                arg1: Value::from(Integer::MIN + 2),
+                arg2: Value::from(3),
+                source_loc: None,
+            })
+            .into())
         );
         // "ham" - "ha"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 5 * (-3)
         assert_eq!(
@@ -3046,25 +2957,22 @@ pub mod test {
         // "5" * 0
         assert_matches!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), Expr::val(0))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), Expr::val(3))),
-            Err(EvaluationError::integer_overflow(
-                IntegerOverflowError::BinaryOp {
-                    op: BinaryOp::Mul,
-                    arg1: Value::from(Integer::MAX - 1),
-                    arg2: Value::from(3),
-                },
-                None
-            ))
+            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op: BinaryOp::Mul,
+                arg1: Value::from(Integer::MAX - 1),
+                arg2: Value::from(3),
+                source_loc: None,
+            })
+            .into())
         );
     }
 
@@ -3213,13 +3121,11 @@ pub mod test {
         // 3 contains 7
         assert_matches!(
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
         // { ham: "eggs" } contains "ham"
         assert_matches!(
@@ -3227,13 +3133,11 @@ pub mod test {
                 Expr::record(vec![("ham".into(), Expr::val("eggs"))]).unwrap(),
                 Expr::val("ham")
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::Record,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::Record);
+                assert_eq!(advice, None);
+            }
         );
         // wrong argument order
         assert_matches!(
@@ -3241,13 +3145,11 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(1), Expr::val(3), Expr::val(7)])
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -3439,16 +3341,14 @@ pub mod test {
                     Expr::val(true),
                 ])
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
-                            .expect("should be a valid identifier")
-                    )],
-                    actual: Type::Bool,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(
+                    Name::parse_unqualified_name("any_entity_type")
+                        .expect("should be a valid identifier")
+                )]);
+                assert_eq!(actual, Type::Bool);
+                assert_eq!(advice, None);
+            }
         );
         // A in [A, B] where A and B do not exist
         assert_eq!(
@@ -3497,16 +3397,14 @@ pub mod test {
         // "foo" in "foobar"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
-                            .expect("should be a valid identifier")
-                    )],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(
+                    Name::parse_unqualified_name("any_entity_type")
+                        .expect("should be a valid identifier")
+                )]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // "spoon" in A (where has(A.spoon))
         assert_matches!(
@@ -3514,16 +3412,14 @@ pub mod test {
                 Expr::val("spoon"),
                 Expr::val(EntityUID::with_eid("entity_with_attrs"))
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
-                            .expect("should be a valid identifier")
-                    )],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(
+                    Name::parse_unqualified_name("any_entity_type")
+                        .expect("should be a valid identifier")
+                )]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // 3 in [34, -2, 7]
         assert_matches!(
@@ -3531,18 +3427,13 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(34), Expr::val(-2), Expr::val(7)])
             )),
-            Err(e) => {
-                assert_eq!(
-                    e.error_kind(),
-                    &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        )],
-                        actual: Type::Long,
-                        advice: Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                    }
-                );
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(
+                    Name::parse_unqualified_name("any_entity_type")
+                        .expect("should be a valid identifier")
+                )]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()));
             }
         );
         // "foo" in { "foo": 2, "bar": true }
@@ -3554,18 +3445,13 @@ pub mod test {
                     ("bar".into(), Expr::val(true)),
                 ]).unwrap()
             )),
-            Err(e) => {
-                assert_eq!(
-                    e.error_kind(),
-                    &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        )],
-                        actual: Type::String,
-                        advice: Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
-                    }
-                );
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(
+                    Name::parse_unqualified_name("any_entity_type")
+                        .expect("should be a valid identifier")
+                )]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()));
             }
         );
         // A in { "foo": 2, "bar": true }
@@ -3578,19 +3464,17 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
-                        Type::Set,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        )
-                    ],
-                    actual: Type::Record,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![
+                    Type::Set,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    )
+                ]);
+                assert_eq!(actual, Type::Record);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -3802,13 +3686,11 @@ pub mod test {
         // type error
         assert_matches!(
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::String],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::String]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
         // 'contains' is not allowed on strings
         assert_matches!(
@@ -3816,13 +3698,11 @@ pub mod test {
                 Expr::val("ham and ham"),
                 Expr::val("ham")
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // '\0' should not match '*'
         assert_eq!(
@@ -3940,13 +3820,11 @@ pub mod test {
         );
         assert_matches!(
             eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    actual: Type::Long,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())]);
+                assert_eq!(actual, Type::Long);
+                assert_eq!(advice, None);
+            }
         );
     }
 
@@ -4069,13 +3947,11 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_matches!(
@@ -4087,13 +3963,11 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::Record,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::Record);
+                assert_eq!(advice, None);
+            }
         );
         // test for [1, -22] contains_any of [1, -22, 34]
         assert_eq!(
@@ -4195,13 +4069,11 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::String,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, None);
+            }
         );
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_matches!(
@@ -4213,13 +4085,11 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
-                    actual: Type::Record,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Set]);
+                assert_eq!(actual, Type::Record);
+                assert_eq!(advice, None);
+            }
         );
         Ok(())
     }
@@ -4350,10 +4220,8 @@ pub mod test {
 
         let slots = HashMap::new();
         let r = evaluator.partial_interpret(&e, &slots);
-        assert_matches!(r, Err(e) => {
-            assert_matches!(e.error_kind(), EvaluationErrorKind::UnlinkedSlot(slotid) => {
-                assert_eq!(*slotid, SlotId::principal());
-            });
+        assert_matches!(r, Err(EvaluationError::UnlinkedSlot(UnlinkedSlotError { slot, .. })) => {
+            assert_eq!(slot, SlotId::principal());
         });
 
         let mut slots = HashMap::new();
@@ -4410,9 +4278,7 @@ pub mod test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        assert_matches!(v, Err(e) => {
-            assert_matches!(e.error_kind(), EvaluationErrorKind::InvalidRestrictedExpression { .. });
-        });
+        assert_matches!(v, Err(EvaluationError::InvalidRestrictedExpression { .. }));
     }
 
     #[test]

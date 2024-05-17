@@ -1825,6 +1825,7 @@ mod entity_validate_tests {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use cedar_policy_core::extensions::Extensions;
     use entities::conformance::err::EntitySchemaConformanceError;
     use entities::err::EntitiesError;
 
@@ -3042,7 +3043,7 @@ mod schema_based_parsing_tests {
         let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
         let parser_assume_computed = entities::EntityJsonParser::new(
             Some(&schema),
-            extensions::Extensions::all_available(),
+            Extensions::all_available(),
             entities::TCComputation::AssumeAlreadyComputed,
         );
         assert!(matches!(
@@ -3054,7 +3055,7 @@ mod schema_based_parsing_tests {
 
         let parser_enforce_computed = entities::EntityJsonParser::new(
             Some(&schema),
-            extensions::Extensions::all_available(),
+            Extensions::all_available(),
             entities::TCComputation::EnforceAlreadyComputed,
         );
         assert!(matches!(
@@ -3645,11 +3646,9 @@ mod decimal_ip_constructors {
     fn expr_bad_ip() {
         let ip = Expression::new_ip("192.168.312.3");
         assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "ipaddr");
+            }
         );
     }
 
@@ -3657,11 +3656,9 @@ mod decimal_ip_constructors {
     fn expr_bad_cidr() {
         let ip = Expression::new_ip("192.168.0.3/100");
         assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "ipaddr");
+            }
         );
     }
 
@@ -3669,11 +3666,9 @@ mod decimal_ip_constructors {
     fn expr_nonsense_ip() {
         let ip = Expression::new_ip("foobar");
         assert_matches!(evaluate_empty(&ip),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
-                )
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "ipaddr");
+            }
         );
     }
 
@@ -3736,11 +3731,9 @@ mod decimal_ip_constructors {
     fn invalid_decimal() {
         let decimal = Expression::new_decimal("1234.12345");
         assert_matches!(evaluate_empty(&decimal),
-                Err(e) => assert_matches!(e.error_kind(),
-                    EvaluationErrorKind::FailedExtensionFunctionApplication {
-                        extension_name, ..
-                    } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
-                )
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "decimal");
+            }
         );
     }
 }
