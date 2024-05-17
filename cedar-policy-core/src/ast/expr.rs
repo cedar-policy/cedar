@@ -322,7 +322,7 @@ impl Expr {
     }
 
     /// Create a ternary (if-then-else) `Expr`.
-    /// Takes `Arc`s instead of owned `Expr`s
+    /// Takes `Arc`s instead of owned `Expr`s.
     /// `test_expr` must evaluate to a Bool type
     pub fn ite_arc(test_expr: Arc<Expr>, then_expr: Arc<Expr>, else_expr: Arc<Expr>) -> Self {
         ExprBuilder::new().ite_arc(test_expr, then_expr, else_expr)
