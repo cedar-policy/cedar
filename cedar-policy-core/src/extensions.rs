@@ -160,7 +160,7 @@ pub enum ExtensionFunctionLookupError {
     #[diagnostic(transparent)]
     FuncMultiplyDefined(#[from] extension_function_lookup_errors::FuncMultiplyDefinedError),
 
-    /// Attempted to typecheck an expression that had no type
+    /// Attempted to typecheck a function without a return type
     #[error(transparent)]
     #[diagnostic(transparent)]
     HasNoType(#[from] extension_function_lookup_errors::HasNoTypeError),
@@ -277,15 +277,15 @@ pub mod extension_function_lookup_errors {
         }
     }
 
-    /// Attempted to typecheck an expression that had no type
+    /// Attempted to typecheck a function without a return type
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("extension function `{name}` has no type")]
+    #[error("extension function `{name}` has no return type")]
     pub struct HasNoTypeError {
-        /// Name of the function that returns no type
+        /// Name of the function that has no return type
         pub(crate) name: Name,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
