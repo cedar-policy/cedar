@@ -1,5 +1,7 @@
 # Changelog
 
+## 3.1.4
+
 ## 3.1.3
 
 - The `translate-schema` command now produces prettier output.
