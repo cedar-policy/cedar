@@ -19,7 +19,7 @@
 use crate::{
     ast::{CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, Unknown, Value},
     entities::SchemaType,
-    evaluator::{self, EvaluationError},
+    evaluator,
 };
 
 /// Create a new untyped `Unknown`
@@ -29,37 +29,17 @@ fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
     )))
 }
 
-fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let msg = v.get_as_string()?;
-    // PANIC SAFETY: This name is fully static, and is a valid extension name
-    #[allow(clippy::unwrap_used)]
-    let err = EvaluationError::failed_extension_function_application(
-        "partial_evaluation".parse().unwrap(),
-        msg.to_string(),
-        None, // source loc will be added by the evaluator
-    );
-    Err(err)
-}
-
 /// Construct the extension
 // PANIC SAFETY: all uses of `unwrap` here on parsing extension names are correct names
 #[allow(clippy::unwrap_used)]
 pub fn extension() -> Extension {
     Extension::new(
         "partial_evaluation".parse().unwrap(),
-        vec![
-            ExtensionFunction::unary_never(
-                "unknown".parse().unwrap(),
-                CallStyle::FunctionStyle,
-                Box::new(create_new_unknown),
-                Some(SchemaType::String),
-            ),
-            ExtensionFunction::unary_never(
-                "error".parse().unwrap(),
-                CallStyle::FunctionStyle,
-                Box::new(throw_error),
-                Some(SchemaType::String),
-            ),
-        ],
+        vec![ExtensionFunction::unary_never(
+            "unknown".parse().unwrap(),
+            CallStyle::FunctionStyle,
+            Box::new(create_new_unknown),
+            Some(SchemaType::String),
+        )],
     )
 }
