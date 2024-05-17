@@ -7,7 +7,7 @@
 - The default `--schema-format` is now `human` for all subcommands that take
   `--schema-format`.
 
-## 3.2.0 - Coming Soon
+## 3.2.0
 
 ### Added
 
