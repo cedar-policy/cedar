@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
   introduced in 3.2.0. See #757.
+- Removed `ParseErrors::errors_as_strings`.  Callers should consider examining
+  the rich data provided by `miette::Diagnostic`, for instance `.help()` and
+  `labels()`. Callers can continue using the same behavior by calling
+  `.iter().map(ToString::to_string)`. (#882, resolving #543)
 
 ## [3.2.0] - Coming Soon
 

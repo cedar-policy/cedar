@@ -705,11 +705,6 @@ impl ParseErrors {
     pub(super) fn push(&mut self, err: impl Into<ParseError>) {
         self.0.push(err.into());
     }
-
-    /// returns a Vec with stringified versions of the ParseErrors
-    pub fn errors_as_strings(&self) -> Vec<String> {
-        self.0.iter().map(ToString::to_string).collect()
-    }
 }
 
 impl Display for ParseErrors {
