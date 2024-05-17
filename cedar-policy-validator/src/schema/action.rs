@@ -22,7 +22,7 @@ use cedar_policy_core::{
 };
 use serde::Serialize;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use crate::types::{Attributes, Type};
 
@@ -56,7 +56,7 @@ pub struct ValidatorActionId {
     ///
     /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
     /// works seamlessly.
-    pub(crate) attributes: HashMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(crate) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 impl ValidatorActionId {
