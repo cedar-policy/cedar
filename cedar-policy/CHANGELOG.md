@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.0] - Coming Soon
+## [3.2.0] - 2024-05-17
 
 ### Added
 
@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   valid scope constraint. (#818, resolving #563)
 - Fixed policy formatter reordering some comments around if-then-else and
   entity identifier expressions. (#861, resolving #787)
+
+## [3.1.4] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
 ## [3.1.3] - 2024-04-15
 
@@ -288,6 +294,12 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.6] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
+
 ## [2.4.5] - 2023-04-01
 
 ### Changed
@@ -501,13 +513,15 @@ Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main
-[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.2.0
+[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
+[3.1.4]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.1.4
 [3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.6...v3.0.0
+[2.4.6]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v2.4.6
 [2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5
 [2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
