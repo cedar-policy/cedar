@@ -835,7 +835,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a ternary (if-then-else) `Expr`.
-    /// Takes `Arc`s instead of owned `Expr`s
+    /// Takes `Arc`s instead of owned `Expr`s.
     /// `test_expr` must evaluate to a Bool type
     pub fn ite_arc(
         self,
