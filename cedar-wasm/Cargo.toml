@@ -26,7 +26,7 @@ tsify = "0.4.5"
 default = ["console_error_panic_hook"]
 
 [lib]
-crate_type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
