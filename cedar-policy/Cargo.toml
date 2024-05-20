@@ -53,7 +53,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [lib]
 # cdylib required for wasm
-crate_type = ["rlib", "cdylib"]
+crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
 cool_asserts = "2.0"
