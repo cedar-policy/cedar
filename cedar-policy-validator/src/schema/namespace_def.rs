@@ -29,10 +29,10 @@ use cedar_policy_core::{
     extensions::Extensions,
     FromNormalizedStr,
 };
+use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::ValidatorApplySpec;
-use crate::types::OpenTag;
 use crate::{
     err::*,
     schema_file_format,
@@ -40,6 +40,7 @@ use crate::{
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
 };
+use crate::{fuzzy_match::fuzzy_search, types::OpenTag};
 
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
@@ -220,7 +221,7 @@ impl ValidatorNamespaceDef {
         let actions =
             Self::build_action_ids(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
-            Self::build_entity_types(namespace_def.entity_types, namespace.as_ref())?;
+            Self::build_entity_types(namespace_def.entity_types, namespace.as_ref(), extensions)?;
 
         Ok(ValidatorNamespaceDef {
             namespace,
@@ -266,6 +267,7 @@ impl ValidatorNamespaceDef {
     fn build_entity_types(
         schema_files_types: HashMap<Id, schema_file_format::EntityType>,
         schema_namespace: Option<&Name>,
+        extensions: Extensions<'_>,
     ) -> Result<EntityTypesDef> {
         let mut entity_types = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
@@ -276,6 +278,7 @@ impl ValidatorNamespaceDef {
                         attributes: Self::try_schema_type_into_validator_type(
                             schema_namespace,
                             entity_type.shape.into_inner(),
+                            extensions,
                         )?,
                         parents: entity_type
                             .member_of_types
@@ -439,6 +442,7 @@ impl ValidatorNamespaceDef {
                     let context = Self::try_schema_type_into_validator_type(
                         schema_namespace,
                         context.into_inner(),
+                        extensions,
                     )?;
 
                     let parents = action_type
@@ -516,6 +520,7 @@ impl ValidatorNamespaceDef {
     fn parse_record_attributes(
         schema_namespace: Option<&Name>,
         attrs: impl IntoIterator<Item = (SmolStr, TypeOfAttribute)>,
+        extensions: Extensions<'_>,
     ) -> Result<WithUnresolvedTypeDefs<Attributes>> {
         let attrs_with_type_defs = attrs
             .into_iter()
@@ -523,7 +528,11 @@ impl ValidatorNamespaceDef {
                 Ok((
                     attr,
                     (
-                        Self::try_schema_type_into_validator_type(schema_namespace, ty.ty)?,
+                        Self::try_schema_type_into_validator_type(
+                            schema_namespace,
+                            ty.ty,
+                            extensions,
+                        )?,
                         ty.required,
                     ),
                 ))
@@ -597,13 +606,14 @@ impl ValidatorNamespaceDef {
     pub(crate) fn try_schema_type_into_validator_type(
         default_namespace: Option<&Name>,
         schema_ty: SchemaType,
+        extensions: Extensions<'_>,
     ) -> Result<WithUnresolvedTypeDefs<Type>> {
         match schema_ty {
             SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
             SchemaType::Type(SchemaTypeVariant::Long) => Ok(Type::primitive_long().into()),
             SchemaType::Type(SchemaTypeVariant::Boolean) => Ok(Type::primitive_boolean().into()),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => Ok(
-                Self::try_schema_type_into_validator_type(default_namespace, *element)?
+                Self::try_schema_type_into_validator_type(default_namespace, *element, extensions)?
                     .map(Type::set),
             ),
             SchemaType::Type(SchemaTypeVariant::Record {
@@ -616,8 +626,8 @@ impl ValidatorNamespaceDef {
                     ))
                 } else {
                     Ok(
-                        Self::parse_record_attributes(default_namespace, attributes)?.map(
-                            move |attrs| {
+                        Self::parse_record_attributes(default_namespace, attributes, extensions)?
+                            .map(move |attrs| {
                                 Type::record_with_attributes(
                                     attrs,
                                     if additional_attributes {
@@ -626,8 +636,7 @@ impl ValidatorNamespaceDef {
                                         OpenTag::ClosedAttributes
                                     },
                                 )
-                            },
-                        ),
+                            }),
                     )
                 }
             }
@@ -639,7 +648,21 @@ impl ValidatorNamespaceDef {
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
                 let extension_type_name = Name::unqualified_name(name);
-                Ok(Type::extension(extension_type_name).into())
+                if extensions.ext_names().contains(&extension_type_name) {
+                    Ok(Type::extension(extension_type_name).into())
+                } else {
+                    let suggested_replacement = fuzzy_search(
+                        &extension_type_name.to_string(),
+                        &extensions
+                            .ext_names()
+                            .map(|n| n.to_string())
+                            .collect::<Vec<_>>(),
+                    );
+                    Err(SchemaError::UnknownExtensionType(UnknownExtensionType {
+                        actual: extension_type_name,
+                        suggested_replacement,
+                    }))
+                }
             }
             SchemaType::TypeDef { type_name } => {
                 let defined_type_name =

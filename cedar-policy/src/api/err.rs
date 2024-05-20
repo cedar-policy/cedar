@@ -191,6 +191,12 @@ pub enum SchemaError {
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
+    /// An error reported during schema parsing when an unknown extension type
+    /// is used in a common type definition, entity attribute or action context
+    /// attributes.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownExtensionType(UnknownExtensionType),
 }
 
 /// Errors serializing Schemas to the natural syntax
@@ -354,6 +360,23 @@ impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
     }
 }
 
+/// An error reported during schema parsing when an unknown extension type is
+/// used in a common type definition, entity attribute or action context
+/// attributes.
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct UnknownExtensionType {
+    inner: cedar_policy_validator::UnknownExtensionType,
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_validator::UnknownExtensionType> for UnknownExtensionType {
+    fn from(value: cedar_policy_validator::UnknownExtensionType) -> Self {
+        Self { inner: value }
+    }
+}
+
 #[doc(hidden)]
 impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
@@ -406,6 +429,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::ActionAttrEval(err.into())
             }
             cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
+            cedar_policy_validator::SchemaError::UnknownExtensionType(err) => {
+                SchemaError::UnknownExtensionType(err.into())
+            }
         }
     }
 }
