@@ -137,35 +137,45 @@ pub fn add_comment<'a>(d: RcDoc<'a>, comment: Comment, next_doc: RcDoc<'a>) -> R
     leading_comment_doc.append(d).append(trailing_comment_doc)
 }
 
-/// Remove empty lines from the input string. This will remove empty lines
-/// _everywhere_, including in places where that may not be desired (e.g., in
-/// string literals).
-fn remove_empty_lines(s: &str) -> String {
-    s.split_inclusive('\n')
-        // in the case where `s` does not end in a newline, `!ss.contains('\n')`
-        // preserves whitespace on the last line
-        .filter(|ss| !ss.trim().is_empty() || !ss.contains('\n'))
-        .map(|s| s.to_owned())
-        .collect::<Vec<_>>()
-        .join("")
+/// Remove empty lines from the input string, ignoring the first and last lines.
+/// (Because of how this function is used in `remove_empty_lines`, the first and
+/// last lines may include important spacing information.) This will remove empty
+/// lines  _everywhere_, including in places where that may not be desired
+/// (e.g., in string literals).
+fn remove_empty_interior_lines(s: &str) -> String {
+    let mut new_s = String::new();
+    if s.starts_with('\n') {
+        new_s.push_str("\n");
+    }
+    new_s.push_str(
+        s.split_inclusive('\n')
+            // in the case where `s` does not end in a newline, `!ss.contains('\n')`
+            // preserves whitespace on the last line
+            .filter(|ss| !ss.trim().is_empty() || !ss.contains('\n'))
+            .collect::<Vec<_>>()
+            .join("")
+            .as_str(),
+    );
+    new_s
 }
 
 /// Remove empty lines, safely handling newlines that occur in quotations.
-pub fn remove_empty_lines_safe(text: &str) -> String {
+pub fn remove_empty_lines(text: &str) -> String {
     // PANIC SAFETY: this regex pattern is valid
     #[allow(clippy::unwrap_used)]
-    let comment_regex = Regex::new(r"//[^\n]*\n").unwrap();
+    let comment_regex = Regex::new(r"//[^\n]*").unwrap();
     // PANIC SAFETY: this regex pattern is valid
     #[allow(clippy::unwrap_used)]
-    let string_regex = Regex::new(r#""(\\.|[^"\\])*"[^\n]*\n"#).unwrap();
+    let string_regex = Regex::new(r#""(\\.|[^"\\])*"[^\n]*"#).unwrap();
 
     let mut index = 0;
     let mut final_text = String::new();
 
     while index < text.len() {
         // Check for the next comment and string. The general strategy is to
-        // call `remove_empty_lines` on all the text _outside_ of comments and
-        // strings.
+        // call `remove_empty_interior_lines` on all the text _outside_ of
+        // strings. Comments should be skipped to avoid interpreting a quote in
+        // a comment as a string.
         let comment_match = comment_regex.find_at(text, index);
         let string_match = string_regex.find_at(text, index);
         match (comment_match, string_match) {
@@ -174,21 +184,21 @@ pub fn remove_empty_lines_safe(text: &str) -> String {
                 let m = if m1.start() < m2.start() { m1 } else { m2 };
                 // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
                 #[allow(clippy::indexing_slicing)]
-                final_text.push_str(&remove_empty_lines(&text[index..m.start()]));
+                final_text.push_str(&remove_empty_interior_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (Some(m), None) | (None, Some(m)) => {
                 // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
                 #[allow(clippy::indexing_slicing)]
-                final_text.push_str(&remove_empty_lines(&text[index..m.start()]));
+                final_text.push_str(&remove_empty_interior_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (None, None) => {
                 // PANIC SAFETY: Slicing `text` is safe since `index` is within the bounds of `text`.
                 #[allow(clippy::indexing_slicing)]
-                final_text.push_str(&remove_empty_lines(&text[index..]));
+                final_text.push_str(&remove_empty_interior_lines(&text[index..]));
                 break;
             }
         }
