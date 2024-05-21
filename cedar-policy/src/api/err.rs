@@ -517,45 +517,122 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
     }
 }
 
+/// Error structs for the variants of `PolicySetError`
+pub mod policy_set_error_structs {
+    use super::Error;
+    use crate::PolicyId;
+    use miette::Diagnostic;
+
+    /// There was a duplicate [`PolicyId`] encountered in either the set of
+    /// templates or the set of policies.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("duplicate template or policy id `{id}`")]
+    pub struct AlreadyDefined {
+        pub(crate) id: PolicyId,
+    }
+
+    /// Expected a static policy, but a template-linked policy was provided
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("expected a static policy, but a template-linked policy was provided")]
+    pub struct ExpectedStatic {}
+
+    /// Expected a template, but a static policy was provided.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("expected a template, but a static policy was provided")]
+    pub struct ExpectedTemplate {}
+
+    /// Error when removing a static policy that doesn't exist
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to remove static policy `{policy_id}` because it does not exist")]
+    pub struct PolicyNonexistentError {
+        pub(crate) policy_id: PolicyId,
+    }
+
+    /// Error when removing a static policy that doesn't exist
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to remove template `{template_id}` because it does not exist")]
+    pub struct TemplateNonexistentError {
+        pub(crate) template_id: PolicyId,
+    }
+
+    /// Error when removing a template with active links
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to remove policy template `{template_id}` because it has active links")]
+    pub struct RemoveTemplateWithActiveLinksError {
+        pub(crate) template_id: PolicyId,
+    }
+
+    /// Error when removing a template that is not a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to remove policy template `{template_id}` because it is not a template")]
+    pub struct RemoveTemplateNotTemplateError {
+        pub(crate) template_id: PolicyId,
+    }
+
+    /// Error when unlinking a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to unlink policy `{policy_id}` because it does not exist")]
+    pub struct LinkNonexistentError {
+        pub(crate) policy_id: PolicyId,
+    }
+
+    /// Error when removing a link that is not a link
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to unlink `{policy_id}` because it is not a link")]
+    pub struct UnlinkLinkNotLinkError {
+        pub(crate) policy_id: PolicyId,
+    }
+}
+
 /// Potential errors when adding to a `PolicySet`.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
     /// templates or the set of policies.
-    #[error("duplicate template or policy id `{id}`")]
-    AlreadyDefined {
-        /// [`PolicyId`] that was duplicate
-        id: PolicyId,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    AlreadyDefined(#[from] policy_set_error_structs::AlreadyDefined),
     /// Error when linking a template
     #[error("unable to link template: {0}")]
     #[diagnostic(transparent)]
     LinkingError(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
-    #[error("expected a static policy, but a template-linked policy was provided")]
-    ExpectedStatic,
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedStatic(#[from] policy_set_error_structs::ExpectedStatic),
     /// Expected a template, but a static policy was provided.
-    #[error("expected a template, but a static policy was provided")]
-    ExpectedTemplate,
-    /// Error when removing a static policy
-    #[error("unable to remove static policy `{0}` because it does not exist")]
-    PolicyNonexistentError(PolicyId),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedTemplate(#[from] policy_set_error_structs::ExpectedTemplate),
+    /// Error when removing a static policy that doesn't exist
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyNonexistentError(#[from] policy_set_error_structs::PolicyNonexistentError),
     /// Error when removing a template that doesn't exist
-    #[error("unable to remove policy template `{0}` because it does not exist")]
-    TemplateNonexistentError(PolicyId),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TemplateNonexistentError(#[from] policy_set_error_structs::TemplateNonexistentError),
     /// Error when removing a template with active links
-    #[error("unable to remove policy template `{0}` because it has active links")]
-    RemoveTemplateWithActiveLinksError(PolicyId),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RemoveTemplateWithActiveLinksError(
+        #[from] policy_set_error_structs::RemoveTemplateWithActiveLinksError,
+    ),
     /// Error when removing a template that is not a template
-    #[error("unable to remove policy template `{0}` because it is not a template")]
-    RemoveTemplateNotTemplateError(PolicyId),
-    /// Error when unlinking a template
-    #[error("unable to unlink policy template `{0}` because it does not exist")]
-    LinkNonexistentError(PolicyId),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RemoveTemplateNotTemplateError(
+        #[from] policy_set_error_structs::RemoveTemplateNotTemplateError,
+    ),
+    /// Error when unlinking a linked policy
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    LinkNonexistentError(#[from] policy_set_error_structs::LinkNonexistentError),
     /// Error when removing a link that is not a link
-    #[error("unable to unlink `{0}` because it is not a link")]
-    UnlinkLinkNotLinkError(PolicyId),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnlinkLinkNotLinkError(#[from] policy_set_error_structs::UnlinkLinkNotLinkError),
     /// Error when converting from EST
     #[error("Error deserializing a policy/template from JSON: {0}")]
     #[diagnostic(transparent)]
@@ -564,8 +641,8 @@ pub enum PolicySetError {
     #[error("Error serializing a policy to JSON: {0}")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
-    /// Errors encountered in JSON ser/de
-    #[error("Error serializing or deserializing from JSON: {0})")]
+    /// Errors encountered in JSON ser/de of the policy set (as opposed to individual policies)
+    #[error("Error serializing / deserializing PolicySet to / from JSON: {0})")]
     Json(#[from] serde_json::Error),
 }
 
@@ -573,9 +650,11 @@ pub enum PolicySetError {
 impl From<ast::PolicySetError> for PolicySetError {
     fn from(e: ast::PolicySetError) -> Self {
         match e {
-            ast::PolicySetError::Occupied { id } => Self::AlreadyDefined {
-                id: PolicyId::new(id),
-            },
+            ast::PolicySetError::Occupied { id } => {
+                Self::AlreadyDefined(policy_set_error_structs::AlreadyDefined {
+                    id: PolicyId::new(id),
+                })
+            }
         }
     }
 }
@@ -583,7 +662,7 @@ impl From<ast::PolicySetError> for PolicySetError {
 #[doc(hidden)]
 impl From<ast::UnexpectedSlotError> for PolicySetError {
     fn from(_: ast::UnexpectedSlotError) -> Self {
-        Self::ExpectedStatic
+        Self::ExpectedStatic(policy_set_error_structs::ExpectedStatic {})
     }
 }
 
