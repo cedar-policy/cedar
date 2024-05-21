@@ -525,59 +525,59 @@ pub mod policy_set_error_structs {
 
     /// There was a duplicate [`PolicyId`] encountered in either the set of
     /// templates or the set of policies.
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate template or policy id `{id}`")]
     pub struct AlreadyDefined {
         pub(crate) id: PolicyId,
     }
 
     /// Expected a static policy, but a template-linked policy was provided
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("expected a static policy, but a template-linked policy was provided")]
     pub struct ExpectedStatic {}
 
     /// Expected a template, but a static policy was provided.
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("expected a template, but a static policy was provided")]
     pub struct ExpectedTemplate {}
 
     /// Error when removing a static policy that doesn't exist
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove static policy `{policy_id}` because it does not exist")]
     pub struct PolicyNonexistentError {
         pub(crate) policy_id: PolicyId,
     }
 
     /// Error when removing a static policy that doesn't exist
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove template `{template_id}` because it does not exist")]
     pub struct TemplateNonexistentError {
         pub(crate) template_id: PolicyId,
     }
 
     /// Error when removing a template with active links
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove policy template `{template_id}` because it has active links")]
     pub struct RemoveTemplateWithActiveLinksError {
         pub(crate) template_id: PolicyId,
     }
 
     /// Error when removing a template that is not a template
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove policy template `{template_id}` because it is not a template")]
     pub struct RemoveTemplateNotTemplateError {
         pub(crate) template_id: PolicyId,
     }
 
     /// Error when unlinking a template
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to unlink policy `{policy_id}` because it does not exist")]
     pub struct LinkNonexistentError {
         pub(crate) policy_id: PolicyId,
     }
 
     /// Error when removing a link that is not a link
-    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[derive(Debug, Diagnostic, Error)]
     #[error("unable to unlink `{policy_id}` because it is not a link")]
     pub struct UnlinkLinkNotLinkError {
         pub(crate) policy_id: PolicyId,
