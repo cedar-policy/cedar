@@ -1015,7 +1015,7 @@ pub enum SchemaError {
     /// An Action Entity (transitively) has an attribute that is an empty set
     #[error("Action attribute is an empty set")]
     ActionEntityAttributeEmptySet,
-    /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
+    /// An Action Entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`)
     #[error(
         "Action has an attribute of unsupported type (escaped expression, entity or extension)"
     )]
@@ -1915,9 +1915,9 @@ impl FromStr for Template {
 pub enum PrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
 }
 
@@ -1926,10 +1926,10 @@ pub enum PrincipalConstraint {
 pub enum TemplatePrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -1949,9 +1949,9 @@ impl TemplatePrincipalConstraint {
 pub enum ActionConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(Vec<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
 }
 
@@ -1960,9 +1960,9 @@ pub enum ActionConstraint {
 pub enum ResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
 }
 
@@ -1971,10 +1971,10 @@ pub enum ResourceConstraint {
 pub enum TemplateResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -3122,14 +3122,14 @@ mod entity_uid_tests {
     #[test]
     fn entity_uid_with_escape() {
         // EntityId contains some things that look like escapes
-        let entity_id = EntityId::from_str(r#"bobby\'s sister:\nVeronica"#)
+        let entity_id = EntityId::from_str(r"bobby\'s sister:\nVeronica")
             .expect("failed at constructing EntityId");
         let entity_type_name = EntityTypeName::from_str("Hockey::Master")
             .expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         // these are passed through (no escape interpretation):
         //   the EntityId has the literal backslash characters in it
-        assert_eq!(euid.id().as_ref(), r#"bobby\'s sister:\nVeronica"#);
+        assert_eq!(euid.id().as_ref(), r"bobby\'s sister:\nVeronica");
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
         assert_eq!(euid.type_name().basename(), "Master");
         assert_eq!(euid.type_name().namespace(), "Hockey");
@@ -3160,7 +3160,7 @@ mod entity_uid_tests {
         // EntityId is passed through (no escape interpretation):
         //   the EntityId has all the same literal characters in it
         assert_eq!(euid.id().as_ref(), r#"b'ob"by\'s sis\"ter"#);
-        assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(euid.type_name().to_string(), r"Test::User");
     }
 
     /// building an `EntityUid` from components, including whitespace in various places
@@ -3221,8 +3221,8 @@ permit(principal ==  A :: B
     #[test]
     fn parse_euid() {
         let parsed_eid: EntityUid = r#"Test::User::"bobby""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_eid.id().as_ref(), r#"bobby"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_eid.id().as_ref(), r"bobby");
+        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including escapes
@@ -3233,7 +3233,7 @@ permit(principal ==  A :: B
         // the escapes were interpreted:
         //   the EntityId has single-quote and double-quote characters (but no backslash characters)
         assert_eq!(parsed_eid.id().as_ref(), r#"b'ob"by"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including both escaped and unescaped single-quotes
@@ -3251,8 +3251,8 @@ permit(principal ==  A :: B
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
-        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_euid.id().as_ref(), r"b'obby's sister");
+        assert_eq!(parsed_euid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including whitespace
@@ -3278,11 +3278,11 @@ permit(principal ==  A :: B
     #[test]
     fn euid_roundtrip() {
         let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
+        assert_eq!(parsed_euid.id().as_ref(), r"b'ob");
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()
             .expect("failed to roundtrip");
-        assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
+        assert_eq!(reparsed.id().as_ref(), r"b'ob");
     }
 
     #[test]
@@ -4679,15 +4679,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_principal_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
 
-        let src = r#"
+        let src = r"
             permit(principal == ?principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -4703,9 +4703,9 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal in ?principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -4724,9 +4724,9 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_action_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.action_constraint(), ActionConstraint::Any);
 
@@ -4754,15 +4754,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_resource_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
 
-        let src = r#"
+        let src = r"
             permit(principal, action, resource == ?resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -4778,9 +4778,9 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal, action, resource in ?resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -4997,7 +4997,7 @@ mod schema_based_parsing_tests {
         );
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
-        assert!(Entities::from_json_value(entitiesjson_tc.clone(), Some(&schema)).is_ok());
+        assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
         assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
 
         // Parsing will fail if the TC doesn't match
@@ -5110,10 +5110,10 @@ mod test {
 
     #[test]
     fn json_bignum_1a() {
-        let src = r#"
+        let src = r"
         permit(principal, action, resource) when { 
             (true && (-90071992547409921)) && principal
-        };"#;
+        };";
         let p: Policy = src.parse().unwrap();
         let v = p.to_json().unwrap();
         let s = serde_json::to_string(&v).unwrap();
@@ -5182,7 +5182,7 @@ mod issue_606 {
 
         let tid = PolicyId::from_str("t0").unwrap();
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid.clone()), est_json);
+        let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
             Err(EstToAstError::SlotsInConditionClause {

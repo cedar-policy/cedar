@@ -186,8 +186,8 @@ impl Template {
             Ok(())
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(SlotId::clone),
-                extra.into_iter().map(SlotId::clone),
+                unbound.into_iter().copied(),
+                extra.into_iter().copied(),
             ))
         }
     }
@@ -749,7 +749,7 @@ impl StaticPolicy {
             resource_constraint,
             non_head_constraints,
         );
-        let num_slots = body.condition().slots().next().map(SlotId::clone);
+        let num_slots = body.condition().slots().next().copied();
         // INVARIANT (inline policy correctness), checks that no slots exists
         match num_slots {
             Some(slot_id) => Err(UnexpectedSlotError::Named(slot_id))?,
@@ -763,7 +763,7 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let o = value.slots().next().map(SlotId::clone);
+        let o = value.slots().next().copied();
         match o {
             Some(slot_id) => Err(Self::Error::Named(slot_id)),
             None => Ok(Self(value.body)),

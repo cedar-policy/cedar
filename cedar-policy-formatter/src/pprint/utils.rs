@@ -119,7 +119,7 @@ pub fn add_comment<'a>(d: RcDoc<'a>, comment: Comment, next_doc: RcDoc<'a>) -> R
 fn remove_empty_interior_lines(s: &str) -> String {
     let mut new_s = String::new();
     if s.starts_with('\n') {
-        new_s.push_str("\n");
+        new_s.push('\n');
     }
     new_s.push_str(
         s.split_inclusive('\n')

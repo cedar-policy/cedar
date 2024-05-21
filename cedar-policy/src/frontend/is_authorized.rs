@@ -142,7 +142,7 @@ struct TemplateLink {
     /// Policy id for resulting concrete policy instance
     result_policy_id: String,
 
-    /// List of strings to fill in all slots in policy template "template_id".
+    /// List of strings to fill in all slots in policy template "`template_id`".
     /// (slot, String)
     instantiations: Vec<Link>,
 }
@@ -152,7 +152,7 @@ struct TemplateLink {
 struct RecvdSlice {
     policies: PolicySpecification,
     /// JSON object containing the entities data, in "natural JSON" form -- same
-    /// format as expected by EntityJsonParser
+    /// format as expected by `EntityJsonParser`
     entities: serde_json::Value,
 
     /// Optional template policies.
@@ -213,7 +213,7 @@ impl RecvdSlice {
                         };
                     }
                     match policies.link(template_id, instance_id, vals) {
-                        Ok(_) => Ok(()),
+                        Ok(()) => Ok(()),
                         Err(e) => Err(vec![format!("Error instantiating template: {e}")]),
                     }
                 }
@@ -233,7 +233,7 @@ impl RecvdSlice {
                 Err(parse_errors) => Err(std::iter::once(
                     "couldn't parse concatenated policies string".to_string(),
                 )
-                .chain(parse_errors.errors_as_strings().into_iter())
+                .chain(parse_errors.errors_as_strings())
                 .collect()),
             },
             PolicySpecification::Map(policies) => {
@@ -264,7 +264,7 @@ impl RecvdSlice {
         if let Some(t_inst_list) = template_instantiations {
             for instantiation in t_inst_list {
                 match parse_instantiations(&mut policies, instantiation) {
-                    Ok(_) => (),
+                    Ok(()) => (),
                     Err(err) => errs.extend(err),
                 }
             }
@@ -287,7 +287,7 @@ fn parse_policy_set_from_individual_policies(
     for (id, policy_src) in policies {
         match Policy::parse(Some(id.clone()), policy_src) {
             Ok(p) => match policy_set.add(p) {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => {
                     errs.push(format!("couldn't add policy to set due to error: {err}"));
                 }
@@ -303,7 +303,7 @@ fn parse_policy_set_from_individual_policies(
         for (id, policy_src) in templates {
             match Template::parse(Some(id.clone()), policy_src) {
                 Ok(p) => match policy_set.add_template(p) {
-                    Ok(_) => {}
+                    Ok(()) => {}
                     Err(err) => {
                         errs.push(format!("couldn't add policy to set due to error: {err}"));
                     }
