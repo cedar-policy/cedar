@@ -6,6 +6,7 @@
 
 - Fixed policy formatter reordering some comments around if-then-else and
   entity identifier expressions. (#861, resolving #787)
+- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 
 ## 2.4.6
 

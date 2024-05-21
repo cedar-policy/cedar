@@ -117,7 +117,7 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .ok_or(miette!("fail to get input policy CST"))?
         .0
         .iter()
-        .map(|p| Ok(remove_empty_lines(tree_to_pretty(p, &mut context)?.trim())))
+        .map(|p| Ok(remove_empty_lines(&tree_to_pretty(p, &mut context)?)))
         .collect::<Result<Vec<String>>>()?
         .join("\n\n");
     // handle comment at the end of a policyset
