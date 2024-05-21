@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 - Fixed policy formatter reordering some comments around if-then-else and
   entity identifier expressions. (#861, resolving #787)
 
