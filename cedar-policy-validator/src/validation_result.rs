@@ -322,6 +322,7 @@ pub struct UnspecifiedEntityError {
 
 /// The structure for validation warnings.
 #[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
+#[error("validation warning on policy `{}`: {}", location.policy_id(), kind)]
 pub struct ValidationWarning {
     pub(crate) location: SourceLocation,
     pub(crate) kind: ValidationWarningKind,
@@ -349,17 +350,6 @@ impl ValidationWarning {
 
     pub fn to_kind_and_location(self) -> (SourceLocation, ValidationWarningKind) {
         (self.location, self.kind)
-    }
-}
-
-impl std::fmt::Display for ValidationWarning {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "validation warning on policy `{}`: {}",
-            self.location.policy_id(),
-            self.kind
-        )
     }
 }
 
