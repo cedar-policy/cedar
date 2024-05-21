@@ -77,32 +77,32 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("{error_kind}")]
+#[error("{kind}")]
 pub struct ValidationError {
     location: SourceLocation,
-    error_kind: ValidationErrorKind,
+    kind: ValidationErrorKind,
 }
 
 impl ValidationError {
     pub(crate) fn with_policy_id(
         id: PolicyID,
         source_loc: Option<Loc>,
-        error_kind: ValidationErrorKind,
+        kind: ValidationErrorKind,
     ) -> Self {
         Self {
-            error_kind,
+            kind,
             location: SourceLocation::new(id, source_loc),
         }
     }
 
     /// Deconstruct this into its component source location and error kind.
     pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
-        (self.location, self.error_kind)
+        (self.location, self.kind)
     }
 
     /// Extract details about the exact issue detected by the validator.
     pub fn error_kind(&self) -> &ValidationErrorKind {
-        &self.error_kind
+        &self.kind
     }
 
     /// Extract the location where the validator found the issue.
@@ -124,27 +124,27 @@ impl Diagnostic for ValidationError {
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.code()
+        self.kind.code()
     }
 
     fn severity(&self) -> Option<miette::Severity> {
-        self.error_kind.severity()
+        self.kind.severity()
     }
 
     fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.url()
+        self.kind.url()
     }
 
     fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.help()
+        self.kind.help()
     }
 
     fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.error_kind.related()
+        self.kind.related()
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error_kind.diagnostic_source()
+        self.kind.diagnostic_source()
     }
 }
 
