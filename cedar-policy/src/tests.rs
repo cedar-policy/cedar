@@ -797,7 +797,7 @@ mod policy_set_tests {
 
         assert_matches!(
             pset.add_template(template),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
         assert_matches!(
             pset.remove_static(PolicyId::from_str("policy3").unwrap()),
@@ -873,7 +873,7 @@ mod policy_set_tests {
             PolicyId::from_str("linked").unwrap(),
             HashMap::new(),
         );
-        assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
         assert_eq!(
             pset, before_link,
             "A failed link shouldn't mutate the policy set"
@@ -903,7 +903,7 @@ mod policy_set_tests {
             PolicyId::from_str("linked2").unwrap(),
             HashMap::new(),
         );
-        assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
         assert_eq!(
             pset, before_link,
             "A failed link shouldn't mutate the policy set"
@@ -1065,7 +1065,7 @@ mod policy_set_tests {
         .expect("Template Parse Failure");
         assert_matches!(
             pset.add_template(template),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //Add another template
@@ -1106,7 +1106,7 @@ mod policy_set_tests {
         .expect("Static parse failure");
         assert_matches!(
             pset.add(illegal_template_policy),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //Can't add policy named linked
@@ -1117,7 +1117,7 @@ mod policy_set_tests {
         .expect("Static parse failure");
         assert_matches!(
             pset.add(illegal_linked_policy),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //Can add policy named `policy`
@@ -1225,7 +1225,7 @@ mod policy_set_tests {
         .expect("Static parse failure");
         assert_matches!(
             pset.add(static_policy),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //fails for link; static
@@ -1236,7 +1236,7 @@ mod policy_set_tests {
         .expect("Static parse failure");
         assert_matches!(
             pset.add(static_policy),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //fails for static; static
@@ -1248,7 +1248,7 @@ mod policy_set_tests {
         pset.add(static_policy.clone()).unwrap();
         assert_matches!(
             pset.add(static_policy),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
     }
 
@@ -1278,7 +1278,7 @@ mod policy_set_tests {
         .expect("Template Parse Failure");
         assert_matches!(
             pset.add_template(template),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //fails for template; template
@@ -1289,7 +1289,7 @@ mod policy_set_tests {
         .expect("Template Parse Failure");
         assert_matches!(
             pset.add_template(template),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
 
         //fails for static; template
@@ -1306,7 +1306,7 @@ mod policy_set_tests {
         .expect("Template Parse Failure");
         assert_matches!(
             pset.add_template(template),
-            Err(PolicySetError::AlreadyDefined { .. })
+            Err(PolicySetError::AlreadyDefined(_))
         );
     }
 

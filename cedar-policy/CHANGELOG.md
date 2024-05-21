@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Significantly reworked all public-facing error types to address some issues
-  and improve consistency. See #745.
+  and improve consistency. See issue #745.
 - Finalized the `ffi` module which was preview-released in 3.2.0.
   This involved a few additional API breaking changes in `ffi`. See #757.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
+- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 
 ## [3.2.0] - 2024-05-17
 
