@@ -332,10 +332,10 @@ impl ValidationWarning {
     pub(crate) fn with_policy_id(
         id: PolicyID,
         source_loc: Option<Loc>,
-        warning_kind: ValidationWarningKind,
+        kind: ValidationWarningKind,
     ) -> Self {
         Self {
-            kind: warning_kind,
+            kind,
             location: SourceLocation::new(id, source_loc),
         }
     }
