@@ -45,7 +45,6 @@ fn create_multiline_doc<'a>(str: &str) -> RcDoc<'a> {
         str.trim().split('\n').map(|c| RcDoc::text(c.to_owned())),
         RcDoc::hardline(),
     )
-    .nest(0)
 }
 
 /// Convert a trailing comment to an `RcDoc`, adding a trailing newline.
@@ -173,16 +172,22 @@ pub fn remove_empty_lines_safe(text: &str) -> String {
             (Some(m1), Some(m2)) => {
                 // Handle the earlier match
                 let m = if m1.start() < m2.start() { m1 } else { m2 };
+                // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
+                #[allow(clippy::indexing_slicing)]
                 final_text.push_str(&remove_empty_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (Some(m), None) | (None, Some(m)) => {
+                // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
+                #[allow(clippy::indexing_slicing)]
                 final_text.push_str(&remove_empty_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (None, None) => {
+                // PANIC SAFETY: Slicing `text` is safe since `index` is within the bounds of `text`.
+                #[allow(clippy::indexing_slicing)]
                 final_text.push_str(&remove_empty_lines(&text[index..]));
                 break;
             }
