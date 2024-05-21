@@ -181,7 +181,7 @@ pub fn remove_empty_lines(text: &str) -> String {
         match (comment_match, string_match) {
             (Some(m1), Some(m2)) => {
                 // Handle the earlier match
-                let m = if m1.start() < m2.start() { m1 } else { m2 };
+                let m = std::cmp::min_by_key(m1, m2, |m| m.start());
                 // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
                 #[allow(clippy::indexing_slicing)]
                 final_text.push_str(&remove_empty_interior_lines(&text[index..m.start()]));
