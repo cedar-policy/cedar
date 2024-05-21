@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `labels()`. Callers can continue using the same behavior by calling
   `.iter().map(ToString::to_string)`. (#882, resolving #543)
 
+### Fixed
+
+- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
+
 ## [3.2.0] - 2024-05-17
 
 ### Added
