@@ -2857,13 +2857,13 @@ impl FromStr for Template {
 pub enum PrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given `EntityTypeName`
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given `EntityTypeName`, and `in` the `EntityUID`
     IsIn(EntityTypeName, EntityUid),
 }
 
@@ -2872,16 +2872,16 @@ pub enum PrincipalConstraint {
 pub enum TemplatePrincipalConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given `EntityTypeName`.
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given `EntityTypeName`, and `in` the `EntityUID`.
+    /// If the `EntityUID` is [`None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 
@@ -2900,9 +2900,9 @@ impl TemplatePrincipalConstraint {
 pub enum ActionConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(Vec<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
 }
 
@@ -2911,13 +2911,13 @@ pub enum ActionConstraint {
 pub enum ResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid
+    /// Must be In the given `EntityUid`
     In(EntityUid),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given `EntityUid`
     Eq(EntityUid),
-    /// Must be the given EntityTypeName
+    /// Must be the given `EntityTypeName`
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given `EntityTypeName`, and `in` the `EntityUID`
     IsIn(EntityTypeName, EntityUid),
 }
 
@@ -2926,16 +2926,16 @@ pub enum ResourceConstraint {
 pub enum TemplateResourceConstraint {
     /// Un-constrained
     Any,
-    /// Must be In the given EntityUid.
+    /// Must be In the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid.
+    /// Must be equal to the given `EntityUid`.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
-    /// Must be the given EntityTypeName.
+    /// Must be the given `EntityTypeName`.
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID.
-    /// If the EntityUID is [`None`], then it is a template slot.
+    /// Must be the given `EntityTypeName`, and `in` the `EntityUID`.
+    /// If the `EntityUID` is [`None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
 

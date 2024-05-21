@@ -405,7 +405,7 @@ struct TemplateLink {
     /// Policy id for resulting concrete policy instance
     result_policy_id: String,
 
-    /// List of strings to fill in all slots in policy template "template_id".
+    /// List of strings to fill in all slots in policy template "`template_id`".
     /// (slot, String)
     instantiations: Links,
 }

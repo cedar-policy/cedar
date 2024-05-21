@@ -191,7 +191,7 @@ impl Template {
         } else {
             Err(LinkingError::from_unbound_and_extras(
                 unbound.into_iter().map(|slot| slot.id),
-                extra.into_iter().map(|slotid| *slotid),
+                extra.into_iter().copied(),
             ))
         }
     }
