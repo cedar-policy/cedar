@@ -1236,7 +1236,10 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.value])?,
+            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+                [self.value],
+                Extensions::all_available(),
+            )?,
         ))
     }
 }
@@ -1288,6 +1291,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
+                Extensions::all_available(),
             )?,
         ))
     }

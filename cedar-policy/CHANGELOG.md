@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- JSON format Cedar schemas will now fail to parse if they reference an unknown
+  extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 
 ## [3.2.0] - 2024-05-17
