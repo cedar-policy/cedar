@@ -83,6 +83,34 @@ pub struct ValidationError {
     error_kind: ValidationErrorKind,
 }
 
+impl ValidationError {
+    pub(crate) fn with_policy_id(
+        id: PolicyID,
+        source_loc: Option<Loc>,
+        error_kind: ValidationErrorKind,
+    ) -> Self {
+        Self {
+            error_kind,
+            location: SourceLocation::new(id, source_loc),
+        }
+    }
+
+    /// Deconstruct this into its component source location and error kind.
+    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
+        (self.location, self.error_kind)
+    }
+
+    /// Extract details about the exact issue detected by the validator.
+    pub fn error_kind(&self) -> &ValidationErrorKind {
+        &self.error_kind
+    }
+
+    /// Extract the location where the validator found the issue.
+    pub fn location(&self) -> &SourceLocation {
+        &self.location
+    }
+}
+
 // custom impl of `Diagnostic`: source location and source code are from
 // .location, everything else forwarded to .error_kind
 impl Diagnostic for ValidationError {
@@ -117,34 +145,6 @@ impl Diagnostic for ValidationError {
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
         self.error_kind.diagnostic_source()
-    }
-}
-
-impl ValidationError {
-    pub(crate) fn with_policy_id(
-        id: PolicyID,
-        source_loc: Option<Loc>,
-        error_kind: ValidationErrorKind,
-    ) -> Self {
-        Self {
-            error_kind,
-            location: SourceLocation::new(id, source_loc),
-        }
-    }
-
-    /// Deconstruct this into its component source location and error kind.
-    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
-        (self.location, self.error_kind)
-    }
-
-    /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
-        &self.error_kind
-    }
-
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
     }
 }
 
