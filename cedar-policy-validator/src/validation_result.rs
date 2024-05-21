@@ -77,7 +77,7 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("{kind}")]
+#[error("for policy `{}`, {}", location.policy_id(), kind)]
 pub struct ValidationError {
     location: SourceLocation,
     kind: ValidationErrorKind,
