@@ -26,7 +26,7 @@ use smol_str::ToSmolStr;
 use crate::token::get_comment;
 
 use super::lexer::get_token_stream;
-use super::utils::remove_empty_lines;
+use super::utils::remove_empty_lines_safe;
 
 use super::config::{self, Config};
 use super::doc::*;
@@ -120,7 +120,7 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .ok_or(miette!("fail to get input policy CST"))?
         .0
         .iter()
-        .map(|p| Ok(remove_empty_lines(tree_to_pretty(p, &mut context)?.trim())))
+        .map(|p| Ok(remove_empty_lines_safe(&tree_to_pretty(p, &mut context)?)))
         .collect::<Result<Vec<String>>>()?
         .join("\n\n");
     // handle comment at the end of a policyset
