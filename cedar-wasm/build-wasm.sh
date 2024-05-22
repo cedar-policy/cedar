@@ -17,7 +17,7 @@
 # Without this, the built wasm still works, but the Typescript definitions made by tsify don't.
 set -e
 cargo build
-wasm-pack build --scope amzn --target bundler
+wasm-pack build --scope cedar-policy --target bundler
 
 sed -i "s/[{]\s*!: /{ \"!\": /g" pkg/cedar_wasm.d.ts
 sed -i "s/[{]\s*==: /{ \"==\": /g" pkg/cedar_wasm.d.ts
