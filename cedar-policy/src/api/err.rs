@@ -300,7 +300,7 @@ pub struct JsonSerializationError {
 }
 
 impl JsonSerializationError {
-    /// Getter of the underlying serde_json error
+    /// Getter of the underlying `serde_json` error
     pub fn get_serde_json_error(self) -> serde_json::Error {
         self.error
     }
