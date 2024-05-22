@@ -317,6 +317,16 @@ impl UnsupportedFeatureError {
     }
 }
 
+/// Action declared in `entityType` list error
+#[derive(Debug, Clone, Diagnostic, Error)]
+#[error("entity type `Action` declared in `entityTypes` list")]
+pub struct ActionEntityTypeDeclaredError {}
+
+/// Unsupported `__expr` escape error
+#[derive(Debug, Clone, Diagnostic, Error)]
+#[error("schema contained the non-supported `__expr` escape")]
+pub struct ExprEscapeUsedError {}
+
 /// Errors encountered during construction of a Validation Schema
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
@@ -366,8 +376,9 @@ pub enum SchemaError {
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
-    #[error("entity type `Action` declared in `entityTypes` list")]
-    ActionEntityTypeDeclared,
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionEntityTypeDeclared(ActionEntityTypeDeclaredError),
     /// `context` or `shape` fields are not records
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -389,8 +400,9 @@ pub enum SchemaError {
     ActionAttrEval(EntityAttrEvaluationError),
     /// Error thrown when the schema contains the `__expr` escape.
     /// Support for this escape form has been dropped.
-    #[error("schema contained the non-supported `__expr` escape")]
-    ExprEscapeUsed,
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExprEscapeUsed(ExprEscapeUsedError),
 }
 
 /// Errors serializing Schemas to the natural syntax
@@ -629,7 +641,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { node: n })
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
-                Self::ActionEntityTypeDeclared
+                Self::ActionEntityTypeDeclared(ActionEntityTypeDeclaredError {  })
             }
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
                 Self::ContextOrShapeNotRecord(ContextOrShapeNotRecordError {
@@ -650,7 +662,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
                 Self::ActionAttrEval(err.into())
             }
-            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
+            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed(ExprEscapeUsedError {  }),
         }
     }
 }
