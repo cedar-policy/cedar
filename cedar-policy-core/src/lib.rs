@@ -26,6 +26,8 @@ pub mod authorizer;
 mod from_normalized_str;
 pub use from_normalized_str::*;
 pub mod entities;
+#[macro_use]
+mod error_macros;
 pub mod est;
 pub mod evaluator;
 pub mod extensions;

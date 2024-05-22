@@ -77,10 +77,38 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("{error_kind}")]
+#[error("for policy `{}`, {}", location.policy_id(), kind)]
 pub struct ValidationError {
     location: SourceLocation,
-    error_kind: ValidationErrorKind,
+    kind: ValidationErrorKind,
+}
+
+impl ValidationError {
+    pub(crate) fn with_policy_id(
+        id: PolicyID,
+        source_loc: Option<Loc>,
+        kind: ValidationErrorKind,
+    ) -> Self {
+        Self {
+            kind,
+            location: SourceLocation::new(id, source_loc),
+        }
+    }
+
+    /// Deconstruct this into its component source location and error kind.
+    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
+        (self.location, self.kind)
+    }
+
+    /// Extract details about the exact issue detected by the validator.
+    pub fn error_kind(&self) -> &ValidationErrorKind {
+        &self.kind
+    }
+
+    /// Extract the location where the validator found the issue.
+    pub fn location(&self) -> &SourceLocation {
+        &self.location
+    }
 }
 
 // custom impl of `Diagnostic`: source location and source code are from
@@ -96,55 +124,27 @@ impl Diagnostic for ValidationError {
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.code()
+        self.kind.code()
     }
 
     fn severity(&self) -> Option<miette::Severity> {
-        self.error_kind.severity()
+        self.kind.severity()
     }
 
     fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.url()
+        self.kind.url()
     }
 
     fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.help()
+        self.kind.help()
     }
 
     fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.error_kind.related()
+        self.kind.related()
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error_kind.diagnostic_source()
-    }
-}
-
-impl ValidationError {
-    pub(crate) fn with_policy_id(
-        id: PolicyID,
-        source_loc: Option<Loc>,
-        error_kind: ValidationErrorKind,
-    ) -> Self {
-        Self {
-            error_kind,
-            location: SourceLocation::new(id, source_loc),
-        }
-    }
-
-    /// Deconstruct this into its component source location and error kind.
-    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
-        (self.location, self.error_kind)
-    }
-
-    /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
-        &self.error_kind
-    }
-
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
+        self.kind.diagnostic_source()
     }
 }
 
@@ -322,6 +322,7 @@ pub struct UnspecifiedEntityError {
 
 /// The structure for validation warnings.
 #[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
+#[error("for policy `{}`, {}", location.policy_id(), kind)]
 pub struct ValidationWarning {
     pub(crate) location: SourceLocation,
     pub(crate) kind: ValidationWarningKind,
@@ -331,10 +332,10 @@ impl ValidationWarning {
     pub(crate) fn with_policy_id(
         id: PolicyID,
         source_loc: Option<Loc>,
-        warning_kind: ValidationWarningKind,
+        kind: ValidationWarningKind,
     ) -> Self {
         Self {
-            kind: warning_kind,
+            kind,
             location: SourceLocation::new(id, source_loc),
         }
     }
@@ -349,17 +350,6 @@ impl ValidationWarning {
 
     pub fn to_kind_and_location(self) -> (SourceLocation, ValidationWarningKind) {
         (self.location, self.kind)
-    }
-}
-
-impl std::fmt::Display for ValidationWarning {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "validation warning on policy `{}`: {}",
-            self.location.policy_id(),
-            self.kind
-        )
     }
 }
 

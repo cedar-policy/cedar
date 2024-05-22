@@ -42,7 +42,6 @@ use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
-pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
@@ -1239,7 +1238,10 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.value])?,
+            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+                [self.value],
+                Extensions::all_available(),
+            )?,
         ))
     }
 }
@@ -1291,6 +1293,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
+                Extensions::all_available(),
             )?,
         ))
     }
@@ -1709,7 +1712,9 @@ impl PolicySet {
             self.policies.insert(id, policy);
             Ok(())
         } else {
-            Err(PolicySetError::ExpectedStatic)
+            Err(PolicySetError::ExpectedStatic(
+                policy_set_error_structs::ExpectedStatic {},
+            ))
         }
     }
 
@@ -1718,7 +1723,9 @@ impl PolicySet {
     /// This will error if the policy is not a static policy.
     pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::PolicyNonexistentError(policy_id));
+            return Err(PolicySetError::PolicyNonexistentError(
+                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            ));
         };
         if self
             .ast
@@ -1729,7 +1736,9 @@ impl PolicySet {
         } else {
             //Restore self.policies
             self.policies.insert(policy_id.clone(), policy);
-            Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
+            Err(PolicySetError::PolicyNonexistentError(
+                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            ))
         }
     }
 
@@ -1747,7 +1756,9 @@ impl PolicySet {
     /// This will error if `policy_id` is not a template.
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
-            return Err(PolicySetError::TemplateNonexistentError(template_id));
+            return Err(PolicySetError::TemplateNonexistentError(
+                policy_set_error_structs::TemplateNonexistentError { template_id },
+            ));
         };
         // If self.templates and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.templates.
@@ -1760,12 +1771,14 @@ impl PolicySet {
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
                 self.templates.insert(template_id.clone(), template);
                 Err(PolicySetError::RemoveTemplateWithActiveLinksError(
-                    template_id,
+                    policy_set_error_structs::RemoveTemplateWithActiveLinksError { template_id },
                 ))
             }
             Err(ast::PolicySetTemplateRemovalError::NotTemplateError(_)) => {
                 self.templates.insert(template_id.clone(), template);
-                Err(PolicySetError::RemoveTemplateNotTemplateError(template_id))
+                Err(PolicySetError::RemoveTemplateNotTemplateError(
+                    policy_set_error_structs::RemoveTemplateNotTemplateError { template_id },
+                ))
             }
             Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
                 panic!("Found template policy in self.templates but not in self.ast");
@@ -1782,7 +1795,11 @@ impl PolicySet {
         self.ast
             .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
-                |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
+                |_| {
+                    Err(PolicySetError::TemplateNonexistentError(
+                        policy_set_error_structs::TemplateNonexistentError { template_id },
+                    ))
+                },
                 |v| Ok(v.map(PolicyId::ref_cast)),
             )
     }
@@ -1864,7 +1881,7 @@ impl PolicySet {
         // trying to link a static policy, which we want to error on here.
         let Some(template) = self.templates.get(&template_id) else {
             return Err(if self.policies.contains_key(&template_id) {
-                PolicySetError::ExpectedTemplate
+                PolicySetError::ExpectedTemplate(policy_set_error_structs::ExpectedTemplate {})
             } else {
                 PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
                     id: template_id.into(),
@@ -1913,11 +1930,13 @@ impl PolicySet {
         entity_uids
     }
 
-    /// Unlink a template link from the policy set.
+    /// Unlink a template-linked policy from the policy set.
     /// Returns the policy that was unlinked.
     pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::LinkNonexistentError(policy_id));
+            return Err(PolicySetError::LinkNonexistentError(
+                policy_set_error_structs::LinkNonexistentError { policy_id },
+            ));
         };
         // If self.policies and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.policies.
@@ -1927,7 +1946,9 @@ impl PolicySet {
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
                 self.policies.insert(policy_id.clone(), policy);
-                Err(PolicySetError::UnlinkLinkNotLinkError(policy_id))
+                Err(PolicySetError::UnlinkLinkNotLinkError(
+                    policy_set_error_structs::UnlinkLinkNotLinkError { policy_id },
+                ))
             }
             Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
                 panic!("Found linked policy in self.policies but not in self.ast")

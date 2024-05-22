@@ -2296,11 +2296,14 @@ mod test {
         println!("{type_str}");
         let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
-        let type_from_schema_type =
-            ValidatorNamespaceDef::try_schema_type_into_validator_type(None, parsed_schema_type)
-                .expect("Schema type should have converted to type.")
-                .resolve_type_defs(&HashMap::new())
-                .unwrap();
+        let type_from_schema_type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+            None,
+            parsed_schema_type,
+            Extensions::all_available(),
+        )
+        .expect("Schema type should have converted to type.")
+        .resolve_type_defs(&HashMap::new())
+        .unwrap();
         assert_eq!(ty, type_from_schema_type);
     }
 

@@ -321,6 +321,13 @@ impl Expr {
         ExprBuilder::new().ite(test_expr, then_expr, else_expr)
     }
 
+    /// Create a ternary (if-then-else) `Expr`.
+    /// Takes `Arc`s instead of owned `Expr`s.
+    /// `test_expr` must evaluate to a Bool type
+    pub fn ite_arc(test_expr: Arc<Expr>, then_expr: Arc<Expr>, else_expr: Arc<Expr>) -> Self {
+        ExprBuilder::new().ite_arc(test_expr, then_expr, else_expr)
+    }
+
     /// Create a 'not' expression. `e` must evaluate to Bool type
     pub fn not(e: Expr) -> Self {
         ExprBuilder::new().not(e)
@@ -824,6 +831,22 @@ impl<T> ExprBuilder<T> {
             test_expr: Arc::new(test_expr),
             then_expr: Arc::new(then_expr),
             else_expr: Arc::new(else_expr),
+        })
+    }
+
+    /// Create a ternary (if-then-else) `Expr`.
+    /// Takes `Arc`s instead of owned `Expr`s.
+    /// `test_expr` must evaluate to a Bool type
+    pub fn ite_arc(
+        self,
+        test_expr: Arc<Expr<T>>,
+        then_expr: Arc<Expr<T>>,
+        else_expr: Arc<Expr<T>>,
+    ) -> Expr<T> {
+        self.with_expr_kind(ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
         })
     }
 

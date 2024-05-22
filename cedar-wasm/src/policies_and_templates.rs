@@ -76,7 +76,7 @@ pub fn policy_text_to_json(cedar_str: &str) -> PolicyToJsonResult {
     match parse_policy_or_template_to_est(cedar_str) {
         Ok(policy) => PolicyToJsonResult::Success { policy },
         Err(err) => PolicyToJsonResult::Error {
-            errors: err.errors_as_strings(),
+            errors: err.iter().map(ToString::to_string).collect(),
         },
     }
 }
@@ -97,7 +97,7 @@ pub enum CheckParsePolicySetResult {
 pub fn check_parse_policy_set(input_policies_str: &str) -> CheckParsePolicySetResult {
     match PolicySet::from_str(input_policies_str) {
         Err(parse_errors) => CheckParsePolicySetResult::Error {
-            errors: parse_errors.errors_as_strings(),
+            errors: parse_errors.iter().map(ToString::to_string).collect(),
         },
         Ok(policy_set) => {
             let policies_count: Result<i32, <i32 as TryFrom<usize>>::Error> =
@@ -132,7 +132,7 @@ pub enum CheckParseTemplateResult {
 pub fn check_parse_template(template_str: &str) -> CheckParseTemplateResult {
     match Template::from_str(template_str) {
         Err(parse_errs) => CheckParseTemplateResult::Error {
-            errors: parse_errs.errors_as_strings(),
+            errors: parse_errs.iter().map(ToString::to_string).collect(),
         },
         Ok(template) => match template.slots().count() {
             1 | 2 => CheckParseTemplateResult::Success {

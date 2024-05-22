@@ -1,0 +1,34 @@
+// Test fix for #862 where blank lines in strings were removed.
+
+// The output of the formatter should change string or eid content (including
+// removing blank lines) because this will change the policy's semantics. It is
+// ok to remove blank lines everywhere else.
+
+permit(principal == User
+
+::
+
+"alice", action, resource 
+
+in Folder::"Name
+
+	
+with a newline") when // trailing comment
+
+{
+
+    context.foo == "string
+
+	with
+  
+  newlines and other	strange characters🐈👍\"
+
+// even something that looks like a comment
+  
+"
+
+// Quotes in comments "
+
+// shouldn't matter "
+
+};

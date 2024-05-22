@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Significantly reworked all public-facing error types to address some issues
-  and improve consistency. See #745.
+  and improve consistency. See issue #745.
 - Finalized the `ffi` module which was preview-released in 3.2.0.
   This involved a few additional API breaking changes in `ffi`. See #757.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
@@ -25,12 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
+- Removed the `error` extension function, which was previously used during partial evaluation.
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
   introduced in 3.2.0. See #757.
+- Removed `ParseErrors::errors_as_strings`.  Callers should consider examining
+  the rich data provided by `miette::Diagnostic`, for instance `.help()` and
+  `labels()`. Callers can continue using the same behavior by calling
+  `.iter().map(ToString::to_string)`. (#882, resolving #543)
 
-## [3.2.0] - Coming Soon
+### Fixed
+
+- JSON format Cedar schemas will now fail to parse if they reference an unknown
+  extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
+- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
+
+## [3.2.0] - 2024-05-17
 
 ### Added
 
@@ -79,6 +91,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   valid scope constraint. (#818, resolving #563)
 - Fixed policy formatter reordering some comments around if-then-else and
   entity identifier expressions. (#861, resolving #787)
+
+## [3.1.4] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
 ## [3.1.3] - 2024-04-15
 
@@ -313,6 +331,12 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.6] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
+
 ## [2.4.5] - 2023-04-01
 
 ### Changed
@@ -526,13 +550,15 @@ Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main
-[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.2.0
+[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
+[3.1.4]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.1.4
 [3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.6...v3.0.0
+[2.4.6]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v2.4.6
 [2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5
 [2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3

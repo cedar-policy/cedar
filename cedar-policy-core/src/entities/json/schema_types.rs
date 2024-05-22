@@ -18,7 +18,9 @@ use crate::ast::{
     BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Name, PartialValue, Type, Unknown,
     Value, ValueKind,
 };
-use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::extensions::{
+    extension_function_lookup_errors, ExtensionFunctionLookupError, Extensions,
+};
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -351,9 +353,10 @@ pub fn schematype_of_restricted_expr(
         }
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
             let efunc = extensions.func(fn_name)?;
-            Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
-                name: efunc.name().clone()
-            })?)
+            Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType(extension_function_lookup_errors::HasNoTypeError {
+                name: efunc.name().clone(),
+                source_loc: rexpr.source_loc().cloned(),
+            }))?)
         }
         ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
             None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),

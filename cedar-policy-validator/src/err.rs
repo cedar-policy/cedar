@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Display};
 
 use cedar_policy_core::{
     ast::{EntityAttrEvaluationError, EntityUID, Name},
@@ -203,6 +203,10 @@ pub enum SchemaError {
     #[error("the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprEscapeUsed,
+    /// The schema used an extension type that the validator doesn't know about.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownExtensionType(UnknownExtensionType),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -293,5 +297,20 @@ impl JsonDeserializationError {
                 }
             }
         }
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("unknown extension type `{actual}`")]
+pub struct UnknownExtensionType {
+    pub(crate) actual: Name,
+    pub(crate) suggested_replacement: Option<String>,
+}
+
+impl Diagnostic for UnknownExtensionType {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.suggested_replacement
+            .as_ref()
+            .map(|suggestion| Box::new(format!("did you mean `{suggestion}`?")) as Box<dyn Display>)
     }
 }
