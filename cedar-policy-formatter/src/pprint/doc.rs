@@ -38,15 +38,14 @@ impl Doc for ASTNode<Option<VariableDef>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let vd = self.as_inner()?;
         let start_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-        let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
-
         Some(match &vd.ineq {
             Some((op, rhs)) => get_leading_comment_doc_from_str(&start_comment.leading_comment)
                 .append(
                     var_doc
                         .append(get_trailing_comment_doc_from_str(
                             &start_comment.trailing_comment,
+                            RcDoc::nil(),
                         ))
                         .append(RcDoc::line())
                         .append(add_comment(
@@ -57,16 +56,10 @@ impl Doc for ASTNode<Option<VariableDef>> {
                         .group()
                         .append(
                             RcDoc::line()
-                                .append(get_leading_comment_doc_from_str(
-                                    &end_comment.leading_comment,
-                                ))
                                 .append(rhs.to_doc(context))
                                 .nest(context.config.indent_width),
                         )
-                        .group()
-                        .append(get_trailing_comment_doc_from_str(
-                            &end_comment.trailing_comment,
-                        )),
+                        .group(),
                 ),
             None => add_comment(var_doc, start_comment, RcDoc::nil()),
         })
@@ -91,21 +84,23 @@ impl Doc for ASTNode<Option<Cond>> {
                     cond_doc
                         .append(get_trailing_comment_doc_from_str(
                             &cond_comment.trailing_comment,
+                            RcDoc::line(),
                         ))
-                        .append(RcDoc::line())
                         .append(
                             get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
                                 RcDoc::text("{").append(
-                                    get_trailing_comment_doc_from_str(&lb_comment.trailing_comment)
-                                        .append(RcDoc::line())
-                                        .append(
-                                            get_leading_comment_doc_from_str(&expr_leading_comment)
-                                                .append(expr_doc.group()),
-                                        )
-                                        .nest(context.config.indent_width)
-                                        .append(RcDoc::line())
-                                        .append(rb_doc)
-                                        .group(),
+                                    get_trailing_comment_doc_from_str(
+                                        &lb_comment.trailing_comment,
+                                        RcDoc::line(),
+                                    )
+                                    .append(
+                                        get_leading_comment_doc_from_str(&expr_leading_comment)
+                                            .append(expr_doc.group()),
+                                    )
+                                    .nest(context.config.indent_width)
+                                    .append(RcDoc::line())
+                                    .append(rb_doc)
+                                    .group(),
                                 ),
                             ),
                         )
@@ -116,15 +111,15 @@ impl Doc for ASTNode<Option<Cond>> {
                 cond_doc
                     .append(get_trailing_comment_doc_from_str(
                         &cond_comment.trailing_comment,
+                        RcDoc::line(),
                     ))
-                    .append(RcDoc::line())
                     .append(
                         get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
                             RcDoc::text("{")
                                 .append(get_trailing_comment_doc_from_str(
                                     &lb_comment.trailing_comment,
+                                    RcDoc::line(),
                                 ))
-                                .append(RcDoc::line())
                                 .append(rb_doc)
                                 .group(),
                         ),
@@ -140,20 +135,20 @@ impl Doc for ASTNode<Option<Expr>> {
         match self.as_inner()?.expr.as_ref() {
             ExprData::If(c, t, e) => {
                 fn pp_group<'n>(
-                    s: &str,
+                    s: &'n str,
                     c: Comment,
                     e: &'n ASTNode<Option<Expr>>,
                     context: &mut Context<'_>,
                 ) -> RcDoc<'n> {
-                    add_comment(RcDoc::as_string(s), c, RcDoc::nil()).append(
+                    add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
                         RcDoc::line()
                             .append(e.to_doc(context))
                             .nest(context.config.indent_width),
                     )
                 }
                 let if_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(c.info.0.end, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(t.info.0.end, &mut context.tokens)?;
+                let then_comment = get_comment_after_end(c.info.0.end, &mut context.tokens)?;
+                let else_comment = get_comment_after_end(t.info.0.end, &mut context.tokens)?;
                 Some(
                     pp_group("if", if_comment, c, context)
                         .append(RcDoc::line())
@@ -266,7 +261,7 @@ impl Doc for ASTNode<Option<Relation>> {
 
 impl Doc for AddOp {
     fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
-        Some(RcDoc::text(self.to_string()))
+        Some(RcDoc::as_string(self))
     }
 }
 
@@ -306,7 +301,7 @@ impl Doc for ASTNode<Option<Add>> {
 
 impl Doc for MultOp {
     fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
-        Some(RcDoc::text(self.to_string()))
+        Some(RcDoc::as_string(self))
     }
 }
 
@@ -365,9 +360,9 @@ impl Doc for ASTNode<Option<Unary>> {
                                 .map(|i| {
                                     Some(add_comment(
                                         if matches!(op, NegOp::Bang(_)) {
-                                            RcDoc::as_string("!")
+                                            RcDoc::text("!")
                                         } else {
-                                            RcDoc::as_string("-")
+                                            RcDoc::text("-")
                                         },
                                         comment.get(i as usize)?.clone(),
                                         RcDoc::nil(),
@@ -412,7 +407,7 @@ impl Doc for ASTNode<Option<RecInit>> {
             key_doc
                 .append(RcDoc::line_())
                 .append(add_comment(
-                    RcDoc::as_string(":"),
+                    RcDoc::text(":"),
                     get_comment_after_end(e.0.info.0.end, &mut context.tokens)?,
                     RcDoc::nil(),
                 ))
@@ -433,12 +428,12 @@ impl Doc for ASTNode<Option<Name>> {
                 path.get(1..)?
                     .iter()
                     .fold(
-                        Some((path.get(0)?.to_doc(context)?, path.get(0)?)),
+                        Some((path.first()?.to_doc(context)?, path.first()?)),
                         |pair, p| {
                             let (d, e) = pair?;
                             Some((
                                 d.append(add_comment(
-                                    RcDoc::as_string("::"),
+                                    RcDoc::text("::"),
                                     get_comment_after_end(e.info.0.end, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
@@ -449,7 +444,7 @@ impl Doc for ASTNode<Option<Name>> {
                     )?
                     .0
                     .append(add_comment(
-                        RcDoc::as_string("::"),
+                        RcDoc::text("::"),
                         get_comment_after_end(path.last()?.info.0.end, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
@@ -462,6 +457,9 @@ impl Doc for ASTNode<Option<Name>> {
 impl Doc for ASTNode<Option<Str>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
+        // Note: the input string may contain newlines, but `utils::create_multiline_doc`
+        // _cannot_ be used here because this function will change indentation
+        // on newlines, which may alter the string content.
         Some(add_comment(
             RcDoc::as_string(e),
             get_comment_at_start(self.info.0.start, &mut context.tokens)?,
@@ -537,12 +535,12 @@ impl Doc for ASTNode<Option<Primary>> {
                     el.get(1..)?
                         .iter()
                         .fold(
-                            Some((el.get(0)?.to_doc(context)?, el.get(0)?)),
+                            Some((el.first()?.to_doc(context)?, el.first()?)),
                             |pair, v| {
                                 let (d, e) = pair?;
                                 Some((
                                     d.append(add_comment(
-                                        RcDoc::as_string(","),
+                                        RcDoc::text(","),
                                         get_comment_after_end(e.info.0.end, &mut context.tokens)?,
                                         RcDoc::nil(),
                                     ))
@@ -572,12 +570,12 @@ impl Doc for ASTNode<Option<Primary>> {
                     ri.get(1..)?
                         .iter()
                         .fold(
-                            Some((ri.get(0)?.to_doc(context)?, ri.get(0)?)),
+                            Some((ri.first()?.to_doc(context)?, ri.first()?)),
                             |pair, v| {
                                 let (d, e) = pair?;
                                 Some((
                                     d.append(add_comment(
-                                        RcDoc::as_string(","),
+                                        RcDoc::text(","),
                                         get_comment_after_end(e.info.0.end, &mut context.tokens)?,
                                         RcDoc::nil(),
                                     ))
@@ -630,12 +628,12 @@ impl Doc for ASTNode<Option<MemAccess>> {
                     args.get(1..)?
                         .iter()
                         .fold(
-                            Some((args.get(0)?.to_doc(context)?, args.get(0)?)),
+                            Some((args.first()?.to_doc(context)?, args.first()?)),
                             |pair, arg| {
                                 let (d, e) = pair?;
                                 Some((
                                     d.append(add_comment(
-                                        RcDoc::as_string(","),
+                                        RcDoc::text(","),
                                         get_comment_after_end(e.info.0.end, &mut context.tokens)?,
                                         RcDoc::nil(),
                                     ))
@@ -726,7 +724,7 @@ impl Doc for ASTNode<Option<Policy>> {
             get_leading_comment_at_start(policy.effect.info.0.start, &mut context.tokens)?;
         let eff_doc = policy.effect.to_doc(context)?;
         let vars = &policy.variables;
-        let principal_doc = vars.get(0)?.to_doc(context)?;
+        let principal_doc = vars.first()?.to_doc(context)?;
         let action_doc = vars.get(1)?.to_doc(context)?;
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
@@ -739,7 +737,7 @@ impl Doc for ASTNode<Option<Policy>> {
             principal_doc
                 .append(add_comment(
                     RcDoc::text(","),
-                    get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(vars.first()?.info.0.end, &mut context.tokens)?,
                     RcDoc::space(),
                 ))
                 .append(action_doc)
@@ -757,7 +755,7 @@ impl Doc for ASTNode<Option<Policy>> {
                     principal_doc
                         .append(add_comment(
                             RcDoc::text(","),
-                            get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                            get_comment_after_end(vars.first()?.info.0.end, &mut context.tokens)?,
                             RcDoc::hardline(),
                         ))
                         .append(action_doc)

@@ -84,7 +84,7 @@ impl<'a> Extensions<'a> {
             .iter()
             .filter_map(|ext| ext.get_func(name))
             .collect();
-        match extension_funcs.get(0) {
+        match extension_funcs.first() {
             None => Err(ExtensionsError::FuncDoesNotExist { name: name.clone() }),
             Some(first) if extension_funcs.len() == 1 => Ok(first),
             _ => Err(ExtensionsError::FuncMultiplyDefined {
@@ -116,10 +116,10 @@ impl<'a> Extensions<'a> {
             .filter(|f| {
                 f.is_constructor()
                     && f.return_type() == Some(return_type)
-                    && f.arg_types().get(0).map(Option::as_ref) == Some(Some(arg_type))
+                    && f.arg_types().first().map(Option::as_ref) == Some(Some(arg_type))
             })
             .collect::<Vec<_>>();
-        match matches.get(0) {
+        match matches.first() {
             None => Ok(None),
             Some(first) if matches.len() == 1 => Ok(Some(first)),
             _ => Err(ExtensionsError::MultipleConstructorsSameSignature {
