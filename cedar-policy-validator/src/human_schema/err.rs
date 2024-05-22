@@ -26,7 +26,7 @@ use cedar_policy_core::parser::{
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
-use miette::{Diagnostic, LabeledSpan, SourceSpan};
+use miette::{Diagnostic, LabeledSpan, Severity, SourceSpan};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -415,17 +415,55 @@ impl Diagnostic for ToJsonSchemaError {
     }
 }
 
+/// Warnings when builtin Cedar names are shadowed
+#[derive(Debug, Clone, Error)]
+#[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
+pub struct ShadowsBuiltinWarning {
+    pub(crate) name: SmolStr,
+    pub(crate) loc: Loc,
+}
+
+impl Diagnostic for ShadowsBuiltinWarning {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(std::iter::once(LabeledSpan::underline(
+            self.loc.span,
+        ))))
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(Severity::Warning)
+    }
+}
+
+/// Warnings when entity names are shadowed by common type names
+#[derive(Debug, Clone, Error)]
+#[error("The common type name {name} shadows an entity name")]
+pub struct ShadowsEntityWarning {
+    pub(crate) name: SmolStr,
+    pub(crate) entity_loc: Loc,
+    pub(crate) common_loc: Loc,
+}
+
+impl Diagnostic for ShadowsEntityWarning {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(
+            std::iter::once(&self.entity_loc)
+                .chain(std::iter::once(&self.common_loc))
+                .map(|loc| LabeledSpan::underline(loc)),
+        ))
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(Severity::Warning)
+    }
+}
+
 #[derive(Debug, Clone, Error, Diagnostic)]
-#[diagnostic(severity(warning))]
 pub enum SchemaWarning {
-    #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
-    ShadowsBuiltin { name: SmolStr, loc: Loc },
-    #[error("The common type name {name} shadows an entity name")]
-    ShadowsEntity {
-        name: SmolStr,
-        entity_loc: Loc,
-        common_loc: Loc,
-    },
-    #[error("The namespace {name} uses a name that will be reserved in the future. All namespaces beginning with `__` will be reserved in a future version.")]
-    UsesBuiltinNamespace { name: SmolStr, loc: Loc },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ShadowsBuiltin(ShadowsBuiltinWarning),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ShadowsEntity(ShadowsEntityWarning),
 }
