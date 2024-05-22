@@ -77,7 +77,7 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("{kind}")]
+#[error("for policy `{}`, {}", location.policy_id(), kind)]
 pub struct ValidationError {
     location: SourceLocation,
     kind: ValidationErrorKind,
@@ -322,7 +322,7 @@ pub struct UnspecifiedEntityError {
 
 /// The structure for validation warnings.
 #[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
-#[error("validation warning on policy `{}`: {}", location.policy_id(), kind)]
+#[error("for policy `{}`, {}", location.policy_id(), kind)]
 pub struct ValidationWarning {
     pub(crate) location: SourceLocation,
     pub(crate) kind: ValidationWarningKind,

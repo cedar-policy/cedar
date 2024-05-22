@@ -146,7 +146,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "validation warning on policy `test`: identifier `say_һello` contains mixed scripts"
+            "for policy `test`, identifier `say_һello` contains mixed scripts"
         );
         assert_eq!(
             location,
@@ -191,7 +191,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "validation warning on policy `test`: string `\"*_һello\"` contains mixed scripts"
+            "for policy `test`, string `\"*_һello\"` contains mixed scripts"
         );
         assert_eq!(
             location,
@@ -223,7 +223,7 @@ mod test {
             kind,
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "validation warning on policy `test`: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
+        assert_eq!(format!("{warning}"), "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(
             location,
             &SourceLocation::new(

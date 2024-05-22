@@ -486,9 +486,11 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `foo_type`")
-                .exactly_one_underline("foo_type")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `foo_type`",
+            )
+            .exactly_one_underline("foo_type")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -533,7 +535,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .help("try replacing `==` with `in` in the principal clause and the resource clause")
             .exactly_one_underline(src)
@@ -600,10 +602,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `bar_type`")
-                .exactly_one_underline("bar_type")
-                .help("did you mean `foo_type`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `bar_type`",
+            )
+            .exactly_one_underline("bar_type")
+            .help("did you mean `foo_type`?")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -619,9 +623,11 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"foo_name"`"#)
-                .exactly_one_underline(r#"Action::"foo_name""#)
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"foo_name"`"#,
+            )
+            .exactly_one_underline(r#"Action::"foo_name""#)
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -779,10 +785,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"bar_name"`"#)
-                .exactly_one_underline(r#"Action::"bar_name""#)
-                .help(r#"did you mean `Action::"foo_name"`?"#)
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"bar_name"`"#,
+            )
+            .exactly_one_underline(r#"Action::"bar_name""#)
+            .help(r#"did you mean `Action::"foo_name"`?"#)
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
         Ok(())
@@ -846,7 +854,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unrecognized action `Bogus::Action::"foo_name"`"#,
+                r#"for policy `policy0`, unrecognized action `Bogus::Action::"foo_name"`"#,
             )
             .exactly_one_underline(r#"Bogus::Action::"foo_name""#)
             .help(r#"did you mean `NS::Action::"foo_name"`?"#)
@@ -917,10 +925,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `Bogus::Foo`")
-                .exactly_one_underline("Bogus::Foo")
-                .help("did you mean `NS::Foo`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `Bogus::Foo`",
+            )
+            .exactly_one_underline("Bogus::Foo")
+            .help("did you mean `NS::Foo`?")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -1177,7 +1187,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1201,7 +1211,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1225,7 +1235,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1386,10 +1396,12 @@ mod test {
         expect_err(
             src,
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `biz`")
-                .exactly_one_underline("biz")
-                .help("did you mean `baz`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `biz`",
+            )
+            .exactly_one_underline("biz")
+            .help("did you mean `baz`?")
+            .build(),
         );
 
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
