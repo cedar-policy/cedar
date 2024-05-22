@@ -147,11 +147,6 @@ impl TransitiveClosureError {
     pub fn get_kind(&self) -> HierarchyKind {
         self.kind.clone()
     }
-
-    /// Getter of error message
-    pub fn get_message(&self) -> SmolStr {
-        self.message.clone()
-    }
 }
 
 /// Schema constructs
@@ -224,8 +219,8 @@ pub struct CycleInActionHierarchyError {
 
 impl CycleInActionHierarchyError {
     /// Getter of the action in the cycle
-    pub fn get_node_in_cycle(&self) -> EntityUid {
-        self.node.clone()
+    pub fn get_node_in_cycle(&self) -> SmolStr {
+        self.node.to_smolstr()
     }
 }
 
@@ -238,8 +233,8 @@ pub struct CycleInCommonTypeReferencesError {
 
 impl CycleInCommonTypeReferencesError {
     /// Getter of the common type id in the cycle
-    pub fn get_node_in_cycle(&self) -> Name {
-        self.node.clone()
+    pub fn get_node_in_cycle(&self) -> SmolStr {
+        self.node.to_smolstr()
     }
 }
 
@@ -252,8 +247,8 @@ pub struct ContextOrShapeNotRecordError {
 
 impl ContextOrShapeNotRecordError {
     /// Getter of the context or shape
-    pub fn get_context_or_shape(&self) -> ContextOrShape {
-        self.context_or_shape.clone()
+    pub fn get_context_or_shape(&self) -> SmolStr {
+        self.context_or_shape.to_smolstr()
     }
 }
 
@@ -266,8 +261,8 @@ pub struct ActionAttributesContainEmptySetError {
 
 impl ActionAttributesContainEmptySetError {
     /// Getter of the action uid
-    pub fn get_action_uid(&self) -> EntityUid {
-        self.action_uid.clone()
+    pub fn get_action(&self) -> SmolStr {
+        self.action_uid.to_smolstr()
     }
 }
 
@@ -283,12 +278,8 @@ pub struct UnsupportedActionAttributeError {
 
 impl UnsupportedActionAttributeError {
     /// Getter of the action uid
-    pub fn get_action_uid(&self) -> EntityUid {
-        self.action_uid.clone()
-    }
-    /// Getter of the escape type
-    pub fn get_escape_type(&self) -> SmolStr {
-        self.escape_type.clone()
+    pub fn get_action(&self) -> SmolStr {
+        self.action_uid.to_smolstr()
     }
 }
 
@@ -299,25 +290,11 @@ pub struct JsonSerializationError {
     pub(crate) error: serde_json::Error,
 }
 
-impl JsonSerializationError {
-    /// Getter of the underlying `serde_json` error
-    pub fn get_serde_json_error(self) -> serde_json::Error {
-        self.error
-    }
-}
-
 /// Unsupported feature error
 #[derive(Debug, Clone, Diagnostic, Error)]
 #[error("unsupported feature used in schema: {feature}")]
 pub struct UnsupportedFeatureError {
     feature: SmolStr,
-}
-
-impl UnsupportedFeatureError {
-    /// Getter of the underlying serde_json error
-    pub fn get_unsupported_feature(self) -> SmolStr {
-        self.feature.clone()
-    }
 }
 
 /// Action declared in `entityType` list error
@@ -541,7 +518,7 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
 /// Describes in what action context or entity type shape a schema parsing error
 /// occurred.
 #[derive(Debug, Clone)]
-pub enum ContextOrShape {
+enum ContextOrShape {
     /// An error occurred when parsing the context for the action with this
     /// `EntityUid`.
     ActionContext(EntityUid),
