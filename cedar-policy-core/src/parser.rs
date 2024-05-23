@@ -293,8 +293,8 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParse
         return Err(err::LiteralParseError::Parse(errs));
     };
     if errs.is_empty() {
-        match ast.clone().into_expr_kind() {
-            ast::ExprKind::Lit(v) => Ok(v),
+        match ast.expr_kind() {
+            ast::ExprKind::Lit(v) => Ok(v.clone()),
             _ => Err(err::LiteralParseError::InvalidLiteral(ast)),
         }
     } else {
