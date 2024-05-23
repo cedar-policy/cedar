@@ -297,7 +297,7 @@ pub enum PartialValueToRestrictedExprError {
 }
 
 impl std::str::FromStr for RestrictedExpr {
-    type Err = RestrictedExprParseError;
+    type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
         parser::parse_restrictedexpr(s)
@@ -653,20 +653,6 @@ impl RestrictedExprError {
     }
 }
 
-/// Errors possible from `RestrictedExpr::from_str()`
-#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-pub enum RestrictedExprParseError {
-    /// Failed to parse the expression entirely
-    #[error("failed to parse restricted expression: {0}")]
-    #[diagnostic(transparent)]
-    Parse(#[from] ParseErrors),
-    /// Parsed successfully as an expression, but failed to construct a
-    /// restricted expression, for the reason indicated in the underlying error
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    RestrictedExpr(#[from] RestrictedExprError),
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -721,14 +707,12 @@ mod test {
         let str = r#"{ foo: 37, bar: "hi", foo: 101 }"#;
         assert_eq!(
             RestrictedExpr::from_str(str),
-            Err(RestrictedExprParseError::Parse(ParseErrors(vec![
-                ParseError::ToAST(ToASTError::new(
-                    ToASTErrorKind::ExprConstructionError(
-                        ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
-                    ),
-                    Loc::new(0..32, Arc::from(str))
-                ))
-            ]))),
+            Err(ParseErrors(vec![ParseError::ToAST(ToASTError::new(
+                ToASTErrorKind::ExprConstructionError(
+                    ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
+                ),
+                Loc::new(0..32, Arc::from(str))
+            ))])),
         )
     }
 }

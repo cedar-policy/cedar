@@ -32,9 +32,7 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{
-    ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
-}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
+use cedar_policy_core::ast::{ContextCreationError, ExprConstructionError, Integer}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est;
@@ -2927,7 +2925,7 @@ fn ip_extension_name() -> ast::Name {
 }
 
 impl FromStr for RestrictedExpression {
-    type Err = RestrictedExprParseError;
+    type Err = ParseErrors;
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
