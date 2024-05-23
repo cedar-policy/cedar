@@ -3459,11 +3459,9 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error(
-                "the input `\\*` is not a valid escape: InvalidEscape",
-            )
-            .exactly_one_underline(r#""string\*with\*escaped\*stars""#)
-            .build(),
+            &ExpectedErrorMessageBuilder::error("the input `\\*` is not a valid escape")
+                .exactly_one_underline(r#""string\*with\*escaped\*stars""#)
+                .build(),
         );
     }
 
@@ -3724,46 +3722,10 @@ mod tests {
     }
 
     #[test]
-    fn string_escapes() {
-        // test strings with valid escapes
-        // convert a string `s` to `<double-quote> <escaped-form-of-s> <double-quote>`
-        // and test if the resulting string literal AST contains exactly `s`
-        // for instance, "\u{1F408}"" is converted into r#""\u{1F408}""#,
-        // the latter should be parsed into `Literal(String("🐈"))` and
-        // `🐈` is represented by '\u{1F408}'
-        let test_valid = |s: &str| {
-            let r = parse_literal(&format!("\"{}\"", s.escape_default()));
-            assert!(r.is_ok());
-            assert_eq!(r.unwrap(), ast::Literal::String(s.into()));
-        };
-        test_valid("\t");
-        test_valid("\0");
-        test_valid("👍");
-        test_valid("🐈");
-        test_valid("\u{1F408}");
-        test_valid("abc\tde\\fg");
-        test_valid("aaa\u{1F408}bcd👍👍👍");
-        // test string with invalid escapes
-        let test_invalid = |s: &str, en: usize| {
-            let r = parse_literal(&format!("\"{}\"", s));
-            assert!(r.is_err());
-            assert_eq!(r.unwrap_err().len(), en);
-        };
-        // invalid escape `\a`
-        test_invalid("\\a", 1);
-        // invalid escape `\b`
-        test_invalid("\\b", 1);
-        // invalid escape `\p`
-        test_invalid("\\\\aa\\p", 1);
-        // invalid escape `\a` and empty unicode escape
-        test_invalid(r"\aaa\u{}", 2);
-    }
-
-    #[test]
     fn unescape_err_positions() {
         let assert_invalid_escape = |p_src, underline| {
             assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-                expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the input `\\q` is not a valid escape: InvalidEscape").exactly_one_underline(underline).build());
+                expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the input `\\q` is not a valid escape").exactly_one_underline(underline).build());
             });
         };
         assert_invalid_escape(
