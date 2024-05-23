@@ -737,7 +737,7 @@ impl<'e> Evaluator<'e> {
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),
-                                        map.keys().cloned().collect(),
+                                        map.keys(),
                                         source_loc.cloned(),
                                     )
                                 })
@@ -750,7 +750,7 @@ impl<'e> Evaluator<'e> {
                         } else {
                             Err(EvaluationError::record_attr_does_not_exist(
                                 attr.clone(),
-                                map.keys().cloned().collect(),
+                                map.keys(),
                                 source_loc.cloned(),
                             ))
                         }
@@ -768,7 +768,7 @@ impl<'e> Evaluator<'e> {
                 .ok_or_else(|| {
                     EvaluationError::record_attr_does_not_exist(
                         attr.clone(),
-                        record.iter().map(|(k, _)| k.clone()).collect(),
+                        record.keys(),
                         source_loc.cloned(),
                     )
                 })
@@ -925,8 +925,7 @@ pub mod test {
 
     use crate::{
         entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
-        parser::{self, parse_policyset},
-        parser::{parse_expr, parse_policy_template},
+        parser::{self, parse_expr, parse_policy_template, parse_policyset},
     };
 
     use cool_asserts::assert_matches;
@@ -1555,7 +1554,7 @@ pub mod test {
             )),
             Err(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
-                vec![],
+                std::iter::empty(),
                 None,
             ))
         );
@@ -1568,7 +1567,7 @@ pub mod test {
             )),
             Err(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
-                vec![],
+                std::iter::empty(),
                 None,
             ))
         );
@@ -1840,7 +1839,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs, "what".into())),
             Err(EvaluationError::record_attr_does_not_exist(
                 "what".into(),
-                vec!["eggs".into(), "ham".into()],
+                [&"eggs".into(), &"ham".into()],
                 None,
             ))
         );
@@ -2123,6 +2122,62 @@ pub mod test {
                 }
             )
         );
+    }
+
+    use std::collections::HashSet;
+
+    #[test]
+    fn large_entity_err() {
+        let expr = Expr::get_attr(
+            Expr::val(EntityUID::from_str(r#"Foo::"bar""#).unwrap()),
+            "foo".into(),
+        );
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let exts = Extensions::none();
+        let entity = Entity::new(
+            r#"Foo::"bar""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            &Extensions::none(),
+        )
+        .unwrap();
+        let request = basic_request();
+        let entities = Entities::from_entities(
+            std::iter::once(entity),
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::none(),
+        )
+        .unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
+        let result = eval.interpret_inline_policy(&expr).unwrap_err();
+        let expected = EvaluationError::entity_attr_does_not_exist(
+            Arc::new(r#"Foo::"bar""#.parse().unwrap()),
+            "foo".into(),
+            None,
+        );
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn large_record_err() {
+        let expr = Expr::get_attr(
+            Expr::record((1..=7).map(|id| (format!("{id}").into(), Expr::val(true)))).unwrap(),
+            "foo".into(),
+        );
+        let request = basic_request();
+        let entities = rich_entities();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(request, &entities, &exts);
+        let result = eval.interpret_inline_policy(&expr).unwrap_err();
+        let first_five = (1..=5)
+            .map(|id| format!("{id}").into())
+            .collect::<Vec<SmolStr>>();
+        let expected =
+            EvaluationError::record_attr_does_not_exist("foo".into(), first_five.iter(), None);
+        assert_eq!(result, expected);
     }
 
     #[test]
