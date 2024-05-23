@@ -148,8 +148,8 @@ mod test {
             format!("{warning}"),
             "for policy `test`, identifier `say_һello` contains mixed scripts"
         );
-        assert_eq!(warning.loc(), None,);
-        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),)
+        assert_eq!(warning.loc(), None);
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"));
     }
 
     #[test]
@@ -190,8 +190,8 @@ mod test {
             format!("{warning}"),
             "for policy `test`, string `\"*_һello\"` contains mixed scripts"
         );
-        assert_eq!(warning.loc(), Some(&Loc::new(64..94, Arc::from(src))),);
-        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),);
+        assert_eq!(warning.loc(), Some(&Loc::new(64..94, Arc::from(src))));
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"));
     }
 
     #[test]
@@ -216,6 +216,6 @@ mod test {
         );
         assert_eq!(format!("{warning}"), "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(warning.loc(), Some(&Loc::new(90..131, Arc::from(src))));
-        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),);
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"));
     }
 }
