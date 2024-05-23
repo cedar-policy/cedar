@@ -2173,6 +2173,12 @@ impl ast::Name {
         }
     }
 
+    /// If this name is a known extension function/method name or not
+    pub(crate) fn is_known_extension_func_name(&self) -> bool {
+        EXTENSION_STYLES.functions.contains(self)
+            || (self.path.is_empty() && EXTENSION_STYLES.methods.contains(self.id.as_ref()))
+    }
+
     fn into_func(
         self,
         args: Vec<ast::Expr>,
