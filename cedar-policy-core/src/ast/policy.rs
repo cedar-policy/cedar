@@ -752,6 +752,11 @@ impl StaticPolicy {
         StaticPolicy(self.0.new_id(id))
     }
 
+    /// Get the location of this policy
+    pub fn loc(&self) -> &Option<Loc> {
+        self.0.loc()
+    }
+
     /// Get the `Effect` of this policy.
     pub fn effect(&self) -> Effect {
         self.0.effect()

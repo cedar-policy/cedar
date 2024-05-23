@@ -14,12 +14,18 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::PolicyID;
-use cedar_policy_core::parser::Loc;
+//! This module contains the diagnostics (i.e., errors and warnings) that are
+//! returned by the validator.
+
 use miette::Diagnostic;
 use thiserror::Error;
 
-use self::validation_errors::TypeError;
+use std::collections::BTreeSet;
+
+use cedar_policy_core::ast::{Expr, Name, PolicyID};
+use cedar_policy_core::parser::Loc;
+
+use crate::types::Type;
 
 pub mod validation_errors;
 pub mod validation_warnings;
@@ -81,163 +87,317 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("for policy `{policy_id}`, {kind}")]
-pub struct ValidationError {
-    pub(crate) policy_id: PolicyID,
-    pub(crate) source_loc: Option<Loc>,
-    pub(crate) kind: ValidationErrorKind,
+#[derive(Clone, Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
+pub enum ValidationError {
+    /// A policy contains an entity type that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedEntityType(#[from] validation_errors::UnrecognizedEntityType),
+    /// A policy contains an action that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedActionId(#[from] validation_errors::UnrecognizedActionId),
+    /// There is no action satisfying the action scope constraint that can be
+    /// applied to a principal and resources that both satisfy their respective
+    /// scope conditions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
+    /// An unspecified entity was used in a policy. This should be impossible,
+    /// assuming that the policy was constructed by the parser.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
+    /// The typechecker expected to see a subtype of one of the types in
+    /// `expected`, but saw `actual`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnexpectedType(#[from] validation_errors::UnexpectedType),
+    /// The typechecker could not compute a least upper bound for `types`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompatibleTypes(#[from] validation_errors::IncompatibleTypes),
+    /// The typechecker detected an access to a record or entity attribute
+    /// that it could not statically guarantee would be present.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeAttributeAccess(#[from] validation_errors::UnsafeAttributeAccess),
+    /// The typechecker could not conclude that an access to an optional
+    /// attribute was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// Undefined extension function.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndefinedFunction(#[from] validation_errors::UndefinedFunction),
+    /// Multiply defined extension function.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultiplyDefinedFunction(#[from] validation_errors::MultiplyDefinedFunction),
+    /// Incorrect number of arguments in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongNumberArguments(#[from] validation_errors::WrongNumberArguments),
+    /// Incorrect call style in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongCallStyle(#[from] validation_errors::WrongCallStyle),
+    /// Error returned by custom extension function argument validation
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    FunctionArgumentValidation(#[from] validation_errors::FunctionArgumentValidation),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    EmptySetForbidden(#[from] validation_errors::EmptySetForbidden),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
+    /// To pass strict validation a policy cannot contain an `in` expression
+    /// where the entity type on the left might not be able to be a member of
+    /// the entity type on the right.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
 }
 
 impl ValidationError {
-    pub(crate) fn with_policy_id(
-        policy_id: PolicyID,
-        source_loc: Option<Loc>,
-        err: TypeError,
-    ) -> Self {
-        let (kind, error_loc) = err.kind_and_location();
-        let source_loc = error_loc.or(source_loc);
-        Self {
-            policy_id,
-            source_loc,
-            kind,
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyID {
+        match self {
+            ValidationError::UnrecognizedEntityType(e) => &e.policy_id,
+            ValidationError::UnrecognizedActionId(e) => &e.policy_id,
+            ValidationError::InvalidActionApplication(e) => &e.policy_id,
+            ValidationError::UnspecifiedEntity(e) => &e.policy_id,
+            ValidationError::UnexpectedType(e) => &e.policy_id,
+            ValidationError::IncompatibleTypes(e) => &e.policy_id,
+            ValidationError::UnsafeAttributeAccess(e) => &e.policy_id,
+            ValidationError::UnsafeOptionalAttributeAccess(e) => &e.policy_id,
+            ValidationError::UndefinedFunction(e) => &e.policy_id,
+            ValidationError::MultiplyDefinedFunction(e) => &e.policy_id,
+            ValidationError::WrongNumberArguments(e) => &e.policy_id,
+            ValidationError::WrongCallStyle(e) => &e.policy_id,
+            ValidationError::FunctionArgumentValidation(e) => &e.policy_id,
+            ValidationError::EmptySetForbidden(e) => &e.policy_id,
+            ValidationError::NonLitExtConstructor(e) => &e.policy_id,
+            ValidationError::HierarchyNotRespected(e) => &e.policy_id,
         }
     }
 
-    /// Extract details about the exact issue detected by the validator.
-    pub fn kind(&self) -> &ValidationErrorKind {
-        &self.kind
-    }
-
-    /// Extract the policy id of the policy where the validator found the issue.
-    pub fn policy_id(&self) -> &PolicyID {
-        &self.policy_id
-    }
-
-    /// Extract the location where the validator found the issue.
-    pub fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
-    }
-}
-
-// custom impl of `Diagnostic`: source location and source code are from
-// .location, everything else forwarded to .error_kind
-impl Diagnostic for ValidationError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
-        Some(Box::new(std::iter::once(label)))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.source_loc.as_ref()?.src)
-    }
-
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.code()
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.kind.severity()
-    }
-
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.url()
-    }
-
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.help()
-    }
-
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.kind.related()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.kind.diagnostic_source()
-    }
-}
-
-/// The structure for validation warnings.
-#[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
-#[error("for policy `{policy_id}`, {kind}")]
-pub struct ValidationWarning {
-    pub(crate) policy_id: PolicyID,
-    pub(crate) source_loc: Option<Loc>,
-    pub(crate) kind: ValidationWarningKind,
-}
-
-impl ValidationWarning {
-    pub(crate) fn with_policy_id(
-        policy_id: PolicyID,
+    pub(crate) fn unrecognized_entity_type(
         source_loc: Option<Loc>,
-        kind: ValidationWarningKind,
+        policy_id: PolicyID,
+        actual_entity_type: String,
+        suggested_entity_type: Option<String>,
     ) -> Self {
-        Self {
-            kind,
-            policy_id,
+        validation_errors::UnrecognizedEntityType {
             source_loc,
+            policy_id,
+            actual_entity_type,
+            suggested_entity_type,
         }
+        .into()
     }
 
-    /// Extract the policy id of the policy where the validator found the issue.
-    pub fn policy_id(&self) -> &PolicyID {
-        &self.policy_id
+    pub(crate) fn unrecognized_action_id(
+        source_loc: Option<Loc>,
+
+        policy_id: PolicyID,
+        actual_action_id: String,
+        suggested_action_id: Option<String>,
+    ) -> Self {
+        validation_errors::UnrecognizedActionId {
+            source_loc,
+            policy_id,
+            actual_action_id,
+            suggested_action_id,
+        }
+        .into()
     }
 
-    /// Extract the location where the validator found the issue.
-    pub fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+    pub(crate) fn invalid_action_application(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        would_in_fix_principal: bool,
+        would_in_fix_resource: bool,
+    ) -> Self {
+        validation_errors::InvalidActionApplication {
+            source_loc,
+            policy_id,
+            would_in_fix_principal,
+            would_in_fix_resource,
+        }
+        .into()
     }
 
-    /// Extract details about the exact issue detected by the validator.
-    pub fn kind(&self) -> &ValidationWarningKind {
-        &self.kind
-    }
-}
-
-// custom impl of `Diagnostic`: source location and source code are from
-// .location, everything else forwarded to .kind
-impl Diagnostic for ValidationWarning {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
-        Some(Box::new(std::iter::once(label)))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.source_loc.as_ref()?.src)
+    pub(crate) fn unspecified_entity(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_id: String,
+    ) -> Self {
+        validation_errors::UnspecifiedEntity {
+            source_loc,
+            policy_id,
+            entity_id,
+        }
+        .into()
     }
 
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.code()
+    /// Construct a type error for when an unexpected type occurs in an expression.
+    pub(crate) fn expected_one_of_types(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        expected: impl IntoIterator<Item = Type>,
+        actual: Type,
+        help: Option<validation_errors::UnexpectedTypeHelp>,
+    ) -> Self {
+        validation_errors::UnexpectedType {
+            on_expr,
+            policy_id,
+            expected: expected.into_iter().collect::<BTreeSet<_>>(),
+            actual,
+            help,
+        }
+        .into()
     }
 
-    fn severity(&self) -> Option<miette::Severity> {
-        self.kind.severity()
+    /// Construct a type error for when a least upper bound cannot be found for
+    /// a collection of types.
+    pub(crate) fn incompatible_types(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        types: impl IntoIterator<Item = Type>,
+        hint: validation_errors::LubHelp,
+        context: validation_errors::LubContext,
+    ) -> Self {
+        validation_errors::IncompatibleTypes {
+            on_expr,
+            policy_id,
+            types: types.into_iter().collect::<BTreeSet<_>>(),
+            hint,
+            context,
+        }
+        .into()
     }
 
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.url()
+    pub(crate) fn unsafe_attribute_access(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        attribute_access: validation_errors::AttributeAccess,
+        suggestion: Option<String>,
+        may_exist: bool,
+    ) -> Self {
+        validation_errors::UnsafeAttributeAccess {
+            on_expr,
+            policy_id,
+            attribute_access,
+            suggestion,
+            may_exist,
+        }
+        .into()
     }
 
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.kind.help()
+    pub(crate) fn unsafe_optional_attribute_access(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        attribute_access: validation_errors::AttributeAccess,
+    ) -> Self {
+        validation_errors::UnsafeOptionalAttributeAccess {
+            on_expr,
+            policy_id,
+            attribute_access,
+        }
+        .into()
     }
 
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        self.kind.related()
+    pub(crate) fn undefined_extension(on_expr: Expr, policy_id: PolicyID, name: String) -> Self {
+        validation_errors::UndefinedFunction {
+            on_expr,
+            policy_id,
+            name,
+        }
+        .into()
     }
 
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.kind.diagnostic_source()
+    pub(crate) fn multiply_defined_extension(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        name: String,
+    ) -> Self {
+        validation_errors::MultiplyDefinedFunction {
+            on_expr,
+            policy_id,
+            name,
+        }
+        .into()
+    }
+
+    pub(crate) fn wrong_number_args(
+        on_expr: Expr,
+
+        policy_id: PolicyID,
+        expected: usize,
+        actual: usize,
+    ) -> Self {
+        validation_errors::WrongNumberArguments {
+            on_expr,
+            policy_id,
+            expected,
+            actual,
+        }
+        .into()
+    }
+
+    pub(crate) fn function_argument_validation(
+        on_expr: Expr,
+        policy_id: PolicyID,
+        msg: String,
+    ) -> Self {
+        validation_errors::FunctionArgumentValidation {
+            on_expr,
+            policy_id,
+            msg,
+        }
+        .into()
+    }
+
+    pub(crate) fn empty_set_forbidden(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+        validation_errors::EmptySetForbidden {
+            source_loc,
+            policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn non_lit_ext_constructor(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+        validation_errors::NonLitExtConstructor {
+            source_loc,
+            policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn hierarchy_not_respected(
+        source_loc: Option<Loc>,
+
+        policy_id: PolicyID,
+        in_lhs: Option<Name>,
+        in_rhs: Option<Name>,
+    ) -> Self {
+        validation_errors::HierarchyNotRespected {
+            source_loc,
+            policy_id,
+            in_lhs,
+            in_rhs,
+        }
+        .into()
     }
 }
 
 /// Represents the different kinds of validation warnings and information
-/// specific to that warning. Marked as `non_exhaustive` to allow adding
-/// additional warnings in the future as a non-breaking change.
+/// specific to that warning.
 #[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[non_exhaustive]
-pub enum ValidationWarningKind {
+pub enum ValidationWarning {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -264,34 +424,88 @@ pub enum ValidationWarningKind {
     ImpossiblePolicy(#[from] validation_warnings::ImpossiblePolicy),
 }
 
-impl ValidationWarningKind {
-    pub(crate) fn mixed_script_string(string: impl Into<String>) -> Self {
+impl ValidationWarning {
+    pub fn policy_id(&self) -> &PolicyID {
+        match self {
+            ValidationWarning::MixedScriptString(w) => &w.policy_id,
+            ValidationWarning::BidiCharsInString(w) => &w.policy_id,
+            ValidationWarning::BidiCharsInIdentifier(w) => &w.policy_id,
+            ValidationWarning::MixedScriptIdentifier(w) => &w.policy_id,
+            ValidationWarning::ConfusableIdentifier(w) => &w.policy_id,
+            ValidationWarning::ImpossiblePolicy(w) => &w.policy_id,
+        }
+    }
+
+    pub(crate) fn mixed_script_string(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        string: impl Into<String>,
+    ) -> Self {
         validation_warnings::MixedScriptString {
+            source_loc,
+            policy_id,
             string: string.into(),
         }
         .into()
     }
 
-    pub(crate) fn bidi_chars_strings(string: impl Into<String>) -> Self {
+    pub(crate) fn bidi_chars_strings(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        string: impl Into<String>,
+    ) -> Self {
         validation_warnings::BidiCharsInString {
+            source_loc,
+            policy_id,
             string: string.into(),
         }
         .into()
     }
 
-    pub(crate) fn mixed_script_identifier(id: impl Into<String>) -> Self {
-        validation_warnings::MixedScriptIdentifier { id: id.into() }.into()
+    pub(crate) fn mixed_script_identifier(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        id: impl Into<String>,
+    ) -> Self {
+        validation_warnings::MixedScriptIdentifier {
+            source_loc,
+            policy_id,
+            id: id.into(),
+        }
+        .into()
     }
 
-    pub(crate) fn bidi_chars_identifier(id: impl Into<String>) -> Self {
-        validation_warnings::BidiCharsInIdentifier { id: id.into() }.into()
+    pub(crate) fn bidi_chars_identifier(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        id: impl Into<String>,
+    ) -> Self {
+        validation_warnings::BidiCharsInIdentifier {
+            source_loc,
+            policy_id,
+            id: id.into(),
+        }
+        .into()
     }
 
-    pub(crate) fn confusable_identifier(id: impl Into<String>) -> Self {
-        validation_warnings::ConfusableIdentifier { id: id.into() }.into()
+    pub(crate) fn confusable_identifier(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        id: impl Into<String>,
+    ) -> Self {
+        validation_warnings::ConfusableIdentifier {
+            source_loc,
+            policy_id,
+            id: id.into(),
+        }
+        .into()
     }
 
-    pub(crate) fn impossible_policy() -> Self {
-        validation_warnings::ImpossiblePolicy {}.into()
+    pub(crate) fn impossible_policy(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+        validation_warnings::ImpossiblePolicy {
+            source_loc,
+            policy_id,
+        }
+        .into()
     }
 }

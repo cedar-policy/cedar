@@ -14,277 +14,51 @@
  * limitations under the License.
  */
 
-//! Defines the structure for type errors returned by the typechecker.
+//! Defines errors returned by the validator.
 
-use std::{collections::BTreeSet, fmt::Display};
-
-use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
-use cedar_policy_core::parser::{join_with_conjunction, Loc};
-
-use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
-
-use itertools::Itertools;
 use miette::Diagnostic;
-use smol_str::SmolStr;
 use thiserror::Error;
 
-/// The structure for type errors. A type errors knows the expression that
-/// triggered the type error, as well as additional information for specific
-/// kinds of type errors.
-#[derive(Debug, Hash, PartialEq, Eq, Error)]
-#[error("{kind}")]
-pub struct TypeError {
-    // This struct has both `on_expr` and `source_loc` because many tests
-    // were written to check that an error was raised on a particular expression
-    // rather than at a source location. This is redundant (particularly since
-    // an `Expr` already has a source location embedded in it).
-    // For greater efficiency, we could remove `on_expr` and rewrite the affected
-    // tests to only check for the correct `source_loc`.
-    pub(crate) on_expr: Option<Expr>,
-    pub(crate) source_loc: Option<Loc>,
-    pub(crate) kind: ValidationErrorKind,
-}
+use std::fmt::Display;
 
-// custom impl of `Diagnostic`: source location and source code are from .source_loc(),
-// everything else forwarded to .kind
-impl Diagnostic for TypeError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.source_loc().map(|loc| {
-            let label = miette::LabeledSpan::underline(loc.span);
-            Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
-        })
-    }
+use cedar_policy_core::impl_diagnostic_from_source_loc_field;
+use cedar_policy_core::parser::Loc;
 
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.source_loc()
-            .map(|loc| &loc.src as &dyn miette::SourceCode)
-    }
+use std::collections::BTreeSet;
 
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.kind.code()
-    }
+use cedar_policy_core::ast::{
+    CallStyle, EntityUID, Expr, ExprKind, ExprShapeOnly, Name, PolicyID, Var,
+};
+use cedar_policy_core::parser::join_with_conjunction;
 
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.kind.help()
-    }
+use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
+use itertools::Itertools;
+use smol_str::SmolStr;
 
-    fn severity(&self) -> Option<miette::Severity> {
-        self.kind.severity()
-    }
-
-    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.kind.url()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.kind.diagnostic_source()
-    }
-
-    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        self.kind.related()
-    }
-}
-
-impl TypeError {
-    /// Extract the type error kind for this type error.
-    pub fn type_error_kind(self) -> ValidationErrorKind {
-        self.kind
-    }
-
-    /// Extract the source location of this type error.
-    pub fn source_loc(&self) -> Option<&Loc> {
-        match &self.source_loc {
-            Some(loc) => Some(loc),
-            None => self.on_expr.as_ref().and_then(|e| e.source_loc()),
+// This macro implements `cedar_policy_core::impl_diagnostic_from_source_loc_field`
+// for the validation error variants that have `on_expr` instead.  Some variants
+// use `on_expr` instead of `source_loc` because many tests were written to
+// check that an error was raised on a particular expression rather than at a
+// source location.  Storing the `Expr` should not be required because we only
+// care about the source location emended in the expression.  To avoid cloning
+// expressions when constructing errors, we should remove `on_expr` and rewrite
+// the affected tests to only check for the correct `source_loc`.
+macro_rules! impl_diagnostic_from_on_expr_field {
+    () => {
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.on_expr
+                .source_loc()
+                .as_ref()
+                .map(|loc| &loc.src as &dyn miette::SourceCode)
         }
-    }
 
-    /// Deconstruct the type error into its kind and location.
-    pub fn kind_and_location(self) -> (ValidationErrorKind, Option<Loc>) {
-        let loc = self.source_loc().cloned();
-        (self.kind, loc)
-    }
-
-    pub(crate) fn unrecognized_entity_type(
-        actual_entity_type: String,
-        suggested_entity_type: Option<String>,
-    ) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: None,
-            kind: UnrecognizedEntityType {
-                actual_entity_type,
-                suggested_entity_type,
-            }
-            .into(),
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            self.on_expr.source_loc().as_ref().map(|loc| {
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
+                    as Box<dyn Iterator<Item = _>>
+            })
         }
-    }
-
-    pub(crate) fn unrecognized_action_id(
-        actual_action_id: String,
-        suggested_action_id: Option<String>,
-    ) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: None,
-            kind: UnrecognizedActionId {
-                actual_action_id,
-                suggested_action_id,
-            }
-            .into(),
-        }
-    }
-
-    pub(crate) fn invalid_action_application(
-        would_in_fix_principal: bool,
-        would_in_fix_resource: bool,
-    ) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: None,
-            kind: InvalidActionApplication {
-                would_in_fix_principal,
-                would_in_fix_resource,
-            }
-            .into(),
-        }
-    }
-
-    pub(crate) fn unspecified_entity(entity_id: String) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: None,
-            kind: UnspecifiedEntity { entity_id }.into(),
-        }
-    }
-
-    /// Construct a type error for when an unexpected type occurs in an expression.
-    pub(crate) fn expected_one_of_types(
-        on_expr: Expr,
-        expected: impl IntoIterator<Item = Type>,
-        actual: Type,
-        help: Option<UnexpectedTypeHelp>,
-    ) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: UnexpectedType {
-                expected: expected.into_iter().collect::<BTreeSet<_>>(),
-                actual,
-                help,
-            }
-            .into(),
-        }
-    }
-
-    /// Construct a type error for when a least upper bound cannot be found for
-    /// a collection of types.
-    pub(crate) fn incompatible_types(
-        on_expr: Expr,
-        types: impl IntoIterator<Item = Type>,
-        hint: LubHelp,
-        context: LubContext,
-    ) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: IncompatibleTypes {
-                types: types.into_iter().collect::<BTreeSet<_>>(),
-                hint,
-                context,
-            }
-            .into(),
-        }
-    }
-
-    pub(crate) fn unsafe_attribute_access(
-        on_expr: Expr,
-        attribute_access: AttributeAccess,
-        suggestion: Option<String>,
-        may_exist: bool,
-    ) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: UnsafeAttributeAccess {
-                attribute_access,
-                suggestion,
-                may_exist,
-            }
-            .into(),
-        }
-    }
-
-    pub(crate) fn unsafe_optional_attribute_access(
-        on_expr: Expr,
-        attribute_access: AttributeAccess,
-    ) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: UnsafeOptionalAttributeAccess { attribute_access }.into(),
-        }
-    }
-
-    pub(crate) fn undefined_extension(on_expr: Expr, name: String) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: UndefinedFunction { name }.into(),
-        }
-    }
-
-    pub(crate) fn multiply_defined_extension(on_expr: Expr, name: String) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: MultiplyDefinedFunction { name }.into(),
-        }
-    }
-
-    pub(crate) fn wrong_number_args(on_expr: Expr, expected: usize, actual: usize) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: WrongNumberArguments { expected, actual }.into(),
-        }
-    }
-
-    pub(crate) fn function_argument_validation(on_expr: Expr, msg: String) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: FunctionArgumentValidation { msg }.into(),
-        }
-    }
-
-    pub(crate) fn empty_set_forbidden<T>(on_expr: Expr<T>) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: on_expr.source_loc().cloned(),
-            kind: EmptySetForbidden {}.into(),
-        }
-    }
-
-    pub(crate) fn non_lit_ext_constructor<T>(on_expr: Expr<T>) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: on_expr.source_loc().cloned(),
-            kind: NonLitExtConstructor {}.into(),
-        }
-    }
-
-    pub(crate) fn hierarchy_not_respected<T>(
-        on_expr: Expr<T>,
-        in_lhs: Option<Name>,
-        in_rhs: Option<Name>,
-    ) -> Self {
-        Self {
-            on_expr: None,
-            source_loc: on_expr.source_loc().cloned(),
-            kind: HierarchyNotRespected { in_lhs, in_rhs }.into(),
-        }
-    }
+    };
 }
 
 /// Represents the different kinds of type errors and contains information
@@ -379,14 +153,18 @@ pub enum ValidationErrorKind {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
     /// The entity type seen in the policy.
-    pub(crate) actual_entity_type: String,
+    pub actual_entity_type: String,
     /// An entity type from the schema that the user might reasonably have
     /// intended to write.
-    pub(crate) suggested_entity_type: Option<String>,
+    pub suggested_entity_type: Option<String>,
 }
 
 impl Diagnostic for UnrecognizedEntityType {
+    impl_diagnostic_from_source_loc_field!();
+
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_entity_type {
             Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
@@ -399,14 +177,18 @@ impl Diagnostic for UnrecognizedEntityType {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
     /// Action Id seen in the policy.
-    pub(crate) actual_action_id: String,
+    pub actual_action_id: String,
     /// An action id from the schema that the user might reasonably have
     /// intended to write.
-    pub(crate) suggested_action_id: Option<String>,
+    pub suggested_action_id: Option<String>,
 }
 
 impl Diagnostic for UnrecognizedActionId {
+    impl_diagnostic_from_source_loc_field!();
+
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_action_id {
             Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
@@ -419,11 +201,15 @@ impl Diagnostic for UnrecognizedActionId {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
-    pub(crate) would_in_fix_principal: bool,
-    pub(crate) would_in_fix_resource: bool,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub would_in_fix_principal: bool,
+    pub would_in_fix_resource: bool,
 }
 
 impl Diagnostic for InvalidActionApplication {
+    impl_diagnostic_from_source_loc_field!();
+
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match (self.would_in_fix_principal, self.would_in_fix_resource) {
             (true, false) => Some(Box::new(
@@ -441,32 +227,72 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unspecified entity error.
-#[derive(Debug, Clone, Diagnostic, Error, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("unspecified entity with id `{entity_id}`")]
-#[diagnostic(help("unspecified entities cannot be used in policies"))]
 pub struct UnspecifiedEntity {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
     /// EID of the unspecified entity.
-    pub(crate) entity_id: String,
+    pub entity_id: String,
+}
+
+impl Diagnostic for UnspecifiedEntity {
+    impl_diagnostic_from_source_loc_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("unspecified entities cannot be used in policies"))
+    }
 }
 
 /// Structure containing details about an unexpected type error.
-#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("unexpected type: expected {} but saw {}",
     match .expected.iter().next() {
         Some(single) if .expected.len() == 1 => format!("{}", single),
         _ => .expected.iter().join(", or ")
     },
-    .actual
-)]
+    .actual)]
 pub struct UnexpectedType {
-    pub(crate) expected: BTreeSet<Type>,
-    pub(crate) actual: Type,
-    #[help]
-    pub(crate) help: Option<UnexpectedTypeHelp>,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub expected: BTreeSet<Type>,
+    pub actual: Type,
+    pub help: Option<UnexpectedTypeHelp>,
+}
+
+impl std::hash::Hash for UnexpectedType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.expected.hash(state);
+        self.actual.hash(state);
+        self.help.hash(state);
+    }
+}
+
+// Manual `PartialEq` implementations are so that we do not need to have the
+// same source location for on errors when asserting error equality in tests
+// cases. We can remove this impls if we replace `on_expr` with a `Loc` and
+// update tests cases with the correct value for this loc check source
+// locations.
+impl PartialEq for UnexpectedType {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.expected == other.expected
+            && self.actual == other.actual
+            && self.help == other.help
+    }
+}
+
+impl Diagnostic for UnexpectedType {
+    impl_diagnostic_from_on_expr_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.help.as_ref().map(|h| Box::new(h) as Box<dyn Display>)
+    }
 }
 
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
-pub(crate) enum UnexpectedTypeHelp {
+pub enum UnexpectedTypeHelp {
     #[error("try using `like` to examine the contents of a string")]
     TryUsingLike,
     #[error(
@@ -490,12 +316,41 @@ pub(crate) enum UnexpectedTypeHelp {
 }
 
 /// Structure containing details about an incompatible type error.
-#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
-#[diagnostic(help("{context} must have compatible types. {hint}"))]
+#[derive(Error, Debug, Clone, Eq)]
 pub struct IncompatibleTypes {
-    pub(crate) types: BTreeSet<Type>,
-    pub(crate) hint: LubHelp,
-    pub(crate) context: LubContext,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub types: BTreeSet<Type>,
+    pub hint: LubHelp,
+    pub context: LubContext,
+}
+
+impl std::hash::Hash for IncompatibleTypes {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.types.hash(state);
+        self.hint.hash(state);
+        self.context.hash(state);
+    }
+}
+impl PartialEq for IncompatibleTypes {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.types == other.types
+            && self.hint == other.hint
+            && self.context == other.context
+    }
+}
+
+impl Diagnostic for IncompatibleTypes {
+    impl_diagnostic_from_on_expr_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!(
+            "{} must have compatible types. {}",
+            self.context, self.hint
+        )))
+    }
 }
 
 impl Display for IncompatibleTypes {
@@ -507,7 +362,7 @@ impl Display for IncompatibleTypes {
 }
 
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
-pub(crate) enum LubHelp {
+pub enum LubHelp {
     #[error("Corresponding attributes of compatible record types must have the same optionality, either both being required or both being optional")]
     AttributeQualifier,
     #[error("Compatible record types must have exactly the same attributes")]
@@ -521,7 +376,7 @@ pub(crate) enum LubHelp {
 }
 
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
-pub(crate) enum LubContext {
+pub enum LubContext {
     #[error("elements of a set")]
     Set,
     #[error("both branches of a conditional")]
@@ -535,17 +390,38 @@ pub(crate) enum LubContext {
 }
 
 /// Structure containing details about a missing attribute error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[derive(Debug, Clone, Eq, Error)]
 #[error("attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
-    pub(crate) attribute_access: AttributeAccess,
-    pub(crate) suggestion: Option<String>,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub attribute_access: AttributeAccess,
+    pub suggestion: Option<String>,
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
-    pub(crate) may_exist: bool,
+    pub may_exist: bool,
+}
+
+impl std::hash::Hash for UnsafeAttributeAccess {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.attribute_access.hash(state);
+        self.suggestion.hash(state);
+        self.may_exist.hash(state);
+    }
+}
+impl PartialEq for UnsafeAttributeAccess {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.attribute_access == other.attribute_access
+            && self.suggestion == other.suggestion
+            && self.may_exist == other.may_exist
+    }
 }
 
 impl Diagnostic for UnsafeAttributeAccess {
+    impl_diagnostic_from_on_expr_field!();
+
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.suggestion, self.may_exist) {
             (Some(suggestion), false) => Some(Box::new(format!("did you mean `{suggestion}`?"))),
@@ -557,68 +433,190 @@ impl Diagnostic for UnsafeAttributeAccess {
 }
 
 /// Structure containing details about an unsafe optional attribute error.
-#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
-#[diagnostic(help("try testing for the attribute with `{} && ..`", attribute_access.suggested_has_guard()))]
 pub struct UnsafeOptionalAttributeAccess {
-    pub(crate) attribute_access: AttributeAccess,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub attribute_access: AttributeAccess,
+}
+
+impl std::hash::Hash for UnsafeOptionalAttributeAccess {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.attribute_access.hash(state);
+    }
+}
+impl PartialEq for UnsafeOptionalAttributeAccess {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.attribute_access == other.attribute_access
+    }
+}
+
+impl Diagnostic for UnsafeOptionalAttributeAccess {
+    impl_diagnostic_from_on_expr_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!(
+            "try testing for the attribute with `{} && ..`",
+            self.attribute_access.suggested_has_guard()
+        )))
+    }
 }
 
 /// Structure containing details about an undefined function error.
-#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("undefined extension function: {name}")]
 pub struct UndefinedFunction {
-    pub(crate) name: String,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub name: String,
+}
+
+impl std::hash::Hash for UndefinedFunction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.name.hash(state);
+    }
+}
+impl PartialEq for UndefinedFunction {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.name == other.name
+    }
+}
+
+impl Diagnostic for UndefinedFunction {
+    impl_diagnostic_from_on_expr_field!();
 }
 
 /// Structure containing details about a multiply defined function error.
-#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("extension function defined multiple times: {name}")]
 pub struct MultiplyDefinedFunction {
-    pub(crate) name: String,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub name: String,
+}
+
+impl std::hash::Hash for MultiplyDefinedFunction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.name.hash(state);
+    }
+}
+impl PartialEq for MultiplyDefinedFunction {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.name == other.name
+    }
+}
+
+impl Diagnostic for MultiplyDefinedFunction {
+    impl_diagnostic_from_on_expr_field!();
 }
 
 /// Structure containing details about a wrong number of arguments error.
-#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
-    pub(crate) expected: usize,
-    pub(crate) actual: usize,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub expected: usize,
+    pub actual: usize,
+}
+
+impl std::hash::Hash for WrongNumberArguments {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.expected.hash(state);
+        self.actual.hash(state);
+    }
+}
+
+impl PartialEq for WrongNumberArguments {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.expected == other.expected
+            && self.actual == other.actual
+    }
+}
+
+impl Diagnostic for WrongNumberArguments {
+    impl_diagnostic_from_on_expr_field!();
 }
 
 /// Structure containing details about a wrong call style error.
-#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq)]
 #[error("wrong call style in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongCallStyle {
-    pub(crate) expected: CallStyle,
-    pub(crate) actual: CallStyle,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub expected: CallStyle,
+    pub actual: CallStyle,
+}
+
+impl std::hash::Hash for WrongCallStyle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.expected.hash(state);
+        self.actual.hash(state);
+    }
+}
+
+impl PartialEq for WrongCallStyle {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.expected == other.expected
+            && self.actual == other.actual
+    }
+}
+
+impl Diagnostic for WrongCallStyle {
+    impl_diagnostic_from_on_expr_field!();
 }
 
 /// Structure containing details about a function argument validation error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
+#[derive(Debug, Clone, Eq, Error)]
 #[error("error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidation {
-    pub(crate) msg: String,
+    pub on_expr: Expr,
+    pub policy_id: PolicyID,
+    pub msg: String,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
-#[error("empty set literals are forbidden in policies")]
-pub struct EmptySetForbidden {}
+impl std::hash::Hash for FunctionArgumentValidation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ExprShapeOnly::new(&self.on_expr).hash(state);
+        self.msg.hash(state);
+    }
+}
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
-#[error("extension constructors may not be called with non-literal expressions")]
-#[diagnostic(help("consider applying extension constructors to literal values when constructing entity or context data"))]
-pub struct NonLitExtConstructor {}
+impl PartialEq for FunctionArgumentValidation {
+    fn eq(&self, other: &Self) -> bool {
+        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
+            && self.msg == other.msg
+    }
+}
+
+impl Diagnostic for FunctionArgumentValidation {
+    impl_diagnostic_from_on_expr_field!();
+}
 
 /// Structure containing details about a hierarchy not respected error
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
-    pub(crate) in_lhs: Option<Name>,
-    pub(crate) in_rhs: Option<Name>,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub in_lhs: Option<Name>,
+    pub in_rhs: Option<Name>,
 }
 
 impl Diagnostic for HierarchyNotRespected {
+    impl_diagnostic_from_source_loc_field!();
+
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.in_lhs, &self.in_rhs) {
             (Some(in_lhs), Some(in_rhs)) => Some(Box::new(format!(
@@ -629,6 +627,34 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("empty set literals are forbidden in policies")]
+pub struct EmptySetForbidden {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+}
+
+impl Diagnostic for EmptySetForbidden {
+    impl_diagnostic_from_source_loc_field!();
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("extension constructors may not be called with non-literal expressions")]
+pub struct NonLitExtConstructor {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+}
+
+impl Diagnostic for NonLitExtConstructor {
+    impl_diagnostic_from_source_loc_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "consider applying extension constructors inside attribute values when constructing entity or context data"
+        ))
+    }
+}
+
 /// Contains more detailed information about an attribute access when it occurs
 /// on an entity type expression or on the `context` variable. Track a `Vec` of
 /// attributes rather than a single attribute so that on `principal.foo.bar` can
@@ -636,7 +662,7 @@ impl Diagnostic for HierarchyNotRespected {
 /// needs attributes `bar` instead of giving up when the immediate target of the
 /// attribute access is not a entity.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub(crate) enum AttributeAccess {
+pub enum AttributeAccess {
     /// The attribute access is some sequence of attributes accesses eventually
     /// targeting an EntityLUB.
     EntityLUB(EntityLUB, Vec<SmolStr>),
