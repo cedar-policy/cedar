@@ -190,12 +190,7 @@ impl Validator {
         typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
         (
             type_errors.into_iter().map(|type_error| {
-                let (kind, location) = type_error.kind_and_location();
-                ValidationError::with_policy_id(
-                    t.id().clone(),
-                    location,
-                    ValidationErrorKind::type_error(kind),
-                )
+                ValidationError::with_policy_id(t.id().clone(), None, type_error)
             }),
             warnings.into_iter(),
         )
@@ -269,7 +264,7 @@ mod test {
         let principal_err = ValidationError::with_policy_id(
             policy_b.id().clone(),
             None,
-            ValidationErrorKind::unrecognized_entity_type(
+            TypeError::unrecognized_entity_type(
                 "foo_tye".to_string(),
                 Some("foo_type".to_string()),
             ),
@@ -277,7 +272,7 @@ mod test {
         let resource_err = ValidationError::with_policy_id(
             policy_b.id().clone(),
             None,
-            ValidationErrorKind::unrecognized_entity_type(
+            TypeError::unrecognized_entity_type(
                 "br_type".to_string(),
                 Some("bar_type".to_string()),
             ),
@@ -285,7 +280,7 @@ mod test {
         let action_err = ValidationError::with_policy_id(
             policy_a.id().clone(),
             None,
-            ValidationErrorKind::unrecognized_action_id(
+            TypeError::unrecognized_action_id(
                 "Action::\"actin\"".to_string(),
                 Some("Action::\"action\"".to_string()),
             ),
@@ -411,7 +406,7 @@ mod test {
         let undefined_err = ValidationError::with_policy_id(
             id.clone(),
             None,
-            ValidationErrorKind::unrecognized_entity_type(
+            TypeError::unrecognized_entity_type(
                 "some_namespace::Undefined".to_string(),
                 Some("some_namespace::User".to_string()),
             ),
@@ -419,7 +414,7 @@ mod test {
         let invalid_action_err = ValidationError::with_policy_id(
             id,
             loc.clone(),
-            ValidationErrorKind::invalid_action_application(false, false),
+            TypeError::invalid_action_application(false, false),
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));
@@ -448,7 +443,7 @@ mod test {
         let invalid_action_err = ValidationError::with_policy_id(
             id,
             loc.clone(),
-            ValidationErrorKind::invalid_action_application(false, false),
+            TypeError::invalid_action_application(false, false),
         );
         assert!(result
             .validation_errors()
@@ -497,15 +492,15 @@ mod test {
                 .validation_errors()
                 .map(|err| err.error_kind())
                 .collect::<Vec<_>>(),
-            vec![&ValidationErrorKind::type_error(
-                TypeError::expected_type(
+            vec![
+                &TypeError::expected_type(
                     Expr::val(1),
                     Type::primitive_long(),
                     Type::singleton_boolean(true),
                     None,
                 )
                 .kind
-            )]
+            ]
         );
         assert_eq!(
             result

@@ -31,9 +31,7 @@ pub use cedar_policy_core::extensions::{
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::{
-    TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
-};
+pub use cedar_policy_validator::{UnsupportedFeature, ValidationErrorKind, ValidationWarningKind};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;

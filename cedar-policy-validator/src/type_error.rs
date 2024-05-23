@@ -44,7 +44,7 @@ pub struct TypeError {
     // tests to only check for the correct `source_loc`.
     pub(crate) on_expr: Option<Expr>,
     pub(crate) source_loc: Option<Loc>,
-    pub(crate) kind: TypeErrorKind,
+    pub(crate) kind: ValidationErrorKind,
 }
 
 // custom impl of `Diagnostic`: source location and source code are from .source_loc(),
@@ -89,7 +89,7 @@ impl Diagnostic for TypeError {
 
 impl TypeError {
     /// Extract the type error kind for this type error.
-    pub fn type_error_kind(self) -> TypeErrorKind {
+    pub fn type_error_kind(self) -> ValidationErrorKind {
         self.kind
     }
 
@@ -102,9 +102,62 @@ impl TypeError {
     }
 
     /// Deconstruct the type error into its kind and location.
-    pub fn kind_and_location(self) -> (TypeErrorKind, Option<Loc>) {
+    pub fn kind_and_location(self) -> (ValidationErrorKind, Option<Loc>) {
         let loc = self.source_loc().cloned();
         (self.kind, loc)
+    }
+
+    pub(crate) fn unrecognized_entity_type(
+        actual_entity_type: String,
+        suggested_entity_type: Option<String>,
+    ) -> Self {
+        Self {
+            on_expr: None,
+            source_loc: None,
+            kind: UnrecognizedEntityType {
+                actual_entity_type,
+                suggested_entity_type,
+            }
+            .into(),
+        }
+    }
+
+    pub(crate) fn unrecognized_action_id(
+        actual_action_id: String,
+        suggested_action_id: Option<String>,
+    ) -> Self {
+        Self {
+            on_expr: None,
+            source_loc: None,
+            kind: UnrecognizedActionId {
+                actual_action_id,
+                suggested_action_id,
+            }
+            .into(),
+        }
+    }
+
+    pub(crate) fn invalid_action_application(
+        would_in_fix_principal: bool,
+        would_in_fix_resource: bool,
+    ) -> Self {
+        Self {
+            on_expr: None,
+            source_loc: None,
+            kind: InvalidActionApplication {
+                would_in_fix_principal,
+                would_in_fix_resource,
+            }
+            .into(),
+        }
+    }
+
+    pub(crate) fn unspecified_entity(entity_id: String) -> Self {
+        Self {
+            on_expr: None,
+            source_loc: None,
+            kind: UnspecifiedEntityError { entity_id }.into(),
+        }
     }
 
     /// Construct a type error for when an unexpected type occurs in an expression.
@@ -117,7 +170,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::UnexpectedType(UnexpectedType {
+            kind: ValidationErrorKind::UnexpectedType(UnexpectedType {
                 expected: expected.into_iter().collect::<BTreeSet<_>>(),
                 actual,
                 help,
@@ -136,7 +189,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
+            kind: ValidationErrorKind::IncompatibleTypes(IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
                 hint,
                 context,
@@ -153,7 +206,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
+            kind: ValidationErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
                 attribute_access,
                 suggestion,
                 may_exist,
@@ -168,9 +221,9 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess {
-                attribute_access,
-            }),
+            kind: ValidationErrorKind::UnsafeOptionalAttributeAccess(
+                UnsafeOptionalAttributeAccess { attribute_access },
+            ),
         }
     }
 
@@ -178,7 +231,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::UndefinedFunction(UndefinedFunction { name }),
+            kind: ValidationErrorKind::UndefinedFunction(UndefinedFunction { name }),
         }
     }
 
@@ -186,7 +239,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::MultiplyDefinedFunction(MultiplyDefinedFunction { name }),
+            kind: ValidationErrorKind::MultiplyDefinedFunction(MultiplyDefinedFunction { name }),
         }
     }
 
@@ -194,7 +247,10 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::WrongNumberArguments(WrongNumberArguments { expected, actual }),
+            kind: ValidationErrorKind::WrongNumberArguments(WrongNumberArguments {
+                expected,
+                actual,
+            }),
         }
     }
 
@@ -202,9 +258,9 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: TypeErrorKind::FunctionArgumentValidationError(FunctionArgumentValidationError {
-                msg,
-            }),
+            kind: ValidationErrorKind::FunctionArgumentValidationError(
+                FunctionArgumentValidationError { msg },
+            ),
         }
     }
 
@@ -212,7 +268,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: TypeErrorKind::EmptySetForbidden,
+            kind: ValidationErrorKind::EmptySetForbidden,
         }
     }
 
@@ -220,7 +276,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: TypeErrorKind::NonLitExtConstructor,
+            kind: ValidationErrorKind::NonLitExtConstructor,
         }
     }
 
@@ -232,7 +288,10 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: TypeErrorKind::HierarchyNotRespected(HierarchyNotRespected { in_lhs, in_rhs }),
+            kind: ValidationErrorKind::HierarchyNotRespected(HierarchyNotRespected {
+                in_lhs,
+                in_rhs,
+            }),
         }
     }
 }
@@ -241,7 +300,26 @@ impl TypeError {
 /// specific to that type error kind.
 #[derive(Debug, Clone, Diagnostic, Error, Hash, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum TypeErrorKind {
+pub enum ValidationErrorKind {
+    /// A policy contains an entity type that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedEntityType(#[from] UnrecognizedEntityType),
+    /// A policy contains an action that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedActionId(#[from] UnrecognizedActionId),
+    /// There is no action satisfying the action scope constraint that can be
+    /// applied to a principal and resources that both satisfy their respective
+    /// scope conditions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionApplication(#[from] InvalidActionApplication),
+    /// An unspecified entity was used in a policy. This should be impossible,
+    /// assuming that the policy was constructed by the parser.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnspecifiedEntity(#[from] UnspecifiedEntityError),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -297,6 +375,80 @@ pub enum TypeErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(HierarchyNotRespected),
+}
+
+/// Structure containing details about an unrecognized entity type error.
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("unrecognized entity type `{actual_entity_type}`")]
+pub struct UnrecognizedEntityType {
+    /// The entity type seen in the policy.
+    pub(crate) actual_entity_type: String,
+    /// An entity type from the schema that the user might reasonably have
+    /// intended to write.
+    pub(crate) suggested_entity_type: Option<String>,
+}
+
+impl Diagnostic for UnrecognizedEntityType {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match &self.suggested_entity_type {
+            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
+            None => None,
+        }
+    }
+}
+
+/// Structure containing details about an unrecognized action id error.
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("unrecognized action `{actual_action_id}`")]
+pub struct UnrecognizedActionId {
+    /// Action Id seen in the policy.
+    pub(crate) actual_action_id: String,
+    /// An action id from the schema that the user might reasonably have
+    /// intended to write.
+    pub(crate) suggested_action_id: Option<String>,
+}
+
+impl Diagnostic for UnrecognizedActionId {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match &self.suggested_action_id {
+            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
+            None => None,
+        }
+    }
+}
+
+/// Structure containing details about an invalid action application error.
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("unable to find an applicable action given the policy scope constraints")]
+pub struct InvalidActionApplication {
+    pub(crate) would_in_fix_principal: bool,
+    pub(crate) would_in_fix_resource: bool,
+}
+
+impl Diagnostic for InvalidActionApplication {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match (self.would_in_fix_principal, self.would_in_fix_resource) {
+            (true, false) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause",
+            )),
+            (false, true) => Some(Box::new(
+                "try replacing `==` with `in` in the resource clause",
+            )),
+            (true, true) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause and the resource clause",
+            )),
+            (false, false) => None,
+        }
+    }
+}
+
+/// Structure containing details about an unspecified entity error.
+#[derive(Debug, Clone, Diagnostic, Error, Hash, Eq, PartialEq)]
+#[error("unspecified entity with id `{entity_id}`")]
+#[diagnostic(help("unspecified entities cannot be used in policies"))]
+pub struct UnspecifiedEntityError {
+    /// EID of the unspecified entity.
+    pub(crate) entity_id: String,
 }
 
 /// Structure containing details about an unexpected type error.

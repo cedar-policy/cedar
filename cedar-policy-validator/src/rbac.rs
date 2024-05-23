@@ -25,12 +25,10 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     expr_iterator::{policy_entity_type_names, policy_entity_uids},
-    ValidationError,
+    TypeError, ValidationError,
 };
 
-use super::{
-    fuzzy_match::fuzzy_search, schema::*, validation_result::ValidationErrorKind, Validator,
-};
+use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
 
 impl Validator {
     /// Generate `UnrecognizedEntityType` error for every entity type in the
@@ -59,7 +57,7 @@ impl Validator {
                     Some(ValidationError::with_policy_id(
                         template.id().clone(),
                         name.loc().cloned(),
-                        ValidationErrorKind::unrecognized_entity_type(
+                        TypeError::unrecognized_entity_type(
                             actual_entity_type,
                             suggested_entity_type,
                         ),
@@ -75,7 +73,7 @@ impl Validator {
                         Some(ValidationError::with_policy_id(
                             template.id().clone(),
                             euid.loc().cloned(),
-                            ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
+                            TypeError::unspecified_entity(euid.eid().to_string()),
                         ))
                     }
                     cedar_policy_core::ast::EntityType::Specified(_) => None,
@@ -100,15 +98,15 @@ impl Validator {
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             match entity_type {
-                ast::EntityType::Unspecified => Some(ValidationErrorKind::unspecified_entity(
-                    euid.eid().to_string(),
-                )),
+                ast::EntityType::Unspecified => {
+                    Some(TypeError::unspecified_entity(euid.eid().to_string()))
+                }
                 ast::EntityType::Specified(name) => {
                     let is_known_action_entity_id = self.schema.is_known_action_id(euid);
                     let is_action_entity_type = is_action_entity_type(name);
 
                     if is_action_entity_type && !is_known_action_entity_id {
-                        Some(ValidationErrorKind::unrecognized_action_id(
+                        Some(TypeError::unrecognized_action_id(
                             euid.to_string(),
                             fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
                         ))
@@ -129,7 +127,7 @@ impl Validator {
     pub(crate) fn validate_entity_types_in_slots<'a>(
         &'a self,
         slots: &'a SlotEnv,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = TypeError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
         let known_entity_types = self
@@ -141,15 +139,15 @@ impl Validator {
         slots.values().filter_map(move |euid| {
             let entity_type = euid.entity_type();
             match entity_type {
-                cedar_policy_core::ast::EntityType::Unspecified => Some(
-                    ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
-                ),
+                cedar_policy_core::ast::EntityType::Unspecified => {
+                    Some(TypeError::unspecified_entity(euid.eid().to_string()))
+                }
                 cedar_policy_core::ast::EntityType::Specified(name) => {
                     if !self.schema.is_known_entity_type(name) {
                         let actual_entity_type = entity_type.to_string();
                         let suggested_entity_type =
                             fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                        Some(ValidationErrorKind::unrecognized_entity_type(
+                        Some(TypeError::unrecognized_entity_type(
                             actual_entity_type,
                             suggested_entity_type,
                         ))
@@ -299,7 +297,7 @@ impl Validator {
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
         resource_constraint: &ResourceConstraint,
-    ) -> impl Iterator<Item = ValidationErrorKind> {
+    ) -> impl Iterator<Item = TypeError> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
         let resources_for_scope: HashSet<&Name> = self
             .get_resources_satisfying_constraint(resource_constraint)
@@ -313,7 +311,7 @@ impl Validator {
         let would_in_fix_resource =
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
-        Some(ValidationErrorKind::invalid_action_application(
+        Some(TypeError::invalid_action_application(
             would_in_fix_principal,
             would_in_fix_resource,
         ))
@@ -471,8 +469,8 @@ mod test {
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        UnrecognizedEntityType, UnspecifiedEntityError, ValidationMode, ValidationWarningKind,
-        Validator,
+        TypeError, UnrecognizedEntityType, UnspecifiedEntityError, ValidationErrorKind,
+        ValidationMode, ValidationWarningKind, Validator,
     };
 
     use cool_asserts::assert_matches;
@@ -740,11 +738,10 @@ mod test {
         let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
         let validator = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> =
-            validator.validate_entity_types_in_slots(&env).collect();
+        let notes: Vec<TypeError> = validator.validate_entity_types_in_slots(&env).collect();
 
         assert_eq!(1, notes.len());
-        match notes.first() {
+        match notes.first().map(|f| &f.kind) {
             Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
                 actual_entity_type,
                 suggested_entity_type,
@@ -1125,7 +1122,7 @@ mod test {
     fn assert_validate_policy_fails(
         validator: &Validator,
         policy: &Template,
-        expected: Vec<ValidationErrorKind>,
+        expected: Vec<TypeError>,
     ) {
         assert_eq!(
             validator
@@ -1133,7 +1130,7 @@ mod test {
                 .0
                 .map(|e| { e.into_location_and_error_kind().1 })
                 .collect::<Vec<ValidationErrorKind>>(),
-            expected,
+            expected.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
             "Unexpected validation errors."
         );
     }
@@ -1273,9 +1270,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
-            )],
+            vec![TypeError::invalid_action_application(false, false)],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
@@ -1289,9 +1284,9 @@ mod test {
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
-                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
+                TypeError::unrecognized_entity_type("faz".into(), Some("baz".into())),
+                TypeError::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                TypeError::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1305,9 +1300,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
-            )],
+            vec![TypeError::invalid_action_application(false, false)],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
     }
@@ -1342,9 +1335,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
-            )],
+            vec![TypeError::invalid_action_application(false, false)],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
@@ -1357,9 +1348,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
-            )],
+            vec![TypeError::invalid_action_application(false, false)],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
@@ -1373,9 +1362,9 @@ mod test {
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
-                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
+                TypeError::unrecognized_entity_type("faz".into(), Some("baz".into())),
+                TypeError::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                TypeError::invalid_action_application(false, false),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
