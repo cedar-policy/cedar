@@ -1152,8 +1152,7 @@ mod parse_tests {
         // `🐈` is represented by '\u{1F408}'
         let test_valid = |s: &str| {
             let r = parse_literal(&format!("\"{}\"", s.escape_default()));
-            assert!(r.is_ok());
-            assert_eq!(r.unwrap(), ast::Literal::String(s.into()));
+            assert_eq!(r, Ok(ast::Literal::String(s.into())));
         };
         test_valid("\t");
         test_valid("\0");
