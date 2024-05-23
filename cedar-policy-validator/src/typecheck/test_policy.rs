@@ -37,8 +37,9 @@ use super::test_utils::{
 use crate::{
     typecheck::{test_utils::static_to_template, PolicyCheck},
     types::{EntityLUB, Type},
+    validation_errors::TypeError,
     validation_errors::{AttributeAccess, LubContext, LubHelp},
-    NamespaceDefinition, TypeError, ValidationMode, ValidationWarningKind,
+    NamespaceDefinition, ValidationMode, ValidationWarningKind,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {

@@ -26,8 +26,8 @@ use cedar_policy_core::{
 use smol_str::SmolStr;
 
 use crate::{
-    types::EntityLUB, validation_errors::AttributeAccess, NamespaceDefinition,
-    NamespaceDefinitionWithActionAttributes, TypeError, ValidationWarningKind,
+    types::EntityLUB, validation_errors::AttributeAccess, validation_errors::TypeError,
+    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, ValidationWarningKind,
 };
 
 use super::test_utils::{

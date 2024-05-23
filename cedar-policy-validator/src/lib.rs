@@ -199,7 +199,7 @@ impl Validator {
 mod test {
     use std::collections::HashMap;
 
-    use crate::{types::Type, TypeError};
+    use crate::{types::Type, validation_errors::TypeError};
 
     use super::*;
     use cedar_policy_core::{

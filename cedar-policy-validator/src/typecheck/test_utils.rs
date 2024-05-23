@@ -33,9 +33,8 @@ use super::{TypecheckAnswer, Typechecker};
 use crate::{
     schema::ACTION_ENTITY_TYPE,
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinition, TypeError, ValidationMode, ValidationWarning, ValidationWarningKind,
-    ValidatorSchema,
+    validation_errors::{TypeError, UnexpectedTypeHelp},
+    NamespaceDefinition, ValidationMode, ValidationWarning, ValidationWarningKind, ValidatorSchema,
 };
 
 impl TypeError {

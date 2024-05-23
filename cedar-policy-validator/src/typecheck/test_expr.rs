@@ -27,9 +27,8 @@ use smol_str::SmolStr;
 
 use crate::{
     types::Type,
-    validation_errors::{AttributeAccess, LubContext, LubHelp, UnexpectedTypeHelp},
-    AttributesOrContext, EntityType, NamespaceDefinition, SchemaFragment, TypeError,
-    ValidationMode,
+    validation_errors::{AttributeAccess, LubContext, LubHelp, TypeError, UnexpectedTypeHelp},
+    AttributesOrContext, EntityType, NamespaceDefinition, SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::{

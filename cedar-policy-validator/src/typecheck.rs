@@ -43,8 +43,8 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
-    TypeError, ValidationMode, ValidationWarning, ValidationWarningKind,
+    validation_errors::{AttributeAccess, LubContext, TypeError, UnexpectedTypeHelp},
+    ValidationMode, ValidationWarning, ValidationWarningKind,
 };
 
 use cedar_policy_core::ast::{

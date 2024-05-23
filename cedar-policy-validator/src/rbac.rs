@@ -25,7 +25,8 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     expr_iterator::{policy_entity_type_names, policy_entity_uids},
-    TypeError, ValidationError,
+    validation_errors::TypeError,
+    ValidationError,
 };
 
 use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
@@ -469,8 +470,8 @@ mod test {
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        validation_errors::{UnrecognizedEntityType, UnspecifiedEntityError},
-        ValidationErrorKind, ValidationMode, ValidationWarningKind, Validator,
+        validation_errors::{UnrecognizedEntityType, UnspecifiedEntityError, ValidationErrorKind},
+        ValidationMode, ValidationWarningKind, Validator,
     };
 
     use cool_asserts::assert_matches;

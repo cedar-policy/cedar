@@ -28,9 +28,9 @@ use crate::typecheck::test_utils::{assert_expected_type_errors, assert_expected_
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::{
+    validation_errors::TypeError,
     validation_errors::{AttributeAccess, UnexpectedTypeHelp},
-    NamespaceDefinition, TypeError, ValidationMode, ValidationWarning, ValidationWarningKind,
-    ValidatorSchema,
+    NamespaceDefinition, ValidationMode, ValidationWarning, ValidationWarningKind, ValidatorSchema,
 };
 
 use super::test_utils::empty_schema_file;

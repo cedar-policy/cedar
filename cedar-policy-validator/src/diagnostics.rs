@@ -19,9 +19,12 @@ use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use self::validation_errors::TypeError;
+
 pub mod validation_errors;
-pub use validation_errors::{TypeError, ValidationErrorKind};
 pub mod validation_warnings;
+
+pub use self::validation_errors::ValidationErrorKind;
 
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.

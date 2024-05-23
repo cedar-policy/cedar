@@ -36,9 +36,10 @@ use crate::{
     typecheck::test_utils::assert_policy_typecheck_fails,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::{
-        EmptySetForbidden, IncompatibleTypes, LubContext, LubHelp, NonLitExtConstructor,
+        EmptySetForbidden, IncompatibleTypes, LubContext, LubHelp, NonLitExtConstructor, TypeError,
+        ValidationErrorKind,
     },
-    SchemaFragment, TypeError, ValidationErrorKind, ValidationMode,
+    SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;

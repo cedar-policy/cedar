@@ -464,6 +464,17 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
     }
 }
 
+/// Structures containing details for validation errors
+pub mod validation_errors {
+    pub use cedar_policy_validator::validation_errors::{
+        EmptySetForbidden, FunctionArgumentValidationError, HierarchyNotRespected,
+        IncompatibleTypes, InvalidActionApplication, MultiplyDefinedFunction, NonLitExtConstructor,
+        TypeError, UndefinedFunction, UnexpectedType, UnrecognizedActionId, UnrecognizedEntityType,
+        UnsafeAttributeAccess, UnsafeOptionalAttributeAccess, UnspecifiedEntityError,
+        ValidationErrorKind, WrongCallStyle, WrongNumberArguments,
+    };
+}
+
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[error(transparent)]
 #[diagnostic(transparent)]
@@ -489,6 +500,14 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
     fn from(warning: cedar_policy_validator::ValidationWarning) -> Self {
         Self { warning }
     }
+}
+
+/// Structures containing details for validation warnings
+pub mod validation_warnings {
+    pub use cedar_policy_validator::validation_warnings::{
+        BidiCharsInIdentifier, BidiCharsInString, ConfusableIdentifier, ImpossiblePolicy,
+        MixedScriptIdentifier, MixedScriptString,
+    };
 }
 
 /// Error structs for the variants of `PolicySetError`

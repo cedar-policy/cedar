@@ -36,7 +36,8 @@ use super::test_utils::{
 use crate::{
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    SchemaError, SchemaFragment, TypeError, ValidationWarningKind, ValidatorSchema,
+    validation_errors::TypeError,
+    SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
