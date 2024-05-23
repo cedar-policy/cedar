@@ -85,9 +85,10 @@ pub struct ValidationError {
 
 impl ValidationError {
     pub(crate) fn with_policy_id(id: PolicyID, source_loc: Option<Loc>, err: TypeError) -> Self {
-        let source_loc = err.source_loc().cloned().or(source_loc);
+        let (kind, error_loc) = err.kind_and_location();
+        let source_loc = error_loc.or(source_loc);
         Self {
-            kind: err.kind,
+            kind,
             location: SourceLocation::new(id, source_loc),
         }
     }
