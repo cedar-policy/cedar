@@ -17,7 +17,7 @@
 //! This module contains the definition of `ValidatorNamespaceDef` and of types
 //! it relies on
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
@@ -138,7 +138,7 @@ pub struct ActionFragment {
     /// The values for the attributes defined for this actions entity, stored
     /// separately so that we can later extract use these values to construct
     /// the actual `Entity` objects defined by the schema.
-    pub(super) attributes: HashMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
@@ -363,10 +363,9 @@ impl ValidatorNamespaceDef {
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
         extensions: Extensions<'_>,
-    ) -> Result<(Attributes, HashMap<SmolStr, PartialValueSerializedAsExpr>)> {
+    ) -> Result<(Attributes, BTreeMap<SmolStr, PartialValueSerializedAsExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
-        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> =
-            HashMap::with_capacity(m.len());
+        let mut attr_values: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = BTreeMap::new();
         let evaluator = RestrictedEvaluator::new(&extensions);
 
         for (k, v) in m {
