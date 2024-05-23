@@ -2703,13 +2703,42 @@ mod tests {
 
     #[test]
     fn show_expr10() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {if true then a else b:"b"} ||
             {if false then a else b:"b"}
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 6);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
+                .exactly_one_underline("{if true then a else b:\"b\"}")
+                .build(),
         );
-        assert_eq!(errs.len(), 6, "{:?}", miette::Report::new(errs));
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
+                .exactly_one_underline("{if false then a else b:\"b\"}")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
+                .help("did you mean to enclose `a` in quotes to make a string?")
+                .exactly_one_underline("a")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
+                .help("did you mean to enclose `b` in quotes to make a string?")
+                .exactly_one_underline("b")
+                .build(),
+        );
     }
 
     #[test]
@@ -2734,12 +2763,29 @@ mod tests {
 
     #[test]
     fn reserved_idents1() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             The::true::path::to::"enlightenment".false
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "this identifier is reserved and cannot be used: `true`",
+            )
+            .exactly_one_underline("true")
+            .build(),
         );
-        assert_eq!(errs.len(), 2, "{:?}", miette::Report::new(errs));
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "this identifier is reserved and cannot be used: `false`",
+            )
+            .exactly_one_underline("false")
+            .build(),
+        );
     }
 
     #[test]
@@ -2748,6 +2794,7 @@ mod tests {
             if {if: true}.if then {"if":false}["if"] else {when:true}.permit
         "#;
         let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 3);
         expect_some_error_matches(
             src,
             &errs,
@@ -2781,6 +2828,7 @@ mod tests {
             if {where: true}.like || {has:false}.in then {"like":false}["in"] else {then:true}.else
         "#;
         let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 7);
         expect_some_error_matches(
             src,
             &errs,
@@ -2848,6 +2896,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
         "#;
         let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 6);
         expect_some_error_matches(
             src,
             &errs,
@@ -2872,8 +2921,22 @@ mod tests {
                 .exactly_one_underline("r")
                 .build(),
         );
-        expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`").help("did you mean to enclose `w` in quotes to make a string?").exactly_one_underline("w").build());
-        expect_some_error_matches(src, &errs, &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`").help("did you mean to enclose `u` in quotes to make a string?").exactly_one_underline("u").build());
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
+                .help("did you mean to enclose `w` in quotes to make a string?")
+                .exactly_one_underline("w")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
+                .help("did you mean to enclose `u` in quotes to make a string?")
+                .exactly_one_underline("u")
+                .build(),
+        );
         expect_some_error_matches(
             src,
             &errs,
@@ -2924,16 +2987,22 @@ mod tests {
         );
 
         // duplication is error
-        let errs = assert_parse_policy_fails(
-            r#"
+        let src = r#"
             @anno("good annotation")
             @anno2("good annotation")
             @anno("oops, duplicate")
             permit(principal,action,resource);
-        "#,
-        );
+        "#;
+        let errs = assert_parse_policy_fails(src);
         // annotation duplication (anno)
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno(\"oops, duplicate\")")
+                .build(),
+        );
 
         // can have multiple annotations
         let mut errs = ParseErrors::new();
@@ -3090,40 +3159,63 @@ mod tests {
 
     #[test]
     fn fail_scope1() {
-        let errs = assert_parse_policy_fails(
-            r#"
+        let src = r#"
             permit(
                 principal in [User::"jane",Group::"friends"],
                 action,
                 resource
             );
-        "#,
+        "#;
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "expected single entity uid or template slot, got: set of entity uids",
+            )
+            .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
+            .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn fail_scope2() {
-        let errs = assert_parse_policy_fails(
-            r#"
+        let src = r#"
             permit(
                 principal in User::"jane",
                 action == if true then Photo::"view" else Photo::"edit",
                 resource
             );
-        "#,
+        "#;
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("expected an entity uid, found an `if` expression")
+                .exactly_one_underline(r#"if true then Photo::"view" else Photo::"edit""#)
+                .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn fail_scope3() {
-        let errs = assert_parse_policy_fails(
-            r#"
+        let src = r#"
             permit(principal,action,resource,context);
-        "#,
+        "#;
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "this policy has an extra constraint in the scope: `context`",
+            )
+            .help("a policy must have exactly `principal`, `action`, and `resource` constraints")
+            .exactly_one_underline("context")
+            .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3134,13 +3226,19 @@ mod tests {
                 "#,
         );
 
-        let errs = assert_parse_expr_fails(
-            r#"
-            contains(principal,resource)
-            "#,
+        let src = r#"
+        contains(principal,resource)
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("`contains` is a method, not a function")
+                .help("use a method-style call: `e.contains(..)`")
+                .exactly_one_underline("contains(principal,resource)")
+                .build(),
         );
-        // ast should be error, since "contains" is used inappropriately
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3205,46 +3303,66 @@ mod tests {
 
     #[test]
     fn construct_invalid_get_1() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {"one":1, "two":"two"}[0]
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: `0`")
+                .exactly_one_underline("0")
+                .build(),
         );
-        // ast should be error: 0 is not a string literal
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn construct_invalid_get_2() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {"one":1, "two":"two"}[-1]
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: `(-1)`")
+                .exactly_one_underline("-1")
+                .build(),
         );
-        // ast should be error: -1 is not a string literal
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn construct_invalid_get_3() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {"one":1, "two":"two"}[true]
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: `true`")
+                .exactly_one_underline("true")
+                .build(),
         );
-        // ast should be error: true is not a string literal
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn construct_invalid_get_4() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {"one":1, "two":"two"}[one]
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: `one`")
+                .exactly_one_underline("one")
+                .build(),
         );
-        // ast should be error: one is not a string literal
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3261,12 +3379,19 @@ mod tests {
 
     #[test]
     fn construct_has_2() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             {"one":1,"two":2} has 1
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("not a valid attribute name: `1`")
+                .help("attribute names can either be identifiers or string literals")
+                .exactly_one_underline("1")
+                .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3283,12 +3408,20 @@ mod tests {
 
     #[test]
     fn construct_like_2() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             "354 hams" like 354
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `354`",
+            )
+            .exactly_one_underline("354")
+            .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3317,13 +3450,21 @@ mod tests {
 
     #[test]
     fn construct_like_5() {
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             "string\*with\*escaped\*stars" like "string\*with\*escaped\*stars"
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 3);
+        // all three errors are the same -- they report a use of \* in the first argument
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "the input `\\*` is not a valid escape: InvalidEscape",
+            )
+            .exactly_one_underline(r#""string\*with\*escaped\*stars""#)
+            .build(),
         );
-        // ast should be error, \* is not a valid string character
-        assert_eq!(errs.len(), 3, "{:?}", miette::Report::new(errs)); // 3 invalid escapes in the first argument
     }
 
     #[test]
@@ -3419,12 +3560,19 @@ mod tests {
         });
 
         // not ok: 1 is not a valid attribute
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             User::"jane" has 1
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("not a valid attribute name: `1`")
+                .help("attribute names can either be identifiers or string literals")
+                .exactly_one_underline("1")
+                .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
 
         // ok
         let expr = assert_parse_expr_succeeds(
@@ -3447,23 +3595,34 @@ mod tests {
         });
 
         // not ok: age is not a string literal
-        let errs = assert_parse_expr_fails(
-            r#"
+        let src = r#"
             User::"jane"[age]
-        "#,
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: `age`")
+                .exactly_one_underline("age")
+                .build(),
         );
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
     fn relational_ops1() {
-        let errs = assert_parse_expr_fails(
-            r#"
-                3 >= 2 >= 1
-                "#,
+        let src = r#"
+            3 >= 2 >= 1
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("multiple relational operators (>, ==, in, etc.) must be used with parentheses to make ordering explicit")
+                .exactly_one_underline("3 >= 2 >= 1")
+                .build(),
         );
-        // conversion should fail, too many relational ops
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3486,13 +3645,18 @@ mod tests {
 
     #[test]
     fn relational_ops4() {
-        let errs = assert_parse_expr_fails(
-            r#"
-                if 4 < 3 then 4 != 3 else 4 == 3 < 4
-                "#,
+        let src = r#"
+            if 4 < 3 then 4 != 3 else 4 == 3 < 4
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("multiple relational operators (>, ==, in, etc.) must be used with parentheses to make ordering explicit")
+                .exactly_one_underline("4 == 3 < 4")
+                .build(),
         );
-        // conversion should fail, too many relational ops
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3544,13 +3708,19 @@ mod tests {
                 "#,
         );
 
-        let errs = assert_parse_policy_fails(
-            r#"
-                permit(principal:User,action,resource);
-                "#,
+        let src = r#"
+            permit(principal:User,action,resource);
+        "#;
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("User")
+                .build(),
         );
-        // conversion should fail, variable types are not supported
-        assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
     }
 
     #[test]
@@ -3731,6 +3901,7 @@ mod tests {
         let src = r#"permit(principal, action, resource)
             when { contains(true) < 1 };"#;
         assert_matches!(parse_policyset(src), Err(e) => {
+            expect_n_errors(src, &e, 1);
             expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error(
                 "`contains` is a method, not a function",
             ).help(
@@ -4460,6 +4631,7 @@ mod tests {
         assert_matches!(
             parse_policy(None, policy),
             Err(e) => {
+                expect_n_errors(policy, &e, 1);
                 expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found a `+/-` expression",
                 ).help(

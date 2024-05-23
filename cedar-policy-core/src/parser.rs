@@ -373,6 +373,20 @@ pub(crate) mod test_utils {
     use super::err::ParseErrors;
     use crate::test_utils::*;
 
+    /// Expect that the given `ParseErrors` contains a particular number of errors.
+    ///
+    /// `src` is the original input text (which the miette labels index into).
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    pub fn expect_n_errors(src: &str, errs: &ParseErrors, n: usize) {
+        assert_eq!(
+            errs.len(),
+            n,
+            "for the following input:\n{src}\nexpected {n} error(s), but saw {}\nactual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
+            errs.len(),
+            miette::Report::new(errs.clone())
+        );
+    }
+
     /// Expect that the given `ParseErrors` contains at least one error with the given `ExpectedErrorMessage`.
     ///
     /// `src` is the original input text (which the miette labels index into).
