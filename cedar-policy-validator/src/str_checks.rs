@@ -18,7 +18,7 @@ use cedar_policy_core::ast::{Pattern, Template};
 
 use crate::expr_iterator::expr_text;
 use crate::expr_iterator::TextKind;
-use crate::{SourceLocation, ValidationWarning, ValidationWarningKind};
+use crate::{ValidationWarning, ValidationWarningKind};
 use unicode_security::GeneralSecurityProfile;
 use unicode_security::MixedScript;
 
@@ -43,8 +43,9 @@ pub fn confusable_string_checks<'a>(
 
             if let Some(kind) = warning {
                 warnings.push(ValidationWarning {
-                    location: SourceLocation::new(policy.id().clone(), loc.cloned()),
                     kind,
+                    policy_id: policy.id().clone(),
+                    source_loc: loc.cloned(),
                 })
             }
         }
@@ -139,7 +140,6 @@ mod test {
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
         let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
             kind,
             ValidationWarningKind::MixedScriptIdentifier(r#"say_һello"#.to_string())
@@ -148,10 +148,8 @@ mod test {
             format!("{warning}"),
             "for policy `test`, identifier `say_һello` contains mixed scripts"
         );
-        assert_eq!(
-            location,
-            &SourceLocation::new(PolicyID::from_string("test"), None)
-        );
+        assert_eq!(warning.loc(), None,);
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),)
     }
 
     #[test]
@@ -184,7 +182,6 @@ mod test {
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
         let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
             kind,
             ValidationWarningKind::MixedScriptString(r#"*_һello"#.to_string())
@@ -193,13 +190,8 @@ mod test {
             format!("{warning}"),
             "for policy `test`, string `\"*_һello\"` contains mixed scripts"
         );
-        assert_eq!(
-            location,
-            &SourceLocation::new(
-                PolicyID::from_string("test"),
-                Some(Loc::new(64..94, Arc::from(src)))
-            ),
-        );
+        assert_eq!(warning.loc(), Some(&Loc::new(64..94, Arc::from(src))),);
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),);
     }
 
     #[test]
@@ -218,18 +210,12 @@ mod test {
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
         let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
             kind,
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
         assert_eq!(format!("{warning}"), "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
-        assert_eq!(
-            location,
-            &SourceLocation::new(
-                PolicyID::from_string("test"),
-                Some(Loc::new(90..131, Arc::from(src)))
-            )
-        );
+        assert_eq!(warning.loc(), Some(&Loc::new(90..131, Arc::from(src))));
+        assert_eq!(warning.policy_id(), &PolicyID::from_string("test"),);
     }
 }

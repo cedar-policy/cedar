@@ -77,35 +77,41 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("for policy `{}`, {}", location.policy_id(), kind)]
+#[error("for policy `{policy_id}`, {kind}")]
 pub struct ValidationError {
-    location: SourceLocation,
-    kind: ValidationErrorKind,
+    pub(crate) policy_id: PolicyID,
+    pub(crate) source_loc: Option<Loc>,
+    pub(crate) kind: ValidationErrorKind,
 }
 
 impl ValidationError {
-    pub(crate) fn with_policy_id(id: PolicyID, source_loc: Option<Loc>, err: TypeError) -> Self {
+    pub(crate) fn with_policy_id(
+        policy_id: PolicyID,
+        source_loc: Option<Loc>,
+        err: TypeError,
+    ) -> Self {
         let (kind, error_loc) = err.kind_and_location();
         let source_loc = error_loc.or(source_loc);
         Self {
+            policy_id,
+            source_loc,
             kind,
-            location: SourceLocation::new(id, source_loc),
         }
     }
 
-    /// Deconstruct this into its component source location and error kind.
-    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
-        (self.location, self.kind)
-    }
-
     /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
+    pub fn kind(&self) -> &ValidationErrorKind {
         &self.kind
     }
 
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyID {
+        &self.policy_id
+    }
+
     /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
     }
 }
 
@@ -113,12 +119,12 @@ impl ValidationError {
 // .location, everything else forwarded to .error_kind
 impl Diagnostic for ValidationError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
+        Some(&self.source_loc.as_ref()?.src)
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
@@ -146,61 +152,41 @@ impl Diagnostic for ValidationError {
     }
 }
 
-/// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct SourceLocation {
-    policy_id: PolicyID,
-    source_loc: Option<Loc>,
-}
-
-impl SourceLocation {
-    pub(crate) fn new(policy_id: PolicyID, source_loc: Option<Loc>) -> Self {
-        Self {
-            policy_id,
-            source_loc,
-        }
-    }
-
-    /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &PolicyID {
-        &self.policy_id
-    }
-
-    pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
-    }
-}
-
 /// The structure for validation warnings.
 #[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
-#[error("for policy `{}`, {}", location.policy_id(), kind)]
+#[error("for policy `{policy_id}`, {kind}")]
 pub struct ValidationWarning {
-    pub(crate) location: SourceLocation,
+    pub(crate) policy_id: PolicyID,
+    pub(crate) source_loc: Option<Loc>,
     pub(crate) kind: ValidationWarningKind,
 }
 
 impl ValidationWarning {
     pub(crate) fn with_policy_id(
-        id: PolicyID,
+        policy_id: PolicyID,
         source_loc: Option<Loc>,
         kind: ValidationWarningKind,
     ) -> Self {
         Self {
             kind,
-            location: SourceLocation::new(id, source_loc),
+            policy_id,
+            source_loc,
         }
     }
 
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyID {
+        &self.policy_id
     }
 
+    /// Extract the location where the validator found the issue.
+    pub fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
+    }
+
+    /// Extract details about the exact issue detected by the validator.
     pub fn kind(&self) -> &ValidationWarningKind {
         &self.kind
-    }
-
-    pub fn to_kind_and_location(self) -> (SourceLocation, ValidationWarningKind) {
-        (self.location, self.kind)
     }
 }
 
@@ -208,12 +194,12 @@ impl ValidationWarning {
 // .location, everything else forwarded to .kind
 impl Diagnostic for ValidationWarning {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
+        Some(&self.source_loc.as_ref()?.src)
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {

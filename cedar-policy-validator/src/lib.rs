@@ -289,13 +289,13 @@ mod test {
         assert!(!result.validation_passed());
         assert!(result
             .validation_errors()
-            .any(|x| x.error_kind() == principal_err.error_kind()));
+            .any(|x| x.kind() == principal_err.kind()));
         assert!(result
             .validation_errors()
-            .any(|x| x.error_kind() == resource_err.error_kind()));
+            .any(|x| x.kind() == resource_err.kind()));
         assert!(result
             .validation_errors()
-            .any(|x| x.error_kind() == action_err.error_kind()));
+            .any(|x| x.kind() == action_err.kind()));
 
         Ok(())
     }
@@ -447,7 +447,7 @@ mod test {
         );
         assert!(result
             .validation_errors()
-            .any(|x| x.error_kind() == invalid_action_err.error_kind()));
+            .any(|x| x.kind() == invalid_action_err.kind()));
 
         Ok(())
     }
@@ -490,7 +490,7 @@ mod test {
         assert_eq!(
             result
                 .validation_errors()
-                .map(|err| err.error_kind())
+                .map(|err| err.kind())
                 .collect::<Vec<_>>(),
             vec![
                 &TypeError::expected_type(

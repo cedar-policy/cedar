@@ -823,7 +823,7 @@ mod test {
         let validate = Validator::new(schema);
         let notes: Vec<ValidationErrorKind> = validate
             .validate_action_ids(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
+            .map(|e| e.kind)
             .collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
@@ -894,7 +894,7 @@ mod test {
         let validate = Validator::new(schema);
         let notes: Vec<ValidationErrorKind> = validate
             .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
+            .map(|e| e.kind)
             .collect();
 
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
@@ -1128,7 +1128,7 @@ mod test {
             validator
                 .validate_policy(policy, ValidationMode::default())
                 .0
-                .map(|e| { e.into_location_and_error_kind().1 })
+                .map(|e| { e.kind })
                 .collect::<Vec<ValidationErrorKind>>(),
             expected.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
             "Unexpected validation errors."
@@ -1141,7 +1141,7 @@ mod test {
             validator
                 .validate_policy(policy, ValidationMode::default())
                 .1
-                .map(|w| { w.to_kind_and_location().1 })
+                .map(|w| { w.kind })
                 .collect::<Vec<ValidationWarningKind>>(),
             vec![ValidationWarningKind::ImpossiblePolicy],
             "Unexpected validation warnings."
@@ -1519,7 +1519,7 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate
             .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
+            .map(|e| e.kind)
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
@@ -1541,7 +1541,7 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate
             .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
+            .map(|e| e.kind)
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
@@ -1573,7 +1573,7 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate
             .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
+            .map(|e| e.kind)
             .collect();
 
         println!("{:?}", notes);
