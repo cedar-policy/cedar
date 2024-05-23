@@ -54,7 +54,7 @@ pub enum ParseError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToCST(#[from] ToCSTError),
-    /// Error from the CST -> AST transform; mostly well-formedness issues.
+    /// Error from the CST -> AST transform
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToAST(#[from] ToASTError),
@@ -72,7 +72,7 @@ pub enum LiteralParseError {
     InvalidLiteral(Expr),
 }
 
-/// Errors in the CST -> AST transform, mostly well-formedness issues.
+/// Error from the CST -> AST transform
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 #[error("{kind}")]
 pub struct ToASTError {
@@ -468,7 +468,7 @@ pub enum InvalidIsError {
     WrongOp(cst::RelOp),
 }
 
-/// Error from the CST parser.
+/// Error from the text -> CST parser
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
