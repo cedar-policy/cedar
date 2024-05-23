@@ -35,7 +35,7 @@ use cedar_policy_core::{
 use crate::{
     typecheck::test_utils::assert_policy_typecheck_fails,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeError, TypeErrorKind,
+    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeError, ValidationErrorKind,
     ValidationMode,
 };
 
@@ -71,7 +71,7 @@ fn assert_strict_type_error(
     e: Expr,
     e_strict: Expr,
     expected_type: Type,
-    expected_error: TypeErrorKind,
+    expected_error: ValidationErrorKind,
 ) {
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = ValidationMode::Strict;
@@ -109,7 +109,7 @@ fn assert_types_must_match(
         e,
         e_strict,
         expected_type,
-        TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
+        ValidationErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
             hint,
             context,
@@ -178,7 +178,7 @@ fn strict_typecheck_catches_regular_type_error() {
             assert!(errs.len() == 1);
             assert!(matches!(
                 errs.first().unwrap().kind,
-                TypeErrorKind::UnexpectedType(_)
+                ValidationErrorKind::UnexpectedType(_)
             ));
         })
     })
@@ -385,7 +385,7 @@ fn empty_set_literal() {
             Expr::from_str(r#"[]"#).unwrap(),
             Expr::from_str(r#"[]"#).unwrap(),
             Type::any_set(),
-            TypeErrorKind::EmptySetForbidden,
+            ValidationErrorKind::EmptySetForbidden,
         )
     })
 }
@@ -400,7 +400,7 @@ fn ext_struct_non_lit() {
             Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
-            TypeErrorKind::NonLitExtConstructor,
+            ValidationErrorKind::NonLitExtConstructor,
         )
     });
 
@@ -412,7 +412,7 @@ fn ext_struct_non_lit() {
             Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Type::extension("decimal".parse().unwrap()),
-            TypeErrorKind::NonLitExtConstructor,
+            ValidationErrorKind::NonLitExtConstructor,
         )
     })
 }
