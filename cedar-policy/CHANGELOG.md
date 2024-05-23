@@ -44,12 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 
-## Unrelased
+## [3.2.1] -
+
+### Changed
 
 - Fixed a performance issue when constructing an error for accessing
   a non-existent attribute on sufficiently large records
-
-### Changed
 
 ## [3.2.0] - 2024-05-17
 
