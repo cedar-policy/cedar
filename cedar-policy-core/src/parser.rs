@@ -40,7 +40,7 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::ast::RestrictedExprParseError;
+use crate::ast::RestrictedExpressionParseError;
 use crate::est;
 
 /// simple main function for parsing policies
@@ -243,7 +243,7 @@ pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
 /// `FromStr` impl or its constructors
 pub(crate) fn parse_restrictedexpr(
     ptext: &str,
-) -> Result<ast::RestrictedExpr, RestrictedExprParseError> {
+) -> Result<ast::RestrictedExpr, RestrictedExpressionParseError> {
     let expr = parse_expr(ptext)?;
     Ok(ast::RestrictedExpr::new(expr)?)
 }
@@ -286,24 +286,19 @@ pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
 ///
 /// Private to this crate. Users outside Core should use `Literal`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::ParseErrors> {
+pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParseError> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_primary(val)?;
     let Some(ast) = cst.to_expr(&mut errs) else {
-        return Err(errs);
+        return Err(err::LiteralParseError::Parse(errs));
     };
     if errs.is_empty() {
-        match ast.into_expr_kind() {
-            ast::ExprKind::Lit(v) => Ok(v),
-            _ => Err(
-                err::ParseError::ParseLiteral(err::ParseLiteralError::ParseLiteral(
-                    val.to_string(),
-                ))
-                .into(),
-            ),
+        match ast.expr_kind() {
+            ast::ExprKind::Lit(v) => Ok(v.clone()),
+            _ => Err(err::LiteralParseError::InvalidLiteral(ast)),
         }
     } else {
-        Err(errs)
+        Err(err::LiteralParseError::Parse(errs))
     }
 }
 
@@ -1145,5 +1140,41 @@ mod parse_tests {
             "permit(principal, action, resource) when { if true",
             "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, `like`, or `then`",
         )
+    }
+
+    #[test]
+    fn string_escapes() {
+        // test strings with valid escapes
+        // convert a string `s` to `<double-quote> <escaped-form-of-s> <double-quote>`
+        // and test if the resulting string literal AST contains exactly `s`
+        // for instance, "\u{1F408}"" is converted into r#""\u{1F408}""#,
+        // the latter should be parsed into `Literal(String("🐈"))` and
+        // `🐈` is represented by '\u{1F408}'
+        let test_valid = |s: &str| {
+            let r = parse_literal(&format!("\"{}\"", s.escape_default()));
+            assert_eq!(r, Ok(ast::Literal::String(s.into())));
+        };
+        test_valid("\t");
+        test_valid("\0");
+        test_valid("👍");
+        test_valid("🐈");
+        test_valid("\u{1F408}");
+        test_valid("abc\tde\\fg");
+        test_valid("aaa\u{1F408}bcd👍👍👍");
+        // test string with invalid escapes
+        let test_invalid = |s: &str, en: usize| {
+            let r = parse_literal(&format!("\"{}\"", s));
+            assert_matches!(r, Err(err::LiteralParseError::Parse(errs)) => {
+                assert_eq!(errs.len(), en);
+            });
+        };
+        // invalid escape `\a`
+        test_invalid("\\a", 1);
+        // invalid escape `\b`
+        test_invalid("\\b", 1);
+        // invalid escape `\p`
+        test_invalid("\\\\aa\\p", 1);
+        // invalid escape `\a` and empty unicode escape
+        test_invalid(r"\aaa\u{}", 2);
     }
 }

@@ -21,6 +21,7 @@ use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::Name;
+pub use cedar_policy_core::ast::RestrictedExpressionParseError;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
@@ -28,7 +29,7 @@ pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
 use cedar_policy_core::parser;
-pub use cedar_policy_core::parser::err::ParseErrors;
+pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
