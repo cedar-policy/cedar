@@ -56,9 +56,9 @@ pub fn confusable_string_checks<'a>(
 
 fn permissable_str(s: &str) -> Option<ValidationWarningKind> {
     if s.chars().any(is_bidi_char) {
-        Some(ValidationWarningKind::BidiCharsInString(s.to_string()))
+        Some(ValidationWarningKind::bidi_chars_strings(s))
     } else if !s.is_single_script() {
-        Some(ValidationWarningKind::MixedScriptString(s.to_string()))
+        Some(ValidationWarningKind::mixed_script_string(s))
     } else {
         None
     }
@@ -66,11 +66,11 @@ fn permissable_str(s: &str) -> Option<ValidationWarningKind> {
 
 fn permissable_ident(s: &str) -> Option<ValidationWarningKind> {
     if s.chars().any(is_bidi_char) {
-        Some(ValidationWarningKind::BidiCharsInIdentifier(s.to_string()))
+        Some(ValidationWarningKind::bidi_chars_identifier(s))
     } else if !s.chars().all(|c| c.identifier_allowed()) {
-        Some(ValidationWarningKind::ConfusableIdentifier(s.to_string()))
+        Some(ValidationWarningKind::confusable_identifier(s))
     } else if !s.is_single_script() {
-        Some(ValidationWarningKind::MixedScriptIdentifier(s.to_string()))
+        Some(ValidationWarningKind::mixed_script_identifier(s))
     } else {
         None
     }
@@ -142,7 +142,7 @@ mod test {
         let kind = warning.kind().clone();
         assert_eq!(
             kind,
-            ValidationWarningKind::MixedScriptIdentifier(r#"say_һello"#.to_string())
+            ValidationWarningKind::mixed_script_identifier(r#"say_һello"#)
         );
         assert_eq!(
             format!("{warning}"),
@@ -184,7 +184,7 @@ mod test {
         let kind = warning.kind().clone();
         assert_eq!(
             kind,
-            ValidationWarningKind::MixedScriptString(r#"*_һello"#.to_string())
+            ValidationWarningKind::mixed_script_string(r#"*_һello"#)
         );
         assert_eq!(
             format!("{warning}"),
@@ -212,7 +212,7 @@ mod test {
         let kind = warning.kind().clone();
         assert_eq!(
             kind,
-            ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
+            ValidationWarningKind::bidi_chars_strings(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#)
         );
         assert_eq!(format!("{warning}"), "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(warning.loc(), Some(&Loc::new(90..131, Arc::from(src))));

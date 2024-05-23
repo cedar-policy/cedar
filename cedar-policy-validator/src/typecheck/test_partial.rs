@@ -27,10 +27,10 @@ use cedar_policy_core::{ast::StaticPolicy, parser::parse_policy};
 use crate::typecheck::test_utils::{assert_expected_type_errors, assert_expected_warnings};
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
-use crate::UnexpectedTypeHelp;
 use crate::{
-    AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidationWarning,
-    ValidationWarningKind, ValidatorSchema,
+    validation_errors::{AttributeAccess, UnexpectedTypeHelp},
+    NamespaceDefinition, TypeError, ValidationMode, ValidationWarning, ValidationWarningKind,
+    ValidatorSchema,
 };
 
 use super::test_utils::empty_schema_file;
@@ -473,7 +473,7 @@ mod fails_empty_schema {
         .unwrap();
         assert_typecheck_warns_empty_schema(
             p.clone(),
-            vec![ValidationWarningKind::ImpossiblePolicy],
+            vec![ValidationWarningKind::impossible_policy()],
         )
     }
 
@@ -653,7 +653,7 @@ mod fail_partial_schema {
     use std::str::FromStr;
 
     use super::*;
-    use crate::{LubContext, LubHelp};
+    use crate::validation_errors::{LubContext, LubHelp};
 
     #[test]
     fn error_on_declared_attr() {

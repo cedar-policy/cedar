@@ -18,7 +18,7 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use crate::{type_error::TypeError, types::Type};
+use crate::{types::Type, TypeError};
 use cedar_policy_core::ast::{Expr, Name};
 use std::str::FromStr;
 

@@ -22,7 +22,7 @@ use cedar_policy_core::{
     parser::parse_policy,
 };
 
-use crate::{type_error::TypeError, AttributeAccess, NamespaceDefinition};
+use crate::{validation_errors::AttributeAccess, NamespaceDefinition, TypeError};
 
 use super::test_utils;
 

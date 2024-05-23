@@ -35,11 +35,10 @@ use super::test_utils::{
     with_typechecker_from_schema,
 };
 use crate::{
-    type_error::TypeError,
     typecheck::{test_utils::static_to_template, PolicyCheck},
     types::{EntityLUB, Type},
-    AttributeAccess, LubContext, LubHelp, NamespaceDefinition, ValidationMode,
-    ValidationWarningKind,
+    validation_errors::{AttributeAccess, LubContext, LubHelp},
+    NamespaceDefinition, TypeError, ValidationMode, ValidationWarningKind,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -405,7 +404,7 @@ fn policy_impossible_scope() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -418,7 +417,7 @@ fn policy_impossible_literal_euids() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -431,7 +430,7 @@ fn policy_impossible_not_has() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -452,7 +451,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -462,7 +461,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -472,7 +471,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -482,7 +481,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -492,7 +491,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -502,7 +501,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let p = parse_policy(
@@ -512,7 +511,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -525,7 +524,7 @@ fn policy_action_in_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -619,7 +618,7 @@ fn entity_lub_cant_have_undeclared_attribute() {
     .expect("Policy should parse.");
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -644,12 +643,12 @@ fn is_impossible() {
     let p = parse_policy(None, r#"permit(principal is Photo, action, resource);"#).unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
     let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -677,7 +676,7 @@ fn is_entity_lub() {
     .unwrap();
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -701,7 +700,7 @@ fn is_action() {
     .unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -856,7 +855,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let policy = parse_policy(
@@ -867,7 +866,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let policy = parse_policy(
@@ -878,7 +877,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     let policy = parse_policy(
@@ -889,7 +888,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema,
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -1114,7 +1113,7 @@ mod templates {
         .unwrap();
         assert_policy_typecheck_warns_simple_schema(
             template.clone(),
-            vec![ValidationWarningKind::ImpossiblePolicy],
+            vec![ValidationWarningKind::impossible_policy()],
         );
     }
 }

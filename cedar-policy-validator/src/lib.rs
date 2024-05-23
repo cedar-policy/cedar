@@ -25,12 +25,12 @@ mod err;
 pub use err::*;
 mod coreschema;
 pub use coreschema::*;
+mod diagnostics;
+pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
 mod fuzzy_match;
-mod validation_result;
-pub use validation_result::*;
 mod rbac;
 mod schema;
 pub use schema::*;
@@ -38,8 +38,6 @@ mod schema_file_format;
 pub use schema_file_format::*;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
-mod type_error;
-pub use type_error::*;
 pub mod human_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
@@ -201,7 +199,7 @@ impl Validator {
 mod test {
     use std::collections::HashMap;
 
-    use crate::types::Type;
+    use crate::{types::Type, TypeError};
 
     use super::*;
     use cedar_policy_core::{
@@ -507,9 +505,7 @@ mod test {
                 .validation_warnings()
                 .map(|warn| warn.kind())
                 .collect::<Vec<_>>(),
-            vec![&ValidationWarningKind::MixedScriptIdentifier(
-                "һenry".into()
-            )]
+            vec![&ValidationWarningKind::mixed_script_identifier("һenry")]
         );
     }
 }

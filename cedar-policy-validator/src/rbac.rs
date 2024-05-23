@@ -469,8 +469,8 @@ mod test {
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        TypeError, UnrecognizedEntityType, UnspecifiedEntityError, ValidationErrorKind,
-        ValidationMode, ValidationWarningKind, Validator,
+        validation_errors::{UnrecognizedEntityType, UnspecifiedEntityError},
+        ValidationErrorKind, ValidationMode, ValidationWarningKind, Validator,
     };
 
     use cool_asserts::assert_matches;
@@ -1143,7 +1143,7 @@ mod test {
                 .1
                 .map(|w| { w.kind })
                 .collect::<Vec<ValidationWarningKind>>(),
-            vec![ValidationWarningKind::ImpossiblePolicy],
+            vec![ValidationWarningKind::impossible_policy()],
             "Unexpected validation warnings."
         );
     }

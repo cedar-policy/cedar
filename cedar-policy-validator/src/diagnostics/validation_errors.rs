@@ -21,9 +21,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
 use cedar_policy_core::parser::{join_with_conjunction, Loc};
 
-use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
-
-use super::types::Type;
+use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -170,11 +168,12 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::UnexpectedType(UnexpectedType {
+            kind: UnexpectedType {
                 expected: expected.into_iter().collect::<BTreeSet<_>>(),
                 actual,
                 help,
-            }),
+            }
+            .into(),
         }
     }
 
@@ -189,11 +188,12 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::IncompatibleTypes(IncompatibleTypes {
+            kind: IncompatibleTypes {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
                 hint,
                 context,
-            }),
+            }
+            .into(),
         }
     }
 
@@ -206,11 +206,12 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
+            kind: UnsafeAttributeAccess {
                 attribute_access,
                 suggestion,
                 may_exist,
-            }),
+            }
+            .into(),
         }
     }
 
@@ -221,9 +222,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::UnsafeOptionalAttributeAccess(
-                UnsafeOptionalAttributeAccess { attribute_access },
-            ),
+            kind: UnsafeOptionalAttributeAccess { attribute_access }.into(),
         }
     }
 
@@ -231,7 +230,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::UndefinedFunction(UndefinedFunction { name }),
+            kind: UndefinedFunction { name }.into(),
         }
     }
 
@@ -239,7 +238,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::MultiplyDefinedFunction(MultiplyDefinedFunction { name }),
+            kind: MultiplyDefinedFunction { name }.into(),
         }
     }
 
@@ -247,10 +246,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::WrongNumberArguments(WrongNumberArguments {
-                expected,
-                actual,
-            }),
+            kind: WrongNumberArguments { expected, actual }.into(),
         }
     }
 
@@ -258,9 +254,7 @@ impl TypeError {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: ValidationErrorKind::FunctionArgumentValidationError(
-                FunctionArgumentValidationError { msg },
-            ),
+            kind: FunctionArgumentValidationError { msg }.into(),
         }
     }
 
@@ -268,7 +262,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: ValidationErrorKind::EmptySetForbidden,
+            kind: EmptySetForbidden {}.into(),
         }
     }
 
@@ -276,7 +270,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: ValidationErrorKind::NonLitExtConstructor,
+            kind: NonLitExtConstructor {}.into(),
         }
     }
 
@@ -288,10 +282,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: on_expr.source_loc().cloned(),
-            kind: ValidationErrorKind::HierarchyNotRespected(HierarchyNotRespected {
-                in_lhs,
-                in_rhs,
-            }),
+            kind: HierarchyNotRespected { in_lhs, in_rhs }.into(),
         }
     }
 }
@@ -324,21 +315,21 @@ pub enum ValidationErrorKind {
     /// `expected`, but saw `actual`.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnexpectedType(UnexpectedType),
+    UnexpectedType(#[from] UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    IncompatibleTypes(IncompatibleTypes),
+    IncompatibleTypes(#[from] IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnsafeAttributeAccess(UnsafeAttributeAccess),
+    UnsafeAttributeAccess(#[from] UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
+    UnsafeOptionalAttributeAccess(#[from] UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
         "policy is impossible: the policy expression evaluates to false for all valid requests"
@@ -349,32 +340,39 @@ pub enum ValidationErrorKind {
     )]
     ImpossiblePolicy,
     /// Undefined extension function.
-    #[error("undefined extension function: {}", .0.name)]
-    UndefinedFunction(UndefinedFunction),
-    /// Multiply defined extension function.
-    #[error("extension function defined multiple times: {}", .0.name)]
-    MultiplyDefinedFunction(MultiplyDefinedFunction),
-    /// Incorrect number of arguments in an extension function application.
-    #[error("wrong number of arguments in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
-    WrongNumberArguments(WrongNumberArguments),
-    /// Incorrect call style in an extension function application.
-    #[error("wrong call style in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
-    WrongCallStyle(WrongCallStyle),
-    /// Error returned by custom extension function argument validation
-    #[error("error during extension function argument validation: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    FunctionArgumentValidationError(FunctionArgumentValidationError),
-    #[error("empty set literals are forbidden in policies")]
-    EmptySetForbidden,
-    #[error("extension constructors may not be called with non-literal expressions")]
-    #[diagnostic(help("consider applying extension constructors to literal values when constructing entity or context data"))]
-    NonLitExtConstructor,
+    UndefinedFunction(#[from] UndefinedFunction),
+    /// Multiply defined extension function.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultiplyDefinedFunction(#[from] MultiplyDefinedFunction),
+    /// Incorrect number of arguments in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongNumberArguments(#[from] WrongNumberArguments),
+    /// Incorrect call style in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongCallStyle(#[from] WrongCallStyle),
+    /// Error returned by custom extension function argument validation
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    FunctionArgumentValidationError(#[from] FunctionArgumentValidationError),
+    /// Error returned when an empty set literal appears in a policy.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    EmptySetForbidden(#[from] EmptySetForbidden),
+    /// Error returned when an extension constructor is applied to a non-literal value.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NonLitExtConstructor(#[from] NonLitExtConstructor),
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
     /// the entity type on the right.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    HierarchyNotRespected(HierarchyNotRespected),
+    HierarchyNotRespected(#[from] HierarchyNotRespected),
 }
 
 /// Structure containing details about an unrecognized entity type error.
@@ -461,10 +459,10 @@ pub struct UnspecifiedEntityError {
     .actual
 )]
 pub struct UnexpectedType {
-    expected: BTreeSet<Type>,
-    actual: Type,
+    pub(crate) expected: BTreeSet<Type>,
+    pub(crate) actual: Type,
     #[help]
-    help: Option<UnexpectedTypeHelp>,
+    pub(crate) help: Option<UnexpectedTypeHelp>,
 }
 
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
@@ -540,11 +538,11 @@ pub(crate) enum LubContext {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
-    attribute_access: AttributeAccess,
-    suggestion: Option<String>,
+    pub(crate) attribute_access: AttributeAccess,
+    pub(crate) suggestion: Option<String>,
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
-    may_exist: bool,
+    pub(crate) may_exist: bool,
 }
 
 impl Diagnostic for UnsafeAttributeAccess {
@@ -563,48 +561,61 @@ impl Diagnostic for UnsafeAttributeAccess {
 #[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
 #[diagnostic(help("try testing for the attribute with `{} && ..`", attribute_access.suggested_has_guard()))]
 pub struct UnsafeOptionalAttributeAccess {
-    attribute_access: AttributeAccess,
+    pub(crate) attribute_access: AttributeAccess,
 }
 
 /// Structure containing details about an undefined function error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("undefined extension function: {name}")]
 pub struct UndefinedFunction {
-    name: String,
+    pub(crate) name: String,
 }
 
 /// Structure containing details about a multiply defined function error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("extension function defined multiple times: {name}")]
 pub struct MultiplyDefinedFunction {
-    name: String,
+    pub(crate) name: String,
 }
 
 /// Structure containing details about a wrong number of arguments error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
-    expected: usize,
-    actual: usize,
+    pub(crate) expected: usize,
+    pub(crate) actual: usize,
 }
 
 /// Structure containing details about a wrong call style error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("wrong call style in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongCallStyle {
-    expected: CallStyle,
-    actual: CallStyle,
+    pub(crate) expected: CallStyle,
+    pub(crate) actual: CallStyle,
 }
 
 /// Structure containing details about a function argument validation error.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
-#[error("{msg}")]
+#[error("error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidationError {
-    msg: String,
+    pub(crate) msg: String,
 }
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
+#[error("empty set literals are forbidden in policies")]
+pub struct EmptySetForbidden {}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
+#[error("extension constructors may not be called with non-literal expressions")]
+#[diagnostic(help("consider applying extension constructors to literal values when constructing entity or context data"))]
+pub struct NonLitExtConstructor {}
 
 /// Structure containing details about a hierarchy not respected error
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
-    in_lhs: Option<Name>,
-    in_rhs: Option<Name>,
+    pub(crate) in_lhs: Option<Name>,
+    pub(crate) in_rhs: Option<Name>,
 }
 
 impl Diagnostic for HierarchyNotRespected {
@@ -729,10 +740,8 @@ impl Display for AttributeAccess {
 mod test_attr_access {
     use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Var};
 
-    use crate::{
-        types::{OpenTag, RequestEnv, Type},
-        AttributeAccess,
-    };
+    use super::AttributeAccess;
+    use crate::types::{OpenTag, RequestEnv, Type};
 
     #[track_caller]
     fn assert_message_and_help(

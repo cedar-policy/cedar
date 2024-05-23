@@ -19,7 +19,9 @@ use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{TypeError, ValidationErrorKind};
+pub mod validation_errors;
+pub use validation_errors::{TypeError, ValidationErrorKind};
+pub mod validation_warnings;
 
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
@@ -232,26 +234,61 @@ impl Diagnostic for ValidationWarning {
 /// additional warnings in the future as a non-breaking change.
 #[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
 #[non_exhaustive]
-#[diagnostic(severity(Warning))]
 pub enum ValidationWarningKind {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
-    #[error("string `\"{0}\"` contains mixed scripts")]
-    MixedScriptString(String),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    MixedScriptString(#[from] validation_warnings::MixedScriptString),
     /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
-    #[error("string `\"{0}\"` contains BIDI control characters")]
-    BidiCharsInString(String),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    BidiCharsInString(#[from] validation_warnings::BidiCharsInString),
     /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
-    #[error("identifier `{0}` contains BIDI control characters")]
-    BidiCharsInIdentifier(String),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    BidiCharsInIdentifier(#[from] validation_warnings::BidiCharsInIdentifier),
     /// An id contains mixed scripts. This can cause characters to be confused for each other.
-    #[error("identifier `{0}` contains mixed scripts")]
-    MixedScriptIdentifier(String),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    MixedScriptIdentifier(#[from] validation_warnings::MixedScriptIdentifier),
     /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
-    #[error("identifier `{0}` contains characters that fall outside of the General Security Profile for Identifiers")]
-    ConfusableIdentifier(String),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConfusableIdentifier(#[from] validation_warnings::ConfusableIdentifier),
     /// The typechecker found that a policy condition will always evaluate to false.
-    #[error(
-        "policy is impossible: the policy expression evaluates to false for all valid requests"
-    )]
-    ImpossiblePolicy,
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ImpossiblePolicy(#[from] validation_warnings::ImpossiblePolicy),
+}
+
+impl ValidationWarningKind {
+    pub(crate) fn mixed_script_string(string: impl Into<String>) -> Self {
+        validation_warnings::MixedScriptString {
+            string: string.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn bidi_chars_strings(string: impl Into<String>) -> Self {
+        validation_warnings::BidiCharsInString {
+            string: string.into(),
+        }
+        .into()
+    }
+
+    pub(crate) fn mixed_script_identifier(id: impl Into<String>) -> Self {
+        validation_warnings::MixedScriptIdentifier { id: id.into() }.into()
+    }
+
+    pub(crate) fn bidi_chars_identifier(id: impl Into<String>) -> Self {
+        validation_warnings::BidiCharsInIdentifier { id: id.into() }.into()
+    }
+
+    pub(crate) fn confusable_identifier(id: impl Into<String>) -> Self {
+        validation_warnings::ConfusableIdentifier { id: id.into() }.into()
+    }
+
+    pub(crate) fn impossible_policy() -> Self {
+        validation_warnings::ImpossiblePolicy {}.into()
+    }
 }

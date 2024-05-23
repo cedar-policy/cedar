@@ -34,9 +34,9 @@ use super::test_utils::{
     assert_typecheck_fails, assert_typechecks,
 };
 use crate::{
-    type_error::TypeError,
     types::{EntityLUB, Type},
-    AttributeAccess, SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
+    validation_errors::AttributeAccess,
+    SchemaError, SchemaFragment, TypeError, ValidationWarningKind, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
@@ -564,7 +564,7 @@ fn multi_namespace_action_eq() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
@@ -624,7 +624,7 @@ fn multi_namespace_action_in() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 }
 
