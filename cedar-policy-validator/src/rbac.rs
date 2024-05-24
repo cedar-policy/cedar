@@ -1436,10 +1436,12 @@ mod test {
         expect_err(
             src,
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error("for policy `policy0`, unrecognized entity type `biz`")
-                .exactly_one_underline("biz")
-                .help("did you mean `baz`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `biz`",
+            )
+            .exactly_one_underline("biz")
+            .help("did you mean `baz`?")
+            .build(),
         );
 
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
