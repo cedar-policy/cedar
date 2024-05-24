@@ -26,8 +26,8 @@ use cedar_policy_core::{
 use smol_str::SmolStr;
 
 use crate::{
-    type_error::TypeError, types::EntityLUB, AttributeAccess, NamespaceDefinition,
-    NamespaceDefinitionWithActionAttributes, ValidationWarningKind,
+    types::EntityLUB, validation_errors::AttributeAccess, validation_errors::TypeError,
+    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, ValidationWarningKind,
 };
 
 use super::test_utils::{
@@ -788,7 +788,7 @@ fn action_attrs_failing() {
     assert_policy_typecheck_warns(
         schema.clone(),
         failing_policy,
-        vec![ValidationWarningKind::ImpossiblePolicy],
+        vec![ValidationWarningKind::impossible_policy()],
     );
 
     // Fails because OtherNamespace::Action::"view" is not defined in the schema.

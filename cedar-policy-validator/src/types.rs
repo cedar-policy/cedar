@@ -34,7 +34,7 @@ use cedar_policy_core::{
     extensions::Extensions,
 };
 
-use crate::{LubHelp, ValidationMode};
+use crate::{validation_errors::LubHelp, ValidationMode};
 
 use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,

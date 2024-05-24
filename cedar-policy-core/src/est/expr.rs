@@ -702,13 +702,16 @@ impl Expr {
                             .into_iter()
                             .next()
                             .expect("already checked that len was 1");
-                        let fn_name = fn_name.parse().map_err(|errs| {
+                        let fn_name: ast::Name = fn_name.parse().map_err(|errs| {
                             JsonDeserializationError::parse_escape(
                                 EscapeKind::Extension,
                                 fn_name,
                                 errs,
                             )
                         })?;
+                        if !fn_name.is_known_extension_func_name() {
+                            return Err(FromJsonError::UnknownExtFunc(fn_name.clone()));
+                        }
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
