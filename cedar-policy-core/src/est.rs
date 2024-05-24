@@ -3995,3 +3995,27 @@ mod test {
         }
     }
 }
+
+#[cfg(test)]
+mod issue_891 {
+    use crate::{est::FromJsonError, parser::parse_policy_or_template_to_est};
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn invalid_extension_func() {
+        let src = "permit(principal, action, resource) when {principal == resource.ow4()};";
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ow4".parse().unwrap());
+
+        let src = r#"permit(principal, action, resource) when {principal == resource.ownerOrEqual(decimal("0.75"))};"#;
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ownerOrEqual".parse().unwrap());
+
+        let src = r#"permit(principal, action, resource) when {principal == resorThanOrEqual(decimal("0.75"))};"#;
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "resorThanOrEqual".parse().unwrap());
+    }
+}
