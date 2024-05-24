@@ -177,12 +177,16 @@ pub trait CedarTestImplementation {
         expected: Option<Value>,
     ) -> TestResult<bool>;
 
+    /// Custom evaluator entry point. The bool return value indicates the whether
+    /// evaluating the provided expression produces the expected value.
+    /// `expected` is optional to allow for the case where no return value is
+    /// expected due to errors.
     fn partial_is_authorized(
         &self,
         request: &Request,
         entities: &Entities,
         policies: &PolicySet,
-    ) -> TestResult<partial::FlatPartialResposne>;
+    ) -> TestResult<partial::FlatPartialResponse>;
 
     fn partial_evaluate(
         &self,
@@ -304,11 +308,11 @@ impl CedarTestImplementation for RustEngine {
         request: &Request,
         entities: &Entities,
         policies: &PolicySet,
-    ) -> TestResult<partial::FlatPartialResposne> {
+    ) -> TestResult<partial::FlatPartialResponse> {
         let a = Authorizer::new();
         let pr = a.is_authorized_core(request.clone(), policies, entities);
 
-        let r = partial::FlatPartialResposne {
+        let r = partial::FlatPartialResponse {
             known_permits: pr.satisfied_permits.keys().map(|x| x.to_string()).collect(),
             known_forbids: pr.satisfied_forbids.keys().map(|x| x.to_string()).collect(),
             decision: partial::Decision::from_core(pr.decision()),
