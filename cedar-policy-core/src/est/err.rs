@@ -88,6 +88,9 @@ pub enum FromJsonError {
     #[error("Error linking policy set: {0}")]
     #[diagnostic(transparent)]
     Linking(#[from] ast::LinkingError),
+    /// Error reported when the extension function name is unknown
+    #[error("Invalid extension function name: `{0}`")]
+    UnknownExtFunc(ast::Name),
 }
 
 /// Errors while linking a policy
