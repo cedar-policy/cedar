@@ -34,7 +34,7 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use super::ValidatorApplySpec;
 use crate::{
-    err::*,
+    err::schema_error::*,
     schema_file_format,
     types::{AttributeType, Attributes, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,

@@ -34,10 +34,11 @@ use super::test_utils::{
     assert_typecheck_fails, assert_typechecks,
 };
 use crate::{
+    schema_error::SchemaError,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
     validation_errors::TypeError,
-    SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
+    SchemaFragment, ValidationWarningKind, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {

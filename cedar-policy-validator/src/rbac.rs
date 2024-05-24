@@ -468,7 +468,7 @@ mod test {
 
     use super::*;
     use crate::{
-        err::*,
+        err::schema_error::*,
         schema_file_format::{NamespaceDefinition, *},
         validation_errors::{UnrecognizedEntityType, UnspecifiedEntity, ValidationErrorKind},
         ValidationMode, ValidationWarningKind, Validator,

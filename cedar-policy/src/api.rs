@@ -1162,7 +1162,7 @@ impl SchemaFragment {
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1199,7 +1199,7 @@ impl SchemaFragment {
     }
 
     /// Create a `SchemaFragment` directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1208,13 +1208,15 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
-        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
+    pub fn to_json_value(self) -> Result<serde_json::Value, schema_error::SchemaError> {
+        serde_json::to_value(self.lossless)
+            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn as_json_string(&self) -> Result<String, SchemaError> {
-        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
+    pub fn as_json_string(&self) -> Result<String, schema_error::SchemaError> {
+        serde_json::to_string(&self.lossless)
+            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
@@ -1225,7 +1227,7 @@ impl SchemaFragment {
 }
 
 impl TryInto<Schema> for SchemaFragment {
-    type Error = SchemaError;
+    type Error = schema_error::SchemaError;
 
     /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
     /// need to have all entity types defined, so an error will be returned if
@@ -1241,7 +1243,7 @@ impl TryInto<Schema> for SchemaFragment {
 }
 
 impl FromStr for SchemaFragment {
-    type Err = SchemaError;
+    type Err = schema_error::SchemaError;
     /// Construct `SchemaFragment` from a string containing a schema formatted
     /// in the cedar schema format. This can fail if the string is not valid
     /// JSON, or if the JSON structure does not form a valid schema. This
@@ -1263,7 +1265,7 @@ impl FromStr for SchemaFragment {
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
 
 impl FromStr for Schema {
-    type Err = SchemaError;
+    type Err = schema_error::SchemaError;
 
     /// Construct a schema from a string containing a schema formatted in the
     /// Cedar schema format. This can fail if it is not possible to parse a
@@ -1283,7 +1285,7 @@ impl Schema {
     /// fragment.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = SchemaFragment>,
-    ) -> Result<Self, SchemaError> {
+    ) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
@@ -1294,7 +1296,7 @@ impl Schema {
 
     /// Create a `Schema` from a JSON value (which should be an object of the
     /// shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
                 json,
@@ -1305,7 +1307,7 @@ impl Schema {
 
     /// Create a `Schema` from a string containing JSON in the appropriate
     /// shape.
-    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
+    pub fn from_json_str(json: &str) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_str(
                 json,
@@ -1316,7 +1318,7 @@ impl Schema {
 
     /// Create a `Schema` directly from a file containing JSON in the
     /// appropriate shape.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
             Extensions::all_available(),

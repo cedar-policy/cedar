@@ -28,9 +28,7 @@ pub use cedar_policy_core::extensions::{
 };
 pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::{
-    JsonDeserializationError, JsonSerializationError, SchemaError, UnsupportedFeatureError,
-};
+pub use cedar_policy_validator::schema_error;
 pub use cedar_policy_validator::{ValidationErrorKind, ValidationWarningKind};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -163,7 +161,7 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
 }
 
 mod human_schema_error {
-    use cedar_policy_validator::SchemaError;
+    use crate::schema_error::SchemaError;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -220,8 +218,8 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
+impl From<crate::schema_error::SchemaError> for HumanSchemaError {
+    fn from(value: crate::schema_error::SchemaError) -> Self {
         human_schema_error::CoreError(value).into()
     }
 }

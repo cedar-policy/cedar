@@ -34,6 +34,7 @@ use smol_str::ToSmolStr;
 
 use super::NamespaceDefinition;
 use crate::{
+    err::schema_error::*,
     err::*,
     human_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
@@ -2338,7 +2339,9 @@ mod test_resolver {
     use cool_asserts::assert_matches;
 
     use super::CommonTypeResolver;
-    use crate::{types::Type, SchemaError, SchemaFragment, ValidatorSchemaFragment};
+    use crate::{
+        err::schema_error::SchemaError, types::Type, SchemaFragment, ValidatorSchemaFragment,
+    };
 
     fn resolve(schema: SchemaFragment) -> Result<HashMap<Name, Type>, SchemaError> {
         let schema: ValidatorSchemaFragment = schema.try_into().unwrap();

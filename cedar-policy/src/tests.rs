@@ -1476,7 +1476,7 @@ mod schema_tests {
                 }
             }}"#
             )),
-            Err(SchemaError::JsonDeserialization(_))
+            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
         );
     }
 }
@@ -2454,7 +2454,7 @@ mod schema_based_parsing_tests {
         let src = "{ , .. }";
         assert_matches!(
             Schema::from_str(src),
-            Err(super::SchemaError::JsonDeserialization(_))
+            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
         );
     }
 

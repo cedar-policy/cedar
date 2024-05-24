@@ -207,6 +207,8 @@ mod test {
         parser,
     };
 
+    use crate::schema_error::Result;
+
     #[test]
     fn top_level_validate() -> Result<()> {
         let mut set = PolicySet::new();
