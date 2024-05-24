@@ -122,7 +122,7 @@ impl Validator {
         })
     }
 
-    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntityError` error for
+    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntity` error for
     /// every entity type in the slot environment that is either not in the schema,
     /// or unspecified.
     pub(crate) fn validate_entity_types_in_slots<'a>(
@@ -470,7 +470,7 @@ mod test {
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        validation_errors::{UnrecognizedEntityType, UnspecifiedEntityError, ValidationErrorKind},
+        validation_errors::{UnrecognizedEntityType, UnspecifiedEntity, ValidationErrorKind},
         ValidationMode, ValidationWarningKind, Validator,
     };
 
@@ -1524,7 +1524,7 @@ mod test {
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );
@@ -1546,7 +1546,7 @@ mod test {
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );
@@ -1580,7 +1580,7 @@ mod test {
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity{ entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );

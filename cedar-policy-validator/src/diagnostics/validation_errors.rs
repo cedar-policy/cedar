@@ -154,7 +154,7 @@ impl TypeError {
         Self {
             on_expr: None,
             source_loc: None,
-            kind: UnspecifiedEntityError { entity_id }.into(),
+            kind: UnspecifiedEntity { entity_id }.into(),
         }
     }
 
@@ -250,11 +250,11 @@ impl TypeError {
         }
     }
 
-    pub(crate) fn arg_validation_error(on_expr: Expr, msg: String) -> Self {
+    pub(crate) fn function_argument_validation(on_expr: Expr, msg: String) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_loc: None,
-            kind: FunctionArgumentValidationError { msg }.into(),
+            kind: FunctionArgumentValidation { msg }.into(),
         }
     }
 
@@ -310,7 +310,7 @@ pub enum ValidationErrorKind {
     /// assuming that the policy was constructed by the parser.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] UnspecifiedEntityError),
+    UnspecifiedEntity(#[from] UnspecifiedEntity),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -358,7 +358,7 @@ pub enum ValidationErrorKind {
     /// Error returned by custom extension function argument validation
     #[diagnostic(transparent)]
     #[error(transparent)]
-    FunctionArgumentValidationError(#[from] FunctionArgumentValidationError),
+    FunctionArgumentValidation(#[from] FunctionArgumentValidation),
     /// Error returned when an empty set literal appears in a policy.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -444,7 +444,7 @@ impl Diagnostic for InvalidActionApplication {
 #[derive(Debug, Clone, Diagnostic, Error, Hash, Eq, PartialEq)]
 #[error("unspecified entity with id `{entity_id}`")]
 #[diagnostic(help("unspecified entities cannot be used in policies"))]
-pub struct UnspecifiedEntityError {
+pub struct UnspecifiedEntity {
     /// EID of the unspecified entity.
     pub(crate) entity_id: String,
 }
@@ -597,7 +597,7 @@ pub struct WrongCallStyle {
 /// Structure containing details about a function argument validation error.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
 #[error("error during extension function argument validation: {msg}")]
-pub struct FunctionArgumentValidationError {
+pub struct FunctionArgumentValidation {
     pub(crate) msg: String,
 }
 

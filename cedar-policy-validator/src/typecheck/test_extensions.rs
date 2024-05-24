@@ -56,7 +56,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(ipaddr_name.clone()),
-        vec![TypeError::arg_validation_error(
+        vec![TypeError::function_argument_validation(
             expr,
             "Failed to parse as IP address: `\"foo\"`".into(),
         )],
@@ -121,7 +121,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(decimal_name.clone()),
-        vec![TypeError::arg_validation_error(
+        vec![TypeError::function_argument_validation(
             expr,
             "Failed to parse as a decimal value: `\"foo\"`".into(),
         )],

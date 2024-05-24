@@ -467,10 +467,10 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
 /// Structures containing details for validation errors
 pub mod validation_errors {
     pub use cedar_policy_validator::validation_errors::{
-        EmptySetForbidden, FunctionArgumentValidationError, HierarchyNotRespected,
-        IncompatibleTypes, InvalidActionApplication, MultiplyDefinedFunction, NonLitExtConstructor,
-        TypeError, UndefinedFunction, UnexpectedType, UnrecognizedActionId, UnrecognizedEntityType,
-        UnsafeAttributeAccess, UnsafeOptionalAttributeAccess, UnspecifiedEntityError,
+        EmptySetForbidden, FunctionArgumentValidation, HierarchyNotRespected, IncompatibleTypes,
+        InvalidActionApplication, MultiplyDefinedFunction, NonLitExtConstructor, TypeError,
+        UndefinedFunction, UnexpectedType, UnrecognizedActionId, UnrecognizedEntityType,
+        UnsafeAttributeAccess, UnsafeOptionalAttributeAccess, UnspecifiedEntity,
         ValidationErrorKind, WrongCallStyle, WrongNumberArguments,
     };
 }

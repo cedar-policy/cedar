@@ -2507,7 +2507,10 @@ impl<'a> Typechecker<'a> {
                     failed = true;
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
-                    type_errors.push(TypeError::arg_validation_error(ext_expr.clone(), msg));
+                    type_errors.push(TypeError::function_argument_validation(
+                        ext_expr.clone(),
+                        msg,
+                    ));
                     failed = true;
                 }
 
