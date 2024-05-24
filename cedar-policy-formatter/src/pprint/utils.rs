@@ -166,7 +166,7 @@ pub fn remove_empty_lines(text: &str) -> String {
     let comment_regex = Regex::new(r"//[^\n]*").unwrap();
     // PANIC SAFETY: this regex pattern is valid
     #[allow(clippy::unwrap_used)]
-    let string_regex = Regex::new(r#""(\\.|[^"\\])*"[^\n]*"#).unwrap();
+    let string_regex = Regex::new(r#""(\\.|[^"\\])*""#).unwrap();
 
     let mut index = 0;
     let mut final_text = String::new();
