@@ -16,11 +16,9 @@
 
 //! This module defines the publicly exported error types.
 
-use crate::EntityTypeName;
 use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::Name;
 pub use cedar_policy_core::ast::RestrictedExpressionParseError;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::est;
@@ -30,12 +28,13 @@ pub use cedar_policy_core::extensions::{
 };
 pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::{UnsupportedFeature, ValidationErrorKind, ValidationWarningKind};
+pub use cedar_policy_validator::{
+    JsonDeserializationError, JsonSerializationError, SchemaError, UnsupportedFeatureError,
+};
+pub use cedar_policy_validator::{ValidationErrorKind, ValidationWarningKind};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
-use smol_str::ToSmolStr;
-use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
@@ -114,291 +113,6 @@ pub enum ReAuthorizeError {
     },
 }
 
-/// The kind of hierarchy that has transitive closure errors
-#[derive(Debug, Clone)]
-pub enum HierarchyKind {
-    /// An action hierarchy
-    Action,
-    /// An entity type hierarchy
-    EntityType,
-}
-
-impl std::fmt::Display for HierarchyKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Action => write!(f, "action"),
-            Self::EntityType => write!(f, "entity type"),
-        }
-    }
-}
-
-/// Transitive closure computation or enforcement error
-#[derive(Debug, Diagnostic, Error, Clone)]
-#[error("transitive closure computation/enforcement error on {kind} hierarchy: {message}")]
-pub struct TransitiveClosureError {
-    kind: HierarchyKind,
-    message: SmolStr,
-}
-
-impl TransitiveClosureError {
-    /// Getter of hierarchy kind
-    pub fn get_kind(&self) -> &HierarchyKind {
-        &self.kind
-    }
-}
-
-/// Schema constructs
-#[derive(Debug, Clone)]
-pub enum SchemaConstructKind {
-    /// schema common type
-    CommonType,
-    /// schema entity type
-    EntityType,
-    /// schema action
-    Action,
-}
-
-impl std::fmt::Display for SchemaConstructKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Action => write!(f, "action"),
-            Self::CommonType => write!(f, "common type"),
-            Self::EntityType => write!(f, "entity type"),
-        }
-    }
-}
-
-/// Undeclared schema construct error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("undeclared {kind}(s): {constructs:?}")]
-pub struct UndeclaredSchemaConstructError {
-    kind: SchemaConstructKind,
-    constructs: HashSet<SmolStr>,
-}
-
-impl UndeclaredSchemaConstructError {
-    /// Getter of schema construct kind
-    pub fn get_kind(&self) -> &SchemaConstructKind {
-        &self.kind
-    }
-
-    /// Getter of schema constructs
-    pub fn get_constructs(&self) -> impl Iterator<Item = &SmolStr> + '_ {
-        self.constructs.iter()
-    }
-}
-
-/// Undeclared schema construct error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("duplicate {kind} `{construct}`")]
-pub struct DuplicateSchemaConstructError {
-    kind: SchemaConstructKind,
-    construct: SmolStr,
-}
-
-impl DuplicateSchemaConstructError {
-    /// Getter of schema construct kind
-    pub fn get_kind(&self) -> &SchemaConstructKind {
-        &self.kind
-    }
-
-    /// Getter of schema constructs
-    pub fn get_construct(&self) -> &SmolStr {
-        &self.construct
-    }
-}
-
-/// Cycle in action hierarchy error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("cycle in action hierarchy containing `{node}`")]
-pub struct CycleInActionHierarchyError {
-    node: EntityUid,
-}
-
-impl CycleInActionHierarchyError {
-    /// Getter of the action in the cycle
-    pub fn get_node_in_cycle(&self) -> SmolStr {
-        self.node.to_smolstr()
-    }
-}
-
-/// Cycle in common type references error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("cycle in common type references containing `{node}`")]
-pub struct CycleInCommonTypeReferencesError {
-    node: Name,
-}
-
-impl CycleInCommonTypeReferencesError {
-    /// Getter of the common type id in the cycle
-    pub fn get_node_in_cycle(&self) -> SmolStr {
-        self.node.to_smolstr()
-    }
-}
-
-/// Context or entity shape is not record error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("{context_or_shape} is declared with a type other than `Record`")]
-pub struct ContextOrShapeNotRecordError {
-    context_or_shape: ContextOrShape,
-}
-
-impl ContextOrShapeNotRecordError {
-    /// Getter of the context or shape
-    pub fn get_context_or_shape(&self) -> SmolStr {
-        self.context_or_shape.to_smolstr()
-    }
-}
-
-/// Action attribute contains empty set error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("action `{action_uid}` has an attribute that is an empty set")]
-pub struct ActionAttributesContainEmptySetError {
-    action_uid: EntityUid,
-}
-
-impl ActionAttributesContainEmptySetError {
-    /// Getter of the action uid
-    pub fn get_action(&self) -> &EntityUid {
-        &self.action_uid
-    }
-}
-
-/// Unsupported action attribute error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error(
-    "action `{action_uid}` has an attribute with unsupported JSON representation: {escape_type}"
-)]
-pub struct UnsupportedActionAttributeError {
-    action_uid: EntityUid,
-    escape_type: SmolStr,
-}
-
-impl UnsupportedActionAttributeError {
-    /// Getter of the action uid
-    pub fn get_action(&self) -> &EntityUid {
-        &self.action_uid
-    }
-}
-
-/// JSON deserialization error
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-pub struct JsonSerializationError {
-    #[from]
-    pub(crate) error: serde_json::Error,
-}
-
-/// JSON deserialization error
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct JsonDeserializationError {
-    #[from]
-    pub(crate) error: cedar_policy_validator::JsonDeserializationError,
-}
-
-/// Unsupported feature error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("unsupported feature used in schema: {feature}")]
-pub struct UnsupportedFeatureError {
-    feature: SmolStr,
-}
-
-/// Action declared in `entityType` list error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("entity type `Action` declared in `entityTypes` list")]
-pub struct ActionEntityTypeDeclaredError {}
-
-/// Unsupported `__expr` escape error
-#[derive(Debug, Clone, Diagnostic, Error)]
-#[error("schema contained the non-supported `__expr` escape")]
-pub struct ExprEscapeUsedError {}
-
-/// Errors encountered during construction of a Validation Schema
-#[derive(Debug, Diagnostic, Error)]
-pub enum SchemaError {
-    /// Error thrown by the `serde_json` crate during deserialization
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    JsonDeserialization(JsonDeserializationError),
-    /// Error thrown by the `serde_json` crate during serialization
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    JsonSerialization(JsonSerializationError), // no #[from], because if you just have a serde_json::Error you should choose between JsonDeserialization and JsonSerialization appropriately
-    /// Errors occurring while computing or enforcing transitive closure on
-    /// action or entity type hierarchy.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    TransitiveClosure(TransitiveClosureError),
-    /// Error generated when processing a schema file that uses unsupported features
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsupportedFeature(UnsupportedFeatureError),
-    /// Undeclared entity type(s) used in the `memberOf` field of an entity
-    /// type, the `appliesTo` fields of an action, or an attribute type in a
-    /// context or entity attribute record. Entity types in the error message
-    /// are fully qualified, including any implicit or explicit namespaces.
-    /// Or undeclared action(s) used in the `memberOf` field of an action.
-    /// Or undeclared common type(s) used in entity or context attributes.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UndeclaredSchemaConstruct(UndeclaredSchemaConstructError),
-    /// Duplicate specifications for an entity type. Argument is the name of
-    /// the duplicate entity type.
-    /// Or duplicate specifications for an action. Argument is the name of the
-    /// duplicate action.
-    /// Or duplicate specification for a reusable type declaration.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    DuplicateSchemaConstruct(DuplicateSchemaConstructError),
-    /// Cycle in the schema's action hierarchy.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    CycleInActionHierarchy(CycleInActionHierarchyError),
-    /// Cycle in the schema's common type declarations.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    CycleInCommonTypeReferences(CycleInCommonTypeReferencesError),
-    /// The schema file included an entity type `Action` in the entity type
-    /// list. The `Action` entity type is always implicitly declared, and it
-    /// cannot currently have attributes or be in any groups, so there is no
-    /// purposes in adding an explicit entry.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionEntityTypeDeclared(ActionEntityTypeDeclaredError),
-    /// `context` or `shape` fields are not records
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ContextOrShapeNotRecord(ContextOrShapeNotRecordError),
-    /// An action entity (transitively) has an attribute that is an empty set.
-    /// The validator cannot assign a type to an empty set.
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionAttributesContainEmptySet(ActionAttributesContainEmptySetError),
-    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsupportedActionAttribute(UnsupportedActionAttributeError),
-    /// Error when evaluating an action attribute
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionAttrEval(EntityAttrEvaluationError),
-    /// Error thrown when the schema contains the `__expr` escape.
-    /// Support for this escape form has been dropped.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExprEscapeUsed(ExprEscapeUsedError),
-    /// An error reported during schema parsing when an unknown extension type
-    /// is used in a common type definition, entity attribute or action context
-    /// attributes.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownExtensionType(UnknownExtensionType),
-}
-
 /// Errors serializing Schemas to the natural syntax
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToHumanSyntaxError {
@@ -449,10 +163,10 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
 }
 
 mod human_schema_error {
+    use cedar_policy_validator::SchemaError;
     use miette::Diagnostic;
     use thiserror::Error;
 
-    use crate::SchemaError;
     /// Parsing errors for human-readable schemas
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
@@ -493,7 +207,7 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
         match value {
             cedar_policy_validator::HumanSchemaError::Core(core) => {
-                human_schema_error::CoreError(core.into()).into()
+                human_schema_error::CoreError(core).into()
             }
             cedar_policy_validator::HumanSchemaError::IO(io_err) => {
                 human_schema_error::IoError(io_err).into()
@@ -508,7 +222,7 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
 #[doc(hidden)]
 impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        human_schema_error::CoreError(value.into()).into()
+        human_schema_error::CoreError(value).into()
     }
 }
 
@@ -549,166 +263,6 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
             uid: EntityUid::new(err.uid),
             attr: err.attr,
             err: err.err,
-        }
-    }
-}
-
-/// Describes in what action context or entity type shape a schema parsing error
-/// occurred.
-#[derive(Debug, Clone)]
-enum ContextOrShape {
-    /// An error occurred when parsing the context for the action with this
-    /// `EntityUid`.
-    ActionContext(EntityUid),
-    /// An error occurred when parsing the shape for the entity type with this
-    /// `EntityTypeName`.
-    EntityTypeShape(EntityTypeName),
-}
-
-impl std::fmt::Display for ContextOrShape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ActionContext(action) => write!(f, "Context for action {action}"),
-            Self::EntityTypeShape(entity_type) => {
-                write!(f, "Shape for entity type {entity_type}")
-            }
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
-    fn from(value: cedar_policy_validator::ContextOrShape) -> Self {
-        match value {
-            cedar_policy_validator::ContextOrShape::ActionContext(euid) => {
-                Self::ActionContext(EntityUid::new(euid))
-            }
-            cedar_policy_validator::ContextOrShape::EntityTypeShape(name) => {
-                Self::EntityTypeShape(EntityTypeName::new(name))
-            }
-        }
-    }
-}
-
-/// An error reported during schema parsing when an unknown extension type is
-/// used in a common type definition, entity attribute or action context
-/// attributes.
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct UnknownExtensionType {
-    inner: cedar_policy_validator::UnknownExtensionType,
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::UnknownExtensionType> for UnknownExtensionType {
-    fn from(value: cedar_policy_validator::UnknownExtensionType) -> Self {
-        Self { inner: value }
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::SchemaError> for SchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        match value {
-            cedar_policy_validator::SchemaError::JsonDeserialization(e) => {
-                Self::JsonDeserialization(e.into())
-            }
-            cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
-                Self::TransitiveClosure(TransitiveClosureError {
-                    kind: HierarchyKind::Action,
-                    message: e.to_smolstr(),
-                })
-            }
-            cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
-                Self::TransitiveClosure(TransitiveClosureError {
-                    kind: HierarchyKind::EntityType,
-                    message: e.to_smolstr(),
-                })
-            }
-            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
-                Self::UnsupportedFeature(UnsupportedFeatureError {
-                    feature: e.to_smolstr(),
-                })
-            }
-            cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
-                Self::UndeclaredSchemaConstruct(UndeclaredSchemaConstructError {
-                    kind: SchemaConstructKind::EntityType,
-                    constructs: e
-                        .iter()
-                        .map(cedar_policy_core::ast::Name::to_smolstr)
-                        .collect(),
-                })
-            }
-            cedar_policy_validator::SchemaError::UndeclaredActions(e) => {
-                Self::UndeclaredSchemaConstruct(UndeclaredSchemaConstructError {
-                    kind: SchemaConstructKind::Action,
-                    constructs: e,
-                })
-            }
-            cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
-                Self::UndeclaredSchemaConstruct(UndeclaredSchemaConstructError {
-                    kind: SchemaConstructKind::CommonType,
-                    constructs: c
-                        .iter()
-                        .map(cedar_policy_core::ast::Name::to_smolstr)
-                        .collect(),
-                })
-            }
-            cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
-                Self::DuplicateSchemaConstruct(DuplicateSchemaConstructError {
-                    kind: SchemaConstructKind::EntityType,
-                    construct: e.to_smolstr(),
-                })
-            }
-            cedar_policy_validator::SchemaError::DuplicateAction(e) => {
-                Self::DuplicateSchemaConstruct(DuplicateSchemaConstructError {
-                    kind: SchemaConstructKind::Action,
-                    construct: e,
-                })
-            }
-            cedar_policy_validator::SchemaError::DuplicateCommonType(c) => {
-                Self::DuplicateSchemaConstruct(DuplicateSchemaConstructError {
-                    kind: SchemaConstructKind::CommonType,
-                    construct: c.to_smolstr(),
-                })
-            }
-            cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
-                Self::CycleInActionHierarchy(CycleInActionHierarchyError {
-                    node: EntityUid::new(e),
-                })
-            }
-            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(n) => {
-                Self::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { node: n })
-            }
-            cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
-                Self::ActionEntityTypeDeclared(ActionEntityTypeDeclaredError {})
-            }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
-                Self::ContextOrShapeNotRecord(ContextOrShapeNotRecordError {
-                    context_or_shape: context_or_shape.into(),
-                })
-            }
-            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(uid) => {
-                Self::ActionAttributesContainEmptySet(ActionAttributesContainEmptySetError {
-                    action_uid: EntityUid::new(uid),
-                })
-            }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
-                Self::UnsupportedActionAttribute(UnsupportedActionAttributeError {
-                    action_uid: EntityUid::new(uid),
-                    escape_type: escape_type.into(),
-                })
-            }
-            cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
-                Self::ActionAttrEval(err.into())
-            }
-            cedar_policy_validator::SchemaError::ExprEscapeUsed => {
-                Self::ExprEscapeUsed(ExprEscapeUsedError {})
-            }
-            cedar_policy_validator::SchemaError::UnknownExtensionType(err) => {
-                SchemaError::UnknownExtensionType(err.into())
-            }
         }
     }
 }
