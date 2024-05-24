@@ -32,10 +32,9 @@ use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticP
 use super::{TypecheckAnswer, Typechecker};
 use crate::{
     schema::ACTION_ENTITY_TYPE,
-    type_error::TypeError,
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidationWarning,
-    ValidationWarningKind, ValidatorSchema,
+    validation_errors::{TypeError, UnexpectedTypeHelp},
+    NamespaceDefinition, ValidationMode, ValidationWarning, ValidationWarningKind, ValidatorSchema,
 };
 
 impl TypeError {

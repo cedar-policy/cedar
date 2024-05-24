@@ -25,7 +25,8 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     expr_iterator::{policy_entity_type_names, policy_entity_uids},
-    TypeError, ValidationError,
+    validation_errors::TypeError,
+    ValidationError,
 };
 
 use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
@@ -121,7 +122,7 @@ impl Validator {
         })
     }
 
-    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntityError` error for
+    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntity` error for
     /// every entity type in the slot environment that is either not in the schema,
     /// or unspecified.
     pub(crate) fn validate_entity_types_in_slots<'a>(
@@ -469,7 +470,7 @@ mod test {
     use crate::{
         err::*,
         schema_file_format::{NamespaceDefinition, *},
-        TypeError, UnrecognizedEntityType, UnspecifiedEntityError, ValidationErrorKind,
+        validation_errors::{UnrecognizedEntityType, UnspecifiedEntity, ValidationErrorKind},
         ValidationMode, ValidationWarningKind, Validator,
     };
 
@@ -1143,7 +1144,7 @@ mod test {
                 .1
                 .map(|w| { w.kind })
                 .collect::<Vec<ValidationWarningKind>>(),
-            vec![ValidationWarningKind::ImpossiblePolicy],
+            vec![ValidationWarningKind::impossible_policy()],
             "Unexpected validation warnings."
         );
     }
@@ -1523,7 +1524,7 @@ mod test {
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );
@@ -1545,7 +1546,7 @@ mod test {
             .collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );
@@ -1579,7 +1580,7 @@ mod test {
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity{ entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
         );

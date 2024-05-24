@@ -35,8 +35,11 @@ use cedar_policy_core::{
 use crate::{
     typecheck::test_utils::assert_policy_typecheck_fails,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, LubContext, LubHelp, SchemaFragment, TypeError, ValidationErrorKind,
-    ValidationMode,
+    validation_errors::{
+        EmptySetForbidden, IncompatibleTypes, LubContext, LubHelp, NonLitExtConstructor, TypeError,
+        ValidationErrorKind,
+    },
+    SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -385,7 +388,7 @@ fn empty_set_literal() {
             Expr::from_str(r#"[]"#).unwrap(),
             Expr::from_str(r#"[]"#).unwrap(),
             Type::any_set(),
-            ValidationErrorKind::EmptySetForbidden,
+            EmptySetForbidden {}.into(),
         )
     })
 }
@@ -400,7 +403,7 @@ fn ext_struct_non_lit() {
             Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
-            ValidationErrorKind::NonLitExtConstructor,
+            NonLitExtConstructor {}.into(),
         )
     });
 
@@ -412,7 +415,7 @@ fn ext_struct_non_lit() {
             Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Type::extension("decimal".parse().unwrap()),
-            ValidationErrorKind::NonLitExtConstructor,
+            NonLitExtConstructor {}.into(),
         )
     })
 }

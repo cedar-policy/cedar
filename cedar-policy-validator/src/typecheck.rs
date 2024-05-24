@@ -43,11 +43,9 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    AttributeAccess, LubContext, UnexpectedTypeHelp, ValidationMode, ValidationWarning,
-    ValidationWarningKind,
+    validation_errors::{AttributeAccess, LubContext, TypeError, UnexpectedTypeHelp},
+    ValidationMode, ValidationWarning, ValidationWarningKind,
 };
-
-use super::type_error::TypeError;
 
 use cedar_policy_core::ast::{
     BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name,
@@ -302,7 +300,7 @@ impl<'a> Typechecker<'a> {
             warnings.insert(ValidationWarning::with_policy_id(
                 t.id().clone(),
                 t.loc().clone(),
-                ValidationWarningKind::ImpossiblePolicy,
+                ValidationWarningKind::impossible_policy(),
             ));
         }
 
@@ -2509,7 +2507,10 @@ impl<'a> Typechecker<'a> {
                     failed = true;
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
-                    type_errors.push(TypeError::arg_validation_error(ext_expr.clone(), msg));
+                    type_errors.push(TypeError::function_argument_validation(
+                        ext_expr.clone(),
+                        msg,
+                    ));
                     failed = true;
                 }
 

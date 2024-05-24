@@ -18,7 +18,7 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use crate::{type_error::TypeError, types::Type};
+use crate::{types::Type, validation_errors::TypeError};
 use cedar_policy_core::ast::{Expr, Name};
 use std::str::FromStr;
 
@@ -56,7 +56,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(ipaddr_name.clone()),
-        vec![TypeError::arg_validation_error(
+        vec![TypeError::function_argument_validation(
             expr,
             "Failed to parse as IP address: `\"foo\"`".into(),
         )],
@@ -121,7 +121,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(decimal_name.clone()),
-        vec![TypeError::arg_validation_error(
+        vec![TypeError::function_argument_validation(
             expr,
             "Failed to parse as a decimal value: `\"foo\"`".into(),
         )],
