@@ -257,7 +257,7 @@ mod human_schema_error {
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct ParseError(#[from] cedar_policy_validator::HumanSyntaxParseError);
+    pub struct ParseError(#[from] pub(super) cedar_policy_validator::HumanSyntaxParseError);
 
     /// Errors when converting parsed human-readable schemas into full schemas
     #[derive(Debug, Error, Diagnostic)]
@@ -268,7 +268,7 @@ mod human_schema_error {
     /// IO errors when parsing human-readable schemas
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
-    pub struct IoError(#[from] std::io::Error);
+    pub struct IoError(#[from] pub(super) std::io::Error);
 }
 
 /// Errors when parsing schemas
@@ -277,15 +277,15 @@ pub enum HumanSchemaError {
     /// Error parsing a schema in natural syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parse(human_schema_error::ParseError),
+    Parse(#[from] human_schema_error::ParseError),
     /// Errors combining fragments into full schemas
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Core(human_schema_error::CoreError),
+    Core(#[from] human_schema_error::CoreError),
     /// IO errors while parsing
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Io(human_schema_error::IoError),
+    Io(#[from] human_schema_error::IoError),
 }
 
 #[doc(hidden)]
@@ -293,10 +293,14 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
         match value {
             cedar_policy_validator::HumanSchemaError::Core(core) => {
-                Self::Core(human_schema_error::CoreError(core.into()))
+                human_schema_error::CoreError(core.into()).into()
             }
-            cedar_policy_validator::HumanSchemaError::IO(io_err) => Self::Io(io_err.into()),
-            cedar_policy_validator::HumanSchemaError::Parsing(e) => Self::Parse(e.into()),
+            cedar_policy_validator::HumanSchemaError::IO(io_err) => {
+                human_schema_error::IoError(io_err).into()
+            }
+            cedar_policy_validator::HumanSchemaError::Parsing(e) => {
+                human_schema_error::ParseError(e).into()
+            }
         }
     }
 }
@@ -304,7 +308,7 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
 #[doc(hidden)]
 impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        Self::Core(human_schema_error::CoreError(value.into()))
+        human_schema_error::CoreError(value.into()).into()
     }
 }
 
