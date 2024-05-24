@@ -26,7 +26,7 @@ use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::{self, ExprConstructionError, InputInteger, PolicyID, RestrictedExprError, Var};
+use crate::ast::{self, Expr, ExprConstructionError, InputInteger, PolicyID, Var};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -43,55 +43,36 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
-/// For errors during parsing
+/// Errors that can occur when parsing Cedar policies or expressions.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution when
+// adding public methods.
 #[derive(Clone, Debug, Diagnostic, Error, PartialEq, Eq)]
 pub enum ParseError {
-    /// Error from the CST parser.
+    /// Error from the text -> CST parser
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToCST(#[from] ToCSTError),
-    /// Error in the CST -> AST transform, mostly well-formedness issues.
+    /// Error from the CST -> AST transform
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToAST(#[from] ToASTError),
-    /// Error concerning restricted expressions.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    RestrictedExpr(#[from] RestrictedExprError),
-    /// Errors concerning parsing literals on their own
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ParseLiteral(#[from] ParseLiteralError),
 }
 
-impl ParseError {
-    /// Extract a primary source span locating the error, if one is available.
-    pub fn primary_source_span(&self) -> Option<SourceSpan> {
-        match self {
-            ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
-            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_loc().span),
-            ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
-                RestrictedExprError::InvalidRestrictedExpression { expr, .. } => {
-                    expr.source_loc().map(|loc| loc.span)
-                }
-            },
-            ParseError::ParseLiteral(parse_lit_err) => parse_lit_err
-                .labels()
-                .and_then(|mut it| it.next().map(|lspan| *lspan.inner())),
-        }
-    }
-}
-
-/// Errors in the top-level parse literal entrypoint
+/// Errors possible from `Literal::from_str()`
 #[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq)]
-pub enum ParseLiteralError {
-    /// The top-level parser endpoint for parsing a literal encountered a non-literal.
-    /// Since this can be any possible other expression, we just return it as a string.
-    #[error("`{0}` is not a literal")]
-    ParseLiteral(String),
+pub enum LiteralParseError {
+    /// Failed to parse the input
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse(#[from] ParseErrors),
+    /// Parsed successfully as an expression, but failed to construct a literal
+    #[error("invalid literal: `{0}`")]
+    InvalidLiteral(Expr),
 }
 
-/// Errors in the CST -> AST transform, mostly well-formedness issues.
+/// Error from the CST -> AST transform
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 #[error("{kind}")]
 pub struct ToASTError {
@@ -487,7 +468,7 @@ pub enum InvalidIsError {
     WrongOp(cst::RelOp),
 }
 
-/// Error from the CST parser.
+/// Error from the text -> CST parser
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
@@ -685,6 +666,10 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
 }
 
 /// Multiple parse errors.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution when
+// adding public methods.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParseErrors(pub Vec<ParseError>);
 
@@ -696,13 +681,8 @@ impl ParseErrors {
         ParseErrors(Vec::new())
     }
 
-    /// Constructs a new, empty `ParseErrors` with the specified capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        ParseErrors(Vec::with_capacity(capacity))
-    }
-
     /// Add an error to the `ParseErrors`
-    pub(super) fn push(&mut self, err: impl Into<ParseError>) {
+    pub(crate) fn push(&mut self, err: impl Into<ParseError>) {
         self.0.push(err.into());
     }
 }

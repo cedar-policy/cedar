@@ -22,6 +22,9 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
+// How many attrs will we store in an error before cutting off for performance reason
+const TOO_MANY_ATTRS: usize = 5;
+
 /// Enumeration of the possible errors that can occur during evaluation
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -183,16 +186,22 @@ impl EvaluationError {
     }
 
     /// Construct a [`EntityAttrDoesNotExist`] error
-    pub(crate) fn entity_attr_does_not_exist(
+    pub(crate) fn entity_attr_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         attr: SmolStr,
-        available_attrs: Vec<SmolStr>,
+        available_attrs: impl IntoIterator<Item = &'a SmolStr>,
+        total_attrs: usize,
         source_loc: Option<Loc>,
     ) -> Self {
         evaluation_errors::EntityAttrDoesNotExistError {
             entity,
             attr,
-            available_attrs,
+            available_attrs: available_attrs
+                .into_iter()
+                .take(TOO_MANY_ATTRS)
+                .cloned()
+                .collect::<Vec<_>>(),
+            total_attrs,
             source_loc,
         }
         .into()
@@ -204,14 +213,20 @@ impl EvaluationError {
     }
 
     /// Construct a [`RecordAttrDoesNotExist`] error
-    pub(crate) fn record_attr_does_not_exist(
+    pub(crate) fn record_attr_does_not_exist<'a>(
         attr: SmolStr,
-        available_attrs: Vec<SmolStr>,
+        available_attrs: impl IntoIterator<Item = &'a SmolStr>,
+        total_attrs: usize,
         source_loc: Option<Loc>,
     ) -> Self {
         evaluation_errors::RecordAttrDoesNotExistError {
             attr,
-            available_attrs,
+            available_attrs: available_attrs
+                .into_iter()
+                .take(TOO_MANY_ATTRS)
+                .cloned()
+                .collect(),
+            total_attrs,
             source_loc,
         }
         .into()
@@ -364,8 +379,10 @@ pub mod evaluation_errors {
         pub(crate) entity: Arc<EntityUID>,
         /// Name of the attribute it didn't have
         pub(crate) attr: SmolStr,
-        /// Available attributes on the entity
+        /// (First five) Available attributes on the entity
         pub(crate) available_attrs: Vec<SmolStr>,
+        /// Total number of attributes on the entity
+        pub(crate) total_attrs: usize,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
@@ -376,13 +393,20 @@ pub mod evaluation_errors {
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
                 Some(Box::new("entity does not have any attributes"))
+            } else if self.available_attrs.len() == self.total_attrs {
+                Some(Box::new(format!(
+                    "Available attributes: {:?}",
+                    self.available_attrs
+                )))
             } else {
                 Some(Box::new(format!(
-                    "available attributes: {:?}",
-                    self.available_attrs
+                    "available attributes: [{}, ... ({} more attributes) ]",
+                    self.available_attrs.iter().join(","),
+                    self.total_attrs - self.available_attrs.len()
                 )))
             }
         }
+
         fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
         }
@@ -430,8 +454,10 @@ pub mod evaluation_errors {
     pub struct RecordAttrDoesNotExistError {
         /// Name of the attribute we tried to access
         pub(crate) attr: SmolStr,
-        /// Available attributes on the record
+        /// (First five) Available attributes on the record
         pub(crate) available_attrs: Vec<SmolStr>,
+        /// The total number of attrs this record has
+        pub(crate) total_attrs: usize,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
@@ -442,10 +468,16 @@ pub mod evaluation_errors {
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
                 Some(Box::new("record does not have any attributes"))
-            } else {
+            } else if self.available_attrs.len() == self.total_attrs {
                 Some(Box::new(format!(
                     "available attributes: {:?}",
                     self.available_attrs
+                )))
+            } else {
+                Some(Box::new(format!(
+                    "available attributes: [{}, ... ({} more attributes) ]",
+                    self.available_attrs.iter().join(","),
+                    self.total_attrs - self.available_attrs.len()
                 )))
             }
         }

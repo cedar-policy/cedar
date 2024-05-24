@@ -41,13 +41,13 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .into_errors_and_warnings();
             let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_smolstr(),
+                    policy_id: error.policy_id().to_smolstr(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
             let validation_warnings: Vec<ValidationError> = validation_warnings
                 .map(|error| ValidationError {
-                    policy_id: error.location().policy_id().to_smolstr(),
+                    policy_id: error.policy_id().to_smolstr(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();

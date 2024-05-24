@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
+- Fixed a performance issue when constructing an error for accessing 
+    a non-existent attribute on sufficiently large records/entities
 
 ### Removed
 

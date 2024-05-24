@@ -26,7 +26,7 @@ use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use thiserror::Error;
 
 /// We support two types of entities. The first is a nominal type (e.g., User, Action)
@@ -269,11 +269,12 @@ pub struct Entity {
     /// UID
     uid: EntityUID,
 
-    /// Internal HashMap of attributes.
+    /// Internal BTreMap of attributes.
+    /// We use a btreemap so that the keys have a determenistic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
     /// `RestrictedExpr`s, for mostly historical reasons.
-    attrs: HashMap<SmolStr, PartialValueSerializedAsExpr>,
+    attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 
     /// Set of ancestors of this `Entity` (i.e., all direct and transitive
     /// parents), as UIDs
@@ -331,7 +332,7 @@ impl Entity {
     /// as `PartialValueSerializedAsExpr`.
     pub fn new_with_attr_partial_value_serialized_as_expr(
         uid: EntityUID,
-        attrs: HashMap<SmolStr, PartialValueSerializedAsExpr>,
+        attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
         ancestors: HashSet<EntityUID>,
     ) -> Self {
         Entity {
@@ -361,6 +362,16 @@ impl Entity {
         self.ancestors.iter()
     }
 
+    /// Get the number of attributes on this entity
+    pub fn attrs_len(&self) -> usize {
+        self.attrs.len()
+    }
+
+    /// Iterate over this entity's attribute names
+    pub fn keys(&self) -> impl Iterator<Item = &SmolStr> {
+        self.attrs.keys()
+    }
+
     /// Iterate over this entity's attributes
     pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
@@ -370,7 +381,7 @@ impl Entity {
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
             uid,
-            attrs: HashMap::new(),
+            attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
         }
     }

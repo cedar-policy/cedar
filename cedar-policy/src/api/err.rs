@@ -21,18 +21,16 @@ use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::Name;
+pub use cedar_policy_core::ast::RestrictedExpressionParseError;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
-use cedar_policy_core::parser;
-pub use cedar_policy_core::parser::err::ParseErrors;
+pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::{
-    TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
-};
+pub use cedar_policy_validator::{UnsupportedFeature, ValidationErrorKind, ValidationWarningKind};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -689,12 +687,12 @@ pub struct ValidationError {
 impl ValidationError {
     /// Extract details about the exact issue detected by the validator.
     pub fn error_kind(&self) -> &ValidationErrorKind {
-        self.error.error_kind()
+        self.error.kind()
     }
 
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        SourceLocation::ref_cast(self.error.location())
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyId {
+        PolicyId::ref_cast(self.error.policy_id())
     }
 }
 
@@ -702,56 +700,6 @@ impl ValidationError {
 impl From<cedar_policy_validator::ValidationError> for ValidationError {
     fn from(error: cedar_policy_validator::ValidationError) -> Self {
         Self { error }
-    }
-}
-
-/// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Eq, PartialEq, RefCast)]
-#[repr(transparent)]
-pub struct SourceLocation(cedar_policy_validator::SourceLocation);
-
-impl SourceLocation {
-    /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &PolicyId {
-        PolicyId::ref_cast(self.0.policy_id())
-    }
-
-    /// Get the start of the location. Returns `None` if this location does not
-    /// have a range.
-    pub fn range_start(&self) -> Option<usize> {
-        self.0.source_loc().map(parser::Loc::start)
-    }
-
-    /// Get the end of the location. Returns `None` if this location does not
-    /// have a range.
-    pub fn range_end(&self) -> Option<usize> {
-        self.0.source_loc().map(parser::Loc::end)
-    }
-
-    /// Returns a tuple of (start, end) of the location.
-    /// Returns `None` if this location does not have a range.
-    pub fn range_start_and_end(&self) -> Option<(usize, usize)> {
-        self.0
-            .source_loc()
-            .as_ref()
-            .map(|loc| (loc.start(), loc.end()))
-    }
-}
-
-impl std::fmt::Display for SourceLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "policy `{}`", self.0.policy_id())?;
-        if let Some(loc) = self.0.source_loc() {
-            write!(f, " at offset {}-{}", loc.start(), loc.end())?;
-        }
-        Ok(())
-    }
-}
-
-#[doc(hidden)]
-impl From<&cedar_policy_validator::SourceLocation> for SourceLocation {
-    fn from(loc: &cedar_policy_validator::SourceLocation) -> Self {
-        Self(loc.clone())
     }
 }
 
@@ -769,9 +717,9 @@ impl ValidationWarning {
         self.warning.kind()
     }
 
-    /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        SourceLocation::ref_cast(self.warning.location())
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyId {
+        PolicyId::ref_cast(self.warning.policy_id())
     }
 }
 

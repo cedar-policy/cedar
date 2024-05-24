@@ -19,7 +19,7 @@ use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::TypeErrorKind;
+use crate::{TypeError, ValidationErrorKind};
 
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
@@ -77,37 +77,41 @@ impl ValidationResult {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
-#[error("for policy `{}`, {}", location.policy_id(), kind)]
+#[error("for policy `{policy_id}`, {kind}")]
 pub struct ValidationError {
-    location: SourceLocation,
-    kind: ValidationErrorKind,
+    pub(crate) policy_id: PolicyID,
+    pub(crate) source_loc: Option<Loc>,
+    pub(crate) kind: ValidationErrorKind,
 }
 
 impl ValidationError {
     pub(crate) fn with_policy_id(
-        id: PolicyID,
+        policy_id: PolicyID,
         source_loc: Option<Loc>,
-        kind: ValidationErrorKind,
+        err: TypeError,
     ) -> Self {
+        let (kind, error_loc) = err.kind_and_location();
+        let source_loc = error_loc.or(source_loc);
         Self {
+            policy_id,
+            source_loc,
             kind,
-            location: SourceLocation::new(id, source_loc),
         }
     }
 
-    /// Deconstruct this into its component source location and error kind.
-    pub fn into_location_and_error_kind(self) -> (SourceLocation, ValidationErrorKind) {
-        (self.location, self.kind)
-    }
-
     /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
+    pub fn kind(&self) -> &ValidationErrorKind {
         &self.kind
     }
 
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyID {
+        &self.policy_id
+    }
+
     /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
     }
 }
 
@@ -115,12 +119,12 @@ impl ValidationError {
 // .location, everything else forwarded to .error_kind
 impl Diagnostic for ValidationError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
+        Some(&self.source_loc.as_ref()?.src)
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
@@ -148,208 +152,41 @@ impl Diagnostic for ValidationError {
     }
 }
 
-/// Represents a location in Cedar policy source.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct SourceLocation {
-    policy_id: PolicyID,
-    source_loc: Option<Loc>,
-}
-
-impl SourceLocation {
-    pub(crate) fn new(policy_id: PolicyID, source_loc: Option<Loc>) -> Self {
-        Self {
-            policy_id,
-            source_loc,
-        }
-    }
-
-    /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &PolicyID {
-        &self.policy_id
-    }
-
-    pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
-    }
-}
-
-/// Enumeration of the possible diagnostic error that could be found by the
-/// verification steps.
-#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ValidationErrorKind {
-    /// A policy contains an entity type that is not declared in the schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnrecognizedEntityType(#[from] UnrecognizedEntityType),
-    /// A policy contains an action that is not declared in the schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnrecognizedActionId(#[from] UnrecognizedActionId),
-    /// There is no action satisfying the action scope constraint that can be
-    /// applied to a principal and resources that both satisfy their respective
-    /// scope conditions.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidActionApplication(#[from] InvalidActionApplication),
-    /// The type checker found an error.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    TypeError(#[from] TypeErrorKind),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] UnspecifiedEntityError),
-}
-
-impl ValidationErrorKind {
-    pub(crate) fn unrecognized_entity_type(
-        actual_entity_type: String,
-        suggested_entity_type: Option<String>,
-    ) -> ValidationErrorKind {
-        UnrecognizedEntityType {
-            actual_entity_type,
-            suggested_entity_type,
-        }
-        .into()
-    }
-
-    pub(crate) fn unrecognized_action_id(
-        actual_action_id: String,
-        suggested_action_id: Option<String>,
-    ) -> ValidationErrorKind {
-        UnrecognizedActionId {
-            actual_action_id,
-            suggested_action_id,
-        }
-        .into()
-    }
-
-    pub(crate) fn invalid_action_application(
-        would_in_fix_principal: bool,
-        would_in_fix_resource: bool,
-    ) -> ValidationErrorKind {
-        InvalidActionApplication {
-            would_in_fix_principal,
-            would_in_fix_resource,
-        }
-        .into()
-    }
-
-    pub(crate) fn type_error(type_error: TypeErrorKind) -> ValidationErrorKind {
-        type_error.into()
-    }
-
-    pub(crate) fn unspecified_entity(entity_id: String) -> ValidationErrorKind {
-        UnspecifiedEntityError { entity_id }.into()
-    }
-}
-
-/// Structure containing details about an unrecognized entity type error.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("unrecognized entity type `{actual_entity_type}`")]
-pub struct UnrecognizedEntityType {
-    /// The entity type seen in the policy.
-    pub(crate) actual_entity_type: String,
-    /// An entity type from the schema that the user might reasonably have
-    /// intended to write.
-    pub(crate) suggested_entity_type: Option<String>,
-}
-
-impl Diagnostic for UnrecognizedEntityType {
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match &self.suggested_entity_type {
-            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
-            None => None,
-        }
-    }
-}
-
-/// Structure containing details about an unrecognized action id error.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("unrecognized action `{actual_action_id}`")]
-pub struct UnrecognizedActionId {
-    /// Action Id seen in the policy.
-    pub(crate) actual_action_id: String,
-    /// An action id from the schema that the user might reasonably have
-    /// intended to write.
-    pub(crate) suggested_action_id: Option<String>,
-}
-
-impl Diagnostic for UnrecognizedActionId {
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match &self.suggested_action_id {
-            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
-            None => None,
-        }
-    }
-}
-
-/// Structure containing details about an invalid action application error.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("unable to find an applicable action given the policy scope constraints")]
-pub struct InvalidActionApplication {
-    pub(crate) would_in_fix_principal: bool,
-    pub(crate) would_in_fix_resource: bool,
-}
-
-impl Diagnostic for InvalidActionApplication {
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match (self.would_in_fix_principal, self.would_in_fix_resource) {
-            (true, false) => Some(Box::new(
-                "try replacing `==` with `in` in the principal clause",
-            )),
-            (false, true) => Some(Box::new(
-                "try replacing `==` with `in` in the resource clause",
-            )),
-            (true, true) => Some(Box::new(
-                "try replacing `==` with `in` in the principal clause and the resource clause",
-            )),
-            (false, false) => None,
-        }
-    }
-}
-
-/// Structure containing details about an unspecified entity error.
-#[derive(Debug, Clone, Diagnostic, Error, Eq, PartialEq)]
-#[error("unspecified entity with id `{entity_id}`")]
-#[diagnostic(help("unspecified entities cannot be used in policies"))]
-pub struct UnspecifiedEntityError {
-    /// EID of the unspecified entity.
-    pub(crate) entity_id: String,
-}
-
 /// The structure for validation warnings.
 #[derive(Hash, Eq, PartialEq, Error, Debug, Clone)]
-#[error("for policy `{}`, {}", location.policy_id(), kind)]
+#[error("for policy `{policy_id}`, {kind}")]
 pub struct ValidationWarning {
-    pub(crate) location: SourceLocation,
+    pub(crate) policy_id: PolicyID,
+    pub(crate) source_loc: Option<Loc>,
     pub(crate) kind: ValidationWarningKind,
 }
 
 impl ValidationWarning {
     pub(crate) fn with_policy_id(
-        id: PolicyID,
+        policy_id: PolicyID,
         source_loc: Option<Loc>,
         kind: ValidationWarningKind,
     ) -> Self {
         Self {
             kind,
-            location: SourceLocation::new(id, source_loc),
+            policy_id,
+            source_loc,
         }
     }
 
-    pub fn location(&self) -> &SourceLocation {
-        &self.location
+    /// Extract the policy id of the policy where the validator found the issue.
+    pub fn policy_id(&self) -> &PolicyID {
+        &self.policy_id
     }
 
+    /// Extract the location where the validator found the issue.
+    pub fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
+    }
+
+    /// Extract details about the exact issue detected by the validator.
     pub fn kind(&self) -> &ValidationWarningKind {
         &self.kind
-    }
-
-    pub fn to_kind_and_location(self) -> (SourceLocation, ValidationWarningKind) {
-        (self.location, self.kind)
     }
 }
 
@@ -357,12 +194,12 @@ impl ValidationWarning {
 // .location, everything else forwarded to .kind
 impl Diagnostic for ValidationWarning {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
+        let label = miette::LabeledSpan::underline(self.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.location.source_loc.as_ref()?.src)
+        Some(&self.source_loc.as_ref()?.src)
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
