@@ -184,7 +184,7 @@ pub trait CedarTestImplementation {
         policies: &PolicySet,
     ) -> TestResult<partial::FlatPartialResponse>;
 
-    /// Custom evaluator entry point. The bool return value indicates the whether
+    /// Custom partial evaluator entry point. The bool return value indicates the whether
     /// evaluating the provided expression produces the expected value.
     /// `expected` is optional to allow for the case where no return value is
     /// expected due to errors.
