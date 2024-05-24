@@ -107,8 +107,6 @@ pub mod entities {
     }
 }
 
-use entities::json::err::JsonDeserializationError;
-
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
@@ -2175,8 +2173,8 @@ impl Template {
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
-        let est: est::Policy =
-            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2566,8 +2564,8 @@ impl Policy {
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
-        let est: est::Policy =
-            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 

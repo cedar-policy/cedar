@@ -430,7 +430,7 @@ impl ValidatorSchema {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
                         if !entity_types.contains_key(&p_entity) {
-                            undeclared_e.insert(p_entity.to_string());
+                            undeclared_e.insert(p_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),
@@ -441,7 +441,7 @@ impl ValidatorSchema {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
                         if !entity_types.contains_key(&r_entity) {
-                            undeclared_e.insert(r_entity.to_string());
+                            undeclared_e.insert(r_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),

@@ -142,8 +142,8 @@ pub struct TransitiveClosureError {
 
 impl TransitiveClosureError {
     /// Getter of hierarchy kind
-    pub fn get_kind(&self) -> HierarchyKind {
-        self.kind.clone()
+    pub fn get_kind(&self) -> &HierarchyKind {
+        &self.kind
     }
 }
 
@@ -178,13 +178,13 @@ pub struct UndeclaredSchemaConstructError {
 
 impl UndeclaredSchemaConstructError {
     /// Getter of schema construct kind
-    pub fn get_kind(&self) -> SchemaConstructKind {
-        self.kind.clone()
+    pub fn get_kind(&self) -> &SchemaConstructKind {
+        &self.kind
     }
 
     /// Getter of schema constructs
-    pub fn get_constructs(&self) -> impl Iterator<Item = SmolStr> + '_ {
-        self.constructs.iter().cloned()
+    pub fn get_constructs(&self) -> impl Iterator<Item = &SmolStr> + '_ {
+        self.constructs.iter()
     }
 }
 
@@ -198,13 +198,13 @@ pub struct DuplicateSchemaConstructError {
 
 impl DuplicateSchemaConstructError {
     /// Getter of schema construct kind
-    pub fn get_kind(&self) -> SchemaConstructKind {
-        self.kind.clone()
+    pub fn get_kind(&self) -> &SchemaConstructKind {
+        &self.kind
     }
 
     /// Getter of schema constructs
-    pub fn get_construct(&self) -> SmolStr {
-        self.construct.clone()
+    pub fn get_construct(&self) -> &SmolStr {
+        &self.construct
     }
 }
 
@@ -259,8 +259,8 @@ pub struct ActionAttributesContainEmptySetError {
 
 impl ActionAttributesContainEmptySetError {
     /// Getter of the action uid
-    pub fn get_action(&self) -> SmolStr {
-        self.action_uid.to_smolstr()
+    pub fn get_action(&self) -> &EntityUid {
+        &self.action_uid
     }
 }
 
@@ -276,8 +276,8 @@ pub struct UnsupportedActionAttributeError {
 
 impl UnsupportedActionAttributeError {
     /// Getter of the action uid
-    pub fn get_action(&self) -> SmolStr {
-        self.action_uid.to_smolstr()
+    pub fn get_action(&self) -> &EntityUid {
+        &self.action_uid
     }
 }
 
@@ -285,7 +285,17 @@ impl UnsupportedActionAttributeError {
 #[derive(Debug, Diagnostic, Error)]
 #[error(transparent)]
 pub struct JsonSerializationError {
+    #[from]
     pub(crate) error: serde_json::Error,
+}
+
+/// JSON deserialization error
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct JsonDeserializationError {
+    #[from]
+    pub(crate) error: cedar_policy_validator::JsonDeserializationError,
 }
 
 /// Unsupported feature error
@@ -311,7 +321,7 @@ pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] cedar_policy_validator::JsonDeserializationError),
+    JsonDeserialization(JsonDeserializationError),
     /// Error thrown by the `serde_json` crate during serialization
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -572,7 +582,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         match value {
             cedar_policy_validator::SchemaError::JsonDeserialization(e) => {
-                Self::JsonDeserialization(e)
+                Self::JsonDeserialization(e.into())
             }
             cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
                 Self::TransitiveClosure(TransitiveClosureError {
