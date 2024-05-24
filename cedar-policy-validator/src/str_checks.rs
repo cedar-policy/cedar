@@ -182,7 +182,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "identifier `say_һello` contains mixed scripts"
+            "for policy `test`, identifier `say_һello` contains mixed scripts"
         );
     }
 
@@ -225,7 +225,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "string `\"*_һello\"` contains mixed scripts"
+            "for policy `test`, string `\"*_һello\"` contains mixed scripts"
         );
     }
 
@@ -254,7 +254,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters"
+            "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters"
         );
     }
 }

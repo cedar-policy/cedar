@@ -32,7 +32,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("string `\"{string}\"` contains mixed scripts")]
+#[error("for policy `{policy_id}`, string `\"{string}\"` contains mixed scripts")]
 pub struct MixedScriptString {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -45,7 +45,7 @@ impl Diagnostic for MixedScriptString {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("string `\"{string}\"` contains BIDI control characters")]
+#[error("for policy `{policy_id}`, string `\"{string}\"` contains BIDI control characters")]
 pub struct BidiCharsInString {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -58,7 +58,7 @@ impl Diagnostic for BidiCharsInString {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("identifier `{id}` contains BIDI control characters")]
+#[error("for policy `{policy_id}`, identifier `{id}` contains BIDI control characters")]
 pub struct BidiCharsInIdentifier {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -71,7 +71,7 @@ impl Diagnostic for BidiCharsInIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("identifier `{id}` contains mixed scripts")]
+#[error("for policy `{policy_id}`, identifier `{id}` contains mixed scripts")]
 pub struct MixedScriptIdentifier {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -83,7 +83,7 @@ impl Diagnostic for MixedScriptIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("identifier `{id}` contains characters that fall outside of the General Security Profile for Identifiers")]
+#[error("for policy `{policy_id}`, identifier `{id}` contains characters that fall outside of the General Security Profile for Identifiers")]
 pub struct ConfusableIdentifier {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -96,7 +96,7 @@ impl Diagnostic for ConfusableIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("policy is impossible: the policy expression evaluates to false for all valid requests")]
+#[error("for policy `{policy_id}`, policy is impossible: the policy expression evaluates to false for all valid requests")]
 pub struct ImpossiblePolicy {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,

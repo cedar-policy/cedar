@@ -30,8 +30,6 @@ use crate::types::Type;
 pub mod validation_errors;
 pub mod validation_warnings;
 
-pub use self::validation_errors::ValidationErrorKind;
-
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
@@ -162,28 +160,6 @@ pub enum ValidationError {
 }
 
 impl ValidationError {
-    /// Extract the policy id of the policy where the validator found the issue.
-    pub fn policy_id(&self) -> &PolicyID {
-        match self {
-            ValidationError::UnrecognizedEntityType(e) => &e.policy_id,
-            ValidationError::UnrecognizedActionId(e) => &e.policy_id,
-            ValidationError::InvalidActionApplication(e) => &e.policy_id,
-            ValidationError::UnspecifiedEntity(e) => &e.policy_id,
-            ValidationError::UnexpectedType(e) => &e.policy_id,
-            ValidationError::IncompatibleTypes(e) => &e.policy_id,
-            ValidationError::UnsafeAttributeAccess(e) => &e.policy_id,
-            ValidationError::UnsafeOptionalAttributeAccess(e) => &e.policy_id,
-            ValidationError::UndefinedFunction(e) => &e.policy_id,
-            ValidationError::MultiplyDefinedFunction(e) => &e.policy_id,
-            ValidationError::WrongNumberArguments(e) => &e.policy_id,
-            ValidationError::WrongCallStyle(e) => &e.policy_id,
-            ValidationError::FunctionArgumentValidation(e) => &e.policy_id,
-            ValidationError::EmptySetForbidden(e) => &e.policy_id,
-            ValidationError::NonLitExtConstructor(e) => &e.policy_id,
-            ValidationError::HierarchyNotRespected(e) => &e.policy_id,
-        }
-    }
-
     pub(crate) fn unrecognized_entity_type(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -425,17 +401,6 @@ pub enum ValidationWarning {
 }
 
 impl ValidationWarning {
-    pub fn policy_id(&self) -> &PolicyID {
-        match self {
-            ValidationWarning::MixedScriptString(w) => &w.policy_id,
-            ValidationWarning::BidiCharsInString(w) => &w.policy_id,
-            ValidationWarning::BidiCharsInIdentifier(w) => &w.policy_id,
-            ValidationWarning::MixedScriptIdentifier(w) => &w.policy_id,
-            ValidationWarning::ConfusableIdentifier(w) => &w.policy_id,
-            ValidationWarning::ImpossiblePolicy(w) => &w.policy_id,
-        }
-    }
-
     pub(crate) fn mixed_script_string(
         source_loc: Option<Loc>,
         policy_id: PolicyID,

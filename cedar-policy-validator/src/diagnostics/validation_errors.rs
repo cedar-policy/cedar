@@ -61,97 +61,10 @@ macro_rules! impl_diagnostic_from_on_expr_field {
     };
 }
 
-/// Represents the different kinds of type errors and contains information
-/// specific to that type error kind.
-#[derive(Debug, Clone, Diagnostic, Error, Hash, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ValidationErrorKind {
-    /// A policy contains an entity type that is not declared in the schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnrecognizedEntityType(#[from] UnrecognizedEntityType),
-    /// A policy contains an action that is not declared in the schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnrecognizedActionId(#[from] UnrecognizedActionId),
-    /// There is no action satisfying the action scope constraint that can be
-    /// applied to a principal and resources that both satisfy their respective
-    /// scope conditions.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidActionApplication(#[from] InvalidActionApplication),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] UnspecifiedEntity),
-    /// The typechecker expected to see a subtype of one of the types in
-    /// `expected`, but saw `actual`.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnexpectedType(#[from] UnexpectedType),
-    /// The typechecker could not compute a least upper bound for `types`.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    IncompatibleTypes(#[from] IncompatibleTypes),
-    /// The typechecker detected an access to a record or entity attribute
-    /// that it could not statically guarantee would be present.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsafeAttributeAccess(#[from] UnsafeAttributeAccess),
-    /// The typechecker could not conclude that an access to an optional
-    /// attribute was safe.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsafeOptionalAttributeAccess(#[from] UnsafeOptionalAttributeAccess),
-    /// The typechecker found that a policy condition will always evaluate to false.
-    #[error(
-        "policy is impossible: the policy expression evaluates to false for all valid requests"
-    )]
-    #[deprecated(
-        since = "3.2.0",
-        note = "`ImpossiblePolicy` is now a warning rather than an error"
-    )]
-    ImpossiblePolicy,
-    /// Undefined extension function.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UndefinedFunction(#[from] UndefinedFunction),
-    /// Multiply defined extension function.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MultiplyDefinedFunction(#[from] MultiplyDefinedFunction),
-    /// Incorrect number of arguments in an extension function application.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WrongNumberArguments(#[from] WrongNumberArguments),
-    /// Incorrect call style in an extension function application.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WrongCallStyle(#[from] WrongCallStyle),
-    /// Error returned by custom extension function argument validation
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    FunctionArgumentValidation(#[from] FunctionArgumentValidation),
-    /// Error returned when an empty set literal appears in a policy.
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    EmptySetForbidden(#[from] EmptySetForbidden),
-    /// Error returned when an extension constructor is applied to a non-literal value.
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    NonLitExtConstructor(#[from] NonLitExtConstructor),
-    /// To pass strict validation a policy cannot contain an `in` expression
-    /// where the entity type on the left might not be able to be a member of
-    /// the entity type on the right.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HierarchyNotRespected(#[from] HierarchyNotRespected),
-}
-
 /// Structure containing details about an unrecognized entity type error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("unrecognized entity type `{actual_entity_type}`")]
+// #[error(error_in_policy!("unrecognized entity type `{actual_entity_type}`"))]
+#[error("for policy `{policy_id}`, unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -175,7 +88,7 @@ impl Diagnostic for UnrecognizedEntityType {
 
 /// Structure containing details about an unrecognized action id error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("unrecognized action `{actual_action_id}`")]
+#[error("for policy `{policy_id}`, unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -199,7 +112,7 @@ impl Diagnostic for UnrecognizedActionId {
 
 /// Structure containing details about an invalid action application error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("unable to find an applicable action given the policy scope constraints")]
+#[error("for policy `{policy_id}`, unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -228,7 +141,7 @@ impl Diagnostic for InvalidActionApplication {
 
 /// Structure containing details about an unspecified entity error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("unspecified entity with id `{entity_id}`")]
+#[error("for policy `{policy_id}`, unspecified entity with id `{entity_id}`")]
 pub struct UnspecifiedEntity {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -246,7 +159,7 @@ impl Diagnostic for UnspecifiedEntity {
 
 /// Structure containing details about an unexpected type error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error("unexpected type: expected {} but saw {}",
+#[error("for policy `{policy_id}`, unexpected type: expected {} but saw {}",
     match .expected.iter().next() {
         Some(single) if .expected.len() == 1 => format!("{}", single),
         _ => .expected.iter().join(", or ")
@@ -347,8 +260,8 @@ impl Diagnostic for IncompatibleTypes {
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
-            "{} must have compatible types. {}",
-            self.context, self.hint
+            "for policy `{}`, {} must have compatible types. {}",
+            self.policy_id, self.context, self.hint
         )))
     }
 }
@@ -391,7 +304,7 @@ pub enum LubContext {
 
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Clone, Eq, Error)]
-#[error("attribute {attribute_access} not found")]
+#[error("for policy `{policy_id}`, attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -467,7 +380,7 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 
 /// Structure containing details about an undefined function error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error("undefined extension function: {name}")]
+#[error("for policy `{policy_id}`, undefined extension function: {name}")]
 pub struct UndefinedFunction {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -493,7 +406,7 @@ impl Diagnostic for UndefinedFunction {
 
 /// Structure containing details about a multiply defined function error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error("extension function defined multiple times: {name}")]
+#[error("for policy `{policy_id}`, extension function defined multiple times: {name}")]
 pub struct MultiplyDefinedFunction {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -519,7 +432,7 @@ impl Diagnostic for MultiplyDefinedFunction {
 
 /// Structure containing details about a wrong number of arguments error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error("wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
+#[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -549,7 +462,7 @@ impl Diagnostic for WrongNumberArguments {
 
 /// Structure containing details about a wrong call style error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error("wrong call style in extension function application. Expected {expected}, got {actual}")]
+#[error("for policy `{policy_id}`, wrong call style in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongCallStyle {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -579,7 +492,7 @@ impl Diagnostic for WrongCallStyle {
 
 /// Structure containing details about a function argument validation error.
 #[derive(Debug, Clone, Eq, Error)]
-#[error("error during extension function argument validation: {msg}")]
+#[error("for policy `{policy_id}`, error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidation {
     pub on_expr: Expr,
     pub policy_id: PolicyID,
@@ -606,7 +519,7 @@ impl Diagnostic for FunctionArgumentValidation {
 
 /// Structure containing details about a hierarchy not respected error
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("operands to `in` do not respect the entity hierarchy")]
+#[error("for policy `{policy_id}`, operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -628,7 +541,7 @@ impl Diagnostic for HierarchyNotRespected {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("empty set literals are forbidden in policies")]
+#[error("for policy `{policy_id}`, empty set literals are forbidden in policies")]
 pub struct EmptySetForbidden {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
@@ -639,7 +552,7 @@ impl Diagnostic for EmptySetForbidden {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("extension constructors may not be called with non-literal expressions")]
+#[error("for policy `{policy_id}`, extension constructors may not be called with non-literal expressions")]
 pub struct NonLitExtConstructor {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
