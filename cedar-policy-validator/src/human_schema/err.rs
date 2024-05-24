@@ -462,8 +462,8 @@ impl Diagnostic for ShadowsEntityWarning {
 pub enum SchemaWarning {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ShadowsBuiltin(ShadowsBuiltinWarning),
+    ShadowsBuiltin(#[from] ShadowsBuiltinWarning),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ShadowsEntity(ShadowsEntityWarning),
+    ShadowsEntity(#[from] ShadowsEntityWarning),
 }
