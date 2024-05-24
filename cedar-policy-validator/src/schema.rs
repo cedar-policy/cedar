@@ -406,7 +406,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -417,7 +417,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }

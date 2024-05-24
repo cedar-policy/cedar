@@ -16,6 +16,7 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
+use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
 use smol_str::SmolStr;
 use std::sync::Arc;
@@ -34,6 +35,8 @@ pub struct EvaluationError {
     /// `.error_kind`.)
     source_loc: Option<Loc>,
 }
+// How many attrs will we store in an error before cutting off for performance reasons
+const TOO_MANY_ATTRS: usize = 5;
 
 // custom impl of `Diagnostic`
 impl Diagnostic for EvaluationError {
@@ -120,7 +123,7 @@ impl EvaluationError {
     }
 
     /// Construct a [`EntityAttrDoesNotExist`] error
-    pub(crate) fn entity_attr_does_not_exist(
+    pub(crate) fn entity_attr_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         attr: SmolStr,
         source_loc: Option<Loc>,
@@ -142,11 +145,16 @@ impl EvaluationError {
     }
 
     /// Construct a [`RecordAttrDoesNotExist`] error
-    pub(crate) fn record_attr_does_not_exist(
+    pub(crate) fn record_attr_does_not_exist<'a>(
         attr: SmolStr,
-        alternatives: Vec<SmolStr>,
+        available_attrs: impl IntoIterator<Item = &'a SmolStr>,
         source_loc: Option<Loc>,
     ) -> Self {
+        let alternatives = available_attrs
+            .into_iter()
+            .take(TOO_MANY_ATTRS)
+            .cloned()
+            .collect_vec();
         Self {
             error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
             advice: None,
@@ -312,7 +320,7 @@ pub enum EvaluationErrorKind {
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
     #[error("record does not have the attribute `{0}`")]
-    #[diagnostic(help("available attributes: {1:?}"))]
+    #[diagnostic(help("available attributes: {}", if .1.len() == TOO_MANY_ATTRS { format!("{:?} (truncated, more attributes may exist)", .1) } else { format!("{:?}", .1) } ))]
     RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// An error occurred when looking up an extension function
@@ -388,7 +396,6 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
         #[allow(clippy::indexing_slicing)]
         1 => format!("type error: expected {}, got {}", expected[0], actual),
         _ => {
-            use itertools::Itertools;
             format!(
                 "type error: expected one of [{}], got {actual}",
                 expected.iter().join(", ")

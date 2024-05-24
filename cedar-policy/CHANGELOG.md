@@ -5,18 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.1] - Coming soon
+## [Unreleased]
+
+### Added
+
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+
+### Changed
+
+- Significantly reworked all public-facing error types to address some issues
+  and improve consistency. See issue #745.
+- Finalized the `ffi` module which was preview-released in 3.2.0.
+  This involved a few additional API breaking changes in `ffi`. See #757.
+- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
+- Removed unnecessary lifetimes from some validation related structs (#715)
+- Changed policy validation to reject comparisons and conditionals between
+  record types that differ in whether an attribute is required or optional.
+- Fixed a performance issue when constructing an error for accessing
+  a non-existent attribute on sufficiently large records/entities
+
+### Removed
+
+- Reduced precision of partial evaluation for `||`, `&&`, and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
+- Removed the `error` extension function, which was previously used during partial evaluation.
+- Removed integration testing harness from the `cedar-policy` crate. It is now
+  in an internal crate, allowing us to make semver incompatible changes. (#857)
+- Removed the (deprecated) `frontend` module in favor of the new `ffi` module
+  introduced in 3.2.0. See #757.
+- Removed `ParseErrors::errors_as_strings`. Callers should consider examining
+  the rich data provided by `miette::Diagnostic`, for instance `.help()` and
+  `labels()`. Callers can continue using the same behavior by calling
+  `.iter().map(ToString::to_string)`. (#882, resolving #543)
+  > > > > > > > 076b4f1b (Improve performance on a record error case (#887))
 
 ### Fixed
 
 - Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
+
+## [3.2.1] -
+
+### Changed
+
+- Fixed a performance issue when constructing an error for accessing
+  a non-existent attribute on sufficiently large records
 
 ## [3.2.0] - 2024-05-17
 
 ### Added
 
 - `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`,
-   and `RestrictedExpression::new_decimal` (#661, resolving #659)
+  and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `Entities::into_iter` (#713, resolving #680)
 - `Entity::into_inner` (#685, resolving #636)
 - New `ffi` module with an improved FFI interface. This will replace the
@@ -105,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in different namespaces. (#704, resolving #642)
 
 ## [3.1.0] - 2024-03-08
+
 Cedar Language Version: 3.1.0
 
 ### Added
@@ -183,6 +224,7 @@ Cedar Language Version: 3.1.0
   (#626, resolving #606)
 
 ## [3.0.1] - 2023-12-21
+
 Cedar Language Version: 3.0.0
 
 ### Fixed
@@ -191,6 +233,7 @@ Cedar Language Version: 3.0.0
   fixed by #526)
 
 ## [3.0.0] - 2023-12-15
+
 Cedar Language Version: 3.0.0
 
 ### Added
@@ -270,7 +313,7 @@ Cedar Language Version: 3.0.0
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
   (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
-  impl for `Template`.  The displayed representations now more closely match the
+  impl for `Template`. The displayed representations now more closely match the
   original input, whether the input was in string or JSON form. (#167, resolving
   #125)
 - `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
@@ -351,6 +394,7 @@ Cedar Language Version: 2.1.3
   (#520)
 
 ## [2.4.2] - 2023-10-23
+
 Cedar Language Version: 2.1.2
 
 ### Fixed
@@ -360,6 +404,7 @@ Cedar Language Version: 2.1.2
   and template-linked policy. (#371, resolving #370)
 
 ## [2.4.1] - 2023-10-12
+
 Cedar Language Version: 2.1.1
 
 ### Added
@@ -381,6 +426,7 @@ Cedar Language Version: 2.1.1
   `None` to `Request::new()`). (#339)
 
 ## [2.4.0] - 2023-09-21
+
 Cedar Language Version: 2.1.1
 
 ### Added
@@ -397,10 +443,10 @@ Cedar Language Version: 2.1.1
   message now contains a list of attributes that _do_ exist.
 - Improve error messages for some schema parsing errors.
   - When an entity type shape or action context is declared with type other than
-  `Record`, the error message will indicated the affected entity type or action.
+    `Record`, the error message will indicated the affected entity type or action.
 - Various other improvements to error messages and documentation for errors raised during
   policy parsing, validation, and evaluation.
-- Increase precision for validating records.  Previously,
+- Increase precision for validating records. Previously,
   `permit(principal, action, resource) when {{"foo": 5} has bar};` would validate.
   Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
   validator will return an error for a policy that can never fire.
@@ -410,6 +456,7 @@ Cedar Language Version: 2.1.1
 - Uses of deprecated `__expr` escapes from integration tests.
 
 ## [2.3.3] - 2023-08-29
+
 Cedar Language Version: 2.1.0
 
 ### Added
@@ -429,6 +476,7 @@ Cedar Language Version: 2.1.0
   correctly uses the default namespace. (#151)
 
 ## [2.3.2] - 2023-08-04
+
 Cedar Language Version: 2.1.0
 
 ### Changed
@@ -455,6 +503,7 @@ Cedar Language Version: 2.1.0
   continue using this feature you must enable the `partial-eval` feature flag.
 
 ## [2.3.1] - 2023-07-20
+
 Cedar Language Version: 2.1.0
 
 ### Fixed
@@ -463,23 +512,25 @@ Cedar Language Version: 2.1.0
   with a policy id corresponding to a static policy. (#203)
 
 ## [2.3.0] - 2023-06-29
+
 Cedar Language Version: 2.1.0
 
 ### Changed
 
 - Implement
-[RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
-which disallows embedded whitespace, comments, and control characters in the
-inputs to several Rust API functions including `EntityTypeName::from_str()` and
-`EntityNamespace::from_str()`, as well as in some fields of the Cedar JSON
-schema format (e.g., namespace declarations, entity type names), Cedar JSON
-entities format (e.g., entity type names, extension function names) and the
-Cedar JSON policy format used by `Policy::from_json()` (e.g., entity type names,
-extension function names). The risk that this may be a breaking change for some
-Cedar users was accepted due to the potential security ramifications; see
-discussion in the RFC.
+  [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
+  which disallows embedded whitespace, comments, and control characters in the
+  inputs to several Rust API functions including `EntityTypeName::from_str()` and
+  `EntityNamespace::from_str()`, as well as in some fields of the Cedar JSON
+  schema format (e.g., namespace declarations, entity type names), Cedar JSON
+  entities format (e.g., entity type names, extension function names) and the
+  Cedar JSON policy format used by `Policy::from_json()` (e.g., entity type names,
+  extension function names). The risk that this may be a breaking change for some
+  Cedar users was accepted due to the potential security ramifications; see
+  discussion in the RFC.
 
 ## 2.2.0 - 2023-05-25
+
 Cedar Language Version: 2.0.0
 
 ### Added
@@ -487,6 +538,7 @@ Cedar Language Version: 2.0.0
 - `Entities::write_to_json` function to api.rs.
 
 ## 2.1.0 - 2023-05-23
+
 Cedar Language Version: 2.0.0
 
 ### Added
@@ -502,6 +554,7 @@ Cedar Language Version: 2.0.0
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
 
 ## 2.0.3 - 2023-05-17
+
 Cedar Language Version: 2.0.0
 
 ### Fixed
@@ -509,13 +562,17 @@ Cedar Language Version: 2.0.0
 - Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
 
 ## 2.0.2 - 2023-05-10
+
 Cedar Language Version: 2.0.0
 
 ## 2.0.1 - 2023-05-10
+
 Cedar Language Version: 2.0.0
 
 ## 2.0.0 - 2023-05-10
+
 Cedar Language Version: 2.0.0
+
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main

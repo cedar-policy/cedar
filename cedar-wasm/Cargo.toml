@@ -1,18 +1,24 @@
 [package]
 name = "cedar-wasm"
-version = "3.2.0"
+version = "3.2.1"
 edition = "2021"
-rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
+rust-version = "1.76.0"  # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 description = "WASM bindings and typescript types for Cedar lib"
 license = "Apache-2.0"
 
 exclude = ['/build']
 
 [dependencies]
-cedar-policy = { version = "=3.2.0", path = "../cedar-policy", features = ["wasm"] }
-cedar-policy-core = { version = "=3.2.0", path = "../cedar-policy-core", features = ["wasm"] }
-cedar-policy-formatter = { version = "=3.2.0", path = "../cedar-policy-formatter" }
-cedar-policy-validator = { version = "=3.2.0", path = "../cedar-policy-validator", features = ["wasm"] }
+cedar-policy = { version = "=3.2.1", path = "../cedar-policy", features = [
+    "wasm",
+] }
+cedar-policy-core = { version = "=3.2.1", path = "../cedar-policy-core", features = [
+    "wasm",
+] }
+cedar-policy-formatter = { version = "=3.2.1", path = "../cedar-policy-formatter" }
+cedar-policy-validator = { version = "=3.2.1", path = "../cedar-policy-validator", features = [
+    "wasm",
+] }
 
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde-wasm-bindgen = "0.6"
