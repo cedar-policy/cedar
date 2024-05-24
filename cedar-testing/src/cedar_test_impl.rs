@@ -177,10 +177,6 @@ pub trait CedarTestImplementation {
         expected: Option<Value>,
     ) -> TestResult<bool>;
 
-    /// Custom evaluator entry point. The bool return value indicates the whether
-    /// evaluating the provided expression produces the expected value.
-    /// `expected` is optional to allow for the case where no return value is
-    /// expected due to errors.
     fn partial_is_authorized(
         &self,
         request: &Request,
@@ -188,6 +184,10 @@ pub trait CedarTestImplementation {
         policies: &PolicySet,
     ) -> TestResult<partial::FlatPartialResponse>;
 
+    /// Custom evaluator entry point. The bool return value indicates the whether
+    /// evaluating the provided expression produces the expected value.
+    /// `expected` is optional to allow for the case where no return value is
+    /// expected due to errors.
     fn partial_evaluate(
         &self,
         request: &Request,
