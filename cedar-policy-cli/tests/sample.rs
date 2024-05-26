@@ -483,7 +483,6 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
         schema_format: SchemaFormat::Json,
     };
     let output = validate(&cmd);
@@ -501,7 +500,6 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
         schema_format: SchemaFormat::Human,
     };
     let output = validate(&cmd);
