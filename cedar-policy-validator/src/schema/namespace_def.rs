@@ -34,7 +34,7 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use super::ValidatorApplySpec;
 use crate::{
-    err::*,
+    err::schema_error::*,
     schema_file_format,
     types::{AttributeType, Attributes, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
@@ -244,7 +244,9 @@ impl ValidatorNamespaceDef {
         let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
             if Self::is_builtin_type_name(id.as_ref()) {
-                return Err(SchemaError::DuplicateCommonType(id.to_string()));
+                return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
+                    Name::unqualified_name(id),
+                )));
             }
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
             match type_defs.entry(name) {
@@ -254,7 +256,9 @@ impl ValidatorNamespaceDef {
                     );
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateCommonType(id.to_string()));
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
+                        Name::unqualified_name(id),
+                    )));
                 }
             }
         }
@@ -288,7 +292,7 @@ impl ValidatorNamespaceDef {
                     });
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateEntityType(id.to_string()));
+                    return Err(DuplicateEntityTypeError(Name::unqualified_name(id)).into());
                 }
             }
         }
@@ -321,9 +325,7 @@ impl ValidatorNamespaceDef {
             }
             CedarValueJson::Set(v) => match v.first() {
                 //sets with elements of different types will be rejected elsewhere
-                None => Err(SchemaError::ActionAttributesContainEmptySet(
-                    action_id.clone(),
-                )),
+                None => Err(ActionAttributesContainEmptySetError(action_id.clone()).into()),
                 Some(element) => {
                     let element_type = Self::jsonval_to_type_helper(element, action_id);
                     match element_type {
@@ -334,28 +336,24 @@ impl ValidatorNamespaceDef {
                     }
                 }
             },
-            CedarValueJson::EntityEscape { __entity: _ } => {
-                Err(SchemaError::UnsupportedActionAttribute(
-                    action_id.clone(),
-                    "entity escape (`__entity`)".to_owned(),
-                ))
-            }
-            CedarValueJson::ExprEscape { __expr: _ } => {
-                Err(SchemaError::UnsupportedActionAttribute(
-                    action_id.clone(),
-                    "expression escape (`__expr`)".to_owned(),
-                ))
-            }
-            CedarValueJson::ExtnEscape { __extn: _ } => {
-                Err(SchemaError::UnsupportedActionAttribute(
-                    action_id.clone(),
-                    "extension function escape (`__extn`)".to_owned(),
-                ))
-            }
-            CedarValueJson::Null => Err(SchemaError::UnsupportedActionAttribute(
+            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError(
                 action_id.clone(),
-                "null".to_owned(),
-            )),
+                "entity escape (`__entity`)".into(),
+            )
+            .into()),
+            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError(
+                action_id.clone(),
+                "expression escape (`__expr`)".into(),
+            )
+            .into()),
+            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError(
+                action_id.clone(),
+                "extension function escape (`__extn`)".into(),
+            )
+            .into()),
+            CedarValueJson::Null => {
+                Err(UnsupportedActionAttributeError(action_id.clone(), "null".into()).into())
+            }
         }
     }
 
@@ -389,7 +387,7 @@ impl ValidatorNamespaceDef {
             let pv = evaluator
                 .partial_interpret(e.as_borrowed())
                 .map_err(|err| {
-                    SchemaError::ActionAttrEval(EntityAttrEvaluationError {
+                    ActionAttrEvalError(EntityAttrEvaluationError {
                         uid: action_id.clone(),
                         attr: k.clone(),
                         err,
@@ -469,7 +467,7 @@ impl ValidatorNamespaceDef {
                     });
                 }
                 Entry::Occupied(_) => {
-                    return Err(SchemaError::DuplicateAction(action_id_str.to_string()));
+                    return Err(DuplicateActionError(action_id_str).into());
                 }
             }
         }
@@ -493,7 +491,7 @@ impl ValidatorNamespaceDef {
             // namespace), so we do this comparison directly.
             .any(|(name, _)| name.to_smolstr() == ACTION_ENTITY_TYPE)
         {
-            return Err(SchemaError::ActionEntityTypeDeclared);
+            return Err(ActionEntityTypeDeclaredError {}.into());
         }
         if action_behavior == ActionBehavior::ProhibitAttributes {
             let mut actions_with_attributes: Vec<String> = Vec::new();
@@ -503,9 +501,12 @@ impl ValidatorNamespaceDef {
                 }
             }
             if !actions_with_attributes.is_empty() {
-                return Err(SchemaError::UnsupportedFeature(
-                    UnsupportedFeature::ActionAttributes(actions_with_attributes),
-                ));
+                return Err(
+                    UnsupportedFeatureError(UnsupportedFeature::ActionAttributes(
+                        actions_with_attributes,
+                    ))
+                    .into(),
+                );
             }
         }
 
@@ -620,9 +621,7 @@ impl ValidatorNamespaceDef {
                 additional_attributes,
             }) => {
                 if cfg!(not(feature = "partial-validate")) && additional_attributes {
-                    Err(SchemaError::UnsupportedFeature(
-                        UnsupportedFeature::OpenRecordsAndEntities,
-                    ))
+                    Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
                 } else {
                     Ok(
                         Self::parse_record_attributes(default_namespace, attributes, extensions)?
@@ -657,10 +656,12 @@ impl ValidatorNamespaceDef {
                             .map(|n| n.to_string())
                             .collect::<Vec<_>>(),
                     );
-                    Err(SchemaError::UnknownExtensionType(UnknownExtensionType {
-                        actual: extension_type_name,
-                        suggested_replacement,
-                    }))
+                    Err(SchemaError::UnknownExtensionType(
+                        UnknownExtensionTypeError {
+                            actual: extension_type_name,
+                            suggested_replacement,
+                        },
+                    ))
                 }
             }
             SchemaType::TypeDef { type_name } => {
@@ -668,9 +669,7 @@ impl ValidatorNamespaceDef {
                     type_name.prefix_namespace_if_unqualified(default_namespace);
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
-                        SchemaError::UndeclaredCommonTypes(HashSet::from([
-                            defined_type_name.to_string()
-                        ])),
+                        UndeclaredCommonTypesError(HashSet::from([defined_type_name])).into(),
                     )
                 }))
             }

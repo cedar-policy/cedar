@@ -202,6 +202,8 @@ mod test {
     };
     use itertools::Itertools;
 
+    use crate::schema_error::Result;
+
     #[test]
     fn top_level_validate() -> Result<()> {
         let mut set = PolicySet::new();

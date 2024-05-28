@@ -29,10 +29,11 @@ use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
+    err::schema_error::*,
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
-    HumanSchemaError, HumanSyntaxParseError, JsonDeserializationError, Result,
+    HumanSchemaError, HumanSyntaxParseError,
 };
 
 #[cfg(feature = "wasm")]
