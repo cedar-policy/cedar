@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{

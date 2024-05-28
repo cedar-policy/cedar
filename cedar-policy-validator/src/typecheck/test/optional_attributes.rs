@@ -16,7 +16,6 @@
 
 //! Contains tests for defining optional attributes and typechecking their
 //! access using the ability added by contextual effects.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{

@@ -15,7 +15,6 @@
  */
 
 //! Contains tests for typechecking Cedar extensions
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use crate::{diagnostics::ValidationError, types::Type};

@@ -16,7 +16,6 @@
 
 //! Contains test for typechecking complete Cedar policies with schema
 //! files.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use std::str::FromStr;

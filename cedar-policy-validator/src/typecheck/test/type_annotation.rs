@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#![allow(clippy::indexing_slicing)]
-
 use cool_asserts::assert_matches;
 use serde_json::json;
 use std::collections::HashSet;
@@ -33,7 +27,7 @@ use crate::{types::Type, SchemaFragment};
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
     with_typechecker_from_schema(empty_schema_file(), PolicyID::from_string("0"), |tc| {
         let mut errs = HashSet::new();
-        assert_matches!(tc.typecheck_expr(e, &mut errs), super::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+        assert_matches!(tc.typecheck_expr(e, &mut errs), crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
             assert_eq!(&expr_type, annotated);
         });
     });
@@ -146,17 +140,17 @@ fn expr_typechecks_with_correct_annotation() {
             let mut errs = HashSet::new();
             let euid = EntityUID::with_eid_and_type("Foo", "bar").unwrap();
             match tc.typecheck_expr(&Expr::val(euid.clone()), &mut errs) {
-                super::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+                crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
                     assert_eq!(
                         &expr_type,
                         &ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("Foo")))
                             .val(euid)
                     )
                 }
-                super::TypecheckAnswer::TypecheckFail { .. } => {
+                crate::typecheck::TypecheckAnswer::TypecheckFail { .. } => {
                     panic!("Typechecking should succeed.")
                 }
-                super::TypecheckAnswer::RecursionLimit => {
+                crate::typecheck::TypecheckAnswer::RecursionLimit => {
                     panic!("Should not have hit recursion limit")
                 }
             }

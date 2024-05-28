@@ -16,7 +16,6 @@
 
 //! Contains tests for typechecking Cedar expressions outside of a larger
 //! policy and without a schema.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use std::{str::FromStr, vec};

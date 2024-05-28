@@ -15,13 +15,7 @@
  */
 
 //! Contains test for strict typechecking.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
-
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#![allow(clippy::indexing_slicing)]
 
 use cedar_policy_core::ast::PolicyID;
 use cool_asserts::assert_matches;
@@ -36,15 +30,15 @@ use cedar_policy_core::{
 };
 
 use crate::{
-    typecheck::test_utils::assert_policy_typecheck_fails,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
     SchemaFragment, ValidationError, ValidationMode,
 };
 
-use super::test_utils::expr_id_placeholder;
-use super::test_utils::with_typechecker_from_schema;
+use super::test_utils::{
+    assert_policy_typecheck_fails, expr_id_placeholder, with_typechecker_from_schema,
+};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(

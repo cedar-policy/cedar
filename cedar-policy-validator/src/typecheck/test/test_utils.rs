@@ -16,20 +16,14 @@
 
 //! Contains utility functions for testing that expression typecheck or fail to
 //! typecheck correctly.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
-
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#![allow(clippy::indexing_slicing)]
 
 use cool_asserts::assert_matches;
 use std::{collections::HashSet, sync::Arc};
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, PolicyID, StaticPolicy, Template};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr, PolicyID, Template};
 
-use super::{TypecheckAnswer, Typechecker};
+use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
     schema::ACTION_ENTITY_TYPE,
     types::{EffectSet, OpenTag, RequestEnv, Type},
@@ -365,11 +359,6 @@ pub(crate) fn assert_typecheck_fails_for_mode(
             assert_expected_type_errors(&expected_type_errors, &type_errors);
         });
     });
-}
-
-pub(crate) fn static_to_template(p: StaticPolicy) -> Arc<Template> {
-    let (t, _) = Template::link_static_policy(p);
-    t
 }
 
 pub(crate) fn empty_schema_file() -> NamespaceDefinition {

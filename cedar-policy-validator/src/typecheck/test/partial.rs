@@ -15,8 +15,6 @@
  */
 
 //! Contains test for typechecking with partial schema files.
-#![cfg(test)]
-#![cfg(feature = "partial-validate")]
 // GRCOV_STOP_COVERAGE
 
 use std::collections::HashSet;
@@ -24,15 +22,13 @@ use std::collections::HashSet;
 use cedar_policy_core::ast::{Expr, Template, Var};
 use cedar_policy_core::{ast::StaticPolicy, parser::parse_policy};
 
-use crate::typecheck::test_utils::{assert_expected_type_errors, assert_expected_warnings};
+use super::test_utils::{assert_expected_type_errors, assert_expected_warnings, empty_schema_file};
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::validation_errors::{AttributeAccess, UnexpectedTypeHelp};
 use crate::{
     NamespaceDefinition, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
-
-use super::test_utils::empty_schema_file;
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_partial_typecheck(

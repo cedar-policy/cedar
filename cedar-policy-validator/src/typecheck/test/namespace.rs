@@ -16,7 +16,6 @@
 
 //! Contains test for typechecking complete Cedar policies with namespaced
 //! schema files.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
