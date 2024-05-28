@@ -35,11 +35,11 @@ with a newline") when // trailing comment
 
 // A fuzzer-generated policy that wasn't correctly formatter with the original fix
 permit(
-  principal is User in Group::"friends",
+  principal in Group::"friends",
   action,
-  resource is Photo in Album::"vacation"
+  resource in Album::"vacation"
 ) when {
-(User::"alice" is User) && (User::"alice" in
+(User::"alice" in User::"") && (User::"alice" ==
 Group::"
 
 
