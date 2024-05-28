@@ -14,45 +14,95 @@
  * limitations under the License.
  */
 
+//! Defines warnings returned by the validator.
+
+// Shorthand macro for setting the diagnostic severity to Warning.
+// We can use `#[diagnostic(severity(warning))]` once we don't need to use
+// `cedar_policy::impl_diagnostic_from_source_loc` anymore.
+macro_rules! impl_diagnostic_warning {
+    () => {
+        fn severity(&self) -> Option<miette::Severity> {
+            Some(miette::Severity::Warning)
+        }
+    };
+}
+
+use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_field, parser::Loc};
 use miette::Diagnostic;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("string `\"{string}\"` contains mixed scripts")]
-#[diagnostic(severity(warning))]
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, string `\"{string}\"` contains mixed scripts")]
 pub struct MixedScriptString {
-    pub(crate) string: String,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub string: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("string `\"{string}\"` contains BIDI control characters")]
-#[diagnostic(severity(warning))]
+impl Diagnostic for MixedScriptString {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
+}
+
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, string `\"{string}\"` contains BIDI control characters")]
 pub struct BidiCharsInString {
-    pub(crate) string: String,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub string: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("identifier `{id}` contains BIDI control characters")]
-#[diagnostic(severity(warning))]
+impl Diagnostic for BidiCharsInString {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
+}
+
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, identifier `{id}` contains BIDI control characters")]
 pub struct BidiCharsInIdentifier {
-    pub(crate) id: String,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("identifier `{id}` contains mixed scripts")]
-#[diagnostic(severity(warning))]
+impl Diagnostic for BidiCharsInIdentifier {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
+}
+
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, identifier `{id}` contains mixed scripts")]
 pub struct MixedScriptIdentifier {
-    pub(crate) id: String,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub id: String,
+}
+impl Diagnostic for MixedScriptIdentifier {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
 }
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("identifier `{id}` contains characters that fall outside of the General Security Profile for Identifiers")]
-#[diagnostic(severity(warning))]
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, identifier `{id}` contains characters that fall outside of the General Security Profile for Identifiers")]
 pub struct ConfusableIdentifier {
-    pub(crate) id: String,
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+    pub id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
-#[error("policy is impossible: the policy expression evaluates to false for all valid requests")]
-#[diagnostic(severity(warning))]
-pub struct ImpossiblePolicy {}
+impl Diagnostic for ConfusableIdentifier {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
+}
+
+#[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
+#[error("for policy `{policy_id}`, policy is impossible: the policy expression evaluates to false for all valid requests")]
+pub struct ImpossiblePolicy {
+    pub source_loc: Option<Loc>,
+    pub policy_id: PolicyID,
+}
+
+impl Diagnostic for ImpossiblePolicy {
+    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_warning!();
+}

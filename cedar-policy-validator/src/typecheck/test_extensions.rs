@@ -18,11 +18,13 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use crate::{types::Type, validation_errors::TypeError};
+use crate::{diagnostics::ValidationError, types::Type};
 use cedar_policy_core::ast::{Expr, Name};
 use std::str::FromStr;
 
-use super::test_utils::{assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema};
+use super::test_utils::{
+    assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema, expr_id_placeholder,
+};
 
 #[test]
 #[cfg(feature = "ipaddr")]
@@ -45,8 +47,9 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(ipaddr_name.clone()),
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(3),
+            expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
@@ -56,8 +59,9 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(ipaddr_name.clone()),
-        vec![TypeError::function_argument_validation(
+        vec![ValidationError::function_argument_validation(
             expr,
+            expr_id_placeholder(),
             "Failed to parse as IP address: `\"foo\"`".into(),
         )],
     );
@@ -65,14 +69,20 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![TypeError::wrong_number_args(expr, 1, 2)],
+        vec![ValidationError::wrong_number_args(
+            expr,
+            expr_id_placeholder(),
+            1,
+            2,
+        )],
     );
     let expr = Expr::from_str("ip(\"127.0.0.1\").isInRange(3)").expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(3),
+            expr_id_placeholder(),
             Type::extension(ipaddr_name),
             Type::primitive_long(),
             None,
@@ -110,8 +120,9 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(decimal_name.clone()),
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(3),
+            expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
@@ -121,8 +132,9 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(decimal_name.clone()),
-        vec![TypeError::function_argument_validation(
+        vec![ValidationError::function_argument_validation(
             expr,
+            expr_id_placeholder(),
             "Failed to parse as a decimal value: `\"foo\"`".into(),
         )],
     );
@@ -130,14 +142,20 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![TypeError::wrong_number_args(expr, 2, 3)],
+        vec![ValidationError::wrong_number_args(
+            expr,
+            expr_id_placeholder(),
+            2,
+            3,
+        )],
     );
     let expr = Expr::from_str("decimal(\"1.23\").lessThan(3)").expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(3),
+            expr_id_placeholder(),
             Type::extension(decimal_name),
             Type::primitive_long(),
             None,

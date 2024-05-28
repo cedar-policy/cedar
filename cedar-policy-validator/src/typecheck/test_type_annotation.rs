@@ -24,14 +24,14 @@ use cool_asserts::assert_matches;
 use serde_json::json;
 use std::collections::HashSet;
 
-use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder};
+use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder, PolicyID};
 
-use super::test_utils::{empty_schema_file, with_typechecker_from_schema};
+use super::test_utils::{empty_schema_file, expr_id_placeholder, with_typechecker_from_schema};
 use crate::{types::Type, SchemaFragment};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
-    with_typechecker_from_schema(empty_schema_file(), |tc| {
+    with_typechecker_from_schema(empty_schema_file(), PolicyID::from_string("0"), |tc| {
         let mut errs = HashSet::new();
         assert_matches!(tc.typecheck_expr(e, &mut errs), super::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
             assert_eq!(&expr_type, annotated);
@@ -141,6 +141,7 @@ fn expr_typechecks_with_correct_annotation() {
             json!({"": { "entityTypes": { "Foo": {} }, "actions": {} }}),
         )
         .unwrap(),
+        expr_id_placeholder(),
         |tc| {
             let mut errs = HashSet::new();
             let euid = EntityUID::with_eid_and_type("Foo", "bar").unwrap();
