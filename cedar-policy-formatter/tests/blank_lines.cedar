@@ -32,3 +32,22 @@ with a newline") when // trailing comment
 // shouldn't matter "
 
 };
+
+// A fuzzer-generated policy that wasn't correctly formatter with the original fix
+permit(
+  principal in Group::"friends",
+  action,
+  resource in Album::"vacation"
+) when {
+(User::"alice" in User::"") && (User::"alice" ==
+Group::"
+
+
+
+
+
+
+
+
+friends")
+};
