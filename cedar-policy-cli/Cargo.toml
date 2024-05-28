@@ -22,7 +22,8 @@ thiserror = "1.0"
 
 [features]
 default = []
-experimental = ["partial-validate"]
+experimental = ["permissive-validate", "partial-validate"]
+permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 
 [dev-dependencies]
