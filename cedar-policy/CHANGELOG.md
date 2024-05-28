@@ -5,51 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
 
-### Added
-
-- JSON representation for Policy Sets, along with methods like
-  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
-  resolving #549)
-
-### Changed
-
-- Significantly reworked all public-facing error types to address some issues
-  and improve consistency. See issue #745.
-- Finalized the `ffi` module which was preview-released in 3.2.0.
-  This involved a few additional API breaking changes in `ffi`. See #757.
-- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Removed unnecessary lifetimes from some validation related structs (#715)
-- Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional.
-- Fixed a performance issue when constructing an error for accessing
-  a non-existent attribute on sufficiently large records/entities
-
-### Removed
-
-- Reduced precision of partial evaluation for `||`, `&&`, and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
-- Removed the `error` extension function, which was previously used during partial evaluation.
-- Removed integration testing harness from the `cedar-policy` crate. It is now
-  in an internal crate, allowing us to make semver incompatible changes. (#857)
-- Removed the (deprecated) `frontend` module in favor of the new `ffi` module
-  introduced in 3.2.0. See #757.
-- Removed `ParseErrors::errors_as_strings`. Callers should consider examining
-  the rich data provided by `miette::Diagnostic`, for instance `.help()` and
-  `labels()`. Callers can continue using the same behavior by calling
-  `.iter().map(ToString::to_string)`. (#882, resolving #543)
-  > > > > > > > 076b4f1b (Improve performance on a record error case (#887))
+## [3.2.1] - Coming Soon
 
 ### Fixed
 
-- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
-
-## [3.2.1] -
-
-### Changed
-
+- Fixed policy formatter dropping newlines in string literals. (#870, #910, resolving #862)
 - Fixed a performance issue when constructing an error for accessing
-  a non-existent attribute on sufficiently large records
+  a non-existent attribute on sufficiently large records (#887, resolving #754)
+- Fixed identifier parsing of human-readable schemas (#914, resolving #913)
 
 ## [3.2.0] - 2024-05-17
 
