@@ -122,9 +122,7 @@ impl TryFrom<cst::Policy> for Policy {
             .map(|node| {
                 let (cond, loc) = node.into_inner();
                 let cond = cond.ok_or_else(|| {
-                    ParseErrors::singleton(
-                        ToASTError::new(ToASTErrorKind::EmptyClause(None), loc).into(),
-                    )
+                    ParseErrors::singleton(ToASTError::new(ToASTErrorKind::EmptyClause(None), loc))
                 })?;
                 cond.try_into()
             })

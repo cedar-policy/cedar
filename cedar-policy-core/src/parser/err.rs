@@ -681,8 +681,8 @@ pub struct ParseErrors(NonEmpty<ParseError>);
 
 impl ParseErrors {
     /// Construct a `ParseErrors` with a single element
-    pub(crate) fn singleton(err: ParseError) -> Self {
-        Self(NonEmpty::singleton(err))
+    pub(crate) fn singleton(err: impl Into<ParseError>) -> Self {
+        Self(NonEmpty::singleton(err.into()))
     }
 
     /// Construct a new `ParseErrors` with at least one element

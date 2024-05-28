@@ -1196,7 +1196,7 @@ fn interpret_primary(
                     match s {
                         Some(s) => Ok((s, v.try_into()?)),
                         None => Err(ParseErrors::singleton(
-                            node.to_ast_err(ToASTErrorKind::MissingNodeData).into(),
+                            node.to_ast_err(ToASTErrorKind::MissingNodeData),
                         )),
                     }
                 }
