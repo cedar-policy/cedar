@@ -16,7 +16,6 @@
 
 //! Contains test for typechecking complete Cedar policies with namespaced
 //! schema files.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
@@ -25,19 +24,20 @@ use std::str::FromStr;
 use std::vec;
 
 use cedar_policy_core::{
-    ast::{EntityUID, Expr, StaticPolicy},
+    ast::{EntityUID, Expr, PolicyID, StaticPolicy},
     parser::parse_policy,
 };
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
-    assert_typecheck_fails, assert_typechecks,
+    assert_typecheck_fails, assert_typechecks, expr_id_placeholder,
 };
 use crate::{
+    diagnostics::ValidationError,
+    schema_error::SchemaError,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    validation_errors::TypeError,
-    SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
+    SchemaFragment, ValidationWarning, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
@@ -75,7 +75,11 @@ fn assert_expr_typechecks_namespace_schema(e: Expr, t: Type) {
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_expr_typecheck_fails_namespace_schema(e: Expr, t: Option<Type>, errs: Vec<TypeError>) {
+fn assert_expr_typecheck_fails_namespace_schema(
+    e: Expr,
+    t: Option<Type>,
+    errs: Vec<ValidationError>,
+) {
     assert_typecheck_fails(namespaced_entity_type_schema(), e, t, errs)
 }
 
@@ -137,8 +141,9 @@ fn namespaced_entity_can_type_error() {
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::S::Foo::"alice" > 1"#).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::from_str(r#"N::S::Foo::"alice""#).expect("Expr should parse."),
+            expr_id_placeholder(),
             Type::primitive_long(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
@@ -358,8 +363,9 @@ fn multiple_namespaces_attributes() {
         schema,
         Expr::from_str("B::Foo::\"foo\".x").unwrap(),
         None,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::from_str("B::Foo::\"foo\".x").unwrap(),
+            PolicyID::from_string("policy0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("B::Foo".parse().unwrap()),
                 vec!["x".into()],
@@ -478,7 +484,7 @@ fn multiple_namespaces_applies_to() {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_namespace_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<TypeError>,
+    expected_type_errors: Vec<ValidationError>,
 ) {
     assert_policy_typecheck_fails(namespaced_entity_type_schema(), p, expected_type_errors);
 }
@@ -497,8 +503,9 @@ fn namespaced_entity_is_wrong_type_and() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+            PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
@@ -520,8 +527,9 @@ fn namespaced_entity_is_wrong_type_when() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![TypeError::expected_type(
+        vec![ValidationError::expected_type(
             Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+            PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
@@ -565,7 +573,10 @@ fn multi_namespace_action_eq() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::impossible_policy()],
+        vec![ValidationWarning::impossible_policy(
+            policy.loc().cloned(),
+            PolicyID::from_string("policy0"),
+        )],
     );
 }
 
@@ -625,7 +636,10 @@ fn multi_namespace_action_in() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarningKind::impossible_policy()],
+        vec![ValidationWarning::impossible_policy(
+            policy.loc().cloned(),
+            PolicyID::from_string("policy0"),
+        )],
     );
 }
 

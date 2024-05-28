@@ -18,16 +18,10 @@
 //! the `Typechecker` struct by calling the `typecheck_policy` method given a
 //! policy.
 
-mod test_expr;
-mod test_extensions;
-mod test_namespace;
-mod test_optional_attributes;
-mod test_partial;
-mod test_policy;
-mod test_strict;
-mod test_type_annotation;
-mod test_unspecified_entity;
-mod test_utils;
+mod test;
+
+mod typecheck_answer;
+pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{
     borrow::Cow,
@@ -43,187 +37,17 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    validation_errors::{AttributeAccess, LubContext, TypeError, UnexpectedTypeHelp},
-    ValidationMode, ValidationWarning, ValidationWarningKind,
+    validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
+    ValidationError, ValidationMode, ValidationWarning,
 };
 
 use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name,
+    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
     PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
-
-/// TypecheckAnswer holds the result of typechecking an expression.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum TypecheckAnswer<'a> {
-    /// Typechecking succeeded, and we know the type and a possibly empty effect
-    /// set for the expression. The effect set is the set of
-    /// (expression, attribute) pairs that are known as safe to access under the
-    /// assumption that the expression evaluates to true.
-    TypecheckSuccess {
-        expr_type: Expr<Option<Type>>,
-        expr_effect: EffectSet<'a>,
-    },
-    /// Typechecking failed. We might still be able to know the type of the
-    /// overall expression, but not always. For instance, an `&&` expression
-    /// will always have type `boolean`, so we populate `expr_recovery_type`
-    /// with `Some(boolean)` even when there is a type error in the expression.
-    TypecheckFail {
-        expr_recovery_type: Expr<Option<Type>>,
-    },
-
-    /// RecursionLimit Reached
-    RecursionLimit,
-}
-
-impl<'a> TypecheckAnswer<'a> {
-    /// Construct a successful TypecheckAnswer with a type but with an empty
-    /// effect set.
-    pub fn success(expr_type: Expr<Option<Type>>) -> Self {
-        Self::TypecheckSuccess {
-            expr_type,
-            expr_effect: EffectSet::new(),
-        }
-    }
-
-    /// Construct a successful TypecheckAnswer with a type and an effect.
-    pub fn success_with_effect(expr_type: Expr<Option<Type>>, expr_effect: EffectSet<'a>) -> Self {
-        Self::TypecheckSuccess {
-            expr_type,
-            expr_effect,
-        }
-    }
-
-    /// Construct a failing TypecheckAnswer with a type.
-    pub fn fail(expr_type: Expr<Option<Type>>) -> Self {
-        Self::TypecheckFail {
-            expr_recovery_type: expr_type,
-        }
-    }
-
-    /// Check if this TypecheckAnswer contains a particular type. It
-    /// contains a type if the type annotated AST contains `Some`
-    /// of the argument type at its root.
-    pub fn contains_type(&self, ty: &Type) -> bool {
-        match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
-            TypecheckAnswer::RecursionLimit => None,
-        }
-        .and_then(|e| e.data().as_ref())
-            == Some(ty)
-    }
-
-    pub fn into_typed_expr(self) -> Option<Expr<Option<Type>>> {
-        match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
-            TypecheckAnswer::RecursionLimit => None,
-        }
-    }
-
-    /// Return true if this represents successful typechecking.
-    pub fn typechecked(&self) -> bool {
-        match self {
-            TypecheckAnswer::TypecheckSuccess { .. } => true,
-            TypecheckAnswer::TypecheckFail { .. } => false,
-            TypecheckAnswer::RecursionLimit => false,
-        }
-    }
-
-    /// Transform the effect of this TypecheckAnswer without modifying the
-    /// success or type.
-    pub fn map_effect<F>(self, f: F) -> Self
-    where
-        F: FnOnce(EffectSet<'a>) -> EffectSet<'a>,
-    {
-        match self {
-            TypecheckAnswer::TypecheckSuccess {
-                expr_type,
-                expr_effect,
-            } => TypecheckAnswer::TypecheckSuccess {
-                expr_type,
-                expr_effect: f(expr_effect),
-            },
-            TypecheckAnswer::TypecheckFail { .. } => self,
-            TypecheckAnswer::RecursionLimit => self,
-        }
-    }
-
-    /// Convert this TypecheckAnswer into an equivalent answer for an expression
-    /// that has failed to typecheck. If this is already TypecheckFail, then no
-    /// change is required, otherwise, a TypecheckFail is constructed containing
-    /// `Some` of the `expr_type`.
-    pub fn into_fail(self) -> Self {
-        match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => TypecheckAnswer::fail(expr_type),
-            TypecheckAnswer::TypecheckFail { .. } => self,
-            TypecheckAnswer::RecursionLimit => self,
-        }
-    }
-
-    /// Sequence another typechecking operation after this answer. The result of
-    /// the operation will be adjusted to be a TypecheckFail if this is a
-    /// TypecheckFail, otherwise it will be returned unaltered.
-    pub fn then_typecheck<F>(self, f: F) -> Self
-    where
-        F: FnOnce(Expr<Option<Type>>, EffectSet<'a>) -> TypecheckAnswer<'a>,
-    {
-        match self {
-            TypecheckAnswer::TypecheckSuccess {
-                expr_type,
-                expr_effect,
-            } => f(expr_type, expr_effect),
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-                f(expr_recovery_type, EffectSet::new()).into_fail()
-            }
-            TypecheckAnswer::RecursionLimit => self,
-        }
-    }
-
-    /// Sequence another typechecking operation after all of the typechecking
-    /// answers in the argument. The result of the operation is adjusted in the
-    /// same manner as in `then_typecheck`, but accounts for the all the
-    /// TypecheckAnswers.
-    pub fn sequence_all_then_typecheck<F>(
-        answers: impl IntoIterator<Item = TypecheckAnswer<'a>>,
-        f: F,
-    ) -> TypecheckAnswer<'a>
-    where
-        F: FnOnce(Vec<(Expr<Option<Type>>, EffectSet<'a>)>) -> TypecheckAnswer<'a>,
-    {
-        let mut unwrapped = Vec::new();
-        let mut any_failed = false;
-        let mut recusion_limit_reached = false;
-        for ans in answers {
-            any_failed |= !ans.typechecked();
-            unwrapped.push(match ans {
-                TypecheckAnswer::TypecheckSuccess {
-                    expr_type,
-                    expr_effect,
-                } => (expr_type, expr_effect),
-                TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-                    (expr_recovery_type, EffectSet::new())
-                }
-                TypecheckAnswer::RecursionLimit => {
-                    recusion_limit_reached = true;
-                    break;
-                }
-            });
-        }
-
-        let ans = f(unwrapped);
-        if recusion_limit_reached {
-            TypecheckAnswer::RecursionLimit
-        } else if any_failed {
-            ans.into_fail()
-        } else {
-            ans
-        }
-    }
-}
 
 /// Basic result for typechecking
 #[derive(Debug)]
@@ -231,9 +55,9 @@ pub enum PolicyCheck {
     /// Policy will evaluate to a bool
     Success(Expr<Option<Type>>),
     /// Policy will always evaluate to false, and may have errors
-    Irrelevant(Vec<TypeError>),
+    Irrelevant(Vec<ValidationError>),
     /// Policy will have errors
-    Fail(Vec<TypeError>),
+    Fail(Vec<ValidationError>),
 }
 
 /// This structure implements typechecking for Cedar policies through the
@@ -243,11 +67,16 @@ pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
     extensions: HashMap<Name, ExtensionSchema>,
     mode: ValidationMode,
+    policy_id: PolicyID,
 }
 
 impl<'a> Typechecker<'a> {
     /// Construct a new typechecker.
-    pub fn new(schema: &'a ValidatorSchema, mode: ValidationMode) -> Typechecker<'a> {
+    pub fn new(
+        schema: &'a ValidatorSchema,
+        mode: ValidationMode,
+        policy_id: PolicyID,
+    ) -> Typechecker<'a> {
         // Set the extensions using `all_available_extension_schemas`.
         let extensions = all_available_extension_schemas()
             .into_iter()
@@ -257,6 +86,7 @@ impl<'a> Typechecker<'a> {
             schema,
             extensions,
             mode,
+            policy_id,
         }
     }
 
@@ -272,7 +102,7 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_policy(
         &self,
         t: &Template,
-        type_errors: &mut HashSet<TypeError>,
+        type_errors: &mut HashSet<ValidationError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
         let typecheck_answers = self.typecheck_by_request_env(t);
@@ -297,10 +127,9 @@ impl<'a> Typechecker<'a> {
         // If every policy typechecked with type false, then the policy cannot
         // possibly apply to any request.
         if all_false {
-            warnings.insert(ValidationWarning::with_policy_id(
+            warnings.insert(ValidationWarning::impossible_policy(
+                t.loc().cloned(),
                 t.id().clone(),
-                t.loc().clone(),
-                ValidationWarningKind::impossible_policy(),
             ));
         }
 
@@ -545,7 +374,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         e: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
         #[cfg(not(target_arch = "wasm32"))]
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
@@ -638,7 +467,7 @@ impl<'a> Typechecker<'a> {
             // that can be looked up in the schema.
             ExprKind::Lit(Literal::EntityUID(euid)) => {
                 // Unknown entity types/actions ids and unspecified entities will be
-                // detected by a different part of the validator, so a TypeError is
+                // detected by a different part of the validator, so a ValidationError is
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
                 match Type::euid_literal((**euid).clone(), self.schema) {
@@ -998,14 +827,17 @@ impl<'a> Typechecker<'a> {
                                 if ty.is_required || prior_eff.contains(&Effect::new(expr, attr)) {
                                     TypecheckAnswer::success(annot_expr)
                                 } else {
-                                    type_errors.push(TypeError::unsafe_optional_attribute_access(
-                                        e.clone(),
-                                        AttributeAccess::from_expr(
-                                            request_env,
-                                            &typ_expr_actual,
-                                            attr.clone(),
+                                    type_errors.push(
+                                        ValidationError::unsafe_optional_attribute_access(
+                                            e.clone(),
+                                            self.policy_id.clone(),
+                                            AttributeAccess::from_expr(
+                                                request_env,
+                                                &typ_expr_actual,
+                                                attr.clone(),
+                                            ),
                                         ),
-                                    ));
+                                    );
                                     TypecheckAnswer::fail(annot_expr)
                                 }
                             }
@@ -1026,8 +858,9 @@ impl<'a> Typechecker<'a> {
                                 let borrowed =
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
-                                type_errors.push(TypeError::unsafe_attribute_access(
+                                type_errors.push(ValidationError::unsafe_attribute_access(
                                     e.clone(),
+                                    self.policy_id.clone(),
                                     AttributeAccess::from_expr(
                                         request_env,
                                         &typ_expr_actual,
@@ -1275,7 +1108,10 @@ impl<'a> Typechecker<'a> {
                     );
                     match elem_lub {
                         _ if self.mode.is_strict() && exprs.is_empty() => {
-                            type_errors.push(TypeError::empty_set_forbidden(e.clone()));
+                            type_errors.push(ValidationError::empty_set_forbidden(
+                                e.source_loc().cloned(),
+                                self.policy_id.clone(),
+                            ));
                             TypecheckAnswer::fail(
                                 ExprBuilder::new()
                                     .with_same_source_loc(e)
@@ -1355,7 +1191,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         bin_expr: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
         // PANIC SAFETY: maintained by invariant on this function
         #[allow(clippy::panic)]
@@ -1597,7 +1433,7 @@ impl<'a> Typechecker<'a> {
         annotated_expr: Expr<Option<Type>>,
         lhs_ty: &Option<Type>,
         rhs_ty: &Option<Type>,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
         match annotated_expr.data() {
@@ -1612,8 +1448,9 @@ impl<'a> Typechecker<'a> {
                     if let Err(lub_hint) =
                         Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                     {
-                        type_errors.push(TypeError::incompatible_types(
+                        type_errors.push(ValidationError::incompatible_types(
                             unannotated_expr.clone(),
+                            self.policy_id.clone(),
                             [lhs_ty.clone(), rhs_ty.clone()],
                             lub_hint,
                             context,
@@ -1700,7 +1537,7 @@ impl<'a> Typechecker<'a> {
         in_expr: &Expr,
         lhs: &'b Expr,
         rhs: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
         // First, the basic typechecking rules for `in` that apply regardless of
         // the syntactic special cases that follow.
@@ -1868,17 +1705,21 @@ impl<'a> Typechecker<'a> {
                                             TypecheckAnswer::success(type_of_in)
                                         } else {
                                             // We could actually just return `Type::False`, but this is incurs a larger Dafny proof update.
-                                            type_errors.push(TypeError::hierarchy_not_respected(
-                                                in_expr.clone(),
-                                                Some(lhs_name),
-                                                Some(rhs_name),
-                                            ));
+                                            type_errors.push(
+                                                ValidationError::hierarchy_not_respected(
+                                                    in_expr.source_loc().cloned(),
+                                                    self.policy_id.clone(),
+                                                    Some(lhs_name),
+                                                    Some(rhs_name),
+                                                ),
+                                            );
                                             TypecheckAnswer::fail(type_of_in)
                                         }
                                     }
                                     _ => {
-                                        type_errors.push(TypeError::hierarchy_not_respected(
-                                            in_expr.clone(),
+                                        type_errors.push(ValidationError::hierarchy_not_respected(
+                                            in_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
                                             None,
                                             None,
                                         ));
@@ -2240,7 +2081,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         unary_expr: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
         // PANIC SAFETY maintained by invariant on this function
         #[allow(clippy::panic)]
@@ -2309,7 +2150,7 @@ impl<'a> Typechecker<'a> {
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: &[Type],
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
         type_error_help: F,
     ) -> TypecheckAnswer<'b>
     where
@@ -2334,8 +2175,9 @@ impl<'a> Typechecker<'a> {
                         ValidationMode::Permissive,
                     )
                 }) {
-                    type_errors.push(TypeError::expected_one_of_types(
+                    type_errors.push(ValidationError::expected_one_of_types(
                         expr.clone(),
+                        self.policy_id.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
                         type_error_help(actual_ty),
@@ -2368,7 +2210,7 @@ impl<'a> Typechecker<'a> {
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: Type,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
         type_error_help: F,
     ) -> TypecheckAnswer<'b>
     where
@@ -2392,7 +2234,7 @@ impl<'a> Typechecker<'a> {
         &self,
         expr: &Expr,
         answers: impl IntoIterator<Item = Option<Type>>,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
         context: LubContext,
     ) -> Option<Type> {
         answers
@@ -2410,8 +2252,9 @@ impl<'a> Typechecker<'a> {
                         // upper bound for the types. The computed least upper bound
                         // will be None, so this function will correctly report this
                         // as a failure.
-                        type_errors.push(TypeError::incompatible_types(
+                        type_errors.push(ValidationError::incompatible_types(
                             expr.clone(),
+                            self.policy_id.clone(),
                             typechecked_types,
                             lub_hint,
                             context,
@@ -2448,7 +2291,7 @@ impl<'a> Typechecker<'a> {
     fn lookup_extension_function<'b>(
         &'b self,
         f: &'b Name,
-    ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> TypeError + 'b> {
+    ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> ValidationError + 'b> {
         let extension_funcs: Vec<&ExtensionFunctionType> = self
             .extensions
             .iter()
@@ -2460,9 +2303,13 @@ impl<'a> Typechecker<'a> {
             Some(e) if extension_funcs.len() == 1 => Ok(e),
             _ => Err(move |e| {
                 if extension_funcs.is_empty() {
-                    TypeError::undefined_extension(e, fn_name_str)
+                    ValidationError::undefined_extension(e, self.policy_id.clone(), fn_name_str)
                 } else {
-                    TypeError::multiply_defined_extension(e, fn_name_str)
+                    ValidationError::multiply_defined_extension(
+                        e,
+                        self.policy_id.clone(),
+                        fn_name_str,
+                    )
                 }
             }),
         }
@@ -2476,7 +2323,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         ext_expr: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
+        type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
         // PANIC SAFETY maintained by invariant on this function
         #[allow(clippy::panic)]
@@ -2484,7 +2331,7 @@ impl<'a> Typechecker<'a> {
             panic!("`typecheck_extension` called with an expression kind other than `ExtensionFunctionApp`");
         };
 
-        let typed_arg_exprs = |type_errors: &mut Vec<TypeError>| {
+        let typed_arg_exprs = |type_errors: &mut Vec<ValidationError>| {
             args.iter()
                 .map(|arg| {
                     self.typecheck(request_env, prior_eff, arg, type_errors)
@@ -2499,16 +2346,18 @@ impl<'a> Typechecker<'a> {
                 let ret_ty = efunc.return_type();
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
-                    type_errors.push(TypeError::wrong_number_args(
+                    type_errors.push(ValidationError::wrong_number_args(
                         ext_expr.clone(),
+                        self.policy_id.clone(),
                         arg_tys.len(),
                         args.len(),
                     ));
                     failed = true;
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
-                    type_errors.push(TypeError::function_argument_validation(
+                    type_errors.push(ValidationError::function_argument_validation(
                         ext_expr.clone(),
+                        self.policy_id.clone(),
                         msg,
                     ));
                     failed = true;
@@ -2520,7 +2369,10 @@ impl<'a> Typechecker<'a> {
                         .iter()
                         .all(|e| matches!(e.expr_kind(), ExprKind::Lit(_)))
                 {
-                    type_errors.push(TypeError::non_lit_ext_constructor(ext_expr.clone()));
+                    type_errors.push(ValidationError::non_lit_ext_constructor(
+                        ext_expr.source_loc().cloned(),
+                        self.policy_id.clone(),
+                    ));
                     failed = true;
                 }
 

@@ -1742,8 +1742,9 @@ mod common_type_references {
     use cool_asserts::assert_matches;
 
     use crate::{
+        schema_error::SchemaError,
         types::{AttributeType, EntityRecordKind, Type},
-        SchemaError, SchemaFragment, ValidatorSchema,
+        SchemaFragment, ValidatorSchema,
     };
 
     #[test]

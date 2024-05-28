@@ -16,11 +16,9 @@
 
 //! This module defines the publicly exported error types.
 
-use crate::EntityTypeName;
 use crate::EntityUid;
 use crate::PolicyId;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::Name;
 pub use cedar_policy_core::ast::RestrictedExpressionParseError;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::est;
@@ -30,11 +28,10 @@ pub use cedar_policy_core::extensions::{
 };
 pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::{UnsupportedFeature, ValidationErrorKind, ValidationWarningKind};
+pub use cedar_policy_validator::schema_error;
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
-use std::collections::HashSet;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
@@ -113,90 +110,6 @@ pub enum ReAuthorizeError {
     },
 }
 
-/// Errors encountered during construction of a Validation Schema
-#[derive(Debug, Diagnostic, Error)]
-pub enum SchemaError {
-    /// Error thrown by the `serde_json` crate during deserialization
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    JsonDeserialization(#[from] cedar_policy_validator::JsonDeserializationError),
-    /// Error thrown by the `serde_json` crate during serialization
-    #[error(transparent)]
-    JsonSerialization(serde_json::Error), // no #[from], because if you just have a serde_json::Error you should choose between JsonDeserialization and JsonSerialization appropriately
-    /// Errors occurring while computing or enforcing transitive closure on
-    /// action hierarchy.
-    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
-    ActionTransitiveClosure(String),
-    /// Errors occurring while computing or enforcing transitive closure on
-    /// entity type hierarchy.
-    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
-    EntityTypeTransitiveClosure(String),
-    /// Error generated when processing a schema file that uses unsupported features
-    #[error("unsupported feature used in schema: {0}")]
-    UnsupportedFeature(String),
-    /// Undeclared entity type(s) used in the `memberOf` field of an entity
-    /// type, the `appliesTo` fields of an action, or an attribute type in a
-    /// context or entity attribute record. Entity types in the error message
-    /// are fully qualified, including any implicit or explicit namespaces.
-    #[error("undeclared entity type(s): {0:?}")]
-    UndeclaredEntityTypes(HashSet<String>),
-    /// Undeclared action(s) used in the `memberOf` field of an action.
-    #[error("undeclared action(s): {0:?}")]
-    UndeclaredActions(HashSet<String>),
-    /// Undeclared common type(s) used in entity or context attributes.
-    #[error("undeclared common type(s): {0:?}")]
-    UndeclaredCommonTypes(HashSet<String>),
-    /// Duplicate specifications for an entity type. Argument is the name of
-    /// the duplicate entity type.
-    #[error("duplicate entity type `{0}`")]
-    DuplicateEntityType(String),
-    /// Duplicate specifications for an action. Argument is the name of the
-    /// duplicate action.
-    #[error("duplicate action `{0}`")]
-    DuplicateAction(String),
-    /// Duplicate specification for a reusable type declaration.
-    #[error("duplicate common type `{0}`")]
-    DuplicateCommonType(String),
-    /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy containing `{0}`")]
-    CycleInActionHierarchy(EntityUid),
-    /// Cycle in the schema's common type declarations.
-    #[error("cycle in common type references containing `{0}`")]
-    CycleInCommonTypeReferences(Name),
-    /// The schema file included an entity type `Action` in the entity type
-    /// list. The `Action` entity type is always implicitly declared, and it
-    /// cannot currently have attributes or be in any groups, so there is no
-    /// purposes in adding an explicit entry.
-    #[error("entity type `Action` declared in `entityTypes` list")]
-    ActionEntityTypeDeclared,
-    /// `context` or `shape` fields are not records
-    #[error("{0} is declared with a type other than `Record`")]
-    ContextOrShapeNotRecord(ContextOrShape),
-    /// An action entity (transitively) has an attribute that is an empty set.
-    /// The validator cannot assign a type to an empty set.
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute that is an empty set")]
-    ActionAttributesContainEmptySet(EntityUid),
-    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
-    /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
-    UnsupportedActionAttribute(EntityUid, String),
-    /// Error when evaluating an action attribute
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionAttrEval(EntityAttrEvaluationError),
-    /// Error thrown when the schema contains the `__expr` escape.
-    /// Support for this escape form has been dropped.
-    #[error("schema contained the non-supported `__expr` escape")]
-    ExprEscapeUsed,
-    /// An error reported during schema parsing when an unknown extension type
-    /// is used in a common type definition, entity attribute or action context
-    /// attributes.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownExtensionType(UnknownExtensionType),
-}
-
 /// Errors serializing Schemas to the natural syntax
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToHumanSyntaxError {
@@ -247,10 +160,10 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
 }
 
 mod human_schema_error {
+    use crate::schema_error::SchemaError;
     use miette::Diagnostic;
     use thiserror::Error;
 
-    use crate::SchemaError;
     /// Parsing errors for human-readable schemas
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
@@ -291,7 +204,7 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
         match value {
             cedar_policy_validator::HumanSchemaError::Core(core) => {
-                human_schema_error::CoreError(core.into()).into()
+                human_schema_error::CoreError(core).into()
             }
             cedar_policy_validator::HumanSchemaError::IO(io_err) => {
                 human_schema_error::IoError(io_err).into()
@@ -304,9 +217,9 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        human_schema_error::CoreError(value.into()).into()
+impl From<crate::schema_error::SchemaError> for HumanSchemaError {
+    fn from(value: crate::schema_error::SchemaError) -> Self {
+        human_schema_error::CoreError(value).into()
     }
 }
 
@@ -351,193 +264,247 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     }
 }
 
-/// Describes in what action context or entity type shape a schema parsing error
-/// occurred.
-#[derive(Debug)]
-pub enum ContextOrShape {
-    /// An error occurred when parsing the context for the action with this
-    /// `EntityUid`.
-    ActionContext(EntityUid),
-    /// An error occurred when parsing the shape for the entity type with this
-    /// `EntityTypeName`.
-    EntityTypeShape(EntityTypeName),
-}
-
-impl std::fmt::Display for ContextOrShape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ActionContext(action) => write!(f, "Context for action {action}"),
-            Self::EntityTypeShape(entity_type) => {
-                write!(f, "Shape for entity type {entity_type}")
-            }
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
-    fn from(value: cedar_policy_validator::ContextOrShape) -> Self {
-        match value {
-            cedar_policy_validator::ContextOrShape::ActionContext(euid) => {
-                Self::ActionContext(EntityUid::new(euid))
-            }
-            cedar_policy_validator::ContextOrShape::EntityTypeShape(name) => {
-                Self::EntityTypeShape(EntityTypeName::new(name))
-            }
-        }
-    }
-}
-
-/// An error reported during schema parsing when an unknown extension type is
-/// used in a common type definition, entity attribute or action context
-/// attributes.
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct UnknownExtensionType {
-    inner: cedar_policy_validator::UnknownExtensionType,
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::UnknownExtensionType> for UnknownExtensionType {
-    fn from(value: cedar_policy_validator::UnknownExtensionType) -> Self {
-        Self { inner: value }
-    }
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_validator::SchemaError> for SchemaError {
-    fn from(value: cedar_policy_validator::SchemaError) -> Self {
-        match value {
-            cedar_policy_validator::SchemaError::JsonDeserialization(e) => {
-                Self::JsonDeserialization(e)
-            }
-            cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
-                Self::ActionTransitiveClosure(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
-                Self::EntityTypeTransitiveClosure(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
-                Self::UnsupportedFeature(e.to_string())
-            }
-            cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
-                Self::UndeclaredEntityTypes(e)
-            }
-            cedar_policy_validator::SchemaError::UndeclaredActions(e) => Self::UndeclaredActions(e),
-            cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
-                Self::UndeclaredCommonTypes(c)
-            }
-            cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
-                Self::DuplicateEntityType(e)
-            }
-            cedar_policy_validator::SchemaError::DuplicateAction(e) => Self::DuplicateAction(e),
-            cedar_policy_validator::SchemaError::DuplicateCommonType(c) => {
-                Self::DuplicateCommonType(c)
-            }
-            cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
-                Self::CycleInActionHierarchy(EntityUid::new(e))
-            }
-            cedar_policy_validator::SchemaError::CycleInCommonTypeReferences(n) => {
-                Self::CycleInCommonTypeReferences(n)
-            }
-            cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
-                Self::ActionEntityTypeDeclared
-            }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
-                Self::ContextOrShapeNotRecord(context_or_shape.into())
-            }
-            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(uid) => {
-                Self::ActionAttributesContainEmptySet(EntityUid::new(uid))
-            }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
-                Self::UnsupportedActionAttribute(EntityUid::new(uid), escape_type)
-            }
-            cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
-                Self::ActionAttrEval(err.into())
-            }
-            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
-            cedar_policy_validator::SchemaError::UnknownExtensionType(err) => {
-                SchemaError::UnknownExtensionType(err.into())
-            }
-        }
-    }
-}
+/// This module contains definitions for structs containing detailed information
+/// about each validation error. Errors are primarily documented on their
+/// variants in [`ValidationError`].
+pub mod validation_errors;
 
 /// An error generated by the validator when it finds a potential problem in a
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Debug, Clone, Error, Diagnostic)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct ValidationError {
-    error: cedar_policy_validator::ValidationError,
+#[non_exhaustive]
+pub enum ValidationError {
+    /// A policy contains an entity type that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedEntityType(#[from] validation_errors::UnrecognizedEntityType),
+    /// A policy contains an action that is not declared in the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnrecognizedActionId(#[from] validation_errors::UnrecognizedActionId),
+    /// There is no action satisfying the action scope constraint that can be
+    /// applied to a principal and resources that both satisfy their respective
+    /// scope conditions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
+    /// An unspecified entity was used in a policy. This should be impossible,
+    /// assuming that the policy was constructed by the parser.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
+    /// The typechecker expected to see a subtype of one of the types in
+    /// `expected`, but saw `actual`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnexpectedType(#[from] validation_errors::UnexpectedType),
+    /// The typechecker could not compute a least upper bound for `types`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompatibleTypes(#[from] validation_errors::IncompatibleTypes),
+    /// The typechecker detected an access to a record or entity attribute
+    /// that it could not statically guarantee would be present.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeAttributeAccess(#[from] validation_errors::UnsafeAttributeAccess),
+    /// The typechecker could not conclude that an access to an optional
+    /// attribute was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// Undefined extension function.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndefinedFunction(#[from] validation_errors::UndefinedFunction),
+    /// Multiply defined extension function.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultiplyDefinedFunction(#[from] validation_errors::MultiplyDefinedFunction),
+    /// Incorrect number of arguments in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongNumberArguments(#[from] validation_errors::WrongNumberArguments),
+    /// Incorrect call style in an extension function application.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongCallStyle(#[from] validation_errors::WrongCallStyle),
+    /// Error returned by custom extension function argument validation
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    FunctionArgumentValidation(#[from] validation_errors::FunctionArgumentValidation),
+    /// Error returned when an empty set literal is found in a policy.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    EmptySetForbidden(#[from] validation_errors::EmptySetForbidden),
+    /// Error returned when an extension constructor is applied to an non-literal expression.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
+    /// To pass strict validation a policy cannot contain an `in` expression
+    /// where the entity type on the left might not be able to be a member of
+    /// the entity type on the right.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
 }
 
 impl ValidationError {
-    /// Extract details about the exact issue detected by the validator.
-    pub fn error_kind(&self) -> &ValidationErrorKind {
-        self.error.kind()
-    }
-
     /// Extract the policy id of the policy where the validator found the issue.
-    pub fn policy_id(&self) -> &PolicyId {
-        PolicyId::ref_cast(self.error.policy_id())
+    pub fn policy_id(&self) -> &crate::PolicyId {
+        match self {
+            ValidationError::UnrecognizedEntityType(e) => e.policy_id(),
+            ValidationError::UnrecognizedActionId(e) => e.policy_id(),
+            ValidationError::InvalidActionApplication(e) => e.policy_id(),
+            ValidationError::UnspecifiedEntity(e) => e.policy_id(),
+            ValidationError::UnexpectedType(e) => e.policy_id(),
+            ValidationError::IncompatibleTypes(e) => e.policy_id(),
+            ValidationError::UnsafeAttributeAccess(e) => e.policy_id(),
+            ValidationError::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
+            ValidationError::UndefinedFunction(e) => e.policy_id(),
+            ValidationError::MultiplyDefinedFunction(e) => e.policy_id(),
+            ValidationError::WrongNumberArguments(e) => e.policy_id(),
+            ValidationError::WrongCallStyle(e) => e.policy_id(),
+            ValidationError::FunctionArgumentValidation(e) => e.policy_id(),
+            ValidationError::EmptySetForbidden(e) => e.policy_id(),
+            ValidationError::NonLitExtConstructor(e) => e.policy_id(),
+            ValidationError::HierarchyNotRespected(e) => e.policy_id(),
+        }
     }
 }
 
 #[doc(hidden)]
 impl From<cedar_policy_validator::ValidationError> for ValidationError {
     fn from(error: cedar_policy_validator::ValidationError) -> Self {
-        Self { error }
+        match error {
+            cedar_policy_validator::ValidationError::UnrecognizedEntityType(e) => {
+                Self::UnrecognizedEntityType(e.into())
+            }
+            cedar_policy_validator::ValidationError::UnrecognizedActionId(e) => {
+                Self::UnrecognizedActionId(e.into())
+            }
+            cedar_policy_validator::ValidationError::InvalidActionApplication(e) => {
+                Self::InvalidActionApplication(e.into())
+            }
+            cedar_policy_validator::ValidationError::UnspecifiedEntity(e) => {
+                Self::UnspecifiedEntity(e.into())
+            }
+            cedar_policy_validator::ValidationError::UnexpectedType(e) => {
+                Self::UnexpectedType(e.into())
+            }
+            cedar_policy_validator::ValidationError::IncompatibleTypes(e) => {
+                Self::IncompatibleTypes(e.into())
+            }
+            cedar_policy_validator::ValidationError::UnsafeAttributeAccess(e) => {
+                Self::UnsafeAttributeAccess(e.into())
+            }
+            cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
+                Self::UnsafeOptionalAttributeAccess(e.into())
+            }
+            cedar_policy_validator::ValidationError::UndefinedFunction(e) => {
+                Self::UndefinedFunction(e.into())
+            }
+            cedar_policy_validator::ValidationError::MultiplyDefinedFunction(e) => {
+                Self::MultiplyDefinedFunction(e.into())
+            }
+            cedar_policy_validator::ValidationError::WrongNumberArguments(e) => {
+                Self::WrongNumberArguments(e.into())
+            }
+            cedar_policy_validator::ValidationError::WrongCallStyle(e) => {
+                Self::WrongCallStyle(e.into())
+            }
+            cedar_policy_validator::ValidationError::FunctionArgumentValidation(e) => {
+                Self::FunctionArgumentValidation(e.into())
+            }
+            cedar_policy_validator::ValidationError::EmptySetForbidden(e) => {
+                Self::EmptySetForbidden(e.into())
+            }
+            cedar_policy_validator::ValidationError::NonLitExtConstructor(e) => {
+                Self::NonLitExtConstructor(e.into())
+            }
+            cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
+                Self::HierarchyNotRespected(e.into())
+            }
+        }
     }
 }
 
-/// Structures containing details for validation errors
-pub mod validation_errors {
-    pub use cedar_policy_validator::validation_errors::{
-        EmptySetForbidden, FunctionArgumentValidation, HierarchyNotRespected, IncompatibleTypes,
-        InvalidActionApplication, MultiplyDefinedFunction, NonLitExtConstructor, TypeError,
-        UndefinedFunction, UnexpectedType, UnrecognizedActionId, UnrecognizedEntityType,
-        UnsafeAttributeAccess, UnsafeOptionalAttributeAccess, UnspecifiedEntity,
-        ValidationErrorKind, WrongCallStyle, WrongNumberArguments,
-    };
-}
+/// This module contains definitions for structs containing detailed information
+/// about each validation warning. Warnings are primarily documented on their
+/// variants in [`ValidationWarning`].
+pub mod validation_warnings;
 
+/// Represents the different kinds of validation warnings and information
+/// specific to that warning. Marked as `non_exhaustive` to allow adding
+/// additional warnings in the future as a non-breaking change.
 #[derive(Debug, Clone, Error, Diagnostic)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-/// Warnings found in Cedar policies
-pub struct ValidationWarning {
-    warning: cedar_policy_validator::ValidationWarning,
+#[non_exhaustive]
+pub enum ValidationWarning {
+    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    MixedScriptString(#[from] validation_warnings::MixedScriptString),
+    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    BidiCharsInString(#[from] validation_warnings::BidiCharsInString),
+    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    BidiCharsInIdentifier(#[from] validation_warnings::BidiCharsInIdentifier),
+    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    MixedScriptIdentifier(#[from] validation_warnings::MixedScriptIdentifier),
+    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConfusableIdentifier(#[from] validation_warnings::ConfusableIdentifier),
+    /// The typechecker found that a policy condition will always evaluate to false.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ImpossiblePolicy(#[from] validation_warnings::ImpossiblePolicy),
 }
 
 impl ValidationWarning {
-    /// Extract details about the exact issue detected by the validator.
-    pub fn warning_kind(&self) -> &ValidationWarningKind {
-        self.warning.kind()
-    }
-
     /// Extract the policy id of the policy where the validator found the issue.
     pub fn policy_id(&self) -> &PolicyId {
-        PolicyId::ref_cast(self.warning.policy_id())
+        match self {
+            ValidationWarning::MixedScriptString(w) => w.policy_id(),
+            ValidationWarning::BidiCharsInString(w) => w.policy_id(),
+            ValidationWarning::BidiCharsInIdentifier(w) => w.policy_id(),
+            ValidationWarning::MixedScriptIdentifier(w) => w.policy_id(),
+            ValidationWarning::ConfusableIdentifier(w) => w.policy_id(),
+            ValidationWarning::ImpossiblePolicy(w) => w.policy_id(),
+        }
     }
 }
 
 #[doc(hidden)]
 impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
     fn from(warning: cedar_policy_validator::ValidationWarning) -> Self {
-        Self { warning }
+        match warning {
+            cedar_policy_validator::ValidationWarning::MixedScriptString(w) => {
+                Self::MixedScriptString(w.into())
+            }
+            cedar_policy_validator::ValidationWarning::BidiCharsInString(w) => {
+                Self::BidiCharsInString(w.into())
+            }
+            cedar_policy_validator::ValidationWarning::BidiCharsInIdentifier(w) => {
+                Self::BidiCharsInIdentifier(w.into())
+            }
+            cedar_policy_validator::ValidationWarning::MixedScriptIdentifier(w) => {
+                Self::MixedScriptIdentifier(w.into())
+            }
+            cedar_policy_validator::ValidationWarning::ConfusableIdentifier(w) => {
+                Self::ConfusableIdentifier(w.into())
+            }
+            cedar_policy_validator::ValidationWarning::ImpossiblePolicy(w) => {
+                Self::ImpossiblePolicy(w.into())
+            }
+        }
     }
-}
-
-/// Structures containing details for validation warnings
-pub mod validation_warnings {
-    pub use cedar_policy_validator::validation_warnings::{
-        BidiCharsInIdentifier, BidiCharsInString, ConfusableIdentifier, ImpossiblePolicy,
-        MixedScriptIdentifier, MixedScriptString,
-    };
 }
 
 /// Error structs for the variants of `PolicySetError`

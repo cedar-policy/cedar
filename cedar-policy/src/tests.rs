@@ -1475,7 +1475,7 @@ mod schema_tests {
                 }
             }}"#
             )),
-            Err(SchemaError::JsonDeserialization(_))
+            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
         );
     }
 }
@@ -2453,7 +2453,7 @@ mod schema_based_parsing_tests {
         let src = "{ , .. }";
         assert_matches!(
             Schema::from_str(src),
-            Err(super::SchemaError::JsonDeserialization(_))
+            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
         );
     }
 
@@ -3067,11 +3067,11 @@ mod schema_based_parsing_tests {
 #[cfg(not(feature = "partial-validate"))]
 #[test]
 fn partial_schema_unsupported() {
-    use cool_asserts::assert_panics;
+    use cool_asserts::assert_matches;
     use serde_json::json;
-    assert_panics!(
-        Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})).unwrap(),
-        includes("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+    assert_matches!(
+        Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})),
+        Err(e) if e.to_string().contains("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
     );
 }
 

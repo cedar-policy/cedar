@@ -14,17 +14,15 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{
-    ast::{Expr, StaticPolicy, Var},
+    ast::{Expr, PolicyID, StaticPolicy, Var},
     parser::parse_policy,
 };
 
 use crate::{
-    validation_errors::{AttributeAccess, TypeError},
-    NamespaceDefinition,
+    diagnostics::ValidationError, validation_errors::AttributeAccess, NamespaceDefinition,
 };
 
 use super::test_utils;
@@ -72,7 +70,7 @@ fn assert_policy_typechecks(p: StaticPolicy) {
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_policy_typecheck_fails(p: StaticPolicy, expected_type_errors: Vec<TypeError>) {
+fn assert_policy_typecheck_fails(p: StaticPolicy, expected_type_errors: Vec<ValidationError>) {
     test_utils::assert_policy_typecheck_fails(schema_with_unspecified(), p, expected_type_errors);
 }
 
@@ -92,8 +90,9 @@ fn spec_principal_unspec_resource() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["name".into()]),
             None,
             true,
@@ -110,8 +109,9 @@ fn spec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["name".into()]),
             None,
             true,
@@ -135,8 +135,9 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["name".into()]),
             None,
             true,
@@ -150,8 +151,9 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["name".into()]),
             None,
             true,

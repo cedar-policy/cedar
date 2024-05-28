@@ -17,6 +17,7 @@
 /// Macro which implements the `.labels()` and `.source_code()` methods of
 /// `miette::Diagnostic` by using the `self.source_loc` field (assumed to be an
 /// `Option<Loc>`)
+#[macro_export]
 macro_rules! impl_diagnostic_from_source_loc_field {
     () => {
         fn source_code(&self) -> Option<&dyn miette::SourceCode> {
