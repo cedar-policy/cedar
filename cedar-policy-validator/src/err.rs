@@ -233,8 +233,7 @@ pub mod schema_error {
         /// Error thrown by the `serde_json` crate during serialization
         #[error(transparent)]
         #[diagnostic(transparent)]
-        // no #[from], because if you just have a serde_json::Error you should choose between JsonDeserialization and JsonSerialization appropriately
-        JsonSerialization(JsonSerializationError),
+        JsonSerialization(#[from] JsonSerializationError),
         /// This error is thrown when `serde_json` fails to deserialize the JSON
         #[error(transparent)]
         #[diagnostic(transparent)]
