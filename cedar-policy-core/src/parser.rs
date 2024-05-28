@@ -748,7 +748,7 @@ mod parse_tests {
         // test idempotence
         assert_eq!(
             ast::Eid::new(parse_internal_string(r"a\nblock\nid").expect("should parse"))
-                .to_string(),
+                .escaped(),
             r"a\nblock\nid",
         );
         parse_internal_string(r#"oh, no, a '! "#).expect("single quote should be fine");

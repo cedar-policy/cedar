@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
-- Fixed a performance issue when constructing an error for accessing 
+- Fixed a performance issue when constructing an error for accessing
     a non-existent attribute on sufficiently large records/entities
 
 ### Removed
@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rich data provided by `miette::Diagnostic`, for instance `.help()` and
   `labels()`. Callers can continue using the same behavior by calling
   `.iter().map(ToString::to_string)`. (#882, resolving #543)
+- Removed `Display` impl for `EntityId` in favor of explicit `.escaped()` and
+  `.as_ref()` for escaped and unescaped representations (respectively) of the
+  `EntityId`; see note there (#921, resolving #884)
 
 ### Fixed
 

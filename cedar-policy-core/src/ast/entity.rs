@@ -196,7 +196,7 @@ impl EntityUID {
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::\"{}\"", self.entity_type(), self.eid)
+        write!(f, "{}::\"{}\"", self.entity_type(), self.eid.escaped())
     }
 }
 
@@ -226,7 +226,15 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
-/// EID type is just a SmolStr for now
+/// The `Eid` type represents the id of an `Entity`, without the typename.
+/// Together with the typename it comprises an `EntityUID`.
+/// For example, in `User::"alice"`, the `Eid` is `alice`.
+///
+/// `Eid` does not implement `Display`, partly because it is unclear whether
+/// `Display` should produce an escaped representation or an unescaped representation
+/// (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
+/// To get an escaped representation, use `.escaped()`.
+/// To get an unescaped representation, use `.as_ref()`.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub struct Eid(SmolStr);
 
@@ -234,6 +242,11 @@ impl Eid {
     /// Construct an Eid
     pub fn new(eid: impl Into<SmolStr>) -> Self {
         Eid(eid.into())
+    }
+
+    /// Get the contents of the `Eid` as an escaped string
+    pub fn escaped(&self) -> SmolStr {
+        self.0.escape_debug().collect()
     }
 }
 
@@ -254,12 +267,6 @@ impl<'a> arbitrary::Arbitrary<'a> for Eid {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let x: String = u.arbitrary()?;
         Ok(Self(x.into()))
-    }
-}
-
-impl std::fmt::Display for Eid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.escape_debug())
     }
 }
 

@@ -3740,6 +3740,7 @@ mod decimal_ip_constructors {
 
 mod into_iter_entities {
     use super::*;
+    use smol_str::SmolStr;
 
     #[test]
     fn into_iter_entities() {
@@ -3762,9 +3763,9 @@ mod into_iter_entities {
         "#;
 
         let list = Entities::from_json_str(test_data, None).unwrap();
-        let mut list_out: Vec<String> = list
+        let mut list_out: Vec<SmolStr> = list
             .into_iter()
-            .map(|entity| entity.uid().id().to_string())
+            .map(|entity| entity.uid().id().escaped())
             .collect();
         list_out.sort();
         assert_eq!(list_out, &["admin", "alice"]);
