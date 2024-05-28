@@ -419,7 +419,7 @@ fn policy_impossible_scope() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -435,7 +435,7 @@ fn policy_impossible_literal_euids() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -451,7 +451,7 @@ fn policy_impossible_not_has() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -475,7 +475,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -488,7 +488,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -501,7 +501,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -514,7 +514,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -527,7 +527,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -540,7 +540,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -553,7 +553,7 @@ fn policy_in_action_impossible() {
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -569,7 +569,7 @@ fn policy_action_in_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -668,7 +668,7 @@ fn entity_lub_cant_have_undeclared_attribute() {
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -696,7 +696,7 @@ fn is_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );
@@ -704,7 +704,7 @@ fn is_impossible() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );
@@ -735,7 +735,7 @@ fn is_entity_lub() {
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );
@@ -762,7 +762,7 @@ fn is_action() {
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
         vec![ValidationWarning::impossible_policy(
-            p.loc().clone(),
+            p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );
@@ -923,7 +923,7 @@ fn action_groups() {
         schema.clone(),
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -937,7 +937,7 @@ fn action_groups() {
         schema.clone(),
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -951,7 +951,7 @@ fn action_groups() {
         schema.clone(),
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -965,7 +965,7 @@ fn action_groups() {
         schema,
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );
@@ -1196,7 +1196,7 @@ mod templates {
         assert_policy_typecheck_warns_simple_schema(
             template.clone(),
             vec![ValidationWarning::impossible_policy(
-                template.loc().clone(),
+                template.loc().cloned(),
                 PolicyID::from_string("policy0"),
             )],
         );

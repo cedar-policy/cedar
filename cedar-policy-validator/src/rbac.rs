@@ -305,7 +305,7 @@ impl Validator {
     // (rather than a template) to facilitate code reuse.
     fn validate_action_application(
         &self,
-        source_loc: &Option<Loc>,
+        source_loc: Option<&Loc>,
         policy_id: &PolicyID,
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
@@ -325,7 +325,7 @@ impl Validator {
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
         Some(ValidationError::invalid_action_application(
-            source_loc.clone(),
+            source_loc.cloned(),
             policy_id.clone(),
             would_in_fix_principal,
             would_in_fix_resource,
@@ -1154,7 +1154,7 @@ mod test {
                 .1
                 .collect::<Vec<ValidationWarning>>(),
             vec![ValidationWarning::impossible_policy(
-                policy.loc().clone(),
+                policy.loc().cloned(),
                 policy.id().clone()
             )],
             "Unexpected validation warnings."

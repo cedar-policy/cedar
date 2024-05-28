@@ -304,7 +304,7 @@ impl<'a> Typechecker<'a> {
         // possibly apply to any request.
         if all_false {
             warnings.insert(ValidationWarning::impossible_policy(
-                t.loc().clone(),
+                t.loc().cloned(),
                 t.id().clone(),
             ));
         }
