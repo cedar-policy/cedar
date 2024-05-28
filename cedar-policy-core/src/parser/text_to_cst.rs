@@ -50,21 +50,23 @@ fn parse_collect_errors<'a, P, T>(
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &Arc::from(text), text);
 
-    let mut errors: err::ParseErrors = errs
+    let errors = errs
         .into_iter()
         .map(err::ToCSTError::from_raw_err_recovery)
-        .collect();
+        .map(Into::into)
+        .collect::<Vec<err::ParseError>>();
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(err::ToCSTError::from_raw_parse_err(e));
-            return Err(errors);
+            return Err(err::ParseErrors::new(
+                err::ToCSTError::from_raw_parse_err(e).into(),
+                errors,
+            ));
         }
     };
-    if errors.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(errors)
+    match err::ParseErrors::from_iter(errors) {
+        Some(errors) => Err(errors),
+        None => Ok(parsed),
     }
 }
 
@@ -354,9 +356,9 @@ mod tests {
             _ => panic!("Expected parsing policy to error"),
         };
         assert!(errs.len() == 2);
-        assert!(format!("{:?}", errs[0])
+        assert!(format!("{:?}", errs.get(0).unwrap())
             .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (98, \"{\", 99)"));
-        assert!(format!("{:?}", errs[1])
+        assert!(format!("{:?}", errs.get(1).unwrap())
             .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (141, \"}\", 142)"));
     }
 

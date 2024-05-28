@@ -50,15 +50,14 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
                 .map(|(idx, _)| idx)
                 .unwrap_or(s.len().min(normalized_src.len()));
 
-            Err(ParseError::ToAST(ToASTError::new(
+            Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                 ToASTErrorKind::NonNormalizedString {
                     kind: Self::describe_self(),
                     src: s.to_string(),
                     normalized_src,
                 },
                 Loc::new(diff_byte, s.into()),
-            ))
-            .into())
+            ))))
         }
     }
 

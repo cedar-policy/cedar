@@ -36,9 +36,7 @@
 // cloning.
 
 use super::cst;
-use super::err::{
-    self, ParseError, ParseErrors, Ref, RefCreationError, ToASTError, ToASTErrorKind,
-};
+use super::err::{self, Ref, RefCreationError, ToASTError, ToASTErrorKind};
 use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
@@ -54,6 +52,9 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
 use std::sync::Arc;
+
+// Local re-definition for convenience
+type ParseErrors = Vec<ToASTError>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
@@ -185,14 +186,11 @@ impl Node<Option<cst::Policy>> {
         // `SlotsInConditionClause`, we can report that as `UnexpectedTemplate`
         let new_errs = errs
             .iter()
-            .filter_map(|err| match err {
-                ParseError::ToAST(err) => match err.kind() {
-                    ToASTErrorKind::SlotsInConditionClause { slot, .. } => Some(ToASTError::new(
-                        ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
-                        err.source_loc().clone(),
-                    )),
-                    _ => None,
-                },
+            .filter_map(|err| match err.kind() {
+                ToASTErrorKind::SlotsInConditionClause { slot, .. } => Some(ToASTError::new(
+                    ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
+                    err.source_loc().clone(),
+                )),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -743,11 +741,10 @@ fn action_constraint_contains_only_action_types(
             if euid_has_action_type(euid) {
                 Ok(a)
             } else {
-                Err(ParseErrors(vec![ToASTError::new(
+                Err(vec![ToASTError::new(
                     ToASTErrorKind::InvalidActionType(euid.as_ref().clone()),
                     loc.clone(),
-                )
-                .into()]))
+                )])
             }
         }
     }
@@ -1990,7 +1987,7 @@ impl Node<Option<cst::Primary>> {
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
-                if let Some(var) = n.to_var(&mut ParseErrors::new()) {
+                if let Some(var) = n.to_var(&mut vec![]) {
                     Some(ExprOrSpecial::Var {
                         var,
                         loc: self.loc.clone(),
@@ -2544,14 +2541,14 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let expr = text_to_cst::parse_expr(text)
             .expect("failed parser")
             .to_expr(&mut errs)
             .unwrap_or_else(|| {
                 panic!(
                     "failed conversion to AST:\n{:?}",
-                    miette::Report::new(errs.clone())
+                    miette::Report::new(ParseErrors::from(errs.clone()))
                 )
             });
         assert!(errs.is_empty());
@@ -2560,7 +2557,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_fails(text: &str) -> ParseErrors {
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let result = text_to_cst::parse_expr(text)
             .expect("failed parser")
             .to_expr(&mut errs);
@@ -2568,20 +2565,20 @@ mod tests {
             Some(expr) => {
                 panic!("conversion to AST should have failed, but succeeded with:\n{expr}")
             }
-            None => errs,
+            None => errs.into(),
         }
     }
 
     #[track_caller]
     fn assert_parse_policy_succeeds(text: &str) -> ast::StaticPolicy {
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let expr = text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"), &mut errs)
             .unwrap_or_else(|| {
                 panic!(
                     "failed conversion to AST:\n{:?}",
-                    miette::Report::new(errs.clone())
+                    miette::Report::new(ParseErrors::from(errs.clone()))
                 )
             });
         assert!(errs.is_empty());
@@ -2590,7 +2587,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let result = text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"), &mut errs);
@@ -2598,7 +2595,7 @@ mod tests {
             Some(policy) => {
                 panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
             }
-            None => errs,
+            None => errs.into(),
         }
     }
 
@@ -3011,7 +3008,7 @@ mod tests {
         );
 
         // can have multiple annotations
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let policyset = text_to_cst::parse_policies(
             r#"
             @anno1("first")
@@ -3027,7 +3024,12 @@ mod tests {
         )
         .expect("should parse")
         .to_policyset(&mut errs)
-        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        .unwrap_or_else(|| {
+            panic!(
+                "failed convert to AST:\n{:?}",
+                miette::Report::new(ParseErrors::from(errs))
+            )
+        });
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
@@ -3100,7 +3102,7 @@ mod tests {
         );
 
         // can have Cedar reserved words as annotation keys
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         let policyset = text_to_cst::parse_policies(
             r#"
             @if("this is the annotation for `if`")
@@ -3117,7 +3119,7 @@ mod tests {
             "#,
         ).expect("should parse")
         .to_policyset(&mut errs)
-        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(ParseErrors::from(errs))));
         let policy0 = policyset
             .get(&ast::PolicyID::from_string("policy0"))
             .expect("should be the right policy ID");
@@ -3694,7 +3696,7 @@ mod tests {
     #[test]
     fn template_tests() {
         for src in CORRECT_TEMPLATES {
-            let mut errs = ParseErrors::new();
+            let mut errs = vec![];
             let e = text_to_cst::parse_policy(src)
                 .expect("parse_error")
                 .to_policy_template(ast::PolicyID::from_string("i0"), &mut errs);

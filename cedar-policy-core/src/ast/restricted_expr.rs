@@ -725,14 +725,14 @@ mod test {
         let str = r#"{ foo: 37, bar: "hi", foo: 101 }"#;
         assert_eq!(
             RestrictedExpr::from_str(str),
-            Err(RestrictedExpressionParseError::Parse(ParseErrors(vec![
-                ParseError::ToAST(ToASTError::new(
+            Err(RestrictedExpressionParseError::Parse(
+                ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                     ToASTErrorKind::ExprConstructionError(
                         ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
                     ),
                     Loc::new(0..32, Arc::from(str))
-                ))
-            ]))),
+                )))
+            )),
         )
     }
 }

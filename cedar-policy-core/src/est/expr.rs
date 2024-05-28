@@ -914,7 +914,7 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
-                let mut errs = ParseErrors::new();
+                let mut errs = vec![];
                 if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
                     if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
                         return Ok(Expr::has_attr(target_expr, attr));
@@ -927,12 +927,12 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                         ))
                         .into())
                 } else {
-                    Err(errs)
+                    Err(errs.into())
                 }
             }
             cst::Relation::Like { target, pattern } => {
                 let target_expr = target.try_into()?;
-                let mut errs = ParseErrors::new();
+                let mut errs = vec![];
                 match pattern
                     .to_expr_or_special(&mut errs)
                     .map(|expr| expr.into_pattern(&mut errs))
@@ -944,7 +944,7 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                     _ => {
                         match pattern.ok_or_missing() {
                             // We got real errors (i.e., non-`MissingNodeData`)
-                            Ok(_) => Err(errs),
+                            Ok(_) => Err(errs.into()),
                             // We got `MissingNodeData` and forward it to upstream user
                             Err(err) => Err(err.into()),
                         }
@@ -1101,9 +1101,10 @@ fn interpret_primary(
                 path,
                 eid: eid_node,
             } => {
-                let mut errs = ParseErrors::new();
+                let mut errs = vec![];
                 let maybe_name = path.to_name(&mut errs);
                 let maybe_eid = eid_node.as_valid_string(&mut errs);
+                let mut errs = ParseErrors::from(errs);
 
                 match (maybe_name, maybe_eid) {
                     (Some(name), Some(eid)) => match to_unescaped_string(eid) {
@@ -1185,16 +1186,18 @@ fn interpret_primary(
             .iter()
             .map(|node| {
                 let cst::RecInit(k, v) = node.ok_or_missing()?;
-                let mut errs = ParseErrors::new();
+                let mut errs = vec![];
                 let s = k
                     .to_expr_or_special(&mut errs)
                     .and_then(|es| es.into_valid_attr(&mut errs));
                 if !errs.is_empty() {
-                    Err(errs)
+                    Err(errs.into())
                 } else {
                     match s {
                         Some(s) => Ok((s, v.try_into()?)),
-                        None => Err(node.to_ast_err(ToASTErrorKind::MissingNodeData).into()),
+                        None => Err(ParseErrors::singleton(
+                            node.to_ast_err(ToASTErrorKind::MissingNodeData).into(),
+                        )),
                     }
                 }
             })
@@ -1212,11 +1215,11 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
         for access in &m_node.access {
             match access.ok_or_missing()? {
                 cst::MemAccess::Field(node) => {
-                    let mut errs = ParseErrors::new();
+                    let mut errs = vec![];
                     let field = node.to_valid_ident(&mut errs);
                     // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
                     if !errs.is_empty() {
-                        return Err(errs);
+                        return Err(errs.into());
                     }
                     match field {
                         Some(id) => {
@@ -1349,11 +1352,11 @@ impl TryFrom<&Node<Option<cst::Literal>>> for Expr {
             cst::Literal::Str(node) => match node.ok_or_missing()? {
                 cst::Str::String(s) => match to_unescaped_string(s) {
                     Ok(s) => Ok(Expr::lit(CedarValueJson::String(s))),
-                    Err(errs) => Err(ParseErrors(
-                        errs.into_iter()
-                            .map(|err| node.to_ast_err(ToASTErrorKind::Unescape(err)).into())
-                            .collect(),
-                    )),
+                    Err(errs) => {
+                        Err(ParseErrors::new_from_nonempty(errs.map(|err| {
+                            node.to_ast_err(ToASTErrorKind::Unescape(err)).into()
+                        })))
+                    }
                 },
                 cst::Str::Invalid(invalid_str) => Err(node
                     .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
@@ -1753,7 +1756,7 @@ mod test {
 
         assert_matches!(Expr::try_from(&cst_name), Err(e) => {
             assert!(e.len() == 1);
-            assert_matches!(&e[0],
+            assert_matches!(e.get(0).unwrap(),
                 ParseError::ToAST(to_ast_error) => {
                     assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
                         println!("{e:?}");

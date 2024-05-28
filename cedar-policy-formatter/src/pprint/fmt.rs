@@ -99,10 +99,10 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     let cst = parse_policies(ps).wrap_err("cannot parse input policies to CSTs")?;
-    let mut errs = ParseErrors::new();
+    let mut errs = vec![];
     let ast = cst
         .to_policyset(&mut errs)
-        .ok_or(errs)
+        .ok_or(ParseErrors::from(errs))
         .wrap_err("cannot parse input policies to ASTs")?;
     let tokens = get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
     let end_comment_str = ps

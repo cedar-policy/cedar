@@ -140,12 +140,12 @@ impl std::fmt::Display for UnescapeError {
 
 #[cfg(test)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use super::to_unescaped_string;
     use crate::ast;
-    use crate::parser::{
-        err::{ParseError, ParseErrors},
-        text_to_cst,
-    };
+    use crate::parser::err::ToASTErrorKind;
+    use crate::parser::text_to_cst;
 
     #[test]
     fn test_string_escape() {
@@ -181,7 +181,7 @@ mod test {
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
@@ -197,18 +197,17 @@ mod test {
         );
 
         // invalid ASCII escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)
             .is_none());
-        assert!(matches!(
-            errs.as_slice(),
-            [ParseError::ToAST(_), ParseError::ToAST(_)]
-        ));
+        assert_eq!(errs.len(), 2);
+        assert_matches!(errs.get(0).unwrap().kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs.get(1).unwrap().kind(), ToASTErrorKind::Unescape(_));
 
         // valid `\*` surrounded by chars
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
@@ -218,14 +217,13 @@ mod test {
         );
 
         // invalid escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)
             .is_none());
-        assert!(matches!(
-            errs.as_slice(),
-            [ParseError::ToAST(_), ParseError::ToAST(_)]
-        ));
+        assert_eq!(errs.len(), 2);
+        assert_matches!(errs.get(0).unwrap().kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs.get(1).unwrap().kind(), ToASTErrorKind::Unescape(_));
     }
 }
