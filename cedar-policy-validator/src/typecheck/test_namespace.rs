@@ -574,7 +574,7 @@ fn multi_namespace_action_eq() {
         schema.clone(),
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );
@@ -637,7 +637,7 @@ fn multi_namespace_action_in() {
         schema.clone(),
         policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            policy.loc().clone(),
+            policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
     );

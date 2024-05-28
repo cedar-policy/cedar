@@ -157,7 +157,7 @@ impl Template {
     }
 
     /// Get the location of this policy
-    pub fn loc(&self) -> &Option<Loc> {
+    pub fn loc(&self) -> Option<&Loc> {
         self.body.loc()
     }
 
@@ -525,7 +525,7 @@ impl Policy {
     }
 
     /// Get the location of this policy
-    pub fn loc(&self) -> &Option<Loc> {
+    pub fn loc(&self) -> Option<&Loc> {
         self.template.loc()
     }
 
@@ -753,7 +753,7 @@ impl StaticPolicy {
     }
 
     /// Get the location of this policy
-    pub fn loc(&self) -> &Option<Loc> {
+    pub fn loc(&self) -> Option<&Loc> {
         self.0.loc()
     }
 
@@ -922,8 +922,8 @@ impl TemplateBody {
     }
 
     /// Get the location of this policy
-    pub fn loc(&self) -> &Option<Loc> {
-        &self.loc
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Clone this policy with a new `Id`.

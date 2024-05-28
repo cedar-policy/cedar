@@ -794,7 +794,7 @@ fn action_attrs_failing() {
         schema.clone(),
         failing_policy.clone(),
         vec![ValidationWarning::impossible_policy(
-            failing_policy.loc().clone(),
+            failing_policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
     );

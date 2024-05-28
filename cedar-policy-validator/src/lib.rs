@@ -342,7 +342,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
-        let loc = t.loc().clone();
+        let loc = t.loc().cloned();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
