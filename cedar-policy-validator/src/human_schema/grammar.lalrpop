@@ -226,6 +226,12 @@ Ident: Node<Id> = {
         => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> STRING <r:@R> 
         => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TYPE <r:@R> 
+        => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> IN <r:@R>
+        =>? Err(ParseError::User {
+            error: Node::with_source_loc(UserError::ReservedIdentifierUsed("in".into()), Loc::new(l..r, Arc::clone(src)))
+        }),
     <l:@L> <i:IDENTIFIER> <r:@R>
         =>? Id::from_str(i)
         .map(|id : Id| Node::with_source_loc(id, Loc::new(l..r, Arc::clone(src))))

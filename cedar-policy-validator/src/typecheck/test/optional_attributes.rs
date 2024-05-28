@@ -16,18 +16,17 @@
 
 //! Contains tests for defining optional attributes and typechecking their
 //! access using the ability added by contextual effects.
-#![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{
-    ast::{Expr, StaticPolicy, Var},
+    ast::{Expr, PolicyID, StaticPolicy, Var},
     parser::parse_policy,
 };
 use smol_str::SmolStr;
 
 use crate::{
-    types::EntityLUB, validation_errors::AttributeAccess, validation_errors::TypeError,
-    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, ValidationWarningKind,
+    diagnostics::ValidationError, types::EntityLUB, validation_errors::AttributeAccess,
+    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, ValidationWarning,
 };
 
 use super::test_utils::{
@@ -71,7 +70,7 @@ fn assert_policy_typechecks_optional_schema(p: StaticPolicy) {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_optional_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<TypeError>,
+    expected_type_errors: Vec<ValidationError>,
 ) {
     assert_policy_typecheck_fails(schema_with_optionals(), p, expected_type_errors);
 }
@@ -319,10 +318,12 @@ fn guarded_has_true_short_circuits() {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_name_access_fails(policy: StaticPolicy) {
     let optional_attr: SmolStr = "name".into();
+    let id = policy.id().clone();
     assert_policy_typecheck_fails_optional_schema(
         policy,
-        vec![TypeError::unsafe_optional_attribute_access(
+        vec![ValidationError::unsafe_optional_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone()),
+            id,
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec![optional_attr],
@@ -586,11 +587,12 @@ fn record_optional_attrs() {
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![TypeError::unsafe_optional_attribute_access(
+        vec![ValidationError::unsafe_optional_attribute_access(
             Expr::get_attr(
                 Expr::get_attr(Expr::var(Var::Principal), "record".into()),
                 "name".into(),
             ),
+            PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec!["name".into(), "record".into()],
@@ -606,8 +608,9 @@ fn record_optional_attrs() {
     assert_policy_typecheck_fails(
         schema,
         failing_policy2,
-        vec![TypeError::unsafe_optional_attribute_access(
+        vec![ValidationError::unsafe_optional_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec!["name".into()],
@@ -770,8 +773,9 @@ fn action_attrs_failing() {
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![ValidationError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Action), "canUndo".into()),
+            PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["canUndo".into()]),
             Some("isReadOnly".to_string()),
             false,
@@ -787,8 +791,11 @@ fn action_attrs_failing() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns(
         schema.clone(),
-        failing_policy,
-        vec![ValidationWarningKind::impossible_policy()],
+        failing_policy.clone(),
+        vec![ValidationWarning::impossible_policy(
+            failing_policy.loc().cloned(),
+            PolicyID::from_string("0"),
+        )],
     );
 
     // Fails because OtherNamespace::Action::"view" is not defined in the schema.

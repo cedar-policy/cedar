@@ -6,6 +6,9 @@
 
 - The default `--schema-format` is now `human` for all subcommands that take
   `--schema-format`.
+- The `--partial-validate` option has been replaced with `--validation-mode`,
+  taking the values `strict`, `permissive` (new) and `partial`.
+  The latter two are kept behind their respective feature flags.
 
 ## 3.2.0
 
@@ -50,6 +53,7 @@ Now uses Cedar language version 3.1.0.
 - The `evaluate` command now shows source spans on parse errors.
 
 ### Fixed
+
 - The `link` command now accepts templates in the Cedar JSON (EST) syntax.
 
 ## 3.0.1

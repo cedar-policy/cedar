@@ -483,7 +483,7 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
         schema_format: SchemaFormat::Json,
     };
     let output = validate(&cmd);
@@ -501,7 +501,7 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
         schema_format: SchemaFormat::Human,
     };
     let output = validate(&cmd);

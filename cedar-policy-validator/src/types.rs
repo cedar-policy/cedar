@@ -17,6 +17,11 @@
 //! Defines the type structure for typechecking and various utilities for
 //! constructing and manipulating types.
 
+mod effect;
+pub use effect::*;
+mod request_env;
+pub use request_env::*;
+
 use itertools::Itertools;
 use serde::Serialize;
 use smol_str::SmolStr;
@@ -27,8 +32,7 @@ use std::{
 
 use cedar_policy_core::{
     ast::{
-        BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
-        RestrictedExpr, Value,
+        BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
     entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
@@ -39,91 +43,6 @@ use crate::{validation_errors::LubHelp, ValidationMode};
 use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum RequestEnv<'a> {
-    /// Contains the four variables bound in the type environment. These together
-    /// represent the full type of (principal, action, resource, context)
-    /// authorization request.
-    DeclaredAction {
-        principal: &'a EntityType,
-        action: &'a EntityUID,
-        resource: &'a EntityType,
-        context: &'a Type,
-
-        principal_slot: Option<EntityType>,
-        resource_slot: Option<EntityType>,
-    },
-    /// Only in partial schema validation, the action might not have been
-    /// declared in the schema, so this encodes the environment where we know
-    /// nothing about the environment.
-    UndeclaredAction,
-}
-
-impl<'a> RequestEnv<'a> {
-    pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { principal, .. } => Some(principal),
-        }
-    }
-
-    pub fn principal_type(&self) -> Type {
-        match self.principal_entity_type() {
-            Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
-            None => Type::any_entity_reference(),
-        }
-    }
-
-    pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { action, .. } => Some(action),
-        }
-    }
-
-    pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
-        match self.action_entity_uid() {
-            Some(action) => Type::euid_literal(action.clone(), schema),
-            None => Some(Type::any_entity_reference()),
-        }
-    }
-
-    pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { resource, .. } => Some(resource),
-        }
-    }
-
-    pub fn resource_type(&self) -> Type {
-        match self.resource_entity_type() {
-            Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
-            None => Type::any_entity_reference(),
-        }
-    }
-
-    pub fn context_type(&self) -> Type {
-        match self {
-            RequestEnv::UndeclaredAction => Type::any_record(),
-            RequestEnv::DeclaredAction { context, .. } => (*context).clone(),
-        }
-    }
-
-    pub fn principal_slot(&self) -> &Option<EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => &None,
-            RequestEnv::DeclaredAction { principal_slot, .. } => principal_slot,
-        }
-    }
-
-    pub fn resource_slot(&self) -> &Option<EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => &None,
-            RequestEnv::DeclaredAction { resource_slot, .. } => resource_slot,
-        }
-    }
-}
 
 /// The main type structure.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
@@ -1524,52 +1443,6 @@ pub enum Primitive {
     Long,
     /// Primitive string type.
     String,
-}
-
-/// A set of effects. Used to represent knowledge about attribute existence
-/// before and after evaluating an expression.
-#[derive(Eq, PartialEq, Debug, Clone, Default)]
-pub struct EffectSet<'a>(HashSet<Effect<'a>>);
-
-impl<'a> EffectSet<'a> {
-    pub fn new() -> Self {
-        EffectSet(HashSet::new())
-    }
-
-    pub fn singleton(e: Effect<'a>) -> Self {
-        let mut set = Self::new();
-        set.0.insert(e);
-        set
-    }
-
-    pub fn union(&self, other: &Self) -> Self {
-        EffectSet(self.0.union(&other.0).cloned().collect())
-    }
-
-    pub fn intersect(&self, other: &Self) -> Self {
-        EffectSet(self.0.intersection(&other.0).cloned().collect())
-    }
-
-    pub fn contains(&self, e: &Effect) -> bool {
-        self.0.contains(e)
-    }
-}
-
-/// Represent a single effect, which is an expression and some attribute that is
-/// known to exist for that expression.
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub struct Effect<'a> {
-    on_expr: ExprShapeOnly<'a>,
-    attribute: &'a str,
-}
-
-impl<'a> Effect<'a> {
-    pub fn new(on_expr: &'a Expr, attribute: &'a str) -> Self {
-        Self {
-            on_expr: ExprShapeOnly::new(on_expr),
-            attribute,
-        }
-    }
 }
 
 // PANIC SAFETY unit tests
