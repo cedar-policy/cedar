@@ -28,6 +28,7 @@ mod namespace;
 mod optional_attributes;
 #[cfg(feature = "partial-validate")]
 mod partial;
+mod policy;
 mod strict;
 mod type_annotation;
 mod unspecified_entity;

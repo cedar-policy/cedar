@@ -29,6 +29,7 @@ use cedar_policy_core::{
     parser::parse_policy_template,
 };
 
+use crate::typecheck::Typechecker;
 use crate::{
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
@@ -36,9 +37,7 @@ use crate::{
     SchemaFragment, ValidationError, ValidationMode,
 };
 
-use super::test_utils::{
-    assert_policy_typecheck_fails, expr_id_placeholder, with_typechecker_from_schema,
-};
+use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
@@ -47,20 +46,19 @@ fn assert_typechecks_strict(
     e: Expr,
     expected_type: Type,
 ) {
-    with_typechecker_from_schema(schema, expr_id_placeholder(), |mut typechecker| {
-        typechecker.mode = ValidationMode::Strict;
-        let mut errs = Vec::new();
-        let answer =
-            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
-                None
-            });
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+    let mut errs = Vec::new();
+    let answer =
+        typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+            None
+        });
 
-        assert_eq!(errs, vec![], "Expression should not contain any errors.");
-        assert_matches!(
-            answer,
-            crate::typecheck::TypecheckAnswer::TypecheckSuccess { .. }
-        );
-    });
+    assert_eq!(errs, vec![], "Expression should not contain any errors.");
+    assert_matches!(
+        answer,
+        crate::typecheck::TypecheckAnswer::TypecheckSuccess { .. }
+    );
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -71,20 +69,19 @@ fn assert_strict_type_error(
     expected_type: Type,
     expected_error: ValidationError,
 ) {
-    with_typechecker_from_schema(schema, expr_id_placeholder(), |mut typechecker| {
-        typechecker.mode = ValidationMode::Strict;
-        let mut errs = Vec::new();
-        let answer =
-            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
-                None
-            });
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+    let mut errs = Vec::new();
+    let answer =
+        typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+            None
+        });
 
-        assert_eq!(errs.into_iter().collect::<Vec<_>>(), vec![expected_error]);
-        assert_matches!(
-            answer,
-            crate::typecheck::TypecheckAnswer::TypecheckFail { .. }
-        );
-    });
+    assert_eq!(errs.into_iter().collect::<Vec<_>>(), vec![expected_error]);
+    assert_matches!(
+        answer,
+        crate::typecheck::TypecheckAnswer::TypecheckFail { .. }
+    );
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -159,24 +156,23 @@ where
 #[test]
 fn strict_typecheck_catches_regular_type_error() {
     with_simple_schema_and_request(|s, q| {
-        with_typechecker_from_schema(s, expr_id_placeholder(), |mut typechecker| {
-            let mut errs = Vec::new();
-            typechecker.mode = ValidationMode::Strict;
-            typechecker.expect_type(
-                &q,
-                &EffectSet::new(),
-                &Expr::from_str("1 + false").unwrap(),
-                Type::primitive_long(),
-                &mut errs,
-                |_| None,
-            );
+        let schema = s.try_into().expect("Failed to construct schema.");
+        let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+        let mut errs = Vec::new();
+        typechecker.expect_type(
+            &q,
+            &EffectSet::new(),
+            &Expr::from_str("1 + false").unwrap(),
+            Type::primitive_long(),
+            &mut errs,
+            |_| None,
+        );
 
-            assert!(errs.len() == 1);
-            assert!(matches!(
-                errs.first().unwrap(),
-                ValidationError::UnexpectedType(_)
-            ));
-        })
+        assert!(errs.len() == 1);
+        assert!(matches!(
+            errs.first().unwrap(),
+            ValidationError::UnexpectedType(_)
+        ));
     })
 }
 
