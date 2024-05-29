@@ -55,7 +55,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
-// Local re-definition for convenience
+// Local notation for convenience
 type ToASTErrors = Vec<ToASTError>;
 
 // for storing extension function names per callstyle

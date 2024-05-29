@@ -203,8 +203,8 @@ mod test {
             .to_expr(&mut errs)
             .is_none());
         assert_eq!(errs.len(), 2);
-        assert_matches!(errs.get(0).unwrap().kind(), ToASTErrorKind::Unescape(_));
-        assert_matches!(errs.get(1).unwrap().kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
 
         // valid `\*` surrounded by chars
         let mut errs = vec![];
@@ -223,7 +223,7 @@ mod test {
             .to_expr(&mut errs)
             .is_none());
         assert_eq!(errs.len(), 2);
-        assert_matches!(errs.get(0).unwrap().kind(), ToASTErrorKind::Unescape(_));
-        assert_matches!(errs.get(1).unwrap().kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
     }
 }

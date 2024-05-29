@@ -1756,7 +1756,7 @@ mod test {
 
         assert_matches!(Expr::try_from(&cst_name), Err(e) => {
             assert!(e.len() == 1);
-            assert_matches!(e.get(0).unwrap(),
+            assert_matches!(&e[0],
                 ParseError::ToAST(to_ast_error) => {
                     assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
                         println!("{e:?}");

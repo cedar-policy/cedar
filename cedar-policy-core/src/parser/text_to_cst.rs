@@ -356,9 +356,9 @@ mod tests {
             _ => panic!("Expected parsing policy to error"),
         };
         assert!(errs.len() == 2);
-        assert!(format!("{:?}", errs.get(0).unwrap())
+        assert!(format!("{:?}", errs[0])
             .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (98, \"{\", 99)"));
-        assert!(format!("{:?}", errs.get(1).unwrap())
+        assert!(format!("{:?}", errs[1])
             .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (141, \"}\", 142)"));
     }
 
