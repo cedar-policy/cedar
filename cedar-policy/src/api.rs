@@ -304,10 +304,10 @@ impl Entity {
     /// Dump an `Entity` object into an entity JSON file.
     ///
     /// The resulting JSON will be suitable for parsing in via
-    /// `from_json_*`, and will be parse-able even with no `Schema`.
+    /// `from_json_*`, and will be parse-able even with no [`Schema`].
     ///
     /// To read an `Entity` object from an entities JSON file, use
-    /// `from_json_file`.
+    /// [`Entity::from_json_file`].
     pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
         self.0.write_to_json(f)
     }
