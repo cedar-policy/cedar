@@ -31,15 +31,12 @@ use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_fails_for_mode,
     assert_policy_typecheck_warns, assert_policy_typecheck_warns_for_mode,
     assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks,
-    with_typechecker_from_schema,
 };
 use crate::{
     diagnostics::ValidationError,
-    typecheck::{test_utils::static_to_template, PolicyCheck},
+    typecheck::{PolicyCheck, Typechecker},
     types::{EntityLUB, Type},
-    validation_errors::AttributeAccess,
-    validation_errors::LubContext,
-    validation_errors::LubHelp,
+    validation_errors::{AttributeAccess, LubContext, LubHelp},
     NamespaceDefinition, ValidationMode, ValidationWarning,
 };
 
@@ -180,56 +177,62 @@ fn entity_literal_typechecks() {
 
 #[test]
 fn policy_checked_in_multiple_envs() {
-    let t = static_to_template(parse_policy(
+    let t = parse_policy_template(
         Some("0".to_string()),
         r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
-    ).expect("Policy should parse."));
-    with_typechecker_from_schema(
-        simple_schema_file(),
+    ).expect("Policy should parse.");
+
+    let schema = simple_schema_file()
+        .try_into()
+        .expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(
+        &schema,
+        ValidationMode::default(),
         PolicyID::from_string("0"),
-        |typechecker| {
-            let env_checks = typechecker.typecheck_by_request_env(t.as_ref());
-            // There are 3 possible envs in schema:
-            // - User, "view_photo", Photo
-            // - Group, "view_photo", Photo
-            // - User, "delete_group", Group
-            assert!(env_checks.len() == 3);
-            // Policy is always false for "delete_group"
-            assert!(
-                env_checks
-                    .iter()
-                    .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
-                    .count()
-                    == 1
-            );
-        },
     );
-    let t = static_to_template(parse_policy(
+    let env_checks = typechecker.typecheck_by_request_env(&t);
+    // There are 3 possible envs in schema:
+    // - User, "view_photo", Photo
+    // - Group, "view_photo", Photo
+    // - User, "delete_group", Group
+    assert!(env_checks.len() == 3);
+    // Policy is always false for "delete_group"
+    assert!(
+        env_checks
+            .iter()
+            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+            .count()
+            == 1
+    );
+
+    let t = parse_policy_template(
         Some("0".to_string()),
         r#"permit(principal, action == Action::"delete_group", resource) when { resource.file_type == "jpg" };"#
-    ).expect("Policy should parse."));
-    with_typechecker_from_schema(
-        simple_schema_file(),
+    ).expect("Policy should parse.");
+    let schema = simple_schema_file()
+        .try_into()
+        .expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(
+        &schema,
+        ValidationMode::default(),
         PolicyID::from_string("0"),
-        |typechecker| {
-            let env_checks = typechecker.typecheck_by_request_env(t.as_ref());
-            // With the new action, policy is always false for the other two
-            assert!(
-                env_checks
-                    .iter()
-                    .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
-                    .count()
-                    == 2
-            );
-            // and fails by not updating usage of resource
-            assert!(
-                env_checks
-                    .iter()
-                    .filter(|(_, check)| { matches!(check, PolicyCheck::Fail(_)) })
-                    .count()
-                    == 1
-            );
-        },
+    );
+    let env_checks = typechecker.typecheck_by_request_env(&t);
+    // With the new action, policy is always false for the other two
+    assert!(
+        env_checks
+            .iter()
+            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+            .count()
+            == 2
+    );
+    // and fails by not updating usage of resource
+    assert!(
+        env_checks
+            .iter()
+            .filter(|(_, check)| { matches!(check, PolicyCheck::Fail(_)) })
+            .count()
+            == 1
     );
 }
 
