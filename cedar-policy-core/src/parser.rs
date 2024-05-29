@@ -105,20 +105,12 @@ pub fn parse_policy_template(
     id: Option<String>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let mut errs = vec![];
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let Some(ast) = cst.to_policy_template(id, &mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_policy_template(id)
 }
 
 /// Like `parse_policy_template()`, but also returns the (lossless) EST -- that
@@ -128,41 +120,26 @@ pub fn parse_policy_template_to_est_and_ast(
     id: Option<String>,
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
-    let mut errs = vec![];
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let (Some(ast), Some(cst_node)) = (cst.to_policy_template(id, &mut errs), cst.node) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        let est = cst_node.try_into()?;
-        Ok((est, ast))
-    } else {
-        Err(errs.into())
-    }
+    let ast = cst.to_policy_template(id)?;
+    let est = cst.ok_or_missing()?.clone().try_into()?;
+    Ok((est, ast))
 }
 
 /// simple main function for parsing a policy.
 /// If `id` is Some, then the resulting policy will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
 pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let mut errs = vec![];
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let Some(ast) = cst.to_policy(id, &mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_policy(id)
 }
 
 /// Like `parse_policy()`, but also returns the (lossless) EST -- that is, the
@@ -172,21 +149,14 @@ pub fn parse_policy_to_est_and_ast(
     id: Option<String>,
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
-    let mut errs = vec![];
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let (Some(ast), Some(cst_node)) = (cst.to_policy(id, &mut errs), cst.node) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        let est = cst_node.try_into()?;
-        Ok((est, ast))
-    } else {
-        Err(errs.into())
-    }
+    let ast = cst.to_policy(id)?;
+    let est = cst.ok_or_missing()?.clone().try_into()?;
+    Ok((est, ast))
 }
 
 /// Parse a policy or template (either one works) to its EST representation
