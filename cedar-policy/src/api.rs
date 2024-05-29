@@ -49,6 +49,7 @@ use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::Read;
 use std::str::FromStr;
 
 /// Extended functionality for `Entities` struct
@@ -259,6 +260,56 @@ impl Entity {
             attrs,
             ancestors.into_iter().map(EntityUid::new).collect(),
         )
+    }
+
+    /// Parse an entity from an in-memory JSON value
+    pub fn from_json_value(
+        value: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_value(value).map(Self)
+    }
+
+    /// Parse an entity from a JSON string
+    pub fn from_json_str(
+        src: impl AsRef<str>,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_str(src).map(Self)
+    }
+
+    /// Parse an entity from a JSON reader
+    pub fn from_json_file(f: impl Read, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_file(f).map(Self)
+    }
+
+    /// Dump an `Entity` object into an entity JSON file.
+    ///
+    /// The resulting JSON will be suitable for parsing in via
+    /// `from_json_*`, and will be parse-able even with no `Schema`.
+    ///
+    /// To read an `Entity` object from an entities JSON file, use
+    /// `from_json_file`.
+    pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
+        self.0.write_to_json(f)
     }
 }
 
