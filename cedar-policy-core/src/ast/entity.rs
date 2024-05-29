@@ -446,6 +446,18 @@ impl Entity {
         serde_json::to_writer_pretty(f, &ejson).map_err(JsonSerializationError::from)?;
         Ok(())
     }
+
+    pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let v = serde_json::to_value(ejson).map_err(JsonSerializationError::from)?;
+        Ok(v)
+    }
+
+    pub fn to_json_string(&self) -> Result<String, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
+        Ok(string)
+    }
 }
 
 impl PartialEq for Entity {

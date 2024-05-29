@@ -22,6 +22,7 @@ use super::{
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue, RestrictedExpr,
 };
+use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
     conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
     schematype_of_partialvalue, Entities, EntitiesError, GetSchemaTypeError, TCComputation,
@@ -218,32 +219,32 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         &self,
         value: serde_json::Value,
     ) -> Result<Entity, EntitiesError> {
-        let ejson: EntityJson =
-            serde_json::from_value(value).map_err(JsonDeserializationError::from)?;
-        let entity = self.parse_ejson(ejson)?;
-        match self.schema {
-            Some(schema) => {
-                let checker = crate::entities::conformance::EntitySchemaConformanceChecker::new(
-                    schema,
-                    self.extensions,
-                );
-                checker.validate_entity(&entity)?;
-                Ok(entity)
-            }
-            None => Ok(entity),
-        }
+        let ejson = serde_json::from_value(value).map_err(JsonDeserializationError::from)?;
+        self.single_from_ejson(ejson)
     }
 
     /// Parse a single entity from a JSON string
     pub fn single_from_json_str(&self, src: impl AsRef<str>) -> Result<Entity, EntitiesError> {
-        let v = serde_json::from_str(src.as_ref()).map_err(JsonDeserializationError::from)?;
-        self.single_from_json_value(v)
+        let ejson = serde_json::from_str(src.as_ref()).map_err(JsonDeserializationError::from)?;
+        self.single_from_ejson(ejson)
     }
 
     /// Parse a single entity from a JSON reader
     pub fn single_from_json_file(&self, r: impl Read) -> Result<Entity, EntitiesError> {
-        let v = serde_json::from_reader(r).map_err(JsonDeserializationError::from)?;
-        self.single_from_json_value(v)
+        let ejson = serde_json::from_reader(r).map_err(JsonDeserializationError::from)?;
+        self.single_from_ejson(ejson)
+    }
+
+    fn single_from_ejson(&self, ejson: EntityJson) -> Result<Entity, EntitiesError> {
+        let entity = self.parse_ejson(ejson)?;
+        match self.schema {
+            None => Ok(entity),
+            Some(schema) => {
+                let checker = EntitySchemaConformanceChecker::new(schema, self.extensions);
+                checker.validate_entity(&entity)?;
+                Ok(entity)
+            }
+        }
     }
 
     /// Internal function that creates an [`Entities`] from a stream of [`EntityJson`].
