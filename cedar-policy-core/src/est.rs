@@ -115,8 +115,7 @@ impl TryFrom<cst::Policy> for Policy {
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_scope(&mut errs);
         let (annot_success, annotations) = policy.get_ast_annotations(&mut errs);
-        let mut errs = ParseErrors::from(errs);
-        let conditions = match policy
+        let conditions = policy
             .conds
             .into_iter()
             .map(|node| {
@@ -126,14 +125,7 @@ impl TryFrom<cst::Policy> for Policy {
                 })?;
                 cond.try_into()
             })
-            .collect::<Result<Vec<_>, ParseErrors>>()
-        {
-            Ok(conds) => Some(conds),
-            Err(e) => {
-                errs.extend(e);
-                None
-            }
-        };
+            .collect::<Result<Vec<_>, ParseErrors>>();
 
         match (
             effect,
@@ -142,13 +134,15 @@ impl TryFrom<cst::Policy> for Policy {
             resource,
             conditions,
             annot_success,
+            errs.is_empty(),
         ) {
             (
                 Some(effect),
                 Some(principal),
                 Some(action),
                 Some(resource),
-                Some(conditions),
+                Ok(conditions),
+                true,
                 true,
             ) => Ok(Policy {
                 effect,
@@ -158,7 +152,11 @@ impl TryFrom<cst::Policy> for Policy {
                 conditions,
                 annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
             }),
-            _ => Err(errs),
+            (_, _, _, _, Err(mut cond_errs), _, _) => {
+                cond_errs.extend(errs);
+                Err(cond_errs)
+            }
+            _ => Err(errs.into()),
         }
     }
 }
@@ -168,7 +166,6 @@ impl TryFrom<cst::Cond> for Clause {
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
         let mut errs = vec![];
         let is_when = cond.cond.to_cond_is_when(&mut errs);
-        let mut errs = ParseErrors::from(errs);
         let expr: Result<Expr, ParseErrors> = match cond.expr {
             None => {
                 let ident = is_when.map(|is_when| {
@@ -181,24 +178,19 @@ impl TryFrom<cst::Cond> for Clause {
             }
             Some(ref e) => e.try_into(),
         };
-        let expr = match expr {
-            Ok(expr) => Some(expr),
-            Err(expr_errs) => {
-                errs.extend(expr_errs);
-                None
-            }
-        };
-
-        if let Some(expr) = expr {
-            Ok(match is_when {
-                // PANIC SAFETY expr should be Some if is_when is None
+        match (expr, errs.is_empty()) {
+            (Ok(expr), true) => Ok(match is_when {
+                // PANIC SAFETY `is_when` must be `Some` when `errs` is empty
                 #[allow(clippy::unreachable)]
                 None => unreachable!("should have had an err in this case"),
                 Some(true) => Clause::When(expr),
                 Some(false) => Clause::Unless(expr),
-            })
-        } else {
-            Err(errs)
+            }),
+            (Err(mut expr_errs), _) => {
+                expr_errs.extend(errs);
+                Err(expr_errs)
+            }
+            (_, false) => Err(errs.into()),
         }
     }
 }

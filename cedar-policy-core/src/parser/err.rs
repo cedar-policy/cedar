@@ -341,9 +341,12 @@ pub enum ToASTErrorKind {
         /// The normalized form of the string
         normalized_src: String,
     },
-    /// Returned when a CST node is empty
-    #[error("data should not be empty")]
-    MissingNodeData,
+    /// Returned when a CST node is empty during CST to AST/EST conversion.
+    /// This should have resulted in an error during the text to CST
+    /// conversion, which will terminate parsing. So it should be unreachable
+    /// in later stages.
+    #[error("internal invariant violated. Parsed data node should not be empty")]
+    EmptyNodeInvariantViolation,
     /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
     #[error("the right hand side of a `has` expression must be a field name or string literal")]
     HasNonLiteralRHS,
@@ -695,16 +698,22 @@ impl ParseErrors {
 
     /// Construct a new `ParseErrors` from another `NonEmpty` type
     pub(crate) fn new_from_nonempty(errs: NonEmpty<ParseError>) -> Self {
-        let (first, rest) = errs.split_first();
-        let mut nv = NonEmpty::singleton(first.clone());
-        let mut v = rest.to_vec();
-        nv.append(&mut v);
-        Self(nv)
+        Self(errs)
     }
 
     pub(crate) fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
         let v = i.into_iter().collect::<Vec<_>>();
         Some(Self(NonEmpty::from_vec(v)?))
+    }
+
+    /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
+    /// `None` if the input vector is empty.
+    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
+        let (first, rest) = v.split_first()?;
+        let mut first = first.clone();
+        rest.iter()
+            .for_each(|errs| first.extend(errs.iter().cloned()));
+        Some(first)
     }
 }
 
@@ -809,13 +818,12 @@ impl From<Vec<ParseError>> for ParseErrors {
     /// Convert a `Vec<ParseError> to a `ParseErrors`, inserting the `Unknown`
     /// error if necessary.
     fn from(errs: Vec<ParseError>) -> Self {
-        match errs.split_first() {
-            None => ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+        ParseErrors::from_iter(errs).unwrap_or_else(|| {
+            ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                 ToASTErrorKind::Unknown,
                 Loc::new(0, Arc::from("")),
-            ))),
-            Some((first, rest)) => ParseErrors::new(first.clone(), rest.iter().cloned()),
-        }
+            )))
+        })
     }
 }
 

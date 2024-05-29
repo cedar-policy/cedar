@@ -53,8 +53,7 @@ fn parse_collect_errors<'a, P, T>(
     let errors = errs
         .into_iter()
         .map(err::ToCSTError::from_raw_err_recovery)
-        .map(Into::into)
-        .collect::<Vec<err::ParseError>>();
+        .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {

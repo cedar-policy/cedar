@@ -195,11 +195,20 @@ impl<T> Node<Option<T>> {
         f(self.node?, self.loc)
     }
 
-    /// Get node data if present, or return an error result for `MissingNodeData`
-    /// if it is `None`.
-    pub fn ok_or_missing(&self) -> Result<&T, ToASTError> {
+    /// Get node data if present or return the error `EmptyNodeInvariantViolation`
+    pub fn try_as_inner(&self) -> Result<&T, ToASTError> {
         self.node
             .as_ref()
-            .ok_or_else(|| self.to_ast_err(ToASTErrorKind::MissingNodeData))
+            .ok_or_else(|| self.to_ast_err(ToASTErrorKind::EmptyNodeInvariantViolation))
+    }
+
+    /// Get node data if present or return the error `EmptyNodeInvariantViolation`
+    pub fn try_into_inner(self) -> Result<T, ToASTError> {
+        self.node.ok_or_else(|| {
+            ToASTError::new(
+                ToASTErrorKind::EmptyNodeInvariantViolation,
+                self.loc.clone(),
+            )
+        })
     }
 }

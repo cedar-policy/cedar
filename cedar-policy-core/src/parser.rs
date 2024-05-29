@@ -126,7 +126,7 @@ pub fn parse_policy_template_to_est_and_ast(
     };
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy_template(id)?;
-    let est = cst.ok_or_missing()?.clone().try_into()?;
+    let est = cst.try_into_inner()?.try_into()?;
     Ok((est, ast))
 }
 
@@ -155,7 +155,7 @@ pub fn parse_policy_to_est_and_ast(
     };
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy(id)?;
-    let est = cst.ok_or_missing()?.clone().try_into()?;
+    let est = cst.try_into_inner()?.try_into()?;
     Ok((est, ast))
 }
 
@@ -437,7 +437,7 @@ mod eval_tests {
     #[test]
     fn entity_literals1() {
         let src = r#"Test::{ test : "Test" }"#;
-        let errs = parse_euid(src).err().unwrap();
+        let errs = parse_euid(src).unwrap_err();
         assert_eq!(errs.len(), 1);
         let expected = ToASTErrorKind::UnsupportedEntityLiterals;
         assert!(errs
@@ -448,7 +448,7 @@ mod eval_tests {
     #[test]
     fn entity_literals2() {
         let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
-        let errs = parse_policy(None, src).err().unwrap();
+        let errs = parse_policy(None, src).unwrap_err();
         assert_eq!(errs.len(), 1);
         let expected = ToASTErrorKind::UnsupportedEntityLiterals;
         assert!(errs

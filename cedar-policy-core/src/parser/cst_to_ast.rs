@@ -87,10 +87,7 @@ impl Node<Option<cst::Policies>> {
         &self,
     ) -> Result<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy>>)>, ParseErrors>
     {
-        // if `self` doesn't have data, nothing we can do here, just propagate
-        // the `None`; we don't need to signal an error, because one was already
-        // signaled when the `Node` without data was created
-        let policies = self.ok_or_missing()?;
+        let policies = self.try_as_inner()?;
 
         Ok(policies
             .0
@@ -138,14 +135,10 @@ impl Node<Option<cst::Policies>> {
         }
 
         // fail on any error
-        match all_errs.split_first() {
-            None => Ok(pset),
-            Some((first, rest)) => {
-                let mut first = first.clone();
-                rest.iter()
-                    .for_each(|errs| first.extend(errs.iter().cloned()));
-                Err(first)
-            }
+        if let Some(errs) = ParseErrors::flatten(all_errs) {
+            Err(errs)
+        } else {
+            Ok(pset)
         }
     }
 }
@@ -210,7 +203,7 @@ impl Node<Option<cst::Policy>> {
     /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
     /// well, which will become templates with 0 slots
     pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template, ParseErrors> {
-        let policy = self.ok_or_missing()?;
+        let policy = self.try_as_inner()?;
         let mut errs = vec![];
 
         // convert effect
