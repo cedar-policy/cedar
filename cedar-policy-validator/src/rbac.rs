@@ -74,7 +74,7 @@ impl Validator {
                         Some(ValidationError::unspecified_entity(
                             euid.loc().cloned(),
                             template.id().clone(),
-                            euid.eid().to_string(),
+                            euid.eid().clone(),
                         ))
                     }
                     cedar_policy_core::ast::EntityType::Specified(_) => None,
@@ -102,7 +102,7 @@ impl Validator {
                 ast::EntityType::Unspecified => Some(ValidationError::unspecified_entity(
                     euid.loc().cloned(),
                     template.id().clone(),
-                    euid.eid().to_string(),
+                    euid.eid().clone(),
                 )),
                 ast::EntityType::Specified(name) => {
                     let is_known_action_entity_id = self.schema.is_known_action_id(euid);
@@ -146,7 +146,7 @@ impl Validator {
                     Some(ValidationError::unspecified_entity(
                         None,
                         policy_id.clone(),
-                        euid.eid().to_string(),
+                        euid.eid().clone(),
                     ))
                 }
                 cedar_policy_core::ast::EntityType::Specified(name) => {
@@ -1572,7 +1572,8 @@ mod test {
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                assert_eq!("foo", entity_id);
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 
@@ -1591,7 +1592,8 @@ mod test {
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                assert_eq!("foo", entity_id);
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 
@@ -1622,7 +1624,8 @@ mod test {
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
             Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                assert_eq!("foo", entity_id);
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 

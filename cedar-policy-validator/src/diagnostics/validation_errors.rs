@@ -27,7 +27,7 @@ use cedar_policy_core::parser::Loc;
 use std::collections::BTreeSet;
 
 use cedar_policy_core::ast::{
-    CallStyle, EntityUID, Expr, ExprKind, ExprShapeOnly, Name, PolicyID, Var,
+    CallStyle, Eid, EntityUID, Expr, ExprKind, ExprShapeOnly, Name, PolicyID, Var,
 };
 use cedar_policy_core::parser::join_with_conjunction;
 
@@ -141,12 +141,12 @@ impl Diagnostic for InvalidActionApplication {
 
 /// Structure containing details about an unspecified entity error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("for policy `{policy_id}`, unspecified entity with id `{entity_id}`")]
+#[error("for policy `{policy_id}`, unspecified entity with id `{}`", .entity_id.escaped())]
 pub struct UnspecifiedEntity {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
-    /// EID of the unspecified entity.
-    pub entity_id: String,
+    /// EID of the unspecified entity
+    pub entity_id: Eid,
 }
 
 impl Diagnostic for UnspecifiedEntity {
