@@ -447,12 +447,14 @@ impl Entity {
         Ok(())
     }
 
+    /// write the entity to a json value
     pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
         let ejson = EntityJson::from_entity(self)?;
         let v = serde_json::to_value(ejson).map_err(JsonSerializationError::from)?;
         Ok(v)
     }
 
+    /// write the entity to a json string
     pub fn to_json_string(&self) -> Result<String, EntitiesError> {
         let ejson = EntityJson::from_entity(self)?;
         let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
