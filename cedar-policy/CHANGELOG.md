@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON representation for Policy Sets, along with methods like
   `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
   resolving #549)
+- Added methods for reading and writing individual `Entity`s as JSON
+  (resolving #807)
 
 ### Changed
 
