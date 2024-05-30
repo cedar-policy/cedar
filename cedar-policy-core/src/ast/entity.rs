@@ -15,6 +15,7 @@
  */
 
 use crate::ast::*;
+use crate::entities::{EntitiesError, EntityJson, JsonSerializationError};
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
@@ -437,6 +438,27 @@ impl Entity {
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
             ancestors,
         )
+    }
+
+    /// Write the entity to a json document
+    pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        serde_json::to_writer_pretty(f, &ejson).map_err(JsonSerializationError::from)?;
+        Ok(())
+    }
+
+    /// write the entity to a json value
+    pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let v = serde_json::to_value(ejson).map_err(JsonSerializationError::from)?;
+        Ok(v)
+    }
+
+    /// write the entity to a json string
+    pub fn to_json_string(&self) -> Result<String, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
+        Ok(string)
     }
 }
 

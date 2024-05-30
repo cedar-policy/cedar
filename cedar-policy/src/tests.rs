@@ -1840,6 +1840,465 @@ mod schema_based_parsing_tests {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
+    #[test]
+    fn entity_parse1() {
+        let e = r#"{
+            "uid" : { "type" : "User", "id" : "Alice" },
+            "attrs" : {},
+            "parents" : []
+            }"#;
+        let e = Entity::from_json_str(e, None).unwrap();
+        let (uid, attrs, parents) = e.into_inner();
+        let expected = r#"User::"Alice""#.parse().unwrap();
+        assert_eq!(uid, expected);
+        assert!(attrs.is_empty());
+        assert!(parents.is_empty());
+    }
+
+    /// Simple test that exercises a variety of attribute types for single entities
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
+    fn signle_attr_types() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "isFullTime": { "type": "Boolean" },
+                            "numDirectReports": { "type": "Long" },
+                            "department": { "type": "String" },
+                            "manager": { "type": "Entity", "name": "Employee" },
+                            "hr_contacts": { "type": "Set", "element": {
+                                "type": "Entity", "name": "HR" } },
+                            "json_blob": { "type": "Record", "attributes": {
+                                "inner1": { "type": "Boolean" },
+                                "inner2": { "type": "String" },
+                                "inner3": { "type": "Record", "attributes": {
+                                    "innerinner": { "type": "Entity", "name": "Employee" }
+                                }}
+                            }},
+                            "home_ip": { "type": "Extension", "name": "ipaddr" },
+                            "work_ip": { "type": "Extension", "name": "ipaddr" },
+                            "trust_score": { "type": "Extension", "name": "decimal" },
+                            "tricky": { "type": "Record", "attributes": {
+                                "type": { "type": "String" },
+                                "id": { "type": "String" }
+                            }}
+                        }
+                    }
+                },
+                "HR": {
+                    "memberOfTypes": []
+                }
+            },
+            "actions": {
+                "view": { }
+            }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        // without schema-based parsing, `home_ip` and `trust_score` are
+        // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
+        // Records, and `json_blob.inner3.innerinner` is a Record
+        let parsed = Entity::from_json_value(entity.clone(), None).unwrap();
+        assert_matches!(
+            parsed.attr("home_ip"),
+            Some(Ok(EvalResult::String(s))) if &s == "222.222.222.101"
+        );
+        assert_matches!(
+            parsed.attr("trust_score"),
+            Some(Ok(EvalResult::String(s))) if &s == "5.7"
+        );
+        assert_matches!(parsed.attr("manager"), Some(Ok(EvalResult::Record(_))));
+        assert_matches!(parsed.attr("work_ip"), Some(Ok(EvalResult::Record(_))));
+        {
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
+            let contact = set.iter().next().expect("should be at least one contact");
+            assert_matches!(contact, EvalResult::Record(_));
+        };
+        {
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
+            let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
+            let innerinner = rec
+                .get("innerinner")
+                .expect("expected innerinner attr to exist");
+            assert_matches!(innerinner, EvalResult::Record(_));
+        };
+        // but with schema-based parsing, we get these other types
+        let parsed =
+            Entity::from_json_value(entity, Some(&schema)).expect("Should parse without error");
+        assert_matches!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
+        assert_matches!(
+            parsed.attr("numDirectReports"),
+            Some(Ok(EvalResult::Long(3)))
+        );
+        assert_matches!(
+            parsed.attr("department"),
+            Some(Ok(EvalResult::String(s))) if &s == "Sales"
+        );
+        assert_matches!(
+            parsed.attr("manager"),
+            Some(Ok(EvalResult::EntityUid(euid))) if euid == EntityUid::from_strs(
+                "Employee", "34FB87"
+            )
+        );
+        {
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
+            let contact = set.iter().next().expect("should be at least one contact");
+            assert_matches!(contact, EvalResult::EntityUid(_));
+        };
+        {
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
+            let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
+            let innerinner = rec
+                .get("innerinner")
+                .expect("expected innerinner attr to exist");
+            assert_matches!(innerinner, EvalResult::EntityUid(_));
+        };
+        assert_matches!(
+            parsed.attr("home_ip"),
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
+        );
+        assert_matches!(
+            parsed.attr("work_ip"),
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
+        );
+        assert_matches!(
+            parsed.attr("trust_score"),
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
+        );
+
+        // simple type mismatch with expected type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": "3",
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on numDirectReports");
+        assert!(
+            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
+            "actual error message was: `{err}`"
+        );
+
+        // another simple type mismatch with expected type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": "34FB87",
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on manager");
+        assert!(
+            err.to_string()
+                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
+            "actual error message was {err}"
+        );
+
+        // type mismatch where we expect a set and get just a single element
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": { "type": "HR", "id": "aaaaa" },
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on hr_contacts");
+        assert!(
+            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
+            "actual error message was {err}"
+        );
+
+        // type mismatch where we just get the wrong entity type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "HR", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on manager");
+        assert!(
+            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
+            "actual error message was {err}"
+        );
+
+        // type mismatch where we're expecting an extension type and get a
+        // different extension type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": { "fn": "decimal", "arg": "3.33" },
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on home_ip");
+        assert!(
+            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
+            "actual error message was {err}"
+        );
+
+        // missing a record attribute entirely
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to missing attribute \"inner2\"");
+        assert!(
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
+            "actual error message was {err}"
+        );
+
+        // record attribute has the wrong type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": 33,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on attribute \"inner1\"");
+        assert!(
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
+            "actual error message was {err}"
+        );
+
+        let entity = json!(
+                {
+                    "uid": { "__entity": { "type": "Employee", "id": "12UA45" } },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "__entity": { "type": "Employee", "id": "34FB87" } },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": { "__extn": { "fn": "ip", "arg": "222.222.222.101" } },
+                        "work_ip": { "__extn": { "fn": "ip", "arg": "2.2.2.0/24" } },
+                        "trust_score": { "__extn": { "fn": "decimal", "arg": "5.7" } },
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+
+        Entity::from_json_value(entity, Some(&schema))
+            .expect("this version with explicit __entity and __extn escapes should also pass");
+    }
+
+    /// Ensures that parsing multiple entities as a single entity fails
+    #[test]
+    fn entity_fails_multiple() {
+        let json = json!(
+        [
+            {
+                "uid" : { "type" : "User", "id" : "Alice" },
+                "attrs" : {},
+                "parents" : []
+            },
+            {
+                "uid" : { "type" : "User", "id" : "Bob" },
+                "attrs" : {},
+                "parents" : []
+            },
+        ]);
+        Entity::from_json_value(json, None).expect_err("Multiple entities should fail this parser");
+        let json = json!(
+        [
+            {
+                "uid" : { "type" : "User", "id" : "Alice" },
+                "attrs" : {},
+                "parents" : []
+            }
+        ]);
+        Entity::from_json_value(json, None).expect_err("Multiple entities should fail this parser");
+    }
+
     /// Simple test that exercises a variety of attribute types.
     #[test]
     #[allow(clippy::too_many_lines)]

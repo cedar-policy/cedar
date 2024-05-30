@@ -82,6 +82,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
 }
 
 /// Struct which carries enough information that it can impl Core's `EntityTypeDescription`
+#[derive(Debug)]
 pub struct EntityTypeDescription {
     /// Core `EntityType` this is describing
     core_type: ast::EntityType,
