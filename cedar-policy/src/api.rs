@@ -263,8 +263,7 @@ impl Entity {
     }
 
     /// Parse an entity from an in-memory JSON value
-    /// If a schema is provided, it is handled identically to
-    /// [Entities](https://docs.rs/cedar-policy/latest/cedar_policy/struct.Entities.html#method.from_json_str)
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
     pub fn from_json_value(
         value: serde_json::Value,
         schema: Option<&Schema>,
@@ -279,8 +278,7 @@ impl Entity {
     }
 
     /// Parse an entity from a JSON string
-    /// If a schema is provided, it is handled identically to
-    /// [Entities](https://docs.rs/cedar-policy/latest/cedar_policy/struct.Entities.html#method.from_json_str)
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
     pub fn from_json_str(
         src: impl AsRef<str>,
         schema: Option<&Schema>,
@@ -295,8 +293,7 @@ impl Entity {
     }
 
     /// Parse an entity from a JSON reader
-    /// If a schema is provided, it is handled identically to
-    /// [Entities](https://docs.rs/cedar-policy/latest/cedar_policy/struct.Entities.html#method.from_json_str)
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
     pub fn from_json_file(f: impl Read, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
@@ -313,7 +310,7 @@ impl Entity {
     /// `from_json_*`, and will be parse-able even with no [`Schema`].
     ///
     /// To read an `Entity` object from JSON , use
-    /// [`from_json_file`], [`from_json_value`], or [`from_json_str`].
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
     pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
         self.0.write_to_json(f)
     }
@@ -324,7 +321,7 @@ impl Entity {
     /// `from_json_*`, and will be parse-able even with no `Schema`.
     ///
     /// To read an `Entity` object from JSON , use
-    /// [`from_json_file`], [`from_json_value`], or [`from_json_str`].
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
     pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
         self.0.to_json_value()
     }
@@ -335,7 +332,7 @@ impl Entity {
     /// `from_json_*`, and will be parse-able even with no `Schema`.
     ///
     /// To read an `Entity` object from JSON , use
-    /// [`from_json_file`], [`from_json_value`], or [`from_json_str`].
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
     pub fn to_json_string(&self) -> Result<String, EntitiesError> {
         self.0.to_json_string()
     }
