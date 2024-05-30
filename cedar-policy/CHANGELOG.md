@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
+- Some public methods/functions that return errors now return those
+  errors `Box`ed. See issue #878.
 - Finalized the `ffi` module which was preview-released in 3.2.0.
   This involved a few additional API breaking changes in `ffi`. See #757.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
@@ -25,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
 - Fixed a performance issue when constructing an error for accessing
-    a non-existent attribute on sufficiently large records/entities
+  a non-existent attribute on sufficiently large records/entities
 
 ### Removed
 
