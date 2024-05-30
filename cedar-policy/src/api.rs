@@ -18,7 +18,8 @@
 #![allow(
     clippy::missing_panics_doc,
     clippy::missing_errors_doc,
-    clippy::similar_names
+    clippy::similar_names,
+    clippy::result_large_err, // see #878
 )]
 
 mod id;

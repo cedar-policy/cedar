@@ -16,6 +16,7 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
+#![allow(clippy::result_large_err)] // see #878
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
