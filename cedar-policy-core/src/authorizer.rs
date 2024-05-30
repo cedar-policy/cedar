@@ -123,7 +123,7 @@ impl Authorizer {
                 Err(e) => {
                     errors.push(AuthorizationError::PolicyEvaluationError {
                         id: id.clone(),
-                        error: e,
+                        error: *e,
                     });
                     let satisfied = match self.error_handling {
                         ErrorHandling::Skip => false,

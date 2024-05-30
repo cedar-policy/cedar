@@ -306,7 +306,7 @@ impl Entity {
                     .map_err(|err| EntityAttrEvaluationError {
                         uid: uid.clone(),
                         attr: k.clone(),
-                        err,
+                        err: *err,
                     })?;
                 Ok((k, attr_val.into()))
             })
@@ -409,7 +409,7 @@ impl Entity {
         attr: SmolStr,
         val: RestrictedExpr,
         extensions: &Extensions<'_>,
-    ) -> Result<(), EvaluationError> {
+    ) -> Result<(), Box<EvaluationError>> {
         let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
         self.attrs.insert(attr, val.into());
         Ok(())

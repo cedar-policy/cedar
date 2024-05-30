@@ -88,7 +88,7 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn interpret(&self, e: BorrowedRestrictedExpr<'_>) -> Result<Value> {
         match self.partial_interpret(e)? {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
+            PartialValue::Residual(r) => Err(Box::new(EvaluationError::non_value(r))),
         }
     }
 
@@ -109,7 +109,7 @@ impl<'e> RestrictedEvaluator<'e> {
         // more specific location
         res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
             .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => Box::new(err.with_maybe_source_loc(expr.source_loc().cloned())),
                 Some(_) => err,
             })
     }
@@ -167,7 +167,9 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
-                        let efunc = self.extensions.func(fn_name).map_err(|err| err.with_maybe_source_loc(expr.source_loc().cloned()))?;
+                        let efunc = self.extensions
+                            .func(fn_name)
+                            .map_err(|err| err.with_maybe_source_loc(expr.source_loc().cloned()).into()).map_err(Box::new)?;
                         efunc.call(&values)
                     },
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
@@ -234,7 +236,7 @@ impl<'e> Evaluator<'e> {
     pub fn interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<Value> {
         match self.partial_interpret(e, slots)? {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
+            PartialValue::Residual(r) => Err(Box::new(EvaluationError::non_value(r))),
         }
     }
 
@@ -257,7 +259,7 @@ impl<'e> Evaluator<'e> {
         // more specific location
         res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
             .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => Box::new(err.with_maybe_source_loc(expr.source_loc().cloned())),
                 Some(_) => err,
             })
     }
@@ -278,7 +280,8 @@ impl<'e> Evaluator<'e> {
             ExprKind::Slot(id) => slots
                 .get(id)
                 .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
-                .map(|euid| PartialValue::from(euid.clone())),
+                .map(|euid| PartialValue::from(euid.clone()))
+                .map_err(Box::new),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
                 Var::Action => Ok(self.action.evaluate(*v)),
@@ -353,12 +356,14 @@ impl<'e> Evaluator<'e> {
                         let i = arg.get_as_long()?;
                         match i.checked_neg() {
                             Some(v) => Ok(v.into()),
-                            None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
-                                op: *op,
-                                arg,
-                                source_loc: loc.cloned(),
-                            })
-                            .into()),
+                            None => Err(Box::new(
+                                IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+                                    op: *op,
+                                    arg,
+                                    source_loc: loc.cloned(),
+                                })
+                                .into(),
+                            )),
                         }
                     }
                 },
@@ -400,39 +405,39 @@ impl<'e> Evaluator<'e> {
                             BinaryOp::LessEq => Ok((i1 <= i2).into()),
                             BinaryOp::Add => match i1.checked_add(i2) {
                                 Some(sum) => Ok(sum.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                                None => Err(Box::new(
+                                    IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
                                         source_loc: loc.cloned(),
                                     })
-                                    .into())
-                                }
+                                    .into(),
+                                )),
                             },
                             BinaryOp::Sub => match i1.checked_sub(i2) {
                                 Some(diff) => Ok(diff.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                                None => Err(Box::new(
+                                    IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
                                         source_loc: loc.cloned(),
                                     })
-                                    .into())
-                                }
+                                    .into(),
+                                )),
                             },
                             BinaryOp::Mul => match i1.checked_mul(i2) {
                                 Some(prod) => Ok(prod.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                                None => Err(Box::new(
+                                    IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
                                         op: *op,
                                         arg1,
                                         arg2,
                                         source_loc: loc.cloned(),
                                     })
-                                    .into())
-                                }
+                                    .into(),
+                                )),
                             },
                             // PANIC SAFETY `op` is checked to be one of the above
                             #[allow(clippy::unreachable)]
@@ -448,7 +453,7 @@ impl<'e> Evaluator<'e> {
                                 // If arg1 is not an entity and arg2 is a set, then possibly
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
+                                if let EvaluationError::TypeError(TypeError { advice, .. }) = e.as_mut() {
                                     match arg2.type_of() {
                                         Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
                                         Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
@@ -475,7 +480,10 @@ impl<'e> Evaluator<'e> {
                             fast: None,
                             authoritative,
                         }) => Ok((authoritative.contains(&arg2)).into()),
-                        _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
+                        _ => Err(Box::new(EvaluationError::type_error_single(
+                            Type::Set,
+                            &arg1,
+                        ))),
                     },
                     // ContainsAll and ContainsAny, which work on Sets
                     BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
@@ -539,7 +547,8 @@ impl<'e> Evaluator<'e> {
                         let efunc = self
                             .extensions
                             .func(fn_name)
-                            .map_err(|err| err.with_maybe_source_loc(loc.cloned()))?;
+                            .map_err(|err| err.with_maybe_source_loc(loc.cloned()).into())
+                            .map_err(Box::new)?;
                         efunc.call(&vals)
                     }
                     Either::Right(residuals) => Ok(PartialValue::Residual(
@@ -563,13 +572,13 @@ impl<'e> Evaluator<'e> {
                     }
                     Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
                 },
-                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
+                PartialValue::Value(val) => Err(Box::new(err::EvaluationError::type_error(
                     nonempty![
                         Type::Record,
                         Type::entity_type(names::ANY_ENTITY_TYPE.clone())
                     ],
                     &val,
-                )),
+                ))),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
@@ -645,10 +654,10 @@ impl<'e> Evaluator<'e> {
                 .map(|val| Ok(val.get_as_entity()?.clone()))
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
-                return Err(EvaluationError::type_error(
+                return Err(Box::new(EvaluationError::type_error(
                     nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     &arg2,
-                ))
+                )))
             }
         };
         for uid2 in rhs {
@@ -713,12 +722,12 @@ impl<'e> Evaluator<'e> {
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
-                                    EvaluationError::record_attr_does_not_exist(
+                                    Box::new(EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),
                                         map.keys(),
                                         map.len(),
                                         source_loc.cloned(),
-                                    )
+                                    ))
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
                         } else if map.keys().any(|k| k == attr) {
@@ -727,12 +736,12 @@ impl<'e> Evaluator<'e> {
                                 attr.clone(),
                             )))
                         } else {
-                            Err(EvaluationError::record_attr_does_not_exist(
+                            Err(Box::new(EvaluationError::record_attr_does_not_exist(
                                 attr.clone(),
                                 map.keys(),
                                 map.len(),
                                 source_loc.cloned(),
-                            ))
+                            )))
                         }
                     }
                     // We got a residual, that is not a record at the top level
@@ -746,12 +755,12 @@ impl<'e> Evaluator<'e> {
                 .as_ref()
                 .get(attr)
                 .ok_or_else(|| {
-                    EvaluationError::record_attr_does_not_exist(
+                    Box::new(EvaluationError::record_attr_does_not_exist(
                         attr.clone(),
                         record.keys(),
                         record.len(),
                         source_loc.cloned(),
-                    )
+                    ))
                 })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value {
@@ -759,13 +768,15 @@ impl<'e> Evaluator<'e> {
                 loc,
             }) => match self.entities.entity(uid.as_ref()) {
                 Dereference::NoSuchEntity => Err(match *uid.entity_type() {
-                    EntityType::Unspecified => EvaluationError::unspecified_entity_access(
-                        attr.clone(),
-                        source_loc.cloned(),
-                    ),
+                    EntityType::Unspecified => {
+                        Box::new(EvaluationError::unspecified_entity_access(
+                            attr.clone(),
+                            source_loc.cloned(),
+                        ))
+                    }
                     EntityType::Specified(_) => {
                         // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
-                        EvaluationError::entity_does_not_exist(uid.clone(), loc)
+                        Box::new(EvaluationError::entity_does_not_exist(uid.clone(), loc))
                     }
                 }),
                 Dereference::Residual(r) => {
@@ -774,26 +785,26 @@ impl<'e> Evaluator<'e> {
                 Dereference::Data(entity) => entity
                     .get(attr)
                     .ok_or_else(|| {
-                        EvaluationError::entity_attr_does_not_exist(
+                        Box::new(EvaluationError::entity_attr_does_not_exist(
                             uid,
                             attr.clone(),
                             entity.keys(),
                             entity.attrs_len(),
                             source_loc.cloned(),
-                        )
+                        ))
                     })
                     .cloned(),
             },
             PartialValue::Value(v) => {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
-                Err(EvaluationError::type_error(
+                Err(Box::new(EvaluationError::type_error(
                     nonempty![
                         Type::Record,
                         Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
                     &v,
-                ))
+                )))
             }
         }
     }
@@ -807,7 +818,7 @@ impl<'e> Evaluator<'e> {
             }
             PartialValue::Residual(r) => {
                 debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
-                Err(err::EvaluationError::non_value(r))
+                Err(Box::new(err::EvaluationError::non_value(r)))
             }
         }
     }
@@ -844,7 +855,10 @@ impl Value {
     pub(crate) fn get_as_bool(&self) -> Result<bool> {
         match &self.value {
             ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
-            _ => Err(EvaluationError::type_error_single(Type::Bool, self)),
+            _ => Err(Box::new(EvaluationError::type_error_single(
+                Type::Bool,
+                self,
+            ))),
         }
     }
 
@@ -853,7 +867,10 @@ impl Value {
     pub(crate) fn get_as_long(&self) -> Result<Integer> {
         match &self.value {
             ValueKind::Lit(Literal::Long(i)) => Ok(*i),
-            _ => Err(EvaluationError::type_error_single(Type::Long, self)),
+            _ => Err(Box::new(EvaluationError::type_error_single(
+                Type::Long,
+                self,
+            ))),
         }
     }
 
@@ -862,7 +879,10 @@ impl Value {
     pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
         match &self.value {
             ValueKind::Lit(Literal::String(s)) => Ok(s),
-            _ => Err(EvaluationError::type_error_single(Type::String, self)),
+            _ => Err(Box::new(EvaluationError::type_error_single(
+                Type::String,
+                self,
+            ))),
         }
     }
 
@@ -870,7 +890,10 @@ impl Value {
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
         match &self.value {
             ValueKind::Set(set) => Ok(set),
-            _ => Err(EvaluationError::type_error_single(Type::Set, self)),
+            _ => Err(Box::new(EvaluationError::type_error_single(
+                Type::Set,
+                self,
+            ))),
         }
     }
 
@@ -879,10 +902,10 @@ impl Value {
     pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
         match &self.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
-            _ => Err(EvaluationError::type_error_single(
+            _ => Err(Box::new(EvaluationError::type_error_single(
                 Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                 self,
-            )),
+            ))),
         }
     }
 }
@@ -892,7 +915,7 @@ fn stack_size_check() -> Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return Err(EvaluationError::recursion_limit(None));
+            return Err(Box::new(EvaluationError::recursion_limit(None)));
         }
     }
     Ok(())
@@ -1318,7 +1341,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "doesnotexist".into()
             )),
-            Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+            Err(e) => assert_matches!(*e, EvaluationError::EntityAttrDoesNotExist(e) => {
                 assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_attrs"));
                 assert_eq!(&e.attr, "doesnotexist");
                 let available_attrs = e.available_attrs;
@@ -1326,7 +1349,7 @@ pub mod test {
                 assert!(available_attrs.contains(&"spoon".into()));
                 assert!(available_attrs.contains(&"address".into()));
                 assert!(available_attrs.contains(&"tags".into()));
-            }
+            }),
         );
         // get_attr on an attr which does exist (and has integer type)
         assert_eq!(
@@ -1361,10 +1384,10 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("doesnotexist")),
                 "foo".into()
             )),
-            Err(EvaluationError::entity_does_not_exist(
+            Err(Box::new(EvaluationError::entity_does_not_exist(
                 Arc::new(EntityUID::with_eid("doesnotexist")),
                 None
-            ))
+            )))
         );
         // has_attr on an unspecified entity
         assert_eq!(
@@ -1380,10 +1403,10 @@ pub mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
                 "bar".into()
             )),
-            Err(EvaluationError::unspecified_entity_access(
+            Err(Box::new(EvaluationError::unspecified_entity_access(
                 "bar".into(),
                 None
-            ))
+            )))
         );
     }
 
@@ -1428,11 +1451,11 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Bool]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // if principal then 3 else 8
         assert_matches!(
@@ -1441,13 +1464,13 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Bool]);
                 assert_eq!(actual, Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 });
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // if true then "hello" else 2
         assert_eq!(
@@ -1537,12 +1560,12 @@ pub mod test {
                 Expr::val(3),
                 Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
-            Err(EvaluationError::record_attr_does_not_exist(
+            Err(Box::new(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
                 std::iter::empty(),
                 0,
                 None,
-            ))
+            )))
         );
         // if true then <err> else 3
         assert_eq!(
@@ -1551,12 +1574,12 @@ pub mod test {
                 Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
-            Err(EvaluationError::record_attr_does_not_exist(
+            Err(Box::new(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
                 std::iter::empty(),
                 0,
                 None,
-            ))
+            )))
         );
         // if false then <err> else 3
         assert_eq!(
@@ -1632,22 +1655,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(8)]),
                 "hello".into()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                    assert_eq!(expected, nonempty![
-                        Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier")
-                        ),
-                    ]);
-                    assert_eq!(actual, Type::Set);
-                    assert_eq!(advice, None);
-                }
-        );
-        // indexing into empty set
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -1657,7 +1665,22 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
+        );
+        // indexing into empty set
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
+                assert_eq!(expected, nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }),
         );
         // set("hello", 2, true, <entity foo>)
         let mixed_set = Expr::set(vec![
@@ -1695,7 +1718,7 @@ pub mod test {
         // set("hello", 2, true, <entity foo>)["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -1705,7 +1728,7 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // set(set(8, 2), set(13, 702), set(3))
         let set_of_sets = Expr::set(vec![
@@ -1757,7 +1780,7 @@ pub mod test {
         // set(set(8, 2), set(13, 702), set(3))["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -1767,7 +1790,7 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // set(set(8, 2), set(13, 702), set(3))["ham"]["eggs"]
         assert_matches!(
@@ -1775,7 +1798,7 @@ pub mod test {
                 Expr::get_attr(set_of_sets, "ham".into()),
                 "eggs".into()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -1785,7 +1808,7 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -1819,12 +1842,12 @@ pub mod test {
         // {"ham": 3, "eggs": 7}["what"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs, "what".into())),
-            Err(EvaluationError::record_attr_does_not_exist(
+            Err(Box::new(EvaluationError::record_attr_does_not_exist(
                 "what".into(),
                 [&"eggs".into(), &"ham".into()],
                 2,
                 None,
-            ))
+            )))
         );
 
         // {"ham": 3, "eggs": "why"}["ham"]
@@ -2044,7 +2067,7 @@ pub mod test {
         // indexing into something that's not a record, 1010122["hello"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -2054,12 +2077,12 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // indexing into something that's not a record, "hello"["eggs"]
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -2069,12 +2092,12 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // has_attr on something that's not a record, 1010122 has hello
         assert_matches!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -2084,12 +2107,12 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // has_attr on something that's not a record, "hello" has eggs
         assert_matches!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
@@ -2099,7 +2122,7 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -2144,7 +2167,7 @@ pub mod test {
             7,
             None,
         );
-        assert_eq!(result, expected);
+        assert_eq!(*result, expected);
     }
 
     #[test]
@@ -2163,7 +2186,7 @@ pub mod test {
             .collect::<Vec<SmolStr>>();
         let expected =
             EvaluationError::record_attr_does_not_exist("foo".into(), first_five.iter(), 7, None);
-        assert_eq!(result, expected);
+        assert_eq!(*result, expected);
     }
 
     #[test]
@@ -2185,22 +2208,22 @@ pub mod test {
         // not(8)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Bool]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // not(action)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::not(Expr::var(Var::Action))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Bool]);
                 assert_eq!(actual, Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 });
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // not(not(true))
         assert_eq!(
@@ -2265,21 +2288,23 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(Integer::MIN))),
-            Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
-                op: UnaryOp::Neg,
-                arg: Value::from(Integer::MIN),
-                source_loc: None,
-            })
-            .into()),
+            Err(Box::new(
+                IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+                    op: UnaryOp::Neg,
+                    arg: Value::from(Integer::MIN),
+                    source_loc: None,
+                })
+                .into()
+            )),
         );
         // neg(false)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // neg([1, 2, 3])
         assert_matches!(
@@ -2288,11 +2313,11 @@ pub mod test {
                 Expr::val(2),
                 Expr::val(3)
             ]))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -2596,173 +2621,173 @@ pub mod test {
         // false < true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // false < false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // true <= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // false <= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // false > true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // true > true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // true >= false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // true >= true
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // bc < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // banana < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // "" < zzz
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // a < 1
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // a < A
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // A < A
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // zebra < zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // zebra <= zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // zebras <= zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // zebras <= Zebras
         assert_matches!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 123 > 78
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // <space>zebras >= zebras
         assert_matches!(
@@ -2770,74 +2795,74 @@ pub mod test {
                 Expr::val(" zebras"),
                 Expr::val("zebras")
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // "" >= ""
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // "" >= _hi
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 🦀 >= _hi
         assert_matches!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 2 < "4"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // "4" < 2
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // false < 1
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 1 < false
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // [1, 2] < [47, 0]
         assert_matches!(
@@ -2845,11 +2870,11 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2)]),
                 Expr::set(vec![Expr::val(47), Expr::val(0)])
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Set);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -2868,11 +2893,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
 
         assert_matches!(
@@ -2880,11 +2905,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
 
         assert_matches!(
@@ -2892,11 +2917,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
 
         assert_matches!(
@@ -2904,11 +2929,11 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -2936,22 +2961,24 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(Integer::MAX), Expr::val(1))),
-            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Add,
-                arg1: Value::from(Integer::MAX),
-                arg2: Value::from(1),
-                source_loc: None,
-            })
-            .into())
+            Err(Box::new(
+                IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                    op: BinaryOp::Add,
+                    arg1: Value::from(Integer::MAX),
+                    arg2: Value::from(1),
+                    source_loc: None,
+                })
+                .into()
+            ))
         );
         // 7 + "3"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 44 - 31
         assert_eq!(
@@ -2966,22 +2993,24 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(Integer::MIN + 2), Expr::val(3))),
-            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Sub,
-                arg1: Value::from(Integer::MIN + 2),
-                arg2: Value::from(3),
-                source_loc: None,
-            })
-            .into())
+            Err(Box::new(
+                IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                    op: BinaryOp::Sub,
+                    arg1: Value::from(Integer::MIN + 2),
+                    arg2: Value::from(3),
+                    source_loc: None,
+                })
+                .into()
+            ))
         );
         // "ham" - "ha"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 5 * (-3)
         assert_eq!(
@@ -2996,22 +3025,24 @@ pub mod test {
         // "5" * 0
         assert_matches!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), Expr::val(0))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), Expr::val(3))),
-            Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Mul,
-                arg1: Value::from(Integer::MAX - 1),
-                arg2: Value::from(3),
-                source_loc: None,
-            })
-            .into())
+            Err(Box::new(
+                IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                    op: BinaryOp::Mul,
+                    arg1: Value::from(Integer::MAX - 1),
+                    arg2: Value::from(3),
+                    source_loc: None,
+                })
+                .into()
+            ))
         );
     }
 
@@ -3160,11 +3191,11 @@ pub mod test {
         // 3 contains 7
         assert_matches!(
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // { ham: "eggs" } contains "ham"
         assert_matches!(
@@ -3172,11 +3203,11 @@ pub mod test {
                 Expr::record(vec![("ham".into(), Expr::val("eggs"))]).unwrap(),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::Record);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // wrong argument order
         assert_matches!(
@@ -3184,11 +3215,11 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(1), Expr::val(3), Expr::val(7)])
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -3380,14 +3411,14 @@ pub mod test {
                     Expr::val(true),
                 ])
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::Bool);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // A in [A, B] where A and B do not exist
         assert_eq!(
@@ -3436,14 +3467,14 @@ pub mod test {
         // "foo" in "foobar"
         assert_matches!(
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // "spoon" in A (where has(A.spoon))
         assert_matches!(
@@ -3451,14 +3482,14 @@ pub mod test {
                 Expr::val("spoon"),
                 Expr::val(EntityUID::with_eid("entity_with_attrs"))
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 3 in [34, -2, 7]
         assert_matches!(
@@ -3466,14 +3497,14 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(34), Expr::val(-2), Expr::val(7)])
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()));
-            }
+            }),
         );
         // "foo" in { "foo": 2, "bar": true }
         assert_matches!(
@@ -3484,14 +3515,14 @@ pub mod test {
                     ("bar".into(), Expr::val(true)),
                 ]).unwrap()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()));
-            }
+            }),
         );
         // A in { "foo": 2, "bar": true }
         assert_matches!(
@@ -3503,7 +3534,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![
                     Type::Set,
                     Type::entity_type(
@@ -3513,7 +3544,7 @@ pub mod test {
                 ]);
                 assert_eq!(actual, Type::Record);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -3725,11 +3756,11 @@ pub mod test {
         // type error
         assert_matches!(
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::String]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // 'contains' is not allowed on strings
         assert_matches!(
@@ -3737,11 +3768,11 @@ pub mod test {
                 Expr::val("ham and ham"),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // '\0' should not match '*'
         assert_eq!(
@@ -3859,11 +3890,11 @@ pub mod test {
         );
         assert_matches!(
             eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())]);
                 assert_eq!(actual, Type::Long);
                 assert_eq!(advice, None);
-            }
+            }),
         );
     }
 
@@ -3986,11 +4017,11 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_matches!(
@@ -4002,11 +4033,11 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::Record);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // test for [1, -22] contains_any of [1, -22, 34]
         assert_eq!(
@@ -4108,11 +4139,11 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::String);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_matches!(
@@ -4124,11 +4155,11 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Set]);
                 assert_eq!(actual, Type::Record);
                 assert_eq!(advice, None);
-            }
+            }),
         );
         Ok(())
     }
@@ -4259,9 +4290,9 @@ pub mod test {
 
         let slots = HashMap::new();
         let r = evaluator.partial_interpret(&e, &slots);
-        assert_matches!(r, Err(EvaluationError::UnlinkedSlot(UnlinkedSlotError { slot, .. })) => {
+        assert_matches!(r, Err(e) => assert_matches!(*e, EvaluationError::UnlinkedSlot(UnlinkedSlotError { slot, .. }) => {
             assert_eq!(slot, SlotId::principal());
-        });
+        }));
 
         let mut slots = HashMap::new();
         slots.insert(SlotId::principal(), EntityUID::with_eid("eid"));
@@ -4317,7 +4348,7 @@ pub mod test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        assert_matches!(v, Err(EvaluationError::InvalidRestrictedExpression { .. }));
+        assert_matches!(v, Err(e) => assert_matches!(*e, EvaluationError::InvalidRestrictedExpression { .. }));
     }
 
     #[test]
@@ -4329,65 +4360,77 @@ pub mod test {
         assert_eq!(
             BorrowedRestrictedExpr::new(&Expr::val(true))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(Value::from(true).into())
         );
         assert_eq!(
             BorrowedRestrictedExpr::new(&Expr::val(-2))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(Value::from(-2).into())
         );
         assert_eq!(
             BorrowedRestrictedExpr::new(&Expr::val("hello world"))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(Value::from("hello world").into())
         );
         assert_eq!(
             BorrowedRestrictedExpr::new(&Expr::val(EntityUID::with_eid("alice")))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(Value::from(EntityUID::with_eid("alice")).into())
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Principal))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Action))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Resource))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Context))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::and(Expr::val("bogus"), Expr::val(true)))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::or(Expr::val("bogus"), Expr::val(true)))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::not(Expr::val(true)))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
@@ -4396,6 +4439,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("some_group")),
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
@@ -4404,6 +4448,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("some_group")),
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         #[cfg(feature = "ipaddr")]
@@ -4413,6 +4458,7 @@ pub mod test {
                 vec![Expr::val("222.222.222.222")]
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::ExtensionValue(_),
@@ -4425,6 +4471,7 @@ pub mod test {
                 "pancakes".into(),
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
@@ -4433,6 +4480,7 @@ pub mod test {
                 "pancakes".into(),
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
@@ -4446,11 +4494,13 @@ pub mod test {
                 ],
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
                 .map_err(Into::into)
+                .map_err(Box::new)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::Set(_),
@@ -4466,6 +4516,7 @@ pub mod test {
                 .unwrap()
             )
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value {
                 value: ValueKind::Record(_),
@@ -4480,6 +4531,7 @@ pub mod test {
                 Expr::and(Expr::val("bogus"), Expr::val(false)),
             ]))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         assert_restricted_expression_error(
@@ -4488,6 +4540,7 @@ pub mod test {
                 vec![Expr::var(Var::Principal)],
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
 
@@ -4497,6 +4550,7 @@ pub mod test {
                 "User".parse().unwrap(),
             ))
             .map_err(Into::into)
+            .map_err(Box::new)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
     }

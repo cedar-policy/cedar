@@ -390,7 +390,7 @@ impl ValidatorNamespaceDef {
                     ActionAttrEvalError(EntityAttrEvaluationError {
                         uid: action_id.clone(),
                         attr: k.clone(),
-                        err,
+                        err: *err,
                     })
                 })?;
             attr_values.insert(k.clone(), pv.into());

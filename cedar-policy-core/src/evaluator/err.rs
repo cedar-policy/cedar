@@ -792,4 +792,4 @@ pub mod evaluation_errors {
 }
 
 /// Type alias for convenience
-pub type Result<T> = std::result::Result<T, EvaluationError>;
+pub type Result<T> = std::result::Result<T, Box<EvaluationError>>;

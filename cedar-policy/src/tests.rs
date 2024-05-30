@@ -3709,8 +3709,8 @@ mod error_source_tests {
         for src in srcs {
             let expr = Expression::from_str(src).unwrap();
             assert_matches!(eval_expression(&req, &entities, &expr), Err(e) => {
-                assert!(e.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
-                assert!(e.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
+                assert!(e.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new_boxed(e));
+                assert!(e.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new_boxed(e));
             });
         }
 
@@ -4105,9 +4105,9 @@ mod decimal_ip_constructors {
     fn expr_bad_ip() {
         let ip = Expression::new_ip("192.168.312.3");
         assert_matches!(evaluate_empty(&ip),
-            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+            Err(e) => assert_matches!(*e, EvaluationError::FailedExtensionFunctionExecution(e) => {
                 assert_eq!(e.extension_name(), "ipaddr");
-            }
+            }),
         );
     }
 
@@ -4115,9 +4115,9 @@ mod decimal_ip_constructors {
     fn expr_bad_cidr() {
         let ip = Expression::new_ip("192.168.0.3/100");
         assert_matches!(evaluate_empty(&ip),
-            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+            Err(e) => assert_matches!(*e, EvaluationError::FailedExtensionFunctionExecution(e) => {
                 assert_eq!(e.extension_name(), "ipaddr");
-            }
+            }),
         );
     }
 
@@ -4125,13 +4125,13 @@ mod decimal_ip_constructors {
     fn expr_nonsense_ip() {
         let ip = Expression::new_ip("foobar");
         assert_matches!(evaluate_empty(&ip),
-            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+            Err(e) => assert_matches!(*e, EvaluationError::FailedExtensionFunctionExecution(e) => {
                 assert_eq!(e.extension_name(), "ipaddr");
-            }
+            })
         );
     }
 
-    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
+    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, Box<EvaluationError>> {
         let r = Request::new(None, None, None, Context::empty(), None).unwrap();
         let e = Entities::empty();
         eval_expression(&r, &e, expr)
@@ -4190,9 +4190,9 @@ mod decimal_ip_constructors {
     fn invalid_decimal() {
         let decimal = Expression::new_decimal("1234.12345");
         assert_matches!(evaluate_empty(&decimal),
-            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+            Err(e) => assert_matches!(*e, EvaluationError::FailedExtensionFunctionExecution(e) => {
                 assert_eq!(e.extension_name(), "decimal");
-            }
+            }),
         );
     }
 }

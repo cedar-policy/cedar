@@ -245,7 +245,7 @@ impl Context {
             // INVARIANT(ContextRecord): guaranteed by the match case
             ExprKind::Record { .. } => {
                 let evaluator = RestrictedEvaluator::new(&extensions);
-                let pval = evaluator.partial_interpret(expr)?;
+                let pval = evaluator.partial_interpret(expr).map_err(|boxed| *boxed)?;
                 Ok(Self {
                     context: pval.into(),
                 })

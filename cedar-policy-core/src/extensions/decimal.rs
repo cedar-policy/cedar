@@ -318,18 +318,18 @@ mod tests {
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_decimal_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
-        assert_matches!(res, Err(evaluator::EvaluationError::FailedExtensionFunctionExecution(evaluation_errors::ExtensionFunctionExecutionError {
+        assert_matches!(res, Err(e) => assert_matches!(*e, evaluator::EvaluationError::FailedExtensionFunctionExecution(evaluation_errors::ExtensionFunctionExecutionError {
             extension_name,
             msg,
             ..
-        })) => {
+        }) => {
             println!("{msg}");
             assert_eq!(
                 extension_name,
                 Name::parse_unqualified_name("decimal")
                     .expect("should be a valid identifier")
             )
-        });
+        }));
     }
 
     /// Asserts that a `Result` is a decimal value
@@ -617,27 +617,27 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 });
                 assert_eq!(advice, None);
-            }
+            }),
         );
         assert_matches!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+            Err(e) => assert_matches!(*e, EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. }) => {
                 assert_eq!(expected, nonempty![Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 }]);
                 assert_eq!(actual, Type::String);
                 assert_matches!(advice, Some(a) => assert_eq!(a, ADVICE_MSG));
-            }
+            }),
         );
         // bad use of `lessThan` as function
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");

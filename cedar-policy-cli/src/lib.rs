@@ -627,7 +627,9 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
             }
         },
     };
-    match eval_expression(&request, &entities, &expr).wrap_err("failed to evaluate the expression")
+    match eval_expression(&request, &entities, &expr)
+        .map_err(|boxed| *boxed)
+        .wrap_err("failed to evaluate the expression")
     {
         Err(e) => {
             println!("{e:?}");

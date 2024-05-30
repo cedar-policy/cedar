@@ -963,7 +963,8 @@ impl PartialResponse {
                     .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
                     .map(|v| (name, v))
             })
-            .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
+            .collect::<Result<HashMap<_, _>, Box<EvaluationError>>>()
+            .map_err(|boxed| *boxed)?;
         let r = self.0.reauthorize(&mapping, &auth.0, r.0, &es.0)?;
         Ok(Self(r))
     }
@@ -3622,7 +3623,7 @@ pub fn eval_expression(
     request: &Request,
     entities: &Entities,
     expr: &Expression,
-) -> Result<EvalResult, EvaluationError> {
+) -> Result<EvalResult, Box<EvaluationError>> {
     let all_ext = Extensions::all_available();
     let eval = Evaluator::new(request.0.clone(), &entities.0, &all_ext);
     Ok(EvalResult::from(

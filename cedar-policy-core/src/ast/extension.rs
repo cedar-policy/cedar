@@ -156,12 +156,12 @@ impl ExtensionFunction {
                 if args.is_empty() {
                     func()
                 } else {
-                    Err(evaluator::EvaluationError::wrong_num_arguments(
+                    Err(Box::new(evaluator::EvaluationError::wrong_num_arguments(
                         name.clone(),
                         0,
                         args.len(),
                         None, // evaluator will add the source location later
-                    ))
+                    )))
                 }
             }),
             Some(return_type),
@@ -181,12 +181,12 @@ impl ExtensionFunction {
             style,
             Box::new(move |args: &[Value]| match args.first() {
                 Some(arg) => func(arg.clone()),
-                None => Err(evaluator::EvaluationError::wrong_num_arguments(
+                None => Err(Box::new(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
                     args.len(),
                     None, // evaluator will add the source location later
-                )),
+                ))),
             }),
             None,
             vec![arg_type],
@@ -206,12 +206,12 @@ impl ExtensionFunction {
             style,
             Box::new(move |args: &[Value]| match &args {
                 &[arg] => func(arg.clone()),
-                _ => Err(evaluator::EvaluationError::wrong_num_arguments(
+                _ => Err(Box::new(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
                     args.len(),
                     None, // evaluator will add the source location later
-                )),
+                ))),
             }),
             Some(return_type),
             vec![arg_type],
@@ -233,12 +233,12 @@ impl ExtensionFunction {
             style,
             Box::new(move |args: &[Value]| match &args {
                 &[first, second] => func(first.clone(), second.clone()),
-                _ => Err(evaluator::EvaluationError::wrong_num_arguments(
+                _ => Err(Box::new(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     2,
                     args.len(),
                     None, // evaluator will add the source location later
-                )),
+                ))),
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
@@ -263,12 +263,12 @@ impl ExtensionFunction {
             style,
             Box::new(move |args: &[Value]| match &args {
                 &[first, second, third] => func(first.clone(), second.clone(), third.clone()),
-                _ => Err(evaluator::EvaluationError::wrong_num_arguments(
+                _ => Err(Box::new(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     3,
                     args.len(),
                     None, // evaluator will add the source location later
-                )),
+                ))),
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1, arg_types.2],
