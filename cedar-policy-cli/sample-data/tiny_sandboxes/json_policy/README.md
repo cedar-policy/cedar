@@ -7,7 +7,7 @@ In general, you can select between the human-readable and JSON format using `--p
 For example, we can check if a JSON format policy parses:
 
 ```bash
-cedar --check-parse --policy-format json --policies policy.cedar.json
+cedar check-parse --policy-format json --policies policy.cedar.json
 ```
 
 We can also use a JSON format policy in an authorization request
