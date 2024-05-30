@@ -3666,7 +3666,10 @@ mod tests {
                 .expect("parse_error")
                 .to_policy_template(ast::PolicyID::from_string("i0"))
                 .unwrap_or_else(|errs| {
-                    panic!("Failed to create a policy template: {:?}", errs);
+                    panic!(
+                        "Failed to create a policy template: {:?}",
+                        miette::Report::new(errs)
+                    );
                 });
         }
     }

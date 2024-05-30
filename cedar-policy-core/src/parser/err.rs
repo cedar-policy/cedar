@@ -847,7 +847,7 @@ impl IntoIterator for ParseErrors {
     type IntoIter = iter::Chain<iter::Once<Self::Item>, std::vec::IntoIter<Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        iter::once(self.0.head).chain(self.0.tail)
+        self.0.into_iter()
     }
 }
 
