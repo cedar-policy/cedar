@@ -2105,7 +2105,8 @@ mod test {
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
-        assert_eq!(read.eid().to_string(), "read");
+        let read_eid: &str = read.eid().as_ref();
+        assert_eq!(read_eid, "read");
         assert_eq!(read.entity_type().to_string(), "Foo::Action");
     }
 
@@ -2165,7 +2166,8 @@ mod test {
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
-        assert_eq!(read.eid().to_string(), "read");
+        let read_eid: &str = read.eid().as_ref();
+        assert_eq!(read_eid, "read");
         assert_eq!(
             read.entity_type().to_string(),
             "ExampleCo::Personnel::Action"

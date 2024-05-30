@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{Expr, Name, PolicyID};
+use cedar_policy_core::ast::{Eid, Expr, Name, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::Type;
@@ -209,7 +209,7 @@ impl ValidationError {
     pub(crate) fn unspecified_entity(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        entity_id: String,
+        entity_id: Eid,
     ) -> Self {
         validation_errors::UnspecifiedEntity {
             source_loc,

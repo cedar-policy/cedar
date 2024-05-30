@@ -24,6 +24,7 @@ use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
 use cedar_policy_core::FromNormalizedStr;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::convert::Infallible;
 use std::str::FromStr;
 
@@ -39,6 +40,12 @@ use std::str::FromStr;
 /// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
+///
+/// `EntityId` does not implement `Display`, partly because it is unclear
+/// whether `Display` should produce an escaped representation or an unescaped
+/// representation (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
+/// To get an escaped representation, use `.escaped()`.
+/// To get an unescaped representation, use `.as_ref()`.
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -52,6 +59,11 @@ impl EntityId {
             Err(infallible) => match infallible {},
         }
     }
+
+    /// Get the contents of the `EntityId` as an escaped string
+    pub fn escaped(&self) -> SmolStr {
+        self.0.escaped()
+    }
 }
 
 impl FromStr for EntityId {
@@ -64,15 +76,6 @@ impl FromStr for EntityId {
 impl AsRef<str> for EntityId {
     fn as_ref(&self) -> &str {
         self.0.as_ref()
-    }
-}
-
-// Note that this Display formatter will format the EntityId as it would be expected
-// in the EntityUid string form. For instance, the `"alice"` in `User::"alice"`.
-// This means it adds quotes and potentially performs some escaping.
-impl std::fmt::Display for EntityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

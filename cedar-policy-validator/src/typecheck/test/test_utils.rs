@@ -95,22 +95,6 @@ impl Typechecker<'_> {
     }
 }
 
-/// Utility to execute a closure using a typechecker instance constructed
-/// with a specific schema. A closure is used instead of returning the
-/// typechecker because the typechecker structure needs a reference to a
-/// schema, which is local to this function.
-pub(crate) fn with_typechecker_from_schema<F>(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
-    policy_id: PolicyID,
-    fun: F,
-) where
-    F: FnOnce(Typechecker<'_>),
-{
-    let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::default(), policy_id);
-    fun(typechecker);
-}
-
 /// Assert expected == actual by by asserting expected <: actual && actual <: expected.
 /// In the future it might better to only assert actual <: expected to allow
 /// improvement to the typechecker to return more specific types.
@@ -190,29 +174,28 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    with_typechecker_from_schema(schema, policy.id().clone(), move |mut typechecker| {
-        typechecker.mode = mode;
-        let mut type_errors: HashSet<ValidationError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-        assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
-        assert!(typechecked, "Expected that policy would typecheck.");
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
+    assert!(typechecked, "Expected that policy would typecheck.");
 
-        // Ensure that partial schema validation doesn't cause any policy that
-        // should validate with a complete schema to no longer validate with the
-        // same complete schema.
-        typechecker.mode = ValidationMode::Permissive;
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-        assert_eq!(
-            type_errors,
-            HashSet::new(),
-            "Did not expect any errors under partial schema validation."
-        );
-        assert!(
-            typechecked,
-            "Expected that policy would typecheck under partial schema validation."
-        );
-    });
+    // Ensure that partial schema validation doesn't cause any policy that
+    // should validate with a complete schema to no longer validate with the
+    // same complete schema.
+    typechecker.mode = ValidationMode::Permissive;
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert_eq!(
+        type_errors,
+        HashSet::new(),
+        "Did not expect any errors under partial schema validation."
+    );
+    assert!(
+        typechecked,
+        "Expected that policy would typecheck under partial schema validation."
+    );
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -251,14 +234,13 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    with_typechecker_from_schema(schema, policy.id().clone(), move |mut typechecker| {
-        typechecker.mode = mode;
-        let mut type_errors: HashSet<ValidationError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-        assert_expected_type_errors(&expected_type_errors, &type_errors);
-        assert!(!typechecked, "Expected that policy would not typecheck.");
-    });
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert_expected_type_errors(&expected_type_errors, &type_errors);
+    assert!(!typechecked, "Expected that policy would not typecheck.");
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -269,17 +251,16 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    with_typechecker_from_schema(schema, policy.id().clone(), |mut typechecker| {
-        typechecker.mode = mode;
-        let mut type_errors: HashSet<ValidationError> = HashSet::new();
-        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-        assert_expected_warnings(&expected_warnings, &warnings);
-        assert!(
-            typechecked,
-            "Expected that policy would typecheck (with warnings)."
-        );
-    });
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert_expected_warnings(&expected_warnings, &warnings);
+    assert!(
+        typechecked,
+        "Expected that policy would typecheck (with warnings)."
+    );
 }
 
 /// Assert that expr type checks successfully with a particular type, and
@@ -300,20 +281,19 @@ pub(crate) fn assert_typechecks_for_mode(
     expected: Type,
     mode: ValidationMode,
 ) {
-    with_typechecker_from_schema(schema, expr_id_placeholder(), |mut typechecker| {
-        typechecker.mode = mode;
-        let mut type_errors = HashSet::new();
-        let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
-        assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-            assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
-        });
-        assert_eq!(
-            type_errors,
-            HashSet::new(),
-            "Did not expect any errors, saw {:#?}.",
-            type_errors
-        );
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut type_errors = HashSet::new();
+    let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
+    assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+        assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
     });
+    assert_eq!(
+        type_errors,
+        HashSet::new(),
+        "Did not expect any errors, saw {:#?}.",
+        type_errors
+    );
 }
 
 /// Assert that typechecking fails, generating some `ValidationErrors` for the
@@ -344,20 +324,19 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     expected_type_errors: Vec<ValidationError>,
     mode: ValidationMode,
 ) {
-    with_typechecker_from_schema(schema, expr_id_placeholder(), |mut typechecker| {
-        typechecker.mode = mode;
-        let mut type_errors = HashSet::new();
-        let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
-        assert_matches!(actual, TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-            match (expected_ty.as_ref(), expr_recovery_type.data()) {
-                (None, None) => (),
-                (Some(expected_ty), Some(actual_ty)) => {
-                    assert_types_eq(typechecker.schema, expected_ty, actual_ty);
-                }
-                _ => panic!("Expected that actual type would be defined iff expected type is defined."),
+    let schema = schema.try_into().expect("Failed to construct schema.");
+    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut type_errors = HashSet::new();
+    let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
+    assert_matches!(actual, TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
+        match (expected_ty.as_ref(), expr_recovery_type.data()) {
+            (None, None) => (),
+            (Some(expected_ty), Some(actual_ty)) => {
+                assert_types_eq(typechecker.schema, expected_ty, actual_ty);
             }
-            assert_expected_type_errors(&expected_type_errors, &type_errors);
-        });
+            _ => panic!("Expected that actual type would be defined iff expected type is defined."),
+        }
+        assert_expected_type_errors(&expected_type_errors, &type_errors);
     });
 }
 
