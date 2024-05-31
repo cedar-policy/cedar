@@ -1,0 +1,20 @@
+{
+  "files": ["esm/*", "nodejs/*", "web/*"],
+  "sideEffects": ["./snippets/*"],
+  "module": "esm/cedar_wasm.js",
+  "types": "esm/cedar_wasm.d.ts",
+  "exports": {
+    ".": {
+      "import": "esm/cedar_wasm.js",
+      "types": "esm/cedar_wasm.d.ts"
+    },
+    "./node": {
+      "import": "nodejs/cedar_wasm.js",
+      "types": "nodejs/cedar_wasm.d.ts"
+    },
+    "./web": {
+      "import": "web/cedar_wasm.js",
+      "types": "web/cedar_wasm.d.ts"
+    }
+  }
+}

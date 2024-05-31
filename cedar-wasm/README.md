@@ -4,8 +4,7 @@ An implementation of various cedar functions to enable developers to write types
 
 ## Installing
 
-Installing is simple, just run `npm i @cedar-policy/cedar-wasm` or install with whatever your favorite package manager is.
-
+Installing is simple, just run `npm i @cedar-policy/cedar-wasm --save` or install with whatever your favorite package manager is.
 
 ## Loading in webpack 5:
 
@@ -133,3 +132,20 @@ import('@cedar-policy/cedar-wasm').then(mod => {
 });
 ```
 
+## Alternate loading strategies
+
+If for some reason you cannot use es modules, we provide alternate sub-packages `web` and `node`.
+
+The `node` subpackage uses `fs` and CommonJS modules. To use it, you can import it like so:
+
+```
+const cedar = require('@cedar-policy/cedar-wasm/node')
+```
+
+The `web` subpackage exposes an `initSync` function that you can use to load Cedar in scenarios where you want to load the wasm binary async for whatever reason. Using the `web` subpackage may also be necessary with some `jest` setups. Here's how you use the `web` subpackage:
+
+```
+const wasmBuffer = ... // `fetch` it or use `fs` to read it from `node_modules` in jest setupTests
+import * as cedarJsBindings from '@cedar-policy/cedar-wasm/web';
+cedarJsBindings.initSync(wasmBuffer);
+```
