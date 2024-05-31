@@ -14,30 +14,67 @@
 # limitations under the License.
 
 # This script calls wasm-pack build and post-processes the generated TS types to fix them.
+# It also produces three sets of outputs for different needs of different consumers
 # Without this, the built wasm still works, but the Typescript definitions made by tsify don't.
 set -e
-cargo build
-wasm-pack build --scope cedar-policy --target bundler
+main () {
+    rm -rf pkg || true
+    mkdir pkg
+    cargo build
+    wasm-pack build --scope cedar-policy --target bundler --out-dir pkg/esm
+    wasm-pack build --scope cedar-policy --target nodejs  --out-dir pkg/nodejs
+    wasm-pack build --scope cedar-policy --target web  --out-dir pkg/web
+    cp pkg/esm/README.md pkg/README.md
 
-sed -i "s/[{]\s*!: /{ \"!\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*==: /{ \"==\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*!=: /{ \"!=\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*<: /{ \"<\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*<=: /{ \"<=\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*>: /{ \">\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*>=: /{ \">=\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*&&: /{ \"\&\&\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*||: /{ \"||\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*[+]: /{ \"+\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*-: /{ \"-\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*[*]: /{ \"*\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/[{]\s*\.: /{ \".\": /g" pkg/cedar_wasm.d.ts
-sed -i "s/ | __skip//g" pkg/cedar_wasm.d.ts
-sed -i "s/SchemaFragment/Schema/g" pkg/cedar_wasm.d.ts
+    fix_package_json_files 
 
-echo "type SmolStr = string;" >> pkg/cedar_wasm.d.ts
-echo "type Name = string;" >> pkg/cedar_wasm.d.ts
-echo "type Id = string;" >> pkg/cedar_wasm.d.ts
-echo "export type TypeOfAttribute = SchemaType & { required?: boolean };" >> pkg/cedar_wasm.d.ts
-echo "export type Context = Record<string, CedarValueJson>;" >> pkg/cedar_wasm.d.ts
-echo "Finished post-processing types file"
+    process_types_file "pkg/esm/cedar_wasm.d.ts"
+    process_types_file "pkg/nodejs/cedar_wasm.d.ts"
+    process_types_file "pkg/web/cedar_wasm.d.ts"
+}
+
+fix_package_json_files() {
+    jq -s '.[0] * .[1]' pkg/esm/package.json package.json.patch > pkg/package.json
+    echo "Created root package.json"
+    mv pkg/esm/package.json pkg/esm/package.json.bak
+    mv pkg/web/package.json pkg/web/package.json.bak
+    mv pkg/nodejs/package.json pkg/nodejs/package.json.bak
+    jq '. + {"type": "module"}' pkg/esm/package.json.bak > pkg/esm/package.json
+    jq '. + {"type": "module"}' pkg/web/package.json.bak > pkg/web/package.json
+    jq '. + {"type": "commonjs"}' pkg/nodejs/package.json.bak > pkg/nodejs/package.json
+    rm pkg/esm/package.json.bak
+    rm pkg/web/package.json.bak
+    rm pkg/nodejs/package.json.bak
+    echo "Patched sub-package json files"
+}
+
+process_types_file() {
+    local types_file="$1"
+    echo "processing types file: $1"
+    sed -i "s/[{]\s*!: /{ \"!\": /g" "$types_file"
+    sed -i "s/[{]\s*==: /{ \"==\": /g" "$types_file"
+    sed -i "s/[{]\s*!=: /{ \"!=\": /g" "$types_file"
+    sed -i "s/[{]\s*<: /{ \"<\": /g" "$types_file"
+    sed -i "s/[{]\s*<=: /{ \"<=\": /g" "$types_file"
+    sed -i "s/[{]\s*>: /{ \">\": /g" "$types_file"
+    sed -i "s/[{]\s*>=: /{ \">=\": /g" "$types_file"
+    sed -i "s/[{]\s*&&: /{ \"\&\&\": /g" "$types_file"
+    sed -i "s/[{]\s*||: /{ \"||\": /g" "$types_file"
+    sed -i "s/[{]\s*[+]: /{ \"+\": /g" "$types_file"
+    sed -i "s/[{]\s*-: /{ \"-\": /g" "$types_file"
+    sed -i "s/[{]\s*[*]: /{ \"*\": /g" "$types_file"
+    sed -i "s/[{]\s*\.: /{ \".\": /g" "$types_file"
+    sed -i "s/ | __skip//g" "$types_file"
+    sed -i "s/SchemaFragment/SchemaJson/g" "$types_file"
+    sed -i "s/[{] json: JsonValueWithNoDuplicateKeys /{ json: SchemaJson /g" "$types_file"
+
+    echo "type SmolStr = string;" >> "$types_file"
+    echo "type Name = string;" >> "$types_file"
+    echo "type Id = string;" >> "$types_file"
+    echo "export type TypeOfAttribute = SchemaType & { required?: boolean };" >> "$types_file"
+    echo "export type Context = Record<string, CedarValueJson>;" >> "$types_file"
+}
+
+
+main
+echo "Finished custom build script"
