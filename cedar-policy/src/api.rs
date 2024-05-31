@@ -2981,6 +2981,14 @@ impl RestrictedExpression {
         ))
     }
 
+    /// Create an unknown expression
+    #[cfg(feature = "partial-eval")]
+    pub fn new_unknown(name: impl AsRef<str>) -> Self {
+        Self(ast::RestrictedExpr::unknown(ast::Unknown::new_untyped(
+            name.as_ref(),
+        )))
+    }
+
     /// Deconstruct an [`RestrictedExpression`] to get the internal type.
     /// This function is only intended to be used internally.
     #[cfg(test)]
