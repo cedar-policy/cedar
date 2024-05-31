@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 
-## [3.2.1] - Coming soon
+## [3.2.1] - 2024-05-31
 
 ### Fixed
 
@@ -347,7 +347,7 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
-## [2.4.7] - Coming soon
+## [2.4.7] - 2024-05-31
 
 ### Fixed
 
