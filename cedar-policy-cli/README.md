@@ -23,10 +23,31 @@ CLI is a command line tool. It supports the following subcommands:
 
 ### Build
 
-You will need to install Rust, via [rustup](https://rustup.rs)
+You will need to install Rust, via [rustup](https://rustup.rs).
 
-To build the CLI, run `cargo build` or `cargo build --release`
+To build the CLI, run `cargo build` or `cargo build --release`.
 
 ### Run
 
 To run the CLI, try `cargo run -- --help`. The sub-folder [`sample-data`](sample-data) contains examples for the CLI. Please refer to the instructions in each `README.md` to run the examples.
+
+## What's New
+
+Changelogs for all release branches and the `main` branch of this repository are
+all maintained on the `main` branch; the most up-to-date changelog for this
+crate is
+[here](https://github.com/cedar-policy/cedar/blob/main/cedar-policy-cli/CHANGELOG.md).
+
+For a list of the current and past releases, see [crates.io](https://crates.io/crates/cedar-policy-cli) or [Releases](https://github.com/cedar-policy/cedar/releases).
+
+## Security
+
+See [SECURITY](../SECURITY.md) for more information.
+
+## Contributing
+
+We welcome contributions from the community. Please either file an issue, or see [CONTRIBUTING](../CONTRIBUTING.md)
+
+## License
+
+This project is licensed under the Apache-2.0 License.
