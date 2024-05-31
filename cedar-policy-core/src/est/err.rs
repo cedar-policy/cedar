@@ -110,7 +110,7 @@ impl std::fmt::Display for InvalidActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "expected that action entity uids would have the type `Action` but got"
+            "expected that action entity uids would have the type `Action` but got "
         )?;
         join_with_conjunction(f, "and", self.euids.iter(), |f, e| write!(f, "`{e}`"))
     }

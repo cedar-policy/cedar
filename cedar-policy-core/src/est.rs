@@ -3982,33 +3982,118 @@ mod issue_891 {
 
 #[cfg(test)]
 mod issue_925 {
-    use crate::{est::FromJsonError, parser::parse_policy_or_template_to_est};
+    use crate::{
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
     use cool_asserts::assert_matches;
+    use serde_json::json;
 
     #[test]
     fn invalid_action_type() {
-        let src = r#"permit(principal, action == NotAction::"view", resource);"#;
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "==",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
         assert_matches!(
             est.try_into_ast_policy(None),
-            Err(FromJsonError::InvalidActionType(_))
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
         );
 
-        let src = r#"permit(principal, action in NotAction::"view", resource);"#;
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
         assert_matches!(
             est.try_into_ast_policy(None),
-            Err(FromJsonError::InvalidActionType(_))
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
         );
 
-        let src = r#"permit(principal, action in [NotAction::"view", Other::"edit"], resource);"#;
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entities": [
+                        {
+                            "type": "NotAction",
+                            "id": "view",
+                        },
+                        {
+                            "type": "Other",
+                            "id": "edit",
+                        }
+                    ]
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
         assert_matches!(
             est.try_into_ast_policy(None),
-            Err(FromJsonError::InvalidActionType(_))
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
         );
     }
 }
