@@ -3979,3 +3979,36 @@ mod issue_891 {
         assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "resorThanOrEqual".parse().unwrap());
     }
 }
+
+#[cfg(test)]
+mod issue_925 {
+    use crate::{est::FromJsonError, parser::parse_policy_or_template_to_est};
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn invalid_action_type() {
+        let src = r#"permit(principal, action == NotAction::"view", resource);"#;
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(FromJsonError::InvalidActionType(_))
+        );
+
+        let src = r#"permit(principal, action in NotAction::"view", resource);"#;
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(FromJsonError::InvalidActionType(_))
+        );
+
+        let src = r#"permit(principal, action in [NotAction::"view", Other::"edit"], resource);"#;
+        let est =
+            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(FromJsonError::InvalidActionType(_))
+        );
+    }
+}
