@@ -78,6 +78,10 @@ Now uses Cedar language version 3.0.0.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
 - The `format` subcommand no longer takes a positional file argument.
 
+## 2.4.7
+
+## 2.4.6
+
 ## 2.4.5
 
 ## 2.4.4

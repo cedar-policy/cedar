@@ -40,7 +40,7 @@ If you would like to propose a change to the Cedar language, or suggest a substa
 
 ## Changelog
 
-Cedar maintains changelogs for the public-facing crates [cedar-policy](./cedar-policy/CHANGELOG.md) and [cedar-policy-cli](./cedar-policy-cli/CHANGELOG.md), which adhere to the [Keep A Changelog](https://keepachangelog.com/en/1.0.0/) format. The purpose of the changelog is for the contributors and maintainers to incrementally build release notes throughout the development process to avoid the painful and error-prone process of attempting to compile the release notes at release time. On each release the "unreleased" entries of the changelog are moved under the appropriate header. Also, incrementally building the changelog provides a concise, human-readable list of significant features that have been added to the unreleased version under development.
+Cedar maintains changelogs for the public-facing crates [cedar-policy](https://github.com/cedar-policy/cedar/blob/main/cedar-policy/CHANGELOG.md) and [cedar-policy-cli](https://github.com/cedar-policy/cedar/blob/main/cedar-policy-cli/CHANGELOG.md), which adhere to the [Keep A Changelog](https://keepachangelog.com/en/1.0.0/) format. The purpose of the changelog is for the contributors and maintainers to incrementally build release notes throughout the development process to avoid the painful and error-prone process of attempting to compile the release notes at release time. On each release the "unreleased" entries of the changelog are moved under the appropriate header. Also, incrementally building the changelog provides a concise, human-readable list of significant features that have been added to the unreleased version under development. Changelogs for all release branches and the `main` branch are all maintained on the `main` branch of this repository only; you can see the most up-to-date changelogs by following the links above.
 
 ### Which changes require a changelog entry?
 
@@ -60,7 +60,8 @@ The following are some examples where a changelog entry is not necessary:
 
 ### Where should I put my changelog entry?
 
-For a PR to the `main` branch, add your entry under the "Unreleased" section. For a PR to one of the `release/X.Y.Z` branches, add your entry under the appropriate version header. Once a version is released on crates.io, make sure to update the changelog on `main` to include the new release.
+Add your entry under the "Unreleased" section, as part of the same PR that introduces the change.
+In the (rarer) case that your PR is to a `release/X.Y.Z` branch rather than `main`, make a separate PR to `main` which adds the changelog entry under the appropriate version header of the `main` changelog.
 
 ## Review Process
 
