@@ -13,10 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolving #549)
 - Added methods for reading and writing individual `Entity`s as JSON
   (resolving #807)
-- Fixed the typescript generated type for `AuthorizationCall` to remove
-  unsupported string option
-- Fixed wasm build script to be multi-target in js ecosystem
-
 
 ### Changed
 
@@ -28,8 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
-- Fixed a performance issue when constructing an error for accessing
-    a non-existent attribute on sufficiently large records/entities
 
 ### Removed
 
@@ -51,9 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
-- Fixed policy formatter dropping newlines in string literals. (#870, resolving #862)
 
-## [3.2.1] - Coming soon
+## [3.2.1] - 2024-05-31
 
 ### Fixed
 
@@ -61,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed a performance issue when constructing an error for accessing
   a non-existent attribute on sufficiently large records (#887, resolving #754)
 - Fixed identifier parsing in human-readable schemas (#914, resolving #913)
+- Fixed the typescript generated type for `ffi::AuthorizationCall` to remove
+  unsupported string option (#939)
+- Fixed Wasm build script to be multi-target in JS ecosystem (#933)
 
 ## [3.2.0] - 2024-05-17
 
@@ -351,7 +347,7 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
-## [2.4.7] - Coming soon
+## [2.4.7] - 2024-05-31
 
 ### Fixed
 
