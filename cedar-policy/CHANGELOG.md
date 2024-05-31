@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolving #549)
 - Added methods for reading and writing individual `Entity`s as JSON
   (resolving #807)
+- Fixed the typescript generated type for `AuthorizationCall` to remove
+  unsupported string option
+- Fixed wasm build script to be multi-target in js ecosystem
+
 
 ### Changed
 
