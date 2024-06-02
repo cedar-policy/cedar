@@ -22,6 +22,7 @@ use crate::entities::json::{
 };
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
+use crate::parser::cst_to_ast::flatten_tuple_2;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
 use crate::parser::{Loc, Node};
@@ -914,35 +915,17 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
-                let mut errs = vec![];
-                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
-                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
-                        return Ok(Expr::has_attr(target_expr, attr));
-                    }
-                }
-                if errs.is_empty() {
-                    Err(field
-                        .to_ast_err(ToASTErrorKind::InvalidAttribute(
-                            field.try_as_inner()?.to_smolstr(),
-                        ))
-                        .into())
-                } else {
-                    Err(errs.into())
-                }
+                field
+                    .to_expr_or_special()?
+                    .into_valid_attr()
+                    .map(|attr| Expr::has_attr(target_expr, attr))
             }
             cst::Relation::Like { target, pattern } => {
                 let target_expr = target.try_into()?;
-                let mut errs = vec![];
-                match pattern
-                    .to_expr_or_special(&mut errs)
-                    .map(|expr| expr.into_pattern(&mut errs))
-                {
-                    Some(Some(pat)) => Ok(Expr::like(
-                        target_expr,
-                        pat.into_iter().map(PatternElem::from),
-                    )),
-                    _ => Err(errs.into()),
-                }
+                pattern
+                    .to_expr_or_special()?
+                    .into_pattern()
+                    .map(|pat| Expr::like(target_expr, pat.into_iter().map(PatternElem::from)))
             }
             cst::Relation::IsIn {
                 target,
@@ -1094,30 +1077,27 @@ fn interpret_primary(
                 path,
                 eid: eid_node,
             } => {
-                let mut errs = vec![];
-                let maybe_name = path.to_name(&mut errs);
-                let maybe_eid = eid_node.as_valid_string(&mut errs);
-                let mut errs = ParseErrors::from(errs);
+                let maybe_name = path.to_name();
+                let maybe_eid = eid_node.as_valid_string();
 
-                match (maybe_name, maybe_eid) {
-                    (Some(name), Some(eid)) => match to_unescaped_string(eid) {
-                        Ok(eid) => Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
-                            __entity: TypeAndId::from(ast::EntityUID::from_components(
-                                name,
-                                ast::Eid::new(eid),
-                                None,
-                            )),
-                        }))),
-                        Err(unescape_errs) => {
-                            errs.extend(unescape_errs.into_iter().map(|err| {
+                let (name, eid) = flatten_tuple_2(maybe_name, maybe_eid)?;
+                match to_unescaped_string(eid) {
+                    Ok(eid) => Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
+                        __entity: TypeAndId::from(ast::EntityUID::from_components(
+                            name,
+                            ast::Eid::new(eid),
+                            None,
+                        )),
+                    }))),
+                    Err(unescape_errs) => {
+                        Err(ParseErrors::new_from_nonempty(unescape_errs.map(|err| {
+                            {
                                 crate::parser::err::ParseError::from(
                                     eid_node.to_ast_err(ToASTErrorKind::Unescape(err)),
                                 )
-                            }));
-                            Err(errs)
-                        }
-                    },
-                    _ => Err(errs),
+                            }
+                        })))
+                    }
                 }
             }
             cst::Ref::Ref { .. } => Err(node
@@ -1179,20 +1159,8 @@ fn interpret_primary(
             .iter()
             .map(|node| {
                 let cst::RecInit(k, v) = node.try_as_inner()?;
-                let mut errs = vec![];
-                let s = k
-                    .to_expr_or_special(&mut errs)
-                    .and_then(|es| es.into_valid_attr(&mut errs));
-                if !errs.is_empty() {
-                    Err(errs.into())
-                } else {
-                    match s {
-                        Some(s) => Ok((s, v.try_into()?)),
-                        None => Err(ParseErrors::singleton(
-                            node.to_ast_err(ToASTErrorKind::Unknown),
-                        )),
-                    }
-                }
+                let s = k.to_expr_or_special().and_then(|es| es.into_valid_attr())?;
+                Ok((s, v.try_into()?))
             })
             .collect::<Result<HashMap<SmolStr, Expr>, ParseErrors>>()
             .map(Expr::record)
@@ -1208,36 +1176,15 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
         for access in &m_node.access {
             match access.try_as_inner()? {
                 cst::MemAccess::Field(node) => {
-                    let mut errs = vec![];
-                    let field = node.to_valid_ident(&mut errs);
-                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
-                    if !errs.is_empty() {
-                        return Err(errs.into());
-                    }
-                    match field {
-                        Some(id) => {
-                            item = match item {
-                                Either::Left(name) => {
-                                    return Err(node
-                                        .to_ast_err(ToASTErrorKind::InvalidAccess(
-                                            name,
-                                            id.to_smolstr(),
-                                        ))
-                                        .into())
-                                }
-                                Either::Right(expr) => {
-                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
-                                }
-                            };
-                        }
-                        None => {
+                    let id = node.to_valid_ident()?;
+                    item = match item {
+                        Either::Left(name) => {
                             return Err(node
-                                .to_ast_err(ToASTErrorKind::InvalidIdentifier(
-                                    node.try_as_inner()?.to_string(),
-                                ))
+                                .to_ast_err(ToASTErrorKind::InvalidAccess(name, id.to_smolstr()))
                                 .into())
                         }
-                    }
+                        Either::Right(expr) => Either::Right(Expr::get_attr(expr, id.to_smolstr())),
+                    };
                 }
                 cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
@@ -1315,19 +1262,19 @@ pub fn extract_single_argument<T>(
     args: impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
     loc: &Loc,
-) -> Result<T, ToASTError> {
+) -> Result<T, ParseErrors> {
     let mut iter = args.fuse().peekable();
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ToASTError::new(
+        (None, _) => Err(ParseErrors::singleton(ToASTError::new(
             ToASTErrorKind::wrong_arity(fn_name, 1, 0),
             loc.clone(),
-        )),
-        (Some(_), Some(_)) => Err(ToASTError::new(
+        ))),
+        (Some(_), Some(_)) => Err(ParseErrors::singleton(ToASTError::new(
             ToASTErrorKind::wrong_arity(fn_name, 1, iter.len() + 1),
             loc.clone(),
-        )),
+        ))),
         (Some(first), None) => Ok(first),
     }
 }
