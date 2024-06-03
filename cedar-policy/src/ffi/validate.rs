@@ -499,7 +499,6 @@ mod test {
     }
 
     #[test]
-    // No special handling for duplicates in JSON strings (serde_json silently drops them)
     fn test_validate_fails_on_duplicate_namespace() {
         let json = r#"{
             "schema": { "json": {
@@ -509,10 +508,8 @@ mod test {
             "policies": ""
         }"#;
 
-        let ans_val = validate_json_str(json).unwrap();
-        let result: Result<ValidationAnswer, _> = serde_json::from_str(ans_val.as_str());
-        assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
-            assert_eq!(validation_errors.len(), 0, "Unexpected validation errors: {validation_errors:?}");
+        assert_matches!(validate_json_str(json), Err(e) => {
+          assert!(e.to_string().contains("the key `foo` occurs two or more times in the same JSON object"), "actual error message was {e}");
         });
     }
 

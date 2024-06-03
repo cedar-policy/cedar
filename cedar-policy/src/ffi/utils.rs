@@ -20,6 +20,11 @@ use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
+// Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
+// `*_json_str` APIs will correctly error if the input JSON string contains
+// duplicate keys.
+pub use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -238,7 +243,7 @@ pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    Json(serde_json::Value),
+    Json(JsonValueWithNoDuplicateKeys),
 }
 
 impl Schema {
@@ -254,7 +259,7 @@ impl Schema {
                     )
                 })
                 .map_err(miette::Report::new),
-            Self::Json(val) => crate::Schema::from_json_value(val)
+            Self::Json(val) => crate::Schema::from_json_value(val.into())
                 .map(|sch| {
                     (
                         sch,

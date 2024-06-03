@@ -17,7 +17,7 @@
 //! This module contains the `is_authorized` entry points that other language
 //! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
+use super::utils::*;
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     Request, SlotId,
@@ -155,7 +155,7 @@ pub struct Response {
 pub struct Diagnostics {
     /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
-    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))] // REVIEW: still needed?
+    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
     reason: HashSet<SmolStr>,
     /// Set of errors that occurred
     errors: HashSet<AuthorizationError>,
@@ -279,7 +279,7 @@ pub struct ResidualResponse {
     errored: HashSet<SmolStr>,
     may_be_determining: HashSet<SmolStr>,
     must_be_determining: HashSet<SmolStr>,
-    residuals: HashMap<SmolStr, serde_json::Value>,
+    residuals: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     nontrivial_residuals: HashSet<SmolStr>,
 }
 
@@ -311,22 +311,22 @@ impl ResidualResponse {
     }
 
     /// (Borrowed) Iterator over the set of residual policies
-    pub fn residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+    pub fn residuals(&self) -> impl Iterator<Item = &JsonValueWithNoDuplicateKeys> {
         self.residuals.values()
     }
 
     /// (Owned) Iterator over the set of residual policies
-    pub fn into_residuals(self) -> impl Iterator<Item = serde_json::Value> {
+    pub fn into_residuals(self) -> impl Iterator<Item = JsonValueWithNoDuplicateKeys> {
         self.residuals.into_values()
     }
 
     /// Get the residual policy for a specified id if it exists
-    pub fn residual(&self, p: &SmolStr) -> Option<&serde_json::Value> {
+    pub fn residual(&self, p: &SmolStr) -> Option<&JsonValueWithNoDuplicateKeys> {
         self.residuals.get(p)
     }
 
     /// (Borrowed) Iterator over the set of non-trivial residual policies
-    pub fn nontrivial_residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+    pub fn nontrivial_residuals(&self) -> impl Iterator<Item = &JsonValueWithNoDuplicateKeys> {
         self.residuals.iter().filter_map(|(id, policy)| {
             if self.nontrivial_residuals.contains(id) {
                 Some(policy)
@@ -371,7 +371,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
                 .collect(),
             residuals: partial_response
                 .all_residuals()
-                .map(|e| e.to_json().map(|json| (e.id().to_smolstr(), json)))
+                .map(|e| e.to_json().map(|json| (e.id().to_smolstr(), json.into())))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -446,18 +446,18 @@ pub enum PartialAuthorizationAnswer {
 pub struct AuthorizationCall {
     /// The principal taking action
     #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    principal: Option<serde_json::Value>,
+    principal: Option<JsonValueWithNoDuplicateKeys>,
     /// The action the principal is taking
     #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    action: serde_json::Value,
+    action: JsonValueWithNoDuplicateKeys,
     /// The resource being acted on by the principal
     #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    resource: Option<serde_json::Value>,
+    resource: Option<JsonValueWithNoDuplicateKeys>,
     /// The context details specific to the request
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     /// The context details specific to the request
-    context: HashMap<String, serde_json::Value>,
+    context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
@@ -481,11 +481,11 @@ fn constant_true() -> bool {
 /// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
 /// appropriate error to `errs` and returns `None`.
 fn parse_entity_uid(
-    entity_uid_json: serde_json::Value,
+    entity_uid_json: JsonValueWithNoDuplicateKeys,
     category: &str,
     errs: &mut Vec<miette::Report>,
 ) -> Option<EntityUid> {
-    match EntityUid::from_json(entity_uid_json)
+    match EntityUid::from_json(entity_uid_json.into())
         .wrap_err_with(|| format!("Failed to parse {category}"))
     {
         Ok(euid) => Some(euid),
@@ -499,7 +499,7 @@ fn parse_entity_uid(
 /// Parses the given JSON context into a [`Context`], or if it fails, adds
 /// appropriate error(s) to `errs` and returns an empty context.
 fn parse_context(
-    context_map: HashMap<String, serde_json::Value>,
+    context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
     schema_ref: Option<&crate::Schema>,
     action_ref: Option<&EntityUid>,
     errs: &mut Vec<miette::Report>,
@@ -751,7 +751,7 @@ struct RecvdSlice {
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
     #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
-    entities: serde_json::Value,
+    entities: JsonValueWithNoDuplicateKeys,
 
     /// Optional template policies.
     #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
@@ -818,7 +818,7 @@ impl RecvdSlice {
                 crate::PolicySet::new()
             }
         };
-        let entities = match Entities::from_json_value(entities, schema) {
+        let entities = match Entities::from_json_value(entities.into(), schema) {
             Ok(entities) => entities,
             Err(e) => {
                 errs.push(miette::Report::new(e));
