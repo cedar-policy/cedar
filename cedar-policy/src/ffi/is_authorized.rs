@@ -223,6 +223,7 @@ impl Diagnostics {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     pub policy_id: PolicyId,
     /// Error (or warning).
     /// You can look at the `severity` field to see whether it is actually an
