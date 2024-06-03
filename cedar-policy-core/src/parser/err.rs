@@ -18,11 +18,13 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use either::Either;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -339,9 +341,12 @@ pub enum ToASTErrorKind {
         /// The normalized form of the string
         normalized_src: String,
     },
-    /// Returned when a CST node is empty
-    #[error("data should not be empty")]
-    MissingNodeData,
+    /// Returned when a CST node is empty during CST to AST/EST conversion.
+    /// This should have resulted in an error during the text to CST
+    /// conversion, which will terminate parsing. So it should be unreachable
+    /// in later stages.
+    #[error("internal invariant violated. Parsed data node should not be empty")]
+    EmptyNodeInvariantViolation,
     /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
     #[error("the right hand side of a `has` expression must be a field name or string literal")]
     HasNonLiteralRHS,
@@ -374,6 +379,10 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
+    /// Returned when a policy or expression failed to parse, but no explicit error was returned.
+    #[error("unknown parse error")]
+    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
+    Unknown,
 }
 
 impl ToASTErrorKind {
@@ -670,52 +679,67 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution when
 // adding public methods.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ParseErrors(pub Vec<ParseError>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseErrors(NonEmpty<ParseError>);
 
 impl ParseErrors {
-    const DESCRIPTION_IF_EMPTY: &'static str = "unknown parse error";
-
-    /// Constructs a new, empty `ParseErrors`.
-    pub fn new() -> Self {
-        ParseErrors(Vec::new())
+    /// Construct a `ParseErrors` with a single element
+    pub(crate) fn singleton(err: impl Into<ParseError>) -> Self {
+        Self(NonEmpty::singleton(err.into()))
     }
 
-    /// Add an error to the `ParseErrors`
-    pub(crate) fn push(&mut self, err: impl Into<ParseError>) {
-        self.0.push(err.into());
+    /// Construct a new `ParseErrors` with at least one element
+    pub(crate) fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
+        let mut nv = NonEmpty::singleton(first);
+        let mut v = rest.into_iter().collect::<Vec<_>>();
+        nv.append(&mut v);
+        Self(nv)
+    }
+
+    /// Construct a new `ParseErrors` from another `NonEmpty` type
+    pub(crate) fn new_from_nonempty(errs: NonEmpty<ParseError>) -> Self {
+        Self(errs)
+    }
+
+    pub(crate) fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
+        let v = i.into_iter().collect::<Vec<_>>();
+        Some(Self(NonEmpty::from_vec(v)?))
+    }
+
+    /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
+    /// `None` if the input vector is empty.
+    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
+        let (first, rest) = v.split_first()?;
+        let mut first = first.clone();
+        rest.iter()
+            .for_each(|errs| first.extend(errs.iter().cloned()));
+        Some(first)
     }
 }
 
 impl Display for ParseErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.first() {
-            Some(first_err) => write!(f, "{first_err}"), // intentionally showing only the first error; see #326
-            None => write!(f, "{}", Self::DESCRIPTION_IF_EMPTY),
-        }
+        write!(f, "{}", self.first()) // intentionally showing only the first error; see #326
     }
 }
 
 impl std::error::Error for ParseErrors {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.first().and_then(std::error::Error::source)
+        self.first().source()
     }
 
     #[allow(deprecated)]
     fn description(&self) -> &str {
-        match self.first() {
-            Some(first_err) => first_err.description(),
-            None => Self::DESCRIPTION_IF_EMPTY,
-        }
+        self.first().description()
     }
 
     #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn std::error::Error> {
-        self.first().and_then(std::error::Error::cause)
+        self.first().cause()
     }
 }
 
-// Except for `.related()`, everything else is forwarded to the first error, if it is present.
+// Except for `.related()`, everything else is forwarded to the first error.
 // This ensures that users who only use `Display`, `.code()`, `.labels()` etc, still get rich
 // information for the first error, even if they don't realize there are multiple errors here.
 // See #326.
@@ -730,60 +754,48 @@ impl Diagnostic for ParseErrors {
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.first().and_then(Diagnostic::code)
+        self.first().code()
     }
 
     fn severity(&self) -> Option<miette::Severity> {
-        self.first().and_then(Diagnostic::severity)
+        self.first().severity()
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.first().and_then(Diagnostic::help)
+        self.first().help()
     }
 
     fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.first().and_then(Diagnostic::url)
+        self.first().url()
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.first().and_then(Diagnostic::source_code)
+        self.first().source_code()
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        self.first().and_then(Diagnostic::labels)
+        self.first().labels()
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.first().and_then(Diagnostic::diagnostic_source)
+        self.first().diagnostic_source()
     }
 }
 
-impl AsRef<Vec<ParseError>> for ParseErrors {
-    fn as_ref(&self) -> &Vec<ParseError> {
+impl AsRef<NonEmpty<ParseError>> for ParseErrors {
+    fn as_ref(&self) -> &NonEmpty<ParseError> {
         &self.0
     }
 }
 
-impl AsMut<Vec<ParseError>> for ParseErrors {
-    fn as_mut(&mut self) -> &mut Vec<ParseError> {
+impl AsMut<NonEmpty<ParseError>> for ParseErrors {
+    fn as_mut(&mut self) -> &mut NonEmpty<ParseError> {
         &mut self.0
     }
 }
 
-impl AsRef<[ParseError]> for ParseErrors {
-    fn as_ref(&self) -> &[ParseError] {
-        self.0.as_ref()
-    }
-}
-
-impl AsMut<[ParseError]> for ParseErrors {
-    fn as_mut(&mut self) -> &mut [ParseError] {
-        self.0.as_mut()
-    }
-}
-
 impl Deref for ParseErrors {
-    type Target = Vec<ParseError>;
+    type Target = NonEmpty<ParseError>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -803,14 +815,24 @@ impl<T: Into<ParseError>> From<T> for ParseErrors {
 }
 
 impl From<Vec<ParseError>> for ParseErrors {
+    /// Convert a `Vec<ParseError> to a `ParseErrors`, inserting the `Unknown`
+    /// error if necessary.
     fn from(errs: Vec<ParseError>) -> Self {
-        ParseErrors(errs)
+        ParseErrors::from_iter(errs).unwrap_or_else(|| {
+            ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+                ToASTErrorKind::Unknown,
+                Loc::new(0, Arc::from("")),
+            )))
+        })
     }
 }
 
-impl<T: Into<ParseError>> FromIterator<T> for ParseErrors {
-    fn from_iter<I: IntoIterator<Item = T>>(errs: I) -> Self {
-        ParseErrors(errs.into_iter().map(Into::into).collect())
+impl From<Vec<ToASTError>> for ParseErrors {
+    fn from(errs: Vec<ToASTError>) -> Self {
+        errs.into_iter()
+            .map(Into::into)
+            .collect::<Vec<ParseError>>()
+            .into()
     }
 }
 
@@ -822,7 +844,7 @@ impl<T: Into<ParseError>> Extend<T> for ParseErrors {
 
 impl IntoIterator for ParseErrors {
     type Item = ParseError;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = iter::Chain<iter::Once<Self::Item>, std::vec::IntoIter<Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -831,18 +853,9 @@ impl IntoIterator for ParseErrors {
 
 impl<'a> IntoIterator for &'a ParseErrors {
     type Item = &'a ParseError;
-    type IntoIter = std::slice::Iter<'a, ParseError>;
+    type IntoIter = iter::Chain<iter::Once<Self::Item>, std::slice::Iter<'a, ParseError>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a mut ParseErrors {
-    type Item = &'a mut ParseError;
-    type IntoIter = std::slice::IterMut<'a, ParseError>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter_mut()
+        iter::once(&self.head).chain(self.tail.iter())
     }
 }

@@ -50,21 +50,22 @@ fn parse_collect_errors<'a, P, T>(
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &Arc::from(text), text);
 
-    let mut errors: err::ParseErrors = errs
+    let errors = errs
         .into_iter()
         .map(err::ToCSTError::from_raw_err_recovery)
-        .collect();
+        .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(err::ToCSTError::from_raw_parse_err(e));
-            return Err(errors);
+            return Err(err::ParseErrors::new(
+                err::ToCSTError::from_raw_parse_err(e).into(),
+                errors,
+            ));
         }
     };
-    if errors.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(errors)
+    match err::ParseErrors::from_iter(errors) {
+        Some(errors) => Err(errors),
+        None => Ok(parsed),
     }
 }
 

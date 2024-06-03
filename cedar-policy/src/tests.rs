@@ -24,7 +24,6 @@ use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{self};
-use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
 use miette::Report;
 use std::collections::{HashMap, HashSet};
@@ -169,7 +168,7 @@ permit(principal ==  A :: B
         let src = "I'm an invalid name";
         let result = EntityTypeName::from_str(src);
 
-        assert_matches!(result, Err(ParseErrors(_)));
+        assert_matches!(result, Err(_));
         let error = result.err().unwrap();
         expect_err(
             src,
