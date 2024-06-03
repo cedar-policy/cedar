@@ -1718,11 +1718,6 @@ impl PolicyID {
     pub fn from_smolstr(id: SmolStr) -> Self {
         Self(id)
     }
-
-    /// Get the underlying `SmolStr`
-    pub fn into_smolstr(self) -> SmolStr {
-        self.0
-    }
 }
 
 impl std::fmt::Display for PolicyID {

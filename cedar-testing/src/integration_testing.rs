@@ -33,7 +33,6 @@ use std::{
     collections::HashSet,
     env,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
 /// JSON representation of our integration test file format
@@ -323,12 +322,7 @@ pub fn perform_integration_test(
             &json_request.description
         );
         // check reason
-        let reason: HashSet<PolicyId> = response
-            .response
-            .diagnostics()
-            .reason()
-            .map(|id| PolicyId::from_str(id).unwrap())
-            .collect();
+        let reason: HashSet<PolicyId> = response.response.diagnostics().reason().cloned().collect();
         assert_eq!(
             reason,
             json_request.reason.into_iter().collect(),
@@ -345,7 +339,7 @@ pub fn perform_integration_test(
                 .response
                 .diagnostics()
                 .errors()
-                .map(|err| PolicyId::from_str(&err.policy_id).unwrap())
+                .map(|err| err.policy_id.clone())
                 .collect();
             assert_eq!(
                 errors,

@@ -325,11 +325,6 @@ impl PolicyId {
     pub fn new(id: impl AsRef<str>) -> Self {
         Self(ast::PolicyID::from_string(id.as_ref()))
     }
-
-    /// Get the underlying `SmolStr`
-    pub(crate) fn into_smolstr(self) -> SmolStr {
-        self.0.into_smolstr()
-    }
 }
 
 impl FromStr for PolicyId {

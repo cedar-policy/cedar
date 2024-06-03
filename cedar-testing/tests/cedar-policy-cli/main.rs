@@ -145,7 +145,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             entity_args.push("--action".to_string());
             entity_args.push(value_to_euid_string(s.into()).unwrap());
         }
-        if !json_request.enable_request_validation {
+        if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
         }
 

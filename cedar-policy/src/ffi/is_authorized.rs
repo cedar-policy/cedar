@@ -17,7 +17,7 @@
 //! This module contains the `is_authorized` entry points that other language
 //! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::*;
+use super::utils::{DetailedError, JsonValueWithNoDuplicateKeys, PolicySet, Schema, WithWarnings};
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     Request, SlotId,
@@ -26,7 +26,6 @@ use itertools::Itertools;
 use miette::{miette, Diagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, MapPreventDuplicates};
-use smol_str::ToSmolStr;
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
@@ -253,7 +252,7 @@ impl From<crate::AuthorizationError> for AuthorizationError {
     fn from(e: crate::AuthorizationError) -> Self {
         match e {
             crate::AuthorizationError::PolicyEvaluationError(e) => {
-                Self::new(e.id().to_smolstr(), e.into_inner())
+                Self::new(e.id().clone(), e.into_inner())
             }
         }
     }
@@ -624,7 +623,7 @@ impl AuthorizationCall {
             b = b.resource(resource);
         }
         b = b.context(context);
-        let request = if self.enable_request_validation {
+        let request = if self.validate_request {
             match schema.as_ref() {
                 Some(schema_ref) => match b.schema(schema_ref).build() {
                     Ok(req) => Some(req),
@@ -1856,7 +1855,7 @@ mod test {
             "schema": {
                 "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
             },
-            "enableRequestValidation": false,
+            "validateRequest": false,
         });
 
         assert_is_authorized_json(good_call);
@@ -1905,12 +1904,12 @@ mod partial_test {
             assert_eq!(response.decision(), None);
             let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
-            let actual_residuals: HashSet<&str> = response.nontrivial_residual_ids().map(|id| id.as_str()).collect();
+            let actual_residuals: HashSet<_> = response.nontrivial_residual_ids().collect();
             for id in &expected_residuals {
-                assert!(actual_residuals.contains(id), "expected nontrivial residual for {id}, but it's missing")
+                assert!(actual_residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected nontrivial residual for {id}, but it's missing")
             }
             for id in &actual_residuals {
-                assert!(expected_residuals.contains(id), "found unexpected nontrivial residual for {id}")
+                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}")
             }
         });
     }
