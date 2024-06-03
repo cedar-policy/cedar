@@ -26,7 +26,7 @@ use itertools::Itertools;
 use miette::{miette, Diagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, MapPreventDuplicates};
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::ToSmolStr;
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
@@ -156,7 +156,7 @@ pub struct Diagnostics {
     /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
     #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
-    reason: HashSet<SmolStr>,
+    reason: HashSet<PolicyId>,
     /// Set of errors that occurred
     errors: HashSet<AuthorizationError>,
 }
@@ -165,7 +165,7 @@ impl Response {
     /// Construct a `Response`
     pub fn new(
         decision: Decision,
-        reason: HashSet<SmolStr>,
+        reason: HashSet<PolicyId>,
         errors: HashSet<AuthorizationError>,
     ) -> Self {
         Self {
@@ -190,7 +190,7 @@ impl From<crate::Response> for Response {
         let (reason, errors) = response.diagnostics.into_components();
         Self::new(
             response.decision,
-            reason.map(PolicyId::into_smolstr).collect(),
+            reason.collect(),
             errors.map(Into::into).collect(),
         )
     }
@@ -207,7 +207,7 @@ impl TryFrom<crate::PartialResponse> for Response {
 
 impl Diagnostics {
     /// Get the policies that contributed to the decision
-    pub fn reason(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
         self.reason.iter()
     }
 
@@ -224,7 +224,7 @@ impl Diagnostics {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
-    pub policy_id: SmolStr,
+    pub policy_id: PolicyId,
     /// Error (or warning).
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
@@ -234,14 +234,14 @@ pub struct AuthorizationError {
 impl AuthorizationError {
     /// Create an `AuthorizationError` from a policy ID and any `miette` error
     pub fn new(
-        policy_id: impl Into<SmolStr>,
+        policy_id: impl Into<PolicyId>,
         error: impl miette::Diagnostic + Send + Sync + 'static,
     ) -> Self {
         Self::new_from_report(policy_id, miette::Report::new(error))
     }
 
     /// Create an `AuthorizationError` from a policy ID and a `miette::Report`
-    pub fn new_from_report(policy_id: impl Into<SmolStr>, report: miette::Report) -> Self {
+    pub fn new_from_report(policy_id: impl Into<PolicyId>, report: miette::Report) -> Self {
         Self {
             policy_id: policy_id.into(),
             error: report.into(),
@@ -275,12 +275,12 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[serde(rename_all = "camelCase")]
 pub struct ResidualResponse {
     decision: Option<Decision>,
-    satisfied: HashSet<SmolStr>,
-    errored: HashSet<SmolStr>,
-    may_be_determining: HashSet<SmolStr>,
-    must_be_determining: HashSet<SmolStr>,
-    residuals: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
-    nontrivial_residuals: HashSet<SmolStr>,
+    satisfied: HashSet<PolicyId>,
+    errored: HashSet<PolicyId>,
+    may_be_determining: HashSet<PolicyId>,
+    must_be_determining: HashSet<PolicyId>,
+    residuals: HashMap<PolicyId, JsonValueWithNoDuplicateKeys>,
+    nontrivial_residuals: HashSet<PolicyId>,
 }
 
 #[cfg(feature = "partial-eval")]
@@ -291,22 +291,22 @@ impl ResidualResponse {
     }
 
     /// Set of all satisfied policy Ids
-    pub fn satisfied(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn satisfied(&self) -> impl Iterator<Item = &PolicyId> {
         self.satisfied.iter()
     }
 
     /// Set of all policy ids for policies that errored
-    pub fn errored(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn errored(&self) -> impl Iterator<Item = &PolicyId> {
         self.errored.iter()
     }
 
     /// Over approximation of policies that determine the auth decision
-    pub fn may_be_determining(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
         self.may_be_determining.iter()
     }
 
     /// Under approximation of policies that determine the auth decision
-    pub fn must_be_determining(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn must_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
         self.must_be_determining.iter()
     }
 
@@ -321,7 +321,7 @@ impl ResidualResponse {
     }
 
     /// Get the residual policy for a specified id if it exists
-    pub fn residual(&self, p: &SmolStr) -> Option<&JsonValueWithNoDuplicateKeys> {
+    pub fn residual(&self, p: &PolicyId) -> Option<&JsonValueWithNoDuplicateKeys> {
         self.residuals.get(p)
     }
 
@@ -337,7 +337,7 @@ impl ResidualResponse {
     }
 
     ///  Iterator over the set of non-trivial residual policy ids
-    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &SmolStr> {
+    pub fn nontrivial_residual_ids(&self) -> impl Iterator<Item = &PolicyId> {
         self.nontrivial_residuals.iter()
     }
 }
@@ -351,27 +351,24 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
             decision: partial_response.decision(),
             satisfied: partial_response
                 .definitely_satisfied()
-                .map(|p| p.id().to_smolstr())
+                .map(|p| p.id().clone())
                 .collect(),
-            errored: partial_response
-                .definitely_errored()
-                .map(ToSmolStr::to_smolstr)
-                .collect(),
+            errored: partial_response.definitely_errored().cloned().collect(),
             may_be_determining: partial_response
                 .may_be_determining()
-                .map(|p| p.id().to_smolstr())
+                .map(|p| p.id().clone())
                 .collect(),
             must_be_determining: partial_response
                 .must_be_determining()
-                .map(|p| p.id().to_smolstr())
+                .map(|p| p.id().clone())
                 .collect(),
             nontrivial_residuals: partial_response
                 .nontrivial_residuals()
-                .map(|p| p.id().to_smolstr())
+                .map(|p| p.id().clone())
                 .collect(),
             residuals: partial_response
                 .all_residuals()
-                .map(|e| e.to_json().map(|json| (e.id().to_smolstr(), json.into())))
+                .map(|e| e.to_json().map(|json| (e.id().clone(), json.into())))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -469,7 +466,7 @@ pub struct AuthorizationCall {
     /// parsing of `context`, and not for request validation.
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
-    enable_request_validation: bool,
+    validate_request: bool,
     /// The slice containing entities and policies
     slice: RecvdSlice,
 }
@@ -558,7 +555,7 @@ impl AuthorizationCall {
             action,
             resource,
             context,
-            if self.enable_request_validation {
+            if self.validate_request {
                 schema.as_ref()
             } else {
                 None

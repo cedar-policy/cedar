@@ -18,9 +18,8 @@
 //! call
 #![allow(clippy::module_name_repetitions)]
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
-use crate::{ValidationMode, Validator};
+use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
-use smol_str::{SmolStr, ToSmolStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -50,13 +49,13 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .into_errors_and_warnings();
             let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.policy_id().to_smolstr(),
+                    policy_id: *error.policy_id(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
             let validation_warnings: Vec<ValidationError> = validation_warnings
                 .map(|error| ValidationError {
-                    policy_id: error.policy_id().to_smolstr(),
+                    policy_id: *error.policy_id(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
@@ -169,7 +168,7 @@ impl Default for ValidationSettings {
 #[serde(rename_all = "camelCase")]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
-    pub policy_id: SmolStr,
+    pub policy_id: PolicyId,
     /// Error (or warning) itself.
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
