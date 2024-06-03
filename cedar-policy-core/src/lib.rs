@@ -17,6 +17,7 @@
 //! Implementation of the Cedar parser and evaluation engine in Rust.
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
+#![allow(clippy::result_large_err)] // see #878
 
 #[macro_use]
 extern crate lalrpop_util;
@@ -26,6 +27,8 @@ pub mod authorizer;
 mod from_normalized_str;
 pub use from_normalized_str::*;
 pub mod entities;
+#[macro_use]
+mod error_macros;
 pub mod est;
 pub mod evaluator;
 pub mod extensions;

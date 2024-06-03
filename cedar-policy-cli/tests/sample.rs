@@ -483,7 +483,7 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
         schema_format: SchemaFormat::Json,
     };
     let output = validate(&cmd);
@@ -501,7 +501,7 @@ fn run_validate_test(
             template_linked_file: None,
         },
         deny_warnings: false,
-        partial_validate: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
         schema_format: SchemaFormat::Human,
     };
     let output = validate(&cmd);
@@ -1020,4 +1020,38 @@ fn test_require_policies_for_write() {
         .stderr(predicates::str::contains(
             "the following required arguments were not provided:\n  --policies <FILE>",
         ));
+}
+
+#[test]
+fn test_json_policy() {
+    let json_policies: &str = "sample-data/tiny_sandboxes/json_policy/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json_policy/entity.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policies)
+        .assert()
+        .code(0);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("authorize")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .assert()
+        .code(0);
 }

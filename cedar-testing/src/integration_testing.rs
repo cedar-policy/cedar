@@ -16,20 +16,16 @@
 
 //! Helper code to run Cedar integration tests
 
-// This is test code that is under `src/` only so that it can be shared between
-// packages, so it's appropriate to exclude it from coverage.
-//
-// GRCOV_STOP_COVERAGE
-
 // PANIC SAFETY: This module is used only for testing.
 #![allow(clippy::unwrap_used)]
 // PANIC SAFETY: This module is used only for testing.
 #![allow(clippy::expect_used)]
 
 use crate::cedar_test_impl::*;
-use cedar_policy::{extensions::Extensions, Decision, PolicyId, ValidationMode};
+use cedar_policy::{Decision, PolicyId, ValidationMode};
 use cedar_policy_core::ast::{Eid, EntityUID, PolicySet, Request};
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
+use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
 use cedar_policy_validator::ValidatorSchema;
 use serde::{Deserialize, Serialize};

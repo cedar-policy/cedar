@@ -1,0 +1,10 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/action_in_set.cedar
+---
+permit (
+  principal in UserGroup::"abc",
+  action in [Action::"viewPhoto", Action::"viewComments"],
+  resource in Album::"one"
+);

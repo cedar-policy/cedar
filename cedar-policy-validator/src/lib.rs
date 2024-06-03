@@ -16,6 +16,7 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
+#![allow(clippy::result_large_err)] // see #878
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
@@ -25,12 +26,12 @@ mod err;
 pub use err::*;
 mod coreschema;
 pub use coreschema::*;
+mod diagnostics;
+pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
 mod fuzzy_match;
-mod validation_result;
-pub use validation_result::*;
 mod rbac;
 mod schema;
 pub use schema::*;
@@ -38,8 +39,6 @@ mod schema_file_format;
 pub use schema_file_format::*;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
-mod type_error;
-pub use type_error::*;
 pub mod human_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
@@ -165,8 +164,7 @@ impl Validator {
         // `Policy::resource_constraint()` return a copy of the constraint with
         // the slot filled by the appropriate value.
         Some(
-            self.validate_entity_types_in_slots(p.env())
-                .map(move |note| ValidationError::with_policy_id(p.id().clone(), None, note))
+            self.validate_entity_types_in_slots(p.id(), p.env())
                 .chain(self.validate_linked_action_application(p)),
         )
     }
@@ -184,35 +182,28 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let typecheck = Typechecker::new(&self.schema, mode);
+        let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
         let mut type_errors = HashSet::new();
         let mut warnings = HashSet::new();
         typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
-        (
-            type_errors.into_iter().map(|type_error| {
-                let (kind, location) = type_error.kind_and_location();
-                ValidationError::with_policy_id(
-                    t.id().clone(),
-                    location,
-                    ValidationErrorKind::type_error(kind),
-                )
-            }),
-            warnings.into_iter(),
-        )
+        (type_errors.into_iter(), warnings.into_iter())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, Expr},
-        parser,
+        ast::{self, Expr, PolicyID},
+        parser::{self, Loc},
     };
+    use itertools::Itertools;
+
+    use crate::schema_error::Result;
 
     #[test]
     fn top_level_validate() -> Result<()> {
@@ -266,42 +257,38 @@ mod test {
             .expect("Policy already present in PolicySet");
 
         let result = validator.validate(&set, ValidationMode::default());
-        let principal_err = ValidationError::with_policy_id(
-            policy_b.id().clone(),
-            None,
-            ValidationErrorKind::unrecognized_entity_type(
-                "foo_tye".to_string(),
-                Some("foo_type".to_string()),
-            ),
+        let principal_err = ValidationError::unrecognized_entity_type(
+            Some(Loc::new(20..27, Arc::from(policy_b_src))),
+            PolicyID::from_string("polb"),
+            "foo_tye".to_string(),
+            Some("foo_type".to_string()),
         );
-        let resource_err = ValidationError::with_policy_id(
-            policy_b.id().clone(),
-            None,
-            ValidationErrorKind::unrecognized_entity_type(
-                "br_type".to_string(),
-                Some("bar_type".to_string()),
-            ),
+        let resource_err = ValidationError::unrecognized_entity_type(
+            Some(Loc::new(74..81, Arc::from(policy_b_src))),
+            PolicyID::from_string("polb"),
+            "br_type".to_string(),
+            Some("bar_type".to_string()),
         );
-        let action_err = ValidationError::with_policy_id(
-            policy_a.id().clone(),
-            None,
-            ValidationErrorKind::unrecognized_action_id(
-                "Action::\"actin\"".to_string(),
-                Some("Action::\"action\"".to_string()),
-            ),
+        let action_err = ValidationError::unrecognized_action_id(
+            Some(Loc::new(45..60, Arc::from(policy_a_src))),
+            PolicyID::from_string("pola"),
+            "Action::\"actin\"".to_string(),
+            Some("Action::\"action\"".to_string()),
         );
 
         assert!(!result.validation_passed());
-        assert!(result
-            .validation_errors()
-            .any(|x| x.error_kind() == principal_err.error_kind()));
-        assert!(result
-            .validation_errors()
-            .any(|x| x.error_kind() == resource_err.error_kind()));
-        assert!(result
-            .validation_errors()
-            .any(|x| x.error_kind() == action_err.error_kind()));
-
+        assert!(
+            result.validation_errors().contains(&principal_err),
+            "{result:?}"
+        );
+        assert!(
+            result.validation_errors().contains(&resource_err),
+            "{result:?}"
+        );
+        assert!(
+            result.validation_errors().contains(&action_err),
+            "{result:?}"
+        );
         Ok(())
     }
 
@@ -358,7 +345,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
-        let loc = t.loc().clone();
+        let loc = t.loc().cloned();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 
@@ -407,19 +394,17 @@ mod test {
         let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 2);
-        let id = ast::PolicyID::from_string("link2");
-        let undefined_err = ValidationError::with_policy_id(
-            id.clone(),
+        let undefined_err = ValidationError::unrecognized_entity_type(
             None,
-            ValidationErrorKind::unrecognized_entity_type(
-                "some_namespace::Undefined".to_string(),
-                Some("some_namespace::User".to_string()),
-            ),
+            PolicyID::from_string("link2"),
+            "some_namespace::Undefined".to_string(),
+            Some("some_namespace::User".to_string()),
         );
-        let invalid_action_err = ValidationError::with_policy_id(
-            id,
+        let invalid_action_err = ValidationError::invalid_action_application(
             loc.clone(),
-            ValidationErrorKind::invalid_action_application(false, false),
+            PolicyID::from_string("link2"),
+            false,
+            false,
         );
         assert!(result.validation_errors().any(|x| x == &undefined_err));
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));
@@ -444,15 +429,13 @@ mod test {
         assert!(!result.validation_passed());
         // `result` contains the two prior error messages plus one new one
         assert_eq!(result.validation_errors().count(), 3);
-        let id = ast::PolicyID::from_string("link3");
-        let invalid_action_err = ValidationError::with_policy_id(
-            id,
+        let invalid_action_err = ValidationError::invalid_action_application(
             loc.clone(),
-            ValidationErrorKind::invalid_action_application(false, false),
+            PolicyID::from_string("link3"),
+            false,
+            false,
         );
-        assert!(result
-            .validation_errors()
-            .any(|x| x.error_kind() == invalid_action_err.error_kind()));
+        assert!(result.validation_errors().contains(&invalid_action_err));
 
         Ok(())
     }
@@ -484,36 +467,27 @@ mod test {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let p = parser::parse_policy(
-            None,
-            r#"permit(principal == User::"һenry", action, resource) when {1 > true};"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > true};"#;
+        let p = parser::parse_policy(None, src).unwrap();
         set.add_static(p).unwrap();
 
         let result = validator.validate(&set, ValidationMode::default());
         assert_eq!(
-            result
-                .validation_errors()
-                .map(|err| err.error_kind())
-                .collect::<Vec<_>>(),
-            vec![&ValidationErrorKind::type_error(
-                TypeError::expected_type(
-                    Expr::val(1),
-                    Type::primitive_long(),
-                    Type::singleton_boolean(true),
-                    None,
-                )
-                .kind
+            result.validation_errors().collect::<Vec<_>>(),
+            vec![&ValidationError::expected_type(
+                Expr::val(true),
+                PolicyID::from_string("policy0"),
+                Type::primitive_long(),
+                Type::singleton_boolean(true),
+                None,
             )]
         );
         assert_eq!(
-            result
-                .validation_warnings()
-                .map(|warn| warn.kind())
-                .collect::<Vec<_>>(),
-            vec![&ValidationWarningKind::MixedScriptIdentifier(
-                "һenry".into()
+            result.validation_warnings().collect::<Vec<_>>(),
+            vec![&ValidationWarning::mixed_script_identifier(
+                None,
+                PolicyID::from_string("policy0"),
+                "һenry"
             )]
         );
     }

@@ -118,7 +118,13 @@ To build, simply run `cargo build` (or `cargo build --release`).
 
 ## What's New
 
-We maintain changelogs for our public-facing crates: [cedar-policy](./cedar-policy/CHANGELOG.md) and [cedar-policy-cli](./cedar-policy-cli/CHANGELOG.md).
+We maintain changelogs for our public-facing crates:
+[cedar-policy](https://github.com/cedar-policy/cedar/blob/main/cedar-policy/CHANGELOG.md) and
+[cedar-policy-cli](https://github.com/cedar-policy/cedar/blob/main/cedar-policy-cli/CHANGELOG.md).
+Changelogs for all release branches and the `main` branch are all maintained on
+the `main` branch of this repository; you can see the most up-to-date changelogs
+by following the links above.
+
 For a list of the current and past releases, see [crates.io](https://crates.io/crates/cedar-policy) or [Releases](https://github.com/cedar-policy/cedar/releases).
 
 ## Backward Compatibility Considerations

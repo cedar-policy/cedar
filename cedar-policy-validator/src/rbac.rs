@@ -16,9 +16,12 @@
 
 //! Contains the validation logic specific to RBAC policy validation.
 
-use cedar_policy_core::ast::{
-    self, ActionConstraint, EntityReference, EntityUID, Name, Policy, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+use cedar_policy_core::{
+    ast::{
+        self, ActionConstraint, EntityReference, EntityUID, Name, Policy, PolicyID,
+        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+    },
+    parser::Loc,
 };
 
 use std::{collections::HashSet, sync::Arc};
@@ -28,9 +31,7 @@ use crate::{
     ValidationError,
 };
 
-use super::{
-    fuzzy_match::fuzzy_search, schema::*, validation_result::ValidationErrorKind, Validator,
-};
+use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
 
 impl Validator {
     /// Generate `UnrecognizedEntityType` error for every entity type in the
@@ -56,13 +57,11 @@ impl Validator {
                     let actual_entity_type = name.to_string();
                     let suggested_entity_type =
                         fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                    Some(ValidationError::with_policy_id(
-                        template.id().clone(),
+                    Some(ValidationError::unrecognized_entity_type(
                         name.loc().cloned(),
-                        ValidationErrorKind::unrecognized_entity_type(
-                            actual_entity_type,
-                            suggested_entity_type,
-                        ),
+                        template.id().clone(),
+                        actual_entity_type,
+                        suggested_entity_type,
                     ))
                 } else {
                     None
@@ -72,10 +71,10 @@ impl Validator {
                 let entity_type = euid.entity_type();
                 match entity_type {
                     cedar_policy_core::ast::EntityType::Unspecified => {
-                        Some(ValidationError::with_policy_id(
-                            template.id().clone(),
+                        Some(ValidationError::unspecified_entity(
                             euid.loc().cloned(),
-                            ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
+                            template.id().clone(),
+                            euid.eid().clone(),
                         ))
                     }
                     cedar_policy_core::ast::EntityType::Specified(_) => None,
@@ -100,15 +99,19 @@ impl Validator {
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             match entity_type {
-                ast::EntityType::Unspecified => Some(ValidationErrorKind::unspecified_entity(
-                    euid.eid().to_string(),
+                ast::EntityType::Unspecified => Some(ValidationError::unspecified_entity(
+                    euid.loc().cloned(),
+                    template.id().clone(),
+                    euid.eid().clone(),
                 )),
                 ast::EntityType::Specified(name) => {
                     let is_known_action_entity_id = self.schema.is_known_action_id(euid);
                     let is_action_entity_type = is_action_entity_type(name);
 
                     if is_action_entity_type && !is_known_action_entity_id {
-                        Some(ValidationErrorKind::unrecognized_action_id(
+                        Some(ValidationError::unrecognized_action_id(
+                            euid.loc().cloned(),
+                            template.id().clone(),
                             euid.to_string(),
                             fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
                         ))
@@ -117,19 +120,17 @@ impl Validator {
                     }
                 }
             }
-            .map(|kind| {
-                ValidationError::with_policy_id(template.id().clone(), euid.loc().cloned(), kind)
-            })
         })
     }
 
-    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntityError` error for
+    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntity` error for
     /// every entity type in the slot environment that is either not in the schema,
     /// or unspecified.
     pub(crate) fn validate_entity_types_in_slots<'a>(
         &'a self,
+        policy_id: &'a PolicyID,
         slots: &'a SlotEnv,
-    ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
+    ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
         let known_entity_types = self
@@ -141,15 +142,21 @@ impl Validator {
         slots.values().filter_map(move |euid| {
             let entity_type = euid.entity_type();
             match entity_type {
-                cedar_policy_core::ast::EntityType::Unspecified => Some(
-                    ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
-                ),
+                cedar_policy_core::ast::EntityType::Unspecified => {
+                    Some(ValidationError::unspecified_entity(
+                        None,
+                        policy_id.clone(),
+                        euid.eid().clone(),
+                    ))
+                }
                 cedar_policy_core::ast::EntityType::Specified(name) => {
                     if !self.schema.is_known_entity_type(name) {
                         let actual_entity_type = entity_type.to_string();
                         let suggested_entity_type =
                             fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                        Some(ValidationErrorKind::unrecognized_entity_type(
+                        Some(ValidationError::unrecognized_entity_type(
+                            None,
+                            policy_id.clone(),
                             actual_entity_type,
                             suggested_entity_type,
                         ))
@@ -271,11 +278,12 @@ impl Validator {
         p: &'a Policy,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         self.validate_action_application(
+            p.loc(),
+            p.id(),
             &p.principal_constraint(),
             p.action_constraint(),
             &p.resource_constraint(),
         )
-        .map(move |e| ValidationError::with_policy_id(p.id().clone(), p.loc().clone(), e))
     }
 
     pub(crate) fn validate_template_action_application<'a>(
@@ -283,11 +291,12 @@ impl Validator {
         t: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         self.validate_action_application(
+            t.loc(),
+            t.id(),
             t.principal_constraint(),
             t.action_constraint(),
             t.resource_constraint(),
         )
-        .map(|e| ValidationError::with_policy_id(t.id().clone(), t.loc().clone(), e))
     }
 
     // Check that there exists a (action id, principal type, resource type)
@@ -296,10 +305,12 @@ impl Validator {
     // (rather than a template) to facilitate code reuse.
     fn validate_action_application(
         &self,
+        source_loc: Option<&Loc>,
+        policy_id: &PolicyID,
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
         resource_constraint: &ResourceConstraint,
-    ) -> impl Iterator<Item = ValidationErrorKind> {
+    ) -> impl Iterator<Item = ValidationError> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
         let resources_for_scope: HashSet<&Name> = self
             .get_resources_satisfying_constraint(resource_constraint)
@@ -313,7 +324,9 @@ impl Validator {
         let would_in_fix_resource =
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
-        Some(ValidationErrorKind::invalid_action_application(
+        Some(ValidationError::invalid_action_application(
+            source_loc.cloned(),
+            policy_id.clone(),
             would_in_fix_principal,
             would_in_fix_resource,
         ))
@@ -469,10 +482,10 @@ mod test {
 
     use super::*;
     use crate::{
-        err::*,
+        err::schema_error::*,
         schema_file_format::{NamespaceDefinition, *},
-        UnrecognizedEntityType, UnspecifiedEntityError, ValidationMode, ValidationWarningKind,
-        Validator,
+        validation_errors::{UnrecognizedEntityType, UnspecifiedEntity},
+        ValidationMode, ValidationWarning, Validator,
     };
 
     use cool_asserts::assert_matches;
@@ -486,9 +499,11 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `foo_type`")
-                .exactly_one_underline("foo_type")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `foo_type`",
+            )
+            .exactly_one_underline("foo_type")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -533,7 +548,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .help("try replacing `==` with `in` in the principal clause and the resource clause")
             .exactly_one_underline(src)
@@ -600,10 +615,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `bar_type`")
-                .exactly_one_underline("bar_type")
-                .help("did you mean `foo_type`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `bar_type`",
+            )
+            .exactly_one_underline("bar_type")
+            .help("did you mean `foo_type`?")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -619,9 +636,11 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"foo_name"`"#)
-                .exactly_one_underline(r#"Action::"foo_name""#)
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"foo_name"`"#,
+            )
+            .exactly_one_underline(r#"Action::"foo_name""#)
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -734,14 +753,16 @@ mod test {
         let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
         let validator = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> =
-            validator.validate_entity_types_in_slots(&env).collect();
+        let notes: Vec<ValidationError> = validator
+            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env)
+            .collect();
 
         assert_eq!(1, notes.len());
         match notes.first() {
-            Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
+            Some(ValidationError::UnrecognizedEntityType(UnrecognizedEntityType {
                 actual_entity_type,
                 suggested_entity_type,
+                ..
             })) => {
                 assert_eq!("Undefined", actual_entity_type);
                 assert_eq!(
@@ -779,10 +800,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error(r#"unrecognized action `Action::"bar_name"`"#)
-                .exactly_one_underline(r#"Action::"bar_name""#)
-                .help(r#"did you mean `Action::"foo_name"`?"#)
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"bar_name"`"#,
+            )
+            .exactly_one_underline(r#"Action::"bar_name""#)
+            .help(r#"did you mean `Action::"foo_name"`?"#)
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
         Ok(())
@@ -816,10 +839,7 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate
-            .validate_action_ids(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
-            .collect();
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
     }
@@ -846,7 +866,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unrecognized action `Bogus::Action::"foo_name"`"#,
+                r#"for policy `policy0`, unrecognized action `Bogus::Action::"foo_name"`"#,
             )
             .exactly_one_underline(r#"Bogus::Action::"foo_name""#)
             .help(r#"did you mean `NS::Action::"foo_name"`?"#)
@@ -887,10 +907,7 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validate
-            .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
-            .collect();
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
 
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
         Ok(())
@@ -917,10 +934,12 @@ mod test {
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `Bogus::Foo`")
-                .exactly_one_underline("Bogus::Foo")
-                .help("did you mean `NS::Foo`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `Bogus::Foo`",
+            )
+            .exactly_one_underline("Bogus::Foo")
+            .help("did you mean `NS::Foo`?")
+            .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
 
@@ -1115,14 +1134,13 @@ mod test {
     fn assert_validate_policy_fails(
         validator: &Validator,
         policy: &Template,
-        expected: Vec<ValidationErrorKind>,
+        expected: Vec<ValidationError>,
     ) {
         assert_eq!(
             validator
                 .validate_policy(policy, ValidationMode::default())
                 .0
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
+                .collect::<Vec<ValidationError>>(),
             expected,
             "Unexpected validation errors."
         );
@@ -1134,9 +1152,11 @@ mod test {
             validator
                 .validate_policy(policy, ValidationMode::default())
                 .1
-                .map(|w| { w.to_kind_and_location().1 })
-                .collect::<Vec<ValidationWarningKind>>(),
-            vec![ValidationWarningKind::ImpossiblePolicy],
+                .collect::<Vec<ValidationWarning>>(),
+            vec![ValidationWarning::impossible_policy(
+                policy.loc().cloned(),
+                policy.id().clone()
+            )],
             "Unexpected validation warnings."
         );
     }
@@ -1177,7 +1197,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1201,7 +1221,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1225,7 +1245,7 @@ mod test {
             src,
             &Report::new(notes.first().unwrap().clone()),
             &ExpectedErrorMessageBuilder::error(
-                r#"unable to find an applicable action given the policy scope constraints"#,
+                r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
@@ -1256,47 +1276,62 @@ mod test {
     fn validate_principal_is_err() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
-        let policy =
-            parse_policy_template(None, "permit(principal is baz, action, resource);").unwrap();
+        let src = "permit(principal is baz, action, resource);";
+        let policy = parse_policy_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
+            vec![ValidationError::invalid_action_application(
+                Some(Loc::new(0..43, Arc::from(src))),
+                PolicyID::from_string("policy0"),
+                false,
+                false,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
-            None,
-            r#"permit(principal is biz in faz::"a", action, resource);"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal is biz in faz::"a", action, resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
 
         assert_validate_policy_fails(
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
-                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationError::unrecognized_entity_type(
+                    Some(Loc::new(27..30, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    "faz".into(),
+                    Some("baz".into()),
+                ),
+                ValidationError::unrecognized_entity_type(
+                    Some(Loc::new(20..23, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    "biz".into(),
+                    Some("baz".into()),
+                ),
+                ValidationError::invalid_action_application(
+                    Some(Loc::new(0..55, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    false,
+                    false,
+                ),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
-            None,
-            r#"permit(principal is bar in baz::"buz", action, resource);"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal is bar in baz::"buz", action, resource);"#;
+        let policy = parse_policy_template(None, src).unwrap();
 
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
+            vec![ValidationError::invalid_action_application(
+                Some(Loc::new(0..57, Arc::from(src))),
+                PolicyID::from_string("policy0"),
+                false,
+                false,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1325,47 +1360,62 @@ mod test {
     fn validate_resource_is_err() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
-        let policy =
-            parse_policy_template(None, "permit(principal, action, resource is bar);").unwrap();
+        let src = "permit(principal, action, resource is bar);";
+        let policy = parse_policy_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
+            vec![ValidationError::invalid_action_application(
+                Some(Loc::new(0..43, Arc::from(src))),
+                PolicyID::from_string("policy0"),
+                false,
+                false,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
-            None,
-            r#"permit(principal, action, resource is baz in bar::"buz");"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal, action, resource is baz in bar::"buz");"#;
+        let policy = parse_policy_template(None, src).unwrap();
 
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationErrorKind::invalid_action_application(
-                false, false,
+            vec![ValidationError::invalid_action_application(
+                Some(Loc::new(0..57, Arc::from(src))),
+                PolicyID::from_string("policy0"),
+                false,
+                false,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
-            None,
-            r#"permit(principal, action, resource is biz in faz::"a");"#,
-        )
-        .unwrap();
+        let src = r#"permit(principal, action, resource is biz in faz::"a");"#;
+        let policy = parse_policy_template(None, src).unwrap();
 
         assert_validate_policy_fails(
             &validator,
             &policy,
             vec![
-                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
-                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationError::unrecognized_entity_type(
+                    Some(Loc::new(45..48, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    "faz".into(),
+                    Some("baz".into()),
+                ),
+                ValidationError::unrecognized_entity_type(
+                    Some(Loc::new(38..41, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    "biz".into(),
+                    Some("baz".into()),
+                ),
+                ValidationError::invalid_action_application(
+                    Some(Loc::new(0..55, Arc::from(src))),
+                    PolicyID::from_string("policy0"),
+                    false,
+                    false,
+                ),
             ],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1386,10 +1436,12 @@ mod test {
         expect_err(
             src,
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error("unrecognized entity type `biz`")
-                .exactly_one_underline("biz")
-                .help("did you mean `baz`?")
-                .build(),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, unrecognized entity type `biz`",
+            )
+            .exactly_one_underline("biz")
+            .help("did you mean `baz`?")
+            .build(),
         );
 
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1516,14 +1568,12 @@ mod test {
             ResourceConstraint::is_eq(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate
-            .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
-            .collect();
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
-                assert_eq!("foo", entity_id);
+            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 
@@ -1538,14 +1588,12 @@ mod test {
             ResourceConstraint::any(),
             Expr::val(true),
         );
-        let notes: Vec<ValidationErrorKind> = validate
-            .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
-            .collect();
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
-                assert_eq!("foo", entity_id);
+            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 
@@ -1570,16 +1618,14 @@ mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             ),
         );
-        let notes: Vec<ValidationErrorKind> = validate
-            .validate_entity_types(&policy)
-            .map(|e| e.into_location_and_error_kind().1)
-            .collect();
+        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
 
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
         assert_matches!(notes.first(),
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
-                assert_eq!("foo", entity_id);
+            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
+                let eid: &str = entity_id.as_ref();
+                assert_eq!("foo", eid);
             }
         );
 

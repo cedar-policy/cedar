@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
+use std::collections::BTreeMap;
+
 use miette::{miette, Result, WrapErr};
 
-use cedar_policy_core::ast::{PolicySet, Template};
+use cedar_policy_core::ast::PolicySet;
 use cedar_policy_core::parser::parse_policyset;
-use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
+use cedar_policy_core::parser::text_to_cst::parse_policies;
+use smol_str::ToSmolStr;
 
 use crate::token::get_comment;
 
@@ -40,17 +43,31 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<St
 }
 
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
-    let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
+    let formatted_ast =
+        parse_policyset(ps).wrap_err(format!("formatter produced an invalid policy set:\n{ps}"))?;
     let (formatted_policies, policies) = (
-        formatted_ast.templates().collect::<Vec<&Template>>(),
-        ast.templates().collect::<Vec<&Template>>(),
+        formatted_ast
+            .policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
+        ast.policies()
+            .map(|p| (p.id().to_smolstr(), p))
+            .collect::<BTreeMap<_, _>>(),
     );
 
     if formatted_policies.len() != policies.len() {
-        return Err(miette!("missing formatted policies"));
+        return Err(miette!(
+            "formatter changed the number of policies from {} to {}",
+            policies.len(),
+            formatted_policies.len()
+        ));
     }
-
-    for (f_p, p) in formatted_policies.into_iter().zip(policies.into_iter()) {
+    for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies.into_iter()) {
+        if f_p_id != p_id {
+            return Err(miette!(
+                "formatter changed the policy id from {p_id} to {f_p_id}"
+            ));
+        }
         let (f_anno, anno) = (
             f_p.annotations()
                 .map(|(k, v)| (k, &v.val))
@@ -59,8 +76,12 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .map(|(k, v)| (k, &v.val))
                 .collect::<std::collections::BTreeMap<_, _>>(),
         );
-        if !(f_anno == anno
-            && f_p.effect() == p.effect()
+        if f_anno != anno {
+            return Err(miette!(
+                "formatter changed the annotations from {anno:?} to {f_anno:?}"
+            ));
+        }
+        if !(f_p.effect() == p.effect()
             && f_p.principal_constraint() == p.principal_constraint()
             && f_p.action_constraint() == p.action_constraint()
             && f_p.resource_constraint() == p.resource_constraint()
@@ -69,7 +90,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .eq_shape(p.non_scope_constraints()))
         {
             return Err(miette!(
-                "policies differ in meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
+                "formatter changed the policy structure:\noriginal:\n{p}\nformatted:\n{f_p}"
             ));
         }
     }
@@ -78,10 +99,8 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     let cst = parse_policies(ps).wrap_err("cannot parse input policies to CSTs")?;
-    let mut errs = ParseErrors::new();
     let ast = cst
-        .to_policyset(&mut errs)
-        .ok_or(errs)
+        .to_policyset()
         .wrap_err("cannot parse input policies to ASTs")?;
     let tokens = get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
     let end_comment_str = ps
@@ -99,7 +118,7 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .ok_or(miette!("fail to get input policy CST"))?
         .0
         .iter()
-        .map(|p| Ok(remove_empty_lines(tree_to_pretty(p, &mut context)?.trim())))
+        .map(|p| Ok(remove_empty_lines(&tree_to_pretty(p, &mut context)?)))
         .collect::<Result<Vec<String>>>()?
         .join("\n\n");
     // handle comment at the end of a policyset
@@ -124,75 +143,102 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         }
     };
     // add soundness check to make sure formatting doesn't alter policy ASTs
-    soundness_check(&formatted_policies, &ast)?;
+    soundness_check(&formatted_policies, &ast).wrap_err(
+        "internal error: please file an issue at <https://github.com/cedar-policy/cedar/issues>",
+    )?;
     Ok(formatted_policies)
 }
 
 #[cfg(test)]
 mod tests {
+    use insta::{assert_snapshot, glob, with_settings};
+    use std::fs;
+
     use super::*;
-    const TEST_CONFIG: &Config = &Config {
-        line_width: 40,
-        indent_width: 2,
-    };
 
     #[test]
-    fn trivial_permit() {
-        let policy = r#"permit (principal, action, resource);"#;
-        assert_eq!(policies_str_to_pretty(policy, TEST_CONFIG).unwrap(), policy);
-    }
+    fn test_soundness_check() {
+        let p1 = r#"permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"permit (principal, action, resource)
+        when { "
+        a
+        " };"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
 
-    #[test]
-    fn trivial_forbid() {
-        let policy = r#"forbid (principal, action, resource);"#;
-        assert_eq!(policies_str_to_pretty(policy, TEST_CONFIG).unwrap(), policy);
-    }
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"};
+        permit (principal, action, resource)
+        when { "
+        
+        a
+        " };"#;
+        let p2 = r#"
+        permit (principal, action, resource)
+        when { "
+        a
+        " };
+        permit (principal, action, resource)
+        when { "a"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_err());
 
-    #[test]
-    fn action_in_set() {
-        let policy = r#"permit (
-        principal in UserGroup::"abc",
-        action in [Action::"viewPhoto", Action::"viewComments"],
-        resource in Album::"one"
-      );"#;
-        assert_eq!(
-            policies_str_to_pretty(policy, TEST_CONFIG).unwrap(),
-            r#"permit (
-  principal in UserGroup::"abc",
-  action in
-    [Action::"viewPhoto",
-     Action::"viewComments"],
-  resource in Album::"one"
-);"#
-        );
+        let p1 = r#"
+        permit (principal, action, resource)
+        when { "a"   };
+        permit (principal, action, resource)
+        when { "b" };"#;
+        let p2 = r#"
+        permit (principal, action, resource)
+        when { "a" };
+        permit (principal, action, resource)
+        when { "b"};"#;
+        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_ok());
     }
 
     #[test]
     fn test_format_files() {
-        use std::fs::read_to_string;
-        use std::path::Path;
-
         let config = Config {
             line_width: 80,
             indent_width: 2,
         };
-        let dir_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        let pairs = vec![
-            ("test.cedar", "test_formatted.cedar"),
-            ("policies.cedar", "policies_formatted.cedar"),
-            ("is_policies.cedar", "is_policies_formatted.cedar"),
-        ];
-        for (pf, ef) in pairs {
-            // editors or cargo run try to append a newline at the end of files
-            // we should remove them for equality testing
-            assert_eq!(
-                policies_str_to_pretty(&read_to_string(dir_path.join(pf)).unwrap(), &config)
-                    .unwrap()
-                    .trim_end_matches('\n'),
-                read_to_string(dir_path.join(ef))
-                    .unwrap()
-                    .trim_end_matches('\n')
-            );
-        }
+
+        // This test uses `insta` to test the current output of the formatter
+        // against the output from prior versions. Run the test as usual with
+        // `cargo test`.
+        //
+        // If it fails, then use `cargo insta review` to review the diff between
+        // the current output and the snapshot. If the change is expected, you
+        // can accept the changes to make `insta` update the snapshot which you
+        // should the commit to the repository.
+        //
+        // Add new tests by placing a `.cedar` file in the test directory. The
+        // next run of `cargo test` will fail. Use `cargo insta review` to check
+        // the formatted output is expected.
+        with_settings!(
+            { snapshot_path => "../../tests/snapshots/" },
+            {
+                glob!("../../tests", "*.cedar", |path| {
+                    let cedar_source = fs::read_to_string(path).unwrap();
+                    let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
+                    assert_snapshot!(formatted);
+                });
+            }
+        );
+
+        // Also check the CLI sample files.
+        with_settings!(
+            { snapshot_path => "../../tests/cli-snapshots/" },
+            {
+                glob!("../../../cedar-policy-cli/sample-data", "**/*.cedar", |path| {
+                    let cedar_source = fs::read_to_string(path).unwrap();
+                    let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
+                    assert_snapshot!(formatted);
+                });
+            }
+        )
     }
 }

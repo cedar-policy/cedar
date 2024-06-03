@@ -8,29 +8,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `wasm` Cargo feature for targeting Wasm
-- Adds an JSON representation for Policy Sets (#783, resolving #549),
-    along with methods like `::from_json_value/file/str` and `::to_json`
-    for `PolicySet`.
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+- Added methods for reading and writing individual `Entity`s as JSON
+  (resolving #807)
 
 ### Changed
 
-- significantly reworked `EntitiesError` to bring into conformance
+- Significantly reworked all public-facing error types to address some issues
+  and improve consistency. See issue #745.
+- Finalized the `ffi` module which was preview-released in 3.2.0.
+  This involved a few additional API breaking changes in `ffi`. See #757.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Overhauled the FFI interface in the `frontend` module, and renamed it to
-  `ffi`; see #757. (#760, #793, #794, #800, #824, #837, more coming)
-- Much richer error information in the FFI interface (#800)
 - Removed unnecessary lifetimes from some validation related structs (#715)
-- Made `is_authorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidationCall`, `ValidationSettings`, `ValidationEnabled`, `ValidationError`, `ValidationWarning`, `ValidationAnswer`. (#737)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
 
 ### Removed
 
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
+- Removed the `error` extension function, which was previously used during partial evaluation.
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
+- Removed the (deprecated) `frontend` module in favor of the new `ffi` module
+  introduced in 3.2.0. See #757.
+- Removed `ParseErrors::errors_as_strings`.  Callers should consider examining
+  the rich data provided by `miette::Diagnostic`, for instance `.help()` and
+  `labels()`. Callers can continue using the same behavior by calling
+  `.iter().map(ToString::to_string)`. (#882, resolving #543)
+- Removed `Display` impl for `EntityId` in favor of explicit `.escaped()` and
+  `.as_ref()` for escaped and unescaped representations (respectively) of the
+  `EntityId`; see note there (#921, resolving #884)
 
-## [3.2.0] - Coming Soon
+### Fixed
+
+- JSON format Cedar schemas will now fail to parse if they reference an unknown
+  extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
+
+## [3.2.1] - 2024-05-31
+
+### Fixed
+
+- Fixed policy formatter dropping newlines in string literals. (#870, #910, resolving #862)
+- Fixed a performance issue when constructing an error for accessing
+  a non-existent attribute on sufficiently large records (#887, resolving #754)
+- Fixed identifier parsing in human-readable schemas (#914, resolving #913)
+- Fixed the typescript generated type for `ffi::AuthorizationCall` to remove
+  unsupported string option (#939)
+- Fixed Wasm build script to be multi-target in JS ecosystem (#933)
+
+## [3.2.0] - 2024-05-17
 
 ### Added
 
@@ -38,6 +66,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `Entities::into_iter` (#713, resolving #680)
 - `Entity::into_inner` (#685, resolving #636)
+- New `ffi` module with an improved FFI interface. This will replace the
+  `frontend` module in the 4.0 release, but is available now for early adopters;
+  the `frontend` module is now deprecated.
+  This should be considered a preview-release of `ffi`; more API breaking
+  changes are anticipated for Cedar 4.0. (#852)
+- `wasm` Cargo feature for targeting Wasm (and the `cedar-wasm` crate was added
+  to this repo).
+  This should be considered a preview-release of `cedar-wasm`; more API
+  breaking changes are anticipated for Cedar 4.0. (#858)
 
 ### Changed
 
@@ -54,6 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report the precise source location where the unknown type was encountered.
   Error for invalid use of an action now includes a source location containing
   the offending policy. (#802, #808, resolving #522)
+- Deprecated the `frontend` module in favor of the new `ffi` module. The
+  `frontend` module will be removed from `cedar-policy` in the next major version.
+  See notes above about `ffi`. (#852)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version. (#707)
 
@@ -65,6 +105,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The error message returned when parsing an invalid action scope constraint
   `action == ?action` no longer suggests that `action == [...]` would be a
   valid scope constraint. (#818, resolving #563)
+- Fixed policy formatter reordering some comments around if-then-else and
+  entity identifier expressions. (#861, resolving #787)
+
+## [3.1.4] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
 ## [3.1.3] - 2024-04-15
 
@@ -299,6 +347,20 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.7] - 2024-05-31
+
+### Fixed
+
+- Fixed policy formatter reordering some comments around if-then-else and
+  entity identifier expressions. (#861, resolving #787)
+- Fixed policy formatter dropping newlines in string literals. (#870, #910, resolving #862)
+
+## [2.4.6] - 2024-05-17
+
+### Fixed
+
+- The formatter will now fail with an error if it changes a policy's semantics. (#865)
+
 ## [2.4.5] - 2023-04-01
 
 ### Changed
@@ -511,14 +573,18 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.0...main
-[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.2.0
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.1...main
+[3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
+[3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
+[3.1.4]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.1.4
 [3.1.3]: https://github.com/cedar-policy/cedar/compare/v3.1.2...v3.1.3
 [3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.7...v3.0.0
+[2.4.7]: https://github.com/cedar-policy/cedar/compare/v2.4.6...v2.4.7
+[2.4.6]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v2.4.6
 [2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5
 [2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3

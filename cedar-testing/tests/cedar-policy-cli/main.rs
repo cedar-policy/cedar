@@ -100,9 +100,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             );
             assert!(
                 parse_errs
-                    .errors_as_strings()
                     .iter()
-                    .any(|s| s.ends_with("not a function")),
+                    .any(|e| e.to_string().ends_with("not a function")),
                 "unexpected parse errors in test {}: {}",
                 jsonfile.display(),
                 parse_errs,

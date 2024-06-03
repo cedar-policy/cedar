@@ -22,7 +22,7 @@ use cedar_policy_core::{
 };
 use serde::Serialize;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use crate::types::{Attributes, Type};
 
@@ -56,7 +56,7 @@ pub struct ValidatorActionId {
     ///
     /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
     /// works seamlessly.
-    pub(crate) attributes: HashMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(crate) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 impl ValidatorActionId {
@@ -65,6 +65,16 @@ impl ValidatorActionId {
     /// This always returns a closed record type.
     pub fn context_type(&self) -> Type {
         self.context.clone()
+    }
+
+    /// The `EntityType`s that can be the `principal` for this action.
+    pub fn applies_to_principals(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.principal_apply_spec.iter()
+    }
+
+    /// The `EntityType`s that can be the `resource` for this action.
+    pub fn applies_to_resources(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.resource_apply_spec.iter()
     }
 }
 

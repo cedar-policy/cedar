@@ -294,7 +294,7 @@ impl Entities {
             ))?;
             for entity in entities {
                 let euid = to_dot_id(&entity.uid());
-                let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid()));
+                let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid().escaped()));
                 dot_str.write_str(&format!("\t\t{euid} {label}\n"))?;
             }
             dot_str.write_str("\t}\n")?;

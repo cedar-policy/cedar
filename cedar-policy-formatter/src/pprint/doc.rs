@@ -60,8 +60,6 @@ impl Doc for Node<Option<VariableDef>> {
             None => Some(RcDoc::nil()),
         }?;
 
-        let end_comment = get_comment_at_end(self.loc.span, &mut context.tokens)?;
-
         Some(match &vd.ineq {
             Some((op, rhs)) => {
                 let op_comment = match &vd.entity_type {
@@ -74,6 +72,7 @@ impl Doc for Node<Option<VariableDef>> {
                     var_doc
                         .append(get_trailing_comment_doc_from_str(
                             &start_comment.trailing_comment,
+                            RcDoc::nil(),
                         ))
                         .append(is_doc)
                         .append(RcDoc::line())
@@ -81,23 +80,13 @@ impl Doc for Node<Option<VariableDef>> {
                         .group()
                         .append(
                             RcDoc::line()
-                                .append(get_leading_comment_doc_from_str(
-                                    &end_comment.leading_comment,
-                                ))
                                 .append(rhs.to_doc(context))
                                 .nest(context.config.indent_width),
                         )
-                        .group()
-                        .append(get_trailing_comment_doc_from_str(
-                            &end_comment.trailing_comment,
-                        )),
+                        .group(),
                 )
             }
-            None => add_comment(var_doc, start_comment, RcDoc::nil())
-                .append(is_doc)
-                .append(get_trailing_comment_doc_from_str(
-                    &end_comment.trailing_comment,
-                )),
+            None => add_comment(var_doc, start_comment, RcDoc::nil()).append(is_doc),
         })
     }
 }
@@ -120,21 +109,23 @@ impl Doc for Node<Option<Cond>> {
                     cond_doc
                         .append(get_trailing_comment_doc_from_str(
                             &cond_comment.trailing_comment,
+                            RcDoc::line(),
                         ))
-                        .append(RcDoc::line())
                         .append(
                             get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
                                 RcDoc::text("{").append(
-                                    get_trailing_comment_doc_from_str(&lb_comment.trailing_comment)
-                                        .append(RcDoc::line())
-                                        .append(
-                                            get_leading_comment_doc_from_str(&expr_leading_comment)
-                                                .append(expr_doc.group()),
-                                        )
-                                        .nest(context.config.indent_width)
-                                        .append(RcDoc::line())
-                                        .append(rb_doc)
-                                        .group(),
+                                    get_trailing_comment_doc_from_str(
+                                        &lb_comment.trailing_comment,
+                                        RcDoc::line(),
+                                    )
+                                    .append(
+                                        get_leading_comment_doc_from_str(&expr_leading_comment)
+                                            .append(expr_doc.group()),
+                                    )
+                                    .nest(context.config.indent_width)
+                                    .append(RcDoc::line())
+                                    .append(rb_doc)
+                                    .group(),
                                 ),
                             ),
                         )
@@ -145,15 +136,15 @@ impl Doc for Node<Option<Cond>> {
                 cond_doc
                     .append(get_trailing_comment_doc_from_str(
                         &cond_comment.trailing_comment,
+                        RcDoc::line(),
                     ))
-                    .append(RcDoc::line())
                     .append(
                         get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
                             RcDoc::text("{")
                                 .append(get_trailing_comment_doc_from_str(
                                     &lb_comment.trailing_comment,
+                                    RcDoc::line(),
                                 ))
-                                .append(RcDoc::line())
                                 .append(rb_doc)
                                 .group(),
                         ),
@@ -169,20 +160,20 @@ impl Doc for Node<Option<Expr>> {
         match self.as_inner()?.expr.as_ref() {
             ExprData::If(c, t, e) => {
                 fn pp_group<'n>(
-                    s: &str,
+                    s: &'n str,
                     c: Comment,
                     e: &'n Node<Option<Expr>>,
                     context: &mut Context<'_>,
                 ) -> RcDoc<'n> {
-                    add_comment(RcDoc::as_string(s), c, RcDoc::nil()).append(
+                    add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
                         RcDoc::line()
                             .append(e.to_doc(context))
                             .nest(context.config.indent_width),
                     )
                 }
                 let if_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
+                let then_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
+                let else_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
                 Some(
                     pp_group("if", if_comment, c, context)
                         .append(RcDoc::line())
@@ -330,7 +321,7 @@ impl Doc for Node<Option<Relation>> {
 
 impl Doc for AddOp {
     fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
-        Some(RcDoc::text(self.to_string()))
+        Some(RcDoc::as_string(self))
     }
 }
 
@@ -366,7 +357,7 @@ impl Doc for Node<Option<Add>> {
 
 impl Doc for MultOp {
     fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
-        Some(RcDoc::text(self.to_string()))
+        Some(RcDoc::as_string(self))
     }
 }
 
@@ -420,9 +411,9 @@ impl Doc for Node<Option<Unary>> {
                                 .map(|i| {
                                     Some(add_comment(
                                         if matches!(op, NegOp::Bang(_)) {
-                                            RcDoc::as_string("!")
+                                            RcDoc::text("!")
                                         } else {
-                                            RcDoc::as_string("-")
+                                            RcDoc::text("-")
                                         },
                                         comment.get(i as usize)?.clone(),
                                         RcDoc::nil(),
@@ -467,7 +458,7 @@ impl Doc for Node<Option<RecInit>> {
             key_doc
                 .append(RcDoc::line_())
                 .append(add_comment(
-                    RcDoc::as_string(":"),
+                    RcDoc::text(":"),
                     get_comment_after_end(e.0.loc.span, &mut context.tokens)?,
                     RcDoc::nil(),
                 ))
@@ -493,7 +484,7 @@ impl Doc for Node<Option<Name>> {
                             let (d, e) = pair;
                             Some((
                                 d.append(add_comment(
-                                    RcDoc::as_string("::"),
+                                    RcDoc::text("::"),
                                     get_comment_after_end(e.loc.span, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
@@ -504,7 +495,7 @@ impl Doc for Node<Option<Name>> {
                     )?
                     .0
                     .append(add_comment(
-                        RcDoc::as_string("::"),
+                        RcDoc::text("::"),
                         get_comment_after_end(path.last()?.loc.span, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
@@ -517,6 +508,9 @@ impl Doc for Node<Option<Name>> {
 impl Doc for Node<Option<Str>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
+        // Note: the input string may contain newlines, but `utils::create_multiline_doc`
+        // _cannot_ be used here because this function will change indentation
+        // on newlines, which may alter the string content.
         Some(add_comment(
             RcDoc::as_string(e),
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
@@ -595,7 +589,7 @@ impl Doc for Node<Option<Primary>> {
                             let (d, e) = pair;
                             Some((
                                 d.append(add_comment(
-                                    RcDoc::as_string(","),
+                                    RcDoc::text(","),
                                     get_comment_after_end(e.loc.span, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
@@ -627,7 +621,7 @@ impl Doc for Node<Option<Primary>> {
                             let (d, e) = pair;
                             Some((
                                 d.append(add_comment(
-                                    RcDoc::as_string(","),
+                                    RcDoc::text(","),
                                     get_comment_after_end(e.loc.span, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
@@ -684,7 +678,7 @@ impl Doc for Node<Option<MemAccess>> {
                                 let (d, e) = pair;
                                 Some((
                                     d.append(add_comment(
-                                        RcDoc::as_string(","),
+                                        RcDoc::text(","),
                                         get_comment_after_end(e.loc.span, &mut context.tokens)?,
                                         RcDoc::nil(),
                                     ))
@@ -780,7 +774,7 @@ impl Doc for Node<Option<Policy>> {
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
             if let Some(v) = v.as_inner() {
-                v.ineq.is_none()
+                v.ineq.is_none() && v.entity_type.is_none()
             } else {
                 false
             }

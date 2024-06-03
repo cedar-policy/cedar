@@ -297,7 +297,7 @@ pub enum PartialValueToRestrictedExprError {
 }
 
 impl std::str::FromStr for RestrictedExpr {
-    type Err = RestrictedExprParseError;
+    type Err = RestrictedExpressionParseError;
 
     fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
         parser::parse_restrictedexpr(s)
@@ -596,7 +596,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 }
 
 /// Error when constructing a restricted expression from unrestricted
-
+/// expression
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RestrictedExprError {
     /// An expression was expected to be a "restricted" expression, but contained
@@ -633,18 +633,42 @@ impl Diagnostic for RestrictedExprError {
     }
 }
 
+impl RestrictedExprError {
+    /// Get the `Loc` of this error
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
+        match self {
+            Self::InvalidRestrictedExpression { expr, .. } => expr.source_loc(),
+        }
+    }
+
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        match self {
+            Self::InvalidRestrictedExpression { feature, expr } => {
+                Self::InvalidRestrictedExpression {
+                    feature,
+                    expr: expr.with_maybe_source_loc(source_loc),
+                }
+            }
+        }
+    }
+}
+
 /// Errors possible from `RestrictedExpr::from_str()`
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution when
+// adding public methods.
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-pub enum RestrictedExprParseError {
-    /// Failed to parse the expression entirely
-    #[error("failed to parse restricted expression: {0}")]
+pub enum RestrictedExpressionParseError {
+    /// Failed to parse the expression
+    #[error(transparent)]
     #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
     /// Parsed successfully as an expression, but failed to construct a
     /// restricted expression, for the reason indicated in the underlying error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RestrictedExpr(#[from] RestrictedExprError),
+    InvalidRestrictedExpression(#[from] RestrictedExprError),
 }
 
 #[cfg(test)]
@@ -701,14 +725,14 @@ mod test {
         let str = r#"{ foo: 37, bar: "hi", foo: 101 }"#;
         assert_eq!(
             RestrictedExpr::from_str(str),
-            Err(RestrictedExprParseError::Parse(ParseErrors(vec![
-                ParseError::ToAST(ToASTError::new(
+            Err(RestrictedExpressionParseError::Parse(
+                ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                     ToASTErrorKind::ExprConstructionError(
                         ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
                     ),
                     Loc::new(0..32, Arc::from(str))
-                ))
-            ]))),
+                )))
+            )),
         )
     }
 }

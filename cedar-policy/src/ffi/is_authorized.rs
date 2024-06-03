@@ -445,13 +445,13 @@ pub enum PartialAuthorizationAnswer {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationCall {
     /// The principal taking action
-    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
     principal: Option<serde_json::Value>,
     /// The action the principal is taking
-    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
     action: serde_json::Value,
     /// The resource being acted on by the principal
-    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
     resource: Option<serde_json::Value>,
     /// The context details specific to the request
     #[serde_as(as = "MapPreventDuplicates<_, _>")]

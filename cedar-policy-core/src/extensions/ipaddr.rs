@@ -411,7 +411,7 @@ mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};
     use crate::evaluator::test::{basic_entities, basic_request};
-    use crate::evaluator::{EvaluationErrorKind, Evaluator};
+    use crate::evaluator::{evaluation_errors, EvaluationError, Evaluator};
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use cool_asserts::assert_matches;
@@ -421,15 +421,13 @@ mod tests {
     /// `Err::ExtensionErr` with our extension name
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_ipaddr_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
-        assert_matches!(res, Err(e) => assert_matches!(e.error_kind(),
-            evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication { extension_name, .. } => {
-                assert_eq!(
-                    *extension_name,
-                    Name::parse_unqualified_name("ipaddr")
-                        .expect("should be a valid identifier")
-                );
-            }
-        ));
+        assert_matches!(res, Err(EvaluationError::FailedExtensionFunctionExecution(evaluation_errors::ExtensionFunctionExecutionError { extension_name, .. })) => {
+            assert_eq!(
+                extension_name,
+                Name::parse_unqualified_name("ipaddr")
+                    .expect("should be a valid identifier")
+            );
+        });
     }
 
     /// This helper function returns an `Expr` that calls `ip()` with the given single argument
@@ -562,28 +560,24 @@ mod tests {
                     Expr::val(1)
                 ))]
             )),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::String],
-                    actual: Type::Set,
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::String]);
+                assert_eq!(actual, Type::Set);
+                assert_eq!(advice, None);
+            }
         );
 
         // test that < on ipaddr values is an error
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
-            Err(e) => assert_eq!(e.error_kind(),
-                &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
-                    actual: Type::Extension {
-                        name: Name::parse_unqualified_name("ipaddr")
-                            .expect("should be a valid identifier")
-                    },
-                    advice: None,
-                }
-            )
+            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Extension {
+                    name: Name::parse_unqualified_name("ipaddr")
+                        .expect("should be a valid identifier")
+                });
+                assert_eq!(advice, None);
+            }
         );
         // test that isIpv4 on a String is an error
         assert_matches!(
@@ -591,18 +585,13 @@ mod tests {
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
                 vec![Expr::val("127.0.0.1")]
             )),
-            Err(e) => {
-                assert_eq!(
-                    e.error_kind(),
-                    &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::Extension {
-                            name: Name::parse_unqualified_name("ipaddr")
-                                .expect("should be a valid identifier")
-                        }],
-                        actual: Type::String,
-                        advice: Some(ADVICE_MSG.into()),
-                    },
-                );
+            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension {
+                    name: Name::parse_unqualified_name("ipaddr")
+                        .expect("should be a valid identifier")
+                }]);
+                assert_eq!(actual, Type::String);
+                assert_eq!(advice, Some(ADVICE_MSG.into()));
             }
         );
 

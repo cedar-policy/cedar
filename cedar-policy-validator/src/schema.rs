@@ -30,9 +30,11 @@ use cedar_policy_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use smol_str::ToSmolStr;
 
 use super::NamespaceDefinition;
 use crate::{
+    err::schema_error::*,
     err::*,
     human_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
@@ -136,9 +138,10 @@ impl TryFrom<NamespaceDefinition> for ValidatorSchema {
     type Error = SchemaError;
 
     fn try_from(nsd: NamespaceDefinition) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([ValidatorSchemaFragment::from_namespaces([
-            nsd.try_into()?
-        ])])
+        ValidatorSchema::from_schema_fragments(
+            [ValidatorSchemaFragment::from_namespaces([nsd.try_into()?])],
+            Extensions::all_available(),
+        )
     }
 }
 
@@ -146,7 +149,7 @@ impl TryFrom<SchemaFragment> for ValidatorSchema {
     type Error = SchemaError;
 
     fn try_from(frag: SchemaFragment) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([frag.try_into()?])
+        ValidatorSchema::from_schema_fragments([frag.try_into()?], Extensions::all_available())
     }
 }
 
@@ -221,16 +224,20 @@ impl ValidatorSchema {
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
-        Self::from_schema_fragments([ValidatorSchemaFragment::from_schema_fragment(
-            schema_file,
-            action_behavior,
+        Self::from_schema_fragments(
+            [ValidatorSchemaFragment::from_schema_fragment(
+                schema_file,
+                action_behavior,
+                extensions,
+            )?],
             extensions,
-        )?])
+        )
     }
 
     /// Construct a new `ValidatorSchema` from some number of schema fragments.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment>,
+        extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         let mut type_defs = HashMap::new();
         let mut entity_type_fragments = HashMap::new();
@@ -246,7 +253,7 @@ impl ValidatorSchema {
                 match type_defs.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateCommonType(o.key().to_string()));
+                        return Err(DuplicateCommonTypeError(o.key().clone()).into());
                     }
                 };
             }
@@ -255,7 +262,7 @@ impl ValidatorSchema {
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateEntityType(o.key().to_string()))
+                        return Err(DuplicateEntityTypeError(o.key().clone()).into())
                     }
                 };
             }
@@ -264,14 +271,14 @@ impl ValidatorSchema {
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
+                        return Err(DuplicateActionError(o.key().to_smolstr()).into())
                     }
                 };
             }
         }
 
         let resolver = CommonTypeResolver::new(&type_defs);
-        let type_defs = resolver.resolve()?;
+        let type_defs = resolver.resolve(extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -301,9 +308,9 @@ impl ValidatorSchema {
                 let (attributes, open_attributes) = Self::record_attributes_or_none(
                     entity_type.attributes.resolve_type_defs(&type_defs)?,
                 )
-                .ok_or(SchemaError::ContextOrShapeNotRecord(
+                .ok_or(SchemaError::from(ContextOrShapeNotRecordError(
                     ContextOrShape::EntityTypeShape(name.clone()),
-                ))?;
+                )))?;
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
@@ -331,9 +338,9 @@ impl ValidatorSchema {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) =
                     Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                        .ok_or(SchemaError::from(ContextOrShapeNotRecordError(
                             ContextOrShape::ActionContext(name.clone()),
-                        ))?;
+                        )))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
@@ -353,7 +360,8 @@ impl ValidatorSchema {
 
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
-        compute_tc(&mut entity_types, false)?;
+        compute_tc(&mut entity_types, false)
+            .map_err(|e| EntityTypeTransitiveClosureError::from(Box::new(e)))?;
         // Pass `true` here so that we also check that the action hierarchy does
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
@@ -393,7 +401,6 @@ impl ValidatorSchema {
         // any undeclared entity types which appeared in a `memberOf` list.
         let mut undeclared_e = undeclared_parent_entities
             .into_iter()
-            .map(|n| n.to_string())
             .collect::<HashSet<_>>();
         // Looking at entity types, we need to check entity references in
         // attribute types. We already know that all elements of the
@@ -413,7 +420,7 @@ impl ValidatorSchema {
         // Undeclared actions in a `memberOf` list.
         let undeclared_a = undeclared_parent_actions
             .into_iter()
-            .map(|n| n.to_string())
+            .map(|n| n.to_smolstr())
             .collect::<HashSet<_>>();
         // For actions, we check entity references in the context attribute
         // types and `appliesTo` lists. See the `entity_types` loop for why the
@@ -424,8 +431,8 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
-                            undeclared_e.insert(p_entity.to_string());
+                        if !entity_types.contains_key(&p_entity) {
+                            undeclared_e.insert(p_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),
@@ -435,8 +442,8 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
-                            undeclared_e.insert(r_entity.to_string());
+                        if !entity_types.contains_key(&r_entity) {
+                            undeclared_e.insert(r_entity.clone());
                         }
                     }
                     EntityType::Unspecified => (),
@@ -444,10 +451,10 @@ impl ValidatorSchema {
             }
         }
         if !undeclared_e.is_empty() {
-            return Err(SchemaError::UndeclaredEntityTypes(undeclared_e));
+            return Err(UndeclaredEntityTypesError(undeclared_e).into());
         }
         if !undeclared_a.is_empty() {
-            return Err(SchemaError::UndeclaredActions(undeclared_a));
+            return Err(UndeclaredActionsError(undeclared_a).into());
         }
 
         Ok(())
@@ -469,13 +476,13 @@ impl ValidatorSchema {
     fn check_undeclared_in_type(
         ty: &Type,
         entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_types: &mut HashSet<String>,
+        undeclared_types: &mut HashSet<Name>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !entity_types.contains_key(name) {
-                        undeclared_types.insert(name.to_string());
+                        undeclared_types.insert(name.clone());
                     }
                 }
             }
@@ -656,14 +663,17 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([ValidatorSchemaFragment::from_namespaces([
-            ValidatorNamespaceDef::from_namespace_definition(
-                None,
-                self.0,
-                crate::ActionBehavior::PermitAttributes,
-                Extensions::all_available(),
-            )?,
-        ])])
+        ValidatorSchema::from_schema_fragments(
+            [ValidatorSchemaFragment::from_namespaces([
+                ValidatorNamespaceDef::from_namespace_definition(
+                    None,
+                    self.0,
+                    crate::ActionBehavior::PermitAttributes,
+                    Extensions::all_available(),
+                )?,
+            ])],
+            Extensions::all_available(),
+        )
     }
 }
 
@@ -785,9 +795,9 @@ impl<'a> CommonTypeResolver<'a> {
         match ty {
             SchemaType::TypeDef { type_name } => resolve_table
                 .get(&type_name)
-                .ok_or(SchemaError::UndeclaredCommonTypes(HashSet::from_iter(
-                    std::iter::once(type_name.to_string()),
-                )))
+                .ok_or(SchemaError::UndeclaredCommonTypes(
+                    UndeclaredCommonTypesError(HashSet::from_iter(std::iter::once(type_name))),
+                ))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
                 Ok(SchemaType::Type(SchemaTypeVariant::Set {
@@ -819,10 +829,10 @@ impl<'a> CommonTypeResolver<'a> {
     }
 
     // Resolve common type references
-    fn resolve(&self) -> Result<HashMap<Name, Type>> {
-        let sorted_names = self
-            .topo_sort()
-            .map_err(SchemaError::CycleInCommonTypeReferences)?;
+    fn resolve(&self, extensions: Extensions) -> Result<HashMap<Name, Type>> {
+        let sorted_names = self.topo_sort().map_err(|n| {
+            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
+        })?;
 
         let mut resolve_table = HashMap::new();
         let mut tys = HashMap::new();
@@ -845,6 +855,7 @@ impl<'a> CommonTypeResolver<'a> {
                 ValidatorNamespaceDef::try_schema_type_into_validator_type(
                     ns.as_ref(),
                     substituted_ty,
+                    extensions,
                 )?
                 .resolve_type_defs(&HashMap::new())?,
             );
@@ -866,6 +877,7 @@ mod test {
     use crate::{SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1006,7 +1018,7 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("from_schema_file should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(v)) => {
+            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
                 assert_eq!(v.len(), 3)
             }
             _ => panic!("Unexpected error from from_schema_file"),
@@ -1029,8 +1041,8 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("try_into should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(v)) => {
-                assert_eq!(v, HashSet::from(["Bar::Group".to_string()]))
+            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
+                assert_eq!(v, HashSet::from(["Bar::Group".parse().unwrap()]))
             }
             _ => panic!("Unexpected error from try_into"),
         }
@@ -1054,10 +1066,10 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("try_into should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(v)) => {
+            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
                 assert_eq!(
                     v,
-                    HashSet::from(["Bar::Photo".to_string(), "Bar::User".to_string()])
+                    HashSet::from(["Bar::Photo".parse().unwrap(), "Bar::User".parse().unwrap()])
                 )
             }
             _ => panic!("Unexpected error from try_into"),
@@ -1094,7 +1106,9 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("from_schema_file should have failed"),
-            Err(SchemaError::UndeclaredActions(v)) => assert_eq!(v.len(), 1),
+            Err(SchemaError::UndeclaredActions(UndeclaredActionsError(v))) => {
+                assert_eq!(v.len(), 1)
+            }
             _ => panic!("Unexpected error from from_schema_file"),
         }
     }
@@ -1116,7 +1130,7 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(
             schema,
-            Err(SchemaError::CycleInActionHierarchy(euid)) => {
+            Err(SchemaError::CycleInActionHierarchy(CycleInActionHierarchyError(euid))) => {
                 assert_eq!(euid, r#"Action::"view_photo""#.parse().unwrap());
             }
         )
@@ -1256,8 +1270,8 @@ mod test {
 
         let schema: Result<ValidatorSchema> = schema_json.try_into();
         match schema {
-            Err(SchemaError::UndeclaredEntityTypes(tys)) => {
-                assert_eq!(tys, HashSet::from(["C::D::Foo".to_string()]))
+            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
+                assert_eq!(v, HashSet::from(["C::D::Foo".parse().unwrap()]))
             }
             _ => panic!("Schema construction should have failed due to undeclared entity type."),
         }
@@ -1315,7 +1329,10 @@ mod test {
         .expect("Expected valid schema");
 
         let schema: Result<ValidatorSchema> = schema_json.try_into();
-        assert!(matches!(schema, Err(SchemaError::ActionEntityTypeDeclared)));
+        assert!(matches!(
+            schema,
+            Err(SchemaError::ActionEntityTypeDeclared(_))
+        ));
     }
 
     #[test]
@@ -1362,7 +1379,9 @@ mod test {
             Extensions::all_available(),
         );
         match schema {
-            Err(SchemaError::UnsupportedFeature(UnsupportedFeature::ActionAttributes(actions))) => {
+            Err(SchemaError::UnsupportedFeature(UnsupportedFeatureError(
+                UnsupportedFeature::ActionAttributes(actions),
+            ))) => {
                 assert_eq!(
                     actions.into_iter().collect::<HashSet<_>>(),
                     HashSet::from([
@@ -1389,6 +1408,7 @@ mod test {
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
             schema_ty,
+            Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
         .resolve_type_defs(&HashMap::new())
@@ -1409,6 +1429,7 @@ mod test {
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
             schema_ty,
+            Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
         .resolve_type_defs(&HashMap::new())
@@ -1434,10 +1455,14 @@ mod test {
                 additional_attributes: false,
             }),
         );
-        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(None, schema_ty)
-            .expect("Error converting schema type to type.")
-            .resolve_type_defs(&HashMap::new())
-            .unwrap();
+        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+            None,
+            schema_ty,
+            Extensions::all_available(),
+        )
+        .expect("Error converting schema type to type.")
+        .resolve_type_defs(&HashMap::new())
+        .unwrap();
         assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
 
@@ -1476,7 +1501,8 @@ mod test {
 
     #[test]
     fn schema_no_fragments() {
-        let schema = ValidatorSchema::from_schema_fragments([]).unwrap();
+        let schema =
+            ValidatorSchema::from_schema_fragments([], Extensions::all_available()).unwrap();
         assert!(schema.entity_types.is_empty());
         assert!(schema.action_ids.is_empty());
     }
@@ -1771,7 +1797,11 @@ mod test {
         .unwrap()
         .try_into()
         .unwrap();
-        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]).unwrap();
+        let schema = ValidatorSchema::from_schema_fragments(
+            [fragment1, fragment2],
+            Extensions::all_available(),
+        )
+        .unwrap();
 
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
@@ -1806,10 +1836,17 @@ mod test {
         .try_into()
         .unwrap();
 
-        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]);
+        let schema = ValidatorSchema::from_schema_fragments(
+            [fragment1, fragment2],
+            Extensions::all_available(),
+        );
 
         match schema {
-            Err(SchemaError::DuplicateCommonType(s)) if s.contains("A::MyLong") => (),
+            Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(s)))
+                if s == "A::MyLong".parse().unwrap() =>
+            {
+                ()
+            }
             _ => panic!("should have errored because schema fragments have duplicate types"),
         };
     }
@@ -2068,7 +2105,8 @@ mod test {
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
-        assert_eq!(read.eid().to_string(), "read");
+        let read_eid: &str = read.eid().as_ref();
+        assert_eq!(read_eid, "read");
         assert_eq!(read.entity_type().to_string(), "Foo::Action");
     }
 
@@ -2128,7 +2166,8 @@ mod test {
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
-        assert_eq!(read.eid().to_string(), "read");
+        let read_eid: &str = read.eid().as_ref();
+        assert_eq!(read_eid, "read");
         assert_eq!(
             read.entity_type().to_string(),
             "ExampleCo::Personnel::Action"
@@ -2165,8 +2204,8 @@ mod test {
               }
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(types))) =>
+            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
     }
 
     #[test]
@@ -2199,8 +2238,98 @@ mod test {
               }
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(types))) =>
+            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
+    }
+
+    #[test]
+    fn unknown_extension_type() {
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": { },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": {
+                                    "type": "Extension",
+                                    "name": "ip",
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": {}
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unknown extension type `ip`")
+                    .help("did you mean `ipaddr`?")
+                    .build());
+        });
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": { },
+                "entityTypes": { },
+                "actions": {
+                    "A": {
+                        "appliesTo": {
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "a": {
+                                        "type": "Extension",
+                                        "name": "deciml",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unknown extension type `deciml`")
+                    .help("did you mean `decimal`?")
+                    .build());
+        });
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "ty": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Extension",
+                                "name": "i",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unknown extension type `i`")
+                    .help("did you mean `ipaddr`?")
+                    .build());
+        });
     }
 }
 
@@ -2208,11 +2337,13 @@ mod test {
 mod test_resolver {
     use std::collections::HashMap;
 
-    use cedar_policy_core::ast::Name;
+    use cedar_policy_core::{ast::Name, extensions::Extensions};
     use cool_asserts::assert_matches;
 
     use super::CommonTypeResolver;
-    use crate::{types::Type, SchemaError, SchemaFragment, ValidatorSchemaFragment};
+    use crate::{
+        err::schema_error::SchemaError, types::Type, SchemaFragment, ValidatorSchemaFragment,
+    };
 
     fn resolve(schema: SchemaFragment) -> Result<HashMap<Name, Type>, SchemaError> {
         let schema: ValidatorSchemaFragment = schema.try_into().unwrap();
@@ -2221,7 +2352,7 @@ mod test_resolver {
             type_defs.extend(def.type_defs.type_defs.into_iter());
         }
         let resolver = CommonTypeResolver::new(&type_defs);
-        resolver.resolve()
+        resolver.resolve(Extensions::all_available())
     }
 
     #[test]

@@ -18,7 +18,8 @@
 #![allow(
     clippy::missing_panics_doc,
     clippy::missing_errors_doc,
-    clippy::similar_names
+    clippy::similar_names,
+    clippy::result_large_err, // see #878
 )]
 
 mod id;
@@ -32,9 +33,7 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{
-    ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
-}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
+use cedar_policy_core::ast::{ContextCreationError, ExprConstructionError, Integer}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est;
@@ -42,7 +41,6 @@ use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
-pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
@@ -53,6 +51,7 @@ use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::Read;
 use std::str::FromStr;
 
 /// Extended functionality for `Entities` struct
@@ -110,8 +109,6 @@ pub mod entities {
         }
     }
 }
-
-use entities::json::err::JsonDeserializationError;
 
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
@@ -265,6 +262,81 @@ impl Entity {
             attrs,
             ancestors.into_iter().map(EntityUid::new).collect(),
         )
+    }
+
+    /// Parse an entity from an in-memory JSON value
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
+    pub fn from_json_value(
+        value: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_value(value).map(Self)
+    }
+
+    /// Parse an entity from a JSON string
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
+    pub fn from_json_str(
+        src: impl AsRef<str>,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_str(src).map(Self)
+    }
+
+    /// Parse an entity from a JSON reader
+    /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
+    pub fn from_json_file(f: impl Read, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        );
+        eparser.single_from_json_file(f).map(Self)
+    }
+
+    /// Dump an `Entity` object into an entity JSON file.
+    ///
+    /// The resulting JSON will be suitable for parsing in via
+    /// `from_json_*`, and will be parse-able even with no [`Schema`].
+    ///
+    /// To read an `Entity` object from JSON , use
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
+    pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
+        self.0.write_to_json(f)
+    }
+
+    /// Dump an `Entity` object into an in-memory JSON object.
+    ///
+    /// The resulting JSON will be suitable for parsing in via
+    /// `from_json_*`, and will be parse-able even with no `Schema`.
+    ///
+    /// To read an `Entity` object from JSON , use
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
+    pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
+        self.0.to_json_value()
+    }
+
+    /// Dump an `Entity` object into a JSON string.
+    ///
+    /// The resulting JSON will be suitable for parsing in via
+    /// `from_json_*`, and will be parse-able even with no `Schema`.
+    ///
+    /// To read an `Entity` object from JSON , use
+    /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
+    pub fn to_json_string(&self) -> Result<String, EntitiesError> {
+        self.0.to_json_string()
     }
 }
 
@@ -1171,7 +1243,7 @@ impl SchemaFragment {
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1208,7 +1280,7 @@ impl SchemaFragment {
     }
 
     /// Create a `SchemaFragment` directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1217,13 +1289,15 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
-        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
+    pub fn to_json_value(self) -> Result<serde_json::Value, schema_error::SchemaError> {
+        serde_json::to_value(self.lossless)
+            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn as_json_string(&self) -> Result<String, SchemaError> {
-        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e).into())
+    pub fn as_json_string(&self) -> Result<String, schema_error::SchemaError> {
+        serde_json::to_string(&self.lossless)
+            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
@@ -1234,20 +1308,23 @@ impl SchemaFragment {
 }
 
 impl TryInto<Schema> for SchemaFragment {
-    type Error = SchemaError;
+    type Error = schema_error::SchemaError;
 
     /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
     /// need to have all entity types defined, so an error will be returned if
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.value])?,
+            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+                [self.value],
+                Extensions::all_available(),
+            )?,
         ))
     }
 }
 
 impl FromStr for SchemaFragment {
-    type Err = SchemaError;
+    type Err = schema_error::SchemaError;
     /// Construct `SchemaFragment` from a string containing a schema formatted
     /// in the cedar schema format. This can fail if the string is not valid
     /// JSON, or if the JSON structure does not form a valid schema. This
@@ -1269,7 +1346,7 @@ impl FromStr for SchemaFragment {
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
 
 impl FromStr for Schema {
-    type Err = SchemaError;
+    type Err = schema_error::SchemaError;
 
     /// Construct a schema from a string containing a schema formatted in the
     /// Cedar schema format. This can fail if it is not possible to parse a
@@ -1289,17 +1366,18 @@ impl Schema {
     /// fragment.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = SchemaFragment>,
-    ) -> Result<Self, SchemaError> {
+    ) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
+                Extensions::all_available(),
             )?,
         ))
     }
 
     /// Create a `Schema` from a JSON value (which should be an object of the
     /// shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
                 json,
@@ -1310,7 +1388,7 @@ impl Schema {
 
     /// Create a `Schema` from a string containing JSON in the appropriate
     /// shape.
-    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
+    pub fn from_json_str(json: &str) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_str(
                 json,
@@ -1321,7 +1399,7 @@ impl Schema {
 
     /// Create a `Schema` directly from a file containing JSON in the
     /// appropriate shape.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
             Extensions::all_available(),
@@ -1711,7 +1789,9 @@ impl PolicySet {
             self.policies.insert(id, policy);
             Ok(())
         } else {
-            Err(PolicySetError::ExpectedStatic)
+            Err(PolicySetError::ExpectedStatic(
+                policy_set_error_structs::ExpectedStatic {},
+            ))
         }
     }
 
@@ -1720,7 +1800,9 @@ impl PolicySet {
     /// This will error if the policy is not a static policy.
     pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::PolicyNonexistentError(policy_id));
+            return Err(PolicySetError::PolicyNonexistentError(
+                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            ));
         };
         if self
             .ast
@@ -1731,7 +1813,9 @@ impl PolicySet {
         } else {
             //Restore self.policies
             self.policies.insert(policy_id.clone(), policy);
-            Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
+            Err(PolicySetError::PolicyNonexistentError(
+                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            ))
         }
     }
 
@@ -1749,7 +1833,9 @@ impl PolicySet {
     /// This will error if `policy_id` is not a template.
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
-            return Err(PolicySetError::TemplateNonexistentError(template_id));
+            return Err(PolicySetError::TemplateNonexistentError(
+                policy_set_error_structs::TemplateNonexistentError { template_id },
+            ));
         };
         // If self.templates and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.templates.
@@ -1762,12 +1848,14 @@ impl PolicySet {
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
                 self.templates.insert(template_id.clone(), template);
                 Err(PolicySetError::RemoveTemplateWithActiveLinksError(
-                    template_id,
+                    policy_set_error_structs::RemoveTemplateWithActiveLinksError { template_id },
                 ))
             }
             Err(ast::PolicySetTemplateRemovalError::NotTemplateError(_)) => {
                 self.templates.insert(template_id.clone(), template);
-                Err(PolicySetError::RemoveTemplateNotTemplateError(template_id))
+                Err(PolicySetError::RemoveTemplateNotTemplateError(
+                    policy_set_error_structs::RemoveTemplateNotTemplateError { template_id },
+                ))
             }
             Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
                 panic!("Found template policy in self.templates but not in self.ast");
@@ -1784,7 +1872,11 @@ impl PolicySet {
         self.ast
             .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
-                |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
+                |_| {
+                    Err(PolicySetError::TemplateNonexistentError(
+                        policy_set_error_structs::TemplateNonexistentError { template_id },
+                    ))
+                },
                 |v| Ok(v.map(PolicyId::ref_cast)),
             )
     }
@@ -1866,7 +1958,7 @@ impl PolicySet {
         // trying to link a static policy, which we want to error on here.
         let Some(template) = self.templates.get(&template_id) else {
             return Err(if self.policies.contains_key(&template_id) {
-                PolicySetError::ExpectedTemplate
+                PolicySetError::ExpectedTemplate(policy_set_error_structs::ExpectedTemplate {})
             } else {
                 PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
                     id: template_id.into(),
@@ -1915,11 +2007,13 @@ impl PolicySet {
         entity_uids
     }
 
-    /// Unlink a template link from the policy set.
+    /// Unlink a template-linked policy from the policy set.
     /// Returns the policy that was unlinked.
     pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::LinkNonexistentError(policy_id));
+            return Err(PolicySetError::LinkNonexistentError(
+                policy_set_error_structs::LinkNonexistentError { policy_id },
+            ));
         };
         // If self.policies and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.policies.
@@ -1929,7 +2023,9 @@ impl PolicySet {
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
                 self.policies.insert(policy_id.clone(), policy);
-                Err(PolicySetError::UnlinkLinkNotLinkError(policy_id))
+                Err(PolicySetError::UnlinkLinkNotLinkError(
+                    policy_set_error_structs::UnlinkLinkNotLinkError { policy_id },
+                ))
             }
             Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
                 panic!("Found linked policy in self.policies but not in self.ast")
@@ -2158,8 +2254,8 @@ impl Template {
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
-        let est: est::Policy =
-            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2549,8 +2645,8 @@ impl Policy {
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
-        let est: est::Policy =
-            serde_json::from_value(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2889,6 +2985,14 @@ impl RestrictedExpression {
         ))
     }
 
+    /// Create an unknown expression
+    #[cfg(feature = "partial-eval")]
+    pub fn new_unknown(name: impl AsRef<str>) -> Self {
+        Self(ast::RestrictedExpr::unknown(ast::Unknown::new_untyped(
+            name.as_ref(),
+        )))
+    }
+
     /// Deconstruct an [`RestrictedExpression`] to get the internal type.
     /// This function is only intended to be used internally.
     #[cfg(test)]
@@ -2910,7 +3014,7 @@ fn ip_extension_name() -> ast::Name {
 }
 
 impl FromStr for RestrictedExpression {
-    type Err = RestrictedExprParseError;
+    type Err = RestrictedExpressionParseError;
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
