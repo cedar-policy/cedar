@@ -24,7 +24,16 @@ use super::{
     Annotations, AuthorizationError, Authorizer, Decision, Effect, Expr, Policy, PolicySet,
     PolicySetError, Request, Response, Value,
 };
-use crate::{ast::PolicyID, entities::Entities, evaluator::EvaluationError};
+use crate::{
+    ast::PolicyID,
+    authorizer::{Context, EntityUIDEntry},
+    entities::Entities,
+    evaluator::EvaluationError,
+};
+
+lazy_static::lazy_static! {
+    static ref DUMMY_REQUEST: Request = Request::new_unchecked(EntityUIDEntry::Unknown { loc: None }, EntityUIDEntry::Unknown { loc: None }, EntityUIDEntry::Unknown { loc: None }, Some(Context::empty()));
+}
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
 
@@ -309,11 +318,10 @@ impl PartialResponse {
         &self,
         mapping: &HashMap<SmolStr, Value>,
         auth: &Authorizer,
-        r: Request,
         es: &Entities,
     ) -> Result<Self, PolicySetError> {
         let policyset = self.all_policies(mapping)?;
-        Ok(auth.is_authorized_core(r, &policyset, es))
+        Ok(auth.is_authorized_core(DUMMY_REQUEST.to_owned(), &policyset, es))
     }
 
     fn all_policies(&self, mapping: &HashMap<SmolStr, Value>) -> Result<PolicySet, PolicySetError> {
