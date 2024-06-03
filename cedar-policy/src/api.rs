@@ -48,6 +48,7 @@ use cedar_policy_validator::RequestValidationError; // this type is unsuitable f
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use schema_error::JsonSerializationError;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
@@ -1380,6 +1381,18 @@ impl Schema {
                 Extensions::all_available(),
             )?,
         ))
+    }
+
+    /// Serialize the `Schema` to a JSON value.
+    pub fn to_json_str(&self) -> Result<String, schema_error::SchemaError> {
+        serde_json::to_string(&self.0)
+            .map_err(|err| schema_error::SchemaError::JsonSerialization(err.into()))
+    }
+
+    /// Serialize the `Schema` to a pretty-printed JSON value.
+    pub fn to_json_str_pretty(&self) -> Result<String, schema_error::SchemaError> {
+        serde_json::to_string_pretty(&self.0)
+            .map_err(|err| schema_error::SchemaError::JsonSerialization(err.into()))
     }
 
     /// Create a `Schema` from a string containing JSON in the appropriate
