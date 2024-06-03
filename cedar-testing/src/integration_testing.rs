@@ -41,11 +41,11 @@ use std::{
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonTest {
-    /// Filename of the policies to use (in pure Cedar syntax)
+    /// Filename of the policy set (in Cedar syntax)
     pub policies: String,
     /// Filename of a JSON file representing the entity hierarchy
     pub entities: String,
-    /// Filename of a JSON file containing the schema.
+    /// Filename of the schema (in Cedar syntax)
     pub schema: String,
     /// Whether the given policies are expected to pass the validator with this
     /// schema, or not

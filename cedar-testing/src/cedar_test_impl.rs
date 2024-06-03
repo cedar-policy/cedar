@@ -97,14 +97,11 @@ pub struct TestValidationResult {
 pub mod partial {
     use super::*;
     #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
     pub struct FlatPartialResponse {
-        #[serde(rename = "knownPermits")]
         pub known_permits: HashSet<String>,
-        #[serde(rename = "knownForbids")]
         pub known_forbids: HashSet<String>,
-        #[serde(rename = "determiningUnderApprox")]
         pub determining_under_approx: HashSet<String>,
-        #[serde(rename = "determiningOverApprox")]
         pub determining_over_approx: HashSet<String>,
         pub decision: Decision,
     }
