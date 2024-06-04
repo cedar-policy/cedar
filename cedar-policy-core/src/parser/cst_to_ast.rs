@@ -984,10 +984,12 @@ impl Node<Option<cst::Or>> {
         let maybe_rest = ParseErrors::transpose(or.extended.iter().map(|i| i.to_expr()));
 
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
-        match rest.split_first() {
+        let mut rest = rest.into_iter();
+        let second = rest.next();
+        match second {
             None => Ok(first),
-            Some((second, rest)) => first.into_expr().map(|first| ExprOrSpecial::Expr {
-                expr: construct_expr_or(first, second.clone(), rest.to_owned(), &self.loc),
+            Some(second) => first.into_expr().map(|first| ExprOrSpecial::Expr {
+                expr: construct_expr_or(first, second, rest, &self.loc),
                 loc: self.loc.clone(),
             }),
         }
@@ -1035,10 +1037,12 @@ impl Node<Option<cst::And>> {
         let maybe_rest = ParseErrors::transpose(and.extended.iter().map(|i| i.to_expr()));
 
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
-        match rest.split_first() {
+        let mut rest = rest.into_iter();
+        let second = rest.next();
+        match second {
             None => Ok(first),
-            Some((second, rest)) => first.into_expr().map(|first| ExprOrSpecial::Expr {
-                expr: construct_expr_and(first, second.clone(), rest.to_owned(), &self.loc),
+            Some(second) => first.into_expr().map(|first| ExprOrSpecial::Expr {
+                expr: construct_expr_and(first, second, rest, &self.loc),
                 loc: self.loc.clone(),
             }),
         }
@@ -1103,11 +1107,13 @@ impl Node<Option<cst::Relation>> {
                 };
 
                 let (first, rest, _) = flatten_tuple_3(maybe_first, maybe_rest, maybe_extra_elmts)?;
-                match rest.split_first() {
+                let mut rest = rest.into_iter();
+                let second = rest.next();
+                match second {
                     None => Ok(first),
-                    Some(((&op, second), _)) => first.into_expr().and_then(|first| {
+                    Some((&op, second)) => first.into_expr().and_then(|first| {
                         Ok(ExprOrSpecial::Expr {
-                            expr: construct_expr_rel(first, op, second.clone(), self.loc.clone())?,
+                            expr: construct_expr_rel(first, op, second, self.loc.clone())?,
                             loc: self.loc.clone(),
                         })
                     }),
