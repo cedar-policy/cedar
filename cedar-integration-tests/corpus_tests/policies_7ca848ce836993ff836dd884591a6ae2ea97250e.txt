@@ -1,7 +1,0 @@
-forbid(
-  principal in a::"",
-  action in [Action::"action",Action::"action"],
-  resource in a::""
-) when {
-  (true && (r::A::r(principal, principal))) && principal
-};

@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource
-) when {
-  (true && 1560281158) && (((9509 == principal) == principal) == principal)
-};

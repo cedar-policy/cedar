@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,13 +25,14 @@ lalrpop_mod!(
     #[allow(clippy::indexing_slicing)]
     //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unreachable)]
+    //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
+    #[allow(clippy::panic)]
     pub grammar,
     "/src/parser/grammar.rs"
 );
 
-use lazy_static::lazy_static;
-
 use super::*;
+use std::sync::Arc;
 
 /// This helper function calls a generated parser, collects errors that could be
 /// generated multiple ways, and returns a single Result where the error type is
@@ -41,33 +42,35 @@ fn parse_collect_errors<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
+        &Arc<str>,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, text);
+    let result = parse(parser, &mut errs, &Arc::from(text), text);
 
-    let mut errors: err::ParseErrors = errs
+    let errors = errs
         .into_iter()
-        .map(|recovery| err::ToCSTError::from_raw_err_recovery(recovery).into())
-        .collect();
+        .map(err::ToCSTError::from_raw_err_recovery)
+        .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(err::ToCSTError::from_raw_parse_err(e).into());
-            return Err(errors);
+            return Err(err::ParseErrors::new(
+                err::ToCSTError::from_raw_parse_err(e).into(),
+                errors,
+            ));
         }
     };
-    if errors.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(errors)
+    match err::ParseErrors::from_iter(errors) {
+        Some(errors) => Err(errors),
+        None => Ok(parsed),
     }
 }
 
 // Thread-safe "global" parsers, initialized at first use
-lazy_static! {
+lazy_static::lazy_static! {
     static ref POLICIES_PARSER: grammar::PoliciesParser = grammar::PoliciesParser::new();
     static ref POLICY_PARSER: grammar::PolicyParser = grammar::PolicyParser::new();
     static ref EXPR_PARSER: grammar::ExprParser = grammar::ExprParser::new();
@@ -78,42 +81,44 @@ lazy_static! {
 }
 
 /// Create CST for multiple policies from text
-pub fn parse_policies(
-    text: &str,
-) -> Result<node::ASTNode<Option<cst::Policies>>, err::ParseErrors> {
+pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
 }
 
 /// Create CST for one policy statement from text
-pub fn parse_policy(text: &str) -> Result<node::ASTNode<Option<cst::Policy>>, err::ParseErrors> {
+pub fn parse_policy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
 }
 
 /// Create CST for one Expression from text
-pub fn parse_expr(text: &str) -> Result<node::ASTNode<Option<cst::Expr>>, err::ParseErrors> {
+pub fn parse_expr(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
     parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
-pub fn parse_ref(text: &str) -> Result<node::ASTNode<Option<cst::Ref>>, err::ParseErrors> {
+pub fn parse_ref(text: &str) -> Result<Node<Option<cst::Ref>>, err::ParseErrors> {
     parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
 }
 
 /// Create CST for one Primary value from text
-pub fn parse_primary(text: &str) -> Result<node::ASTNode<Option<cst::Primary>>, err::ParseErrors> {
+pub fn parse_primary(text: &str) -> Result<Node<Option<cst::Primary>>, err::ParseErrors> {
     parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
-pub fn parse_name(text: &str) -> Result<node::ASTNode<Option<cst::Name>>, err::ParseErrors> {
+pub fn parse_name(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseErrors> {
     parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
-pub fn parse_ident(text: &str) -> Result<node::ASTNode<Option<cst::Ident>>, err::ParseErrors> {
+pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
+// PANIC SAFETY unit test code
+#[allow(clippy::panic)]
+// PANIC SAFETY unit test code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,8 +340,7 @@ mod tests {
         assert!(policy.is_ok());
     }
 
-    #[test]
-    #[should_panic] // we no longer support structs
+    #[test] // we no longer support named structs
     fn member7() {
         let policy = parse_policy(
             r#"
@@ -346,7 +350,15 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
+        let errs = match policy.err() {
+            Some(pes) => pes,
+            _ => panic!("Expected parsing policy to error"),
+        };
+        assert!(errs.len() == 2);
+        assert!(format!("{:?}", errs[0])
+            .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (98, \"{\", 99)"));
+        assert!(format!("{:?}", errs[1])
+            .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (141, \"}\", 142)"));
     }
 
     #[test]
@@ -885,16 +897,14 @@ mod tests {
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser
+        let src = r#"
+            // use a number to error
+            3(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
+            permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
+            permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
+            "#;
         let policies = POLICIES_PARSER
-            .parse(
-                &mut Vec::new(),
-                r#"
-                // use a number to error
-                3(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
-                permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
-                permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
-            "#,
-            )
+            .parse(&mut Vec::new(), &Arc::from(src), src)
             .expect("parser error")
             .node
             .expect("no data");

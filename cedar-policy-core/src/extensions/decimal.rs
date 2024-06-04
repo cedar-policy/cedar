@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 
 //! This module contains the Cedar 'decimal' extension.
 
-use regex::Regex;
-
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -38,10 +37,12 @@ struct Decimal {
     value: i64,
 }
 
-// PANIC SAFETY All `Name`s in here are valid `Name`s
-#[allow(clippy::expect_used)]
-mod names {
+// PANIC SAFETY The `Name`s and `Regex` here are valid
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod constants {
     use super::{Name, EXTENSION_NAME};
+    use regex::Regex;
+
     // PANIC SAFETY all of the names here are valid names
     lazy_static::lazy_static! {
         pub static ref DECIMAL_FROM_STR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
@@ -50,23 +51,30 @@ mod names {
         pub static ref GREATER_THAN : Name = Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier");
         pub static ref GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
     }
+
+    // Global regex, initialized at first use
+    // PANIC SAFETY This is a valid `Regex`
+    lazy_static::lazy_static! {
+        pub static ref DECIMAL_REGEX : Regex = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
+    }
 }
 
 /// Help message to display when a String was provided where a decimal value was expected.
 /// This error is likely due to confusion between "1.23" and decimal("1.23").
-const ADVICE_MSG: &str = "Maybe you forgot to apply the `decimal` constructor?";
+const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
 /// before being reported to users.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 enum Error {
     /// Error parsing the input string as a decimal value
-    #[error("input string is not a well-formed decimal value: {0}")]
+    #[error("`{0}` is not a well-formed decimal value")]
     FailedParse(String),
 
     /// Too many digits after the decimal point
-    #[error("too many digits after the decimal, we support at most {NUM_DIGITS}: {0}")]
+    #[error("too many digits after the decimal in `{0}`")]
+    #[diagnostic(help("at most {NUM_DIGITS} digits are supported"))]
     TooManyDigits(String),
 
     /// Overflow occurred when converting to a decimal value
@@ -87,7 +95,7 @@ fn checked_mul_pow(x: i64, y: u32) -> Result<i64, Error> {
 impl Decimal {
     /// The Cedar typename of decimal values
     fn typename() -> Name {
-        names::DECIMAL_FROM_STR_NAME.clone()
+        constants::DECIMAL_FROM_STR_NAME.clone()
     }
 
     /// Convert a string into a `Decimal` value.
@@ -100,17 +108,14 @@ impl Decimal {
     /// `d * 10 ^ NUM_DIGITS`; this function will error on overflow.
     fn from_str(str: impl AsRef<str>) -> Result<Self, Error> {
         // check that the string matches the regex
-        // PANIC SAFETY: This regex does parse
-        #[allow(clippy::unwrap_used)]
-        let re = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
-        if !re.is_match(str.as_ref()) {
+        if !constants::DECIMAL_REGEX.is_match(str.as_ref()) {
             return Err(Error::FailedParse(str.as_ref().to_owned()));
         }
 
         // pull out the components before and after the decimal point
         // (the check above should ensure that .captures() and .get() succeed,
         // but we include proper error handling for posterity)
-        let caps = re
+        let caps = constants::DECIMAL_REGEX
             .captures(str.as_ref())
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?;
         let l = caps
@@ -166,8 +171,9 @@ const EXTENSION_NAME: &str = "decimal";
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
-        names::DECIMAL_FROM_STR_NAME.clone(),
+        constants::DECIMAL_FROM_STR_NAME.clone(),
         msg.into(),
+        None, // source loc will be added by the evaluator
     )
 }
 
@@ -176,15 +182,20 @@ fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
 fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
-    let function_name = names::DECIMAL_FROM_STR_NAME.clone();
-    let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], function_name);
-    Ok(Value::ExtensionValue(Arc::new(e)).into())
+    let function_name = constants::DECIMAL_FROM_STR_NAME.clone();
+    let arg_source_loc = arg.source_loc().cloned();
+    let e = ExtensionValueWithArgs::new(Arc::new(decimal), function_name, vec![arg.into()]);
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(e)),
+        loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
+    }
+    .into())
 }
 
 /// Check that `v` is a decimal type and, if it is, return the wrapped value
 fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
-    match v {
-        Value::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
+    match &v.value {
+        ValueKind::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
             // PANIC SAFETY Conditional above performs a typecheck
             #[allow(clippy::expect_used)]
             let d = ev
@@ -194,18 +205,20 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
                 .expect("already typechecked, so this downcast should succeed");
             Ok(d)
         }
-        Value::Lit(Literal::String(_)) => Err(evaluator::EvaluationError::type_error_with_advice(
-            vec![Type::Extension {
+        ValueKind::Lit(Literal::String(_)) => {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
+                    name: Decimal::typename(),
+                },
+                v,
+                ADVICE_MSG.into(),
+            ))
+        }
+        _ => Err(evaluator::EvaluationError::type_error_single(
+            Type::Extension {
                 name: Decimal::typename(),
-            }],
-            v.type_of(),
-            ADVICE_MSG.into(),
-        )),
-        _ => Err(evaluator::EvaluationError::type_error(
-            vec![Type::Extension {
-                name: Decimal::typename(),
-            }],
-            v.type_of(),
+            },
+            v,
         )),
     }
 }
@@ -215,7 +228,7 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
 fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left < right).into()).into())
+    Ok(Value::from(left < right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -223,7 +236,7 @@ fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left <= right).into()).into())
+    Ok(Value::from(left <= right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -231,7 +244,7 @@ fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left > right).into()).into())
+    Ok(Value::from(left > right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -239,7 +252,7 @@ fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_ge(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left >= right).into()).into())
+    Ok(Value::from(left >= right).into())
 }
 
 /// Construct the extension
@@ -248,38 +261,38 @@ pub fn extension() -> Extension {
         name: Decimal::typename(),
     };
     Extension::new(
-        names::DECIMAL_FROM_STR_NAME.clone(),
+        constants::DECIMAL_FROM_STR_NAME.clone(),
         vec![
             ExtensionFunction::unary(
-                names::DECIMAL_FROM_STR_NAME.clone(),
+                constants::DECIMAL_FROM_STR_NAME.clone(),
                 CallStyle::FunctionStyle,
                 Box::new(decimal_from_str),
                 decimal_type.clone(),
                 Some(SchemaType::String),
             ),
             ExtensionFunction::binary(
-                names::LESS_THAN.clone(),
+                constants::LESS_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_lt),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                names::LESS_THAN_OR_EQUAL.clone(),
+                constants::LESS_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_le),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                names::GREATER_THAN.clone(),
+                constants::GREATER_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_gt),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                names::GREATER_THAN_OR_EQUAL.clone(),
+                constants::GREATER_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_ge),
                 SchemaType::Bool,
@@ -290,44 +303,41 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};
     use crate::evaluator::test::{basic_entities, basic_request};
-    use crate::evaluator::Evaluator;
+    use crate::evaluator::{evaluation_errors, EvaluationError, Evaluator};
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
+    use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
-    fn assert_decimal_err<T>(res: evaluator::Result<T>) {
-        match res {
-            Err(e) => match e.error_kind() {
-                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
-                    extension_name,
-                    msg,
-                } => {
-                    println!("{msg}");
-                    assert_eq!(
-                        *extension_name,
-                        Name::parse_unqualified_name("decimal")
-                            .expect("should be a valid identifier")
-                    )
-                }
-                _ => panic!("Expected a decimal ExtensionErr, got {:?}", e),
-            },
-            Ok(_) => panic!("Expected a decimal ExtensionErr, got Ok"),
-        }
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_decimal_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
+        assert_matches!(res, Err(evaluator::EvaluationError::FailedExtensionFunctionExecution(evaluation_errors::ExtensionFunctionExecutionError {
+            extension_name,
+            msg,
+            ..
+        })) => {
+            println!("{msg}");
+            assert_eq!(
+                extension_name,
+                Name::parse_unqualified_name("decimal")
+                    .expect("should be a valid identifier")
+            )
+        });
     }
 
     /// Asserts that a `Result` is a decimal value
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_decimal_valid(res: evaluator::Result<Value>) {
-        match res {
-            Ok(Value::ExtensionValue(ev)) => {
-                assert_eq!(ev.typename(), Decimal::typename())
-            }
-            Ok(v) => panic!("Expected decimal ExtensionValue, got {:?}", v),
-            Err(e) => panic!("Expected Ok, got Err: {:?}", e),
-        }
+        assert_matches!(res, Ok(Value { value: ValueKind::ExtensionValue(ev), .. }) => {
+            assert_eq!(ev.typename(), Decimal::typename());
+        });
     }
 
     /// this test just ensures that the right functions are marked constructors
@@ -374,7 +384,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // valid decimal strings
         assert_decimal_valid(
@@ -470,7 +480,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         let a = parse_expr(r#"decimal("123.0")"#).expect("parsing error");
         let b = parse_expr(r#"decimal("123.0000")"#).expect("parsing error");
@@ -534,7 +544,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         for ((l, r), res) in tests {
             assert_eq!(
@@ -601,32 +611,33 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
-        assert_eq!(
+        assert_matches!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::Long],
-                Type::Extension {
+            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
-                },
-            ))
+                });
+                assert_eq!(advice, None);
+            }
         );
-        assert_eq!(
+        assert_matches!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_with_advice(
-                vec![Type::Extension {
+            Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
-                }],
-                Type::String,
-                ADVICE_MSG.into(),
-            ))
+                }]);
+                assert_eq!(actual, Type::String);
+                assert_matches!(advice, Some(a) => assert_eq!(a, ADVICE_MSG));
+            }
         );
         // bad use of `lessThan` as function
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");

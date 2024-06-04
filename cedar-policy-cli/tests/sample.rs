@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,36 +14,45 @@
  * limitations under the License.
  */
 
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
 use cedar_policy_cli::check_parse;
+use cedar_policy_cli::SchemaFormat;
 use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
-    EvaluateArgs, LinkArgs, RequestArgs, ValidateArgs,
+    EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
 };
 
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
-        policies_file: Some(policies_file.into()),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
     };
     let output = check_parse(&cmd);
     assert_eq!(output, expected_exit_code, "{:#?}", cmd);
 }
 
 fn run_authorize_test(
-    policies_file: &str,
-    entities_file: &str,
-    principal: &str,
-    action: &str,
-    resource: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     run_authorize_test_with_linked_policies(
         policies_file,
         entities_file,
-        None,
+        None::<String>,
         principal,
         action,
         resource,
@@ -52,12 +61,12 @@ fn run_authorize_test(
 }
 
 fn run_authorize_test_with_linked_policies(
-    policies_file: &str,
-    entities_file: &str,
-    links_file: Option<&str>,
-    principal: &str,
-    action: &str,
-    resource: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    links_file: Option<impl Into<String>>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -67,10 +76,15 @@ fn run_authorize_test_with_linked_policies(
             resource: Some(resource.into()),
             context_json_file: None,
             request_json_file: None,
+            request_validation: true,
         },
-        policies_file: policies_file.into(),
-        template_linked_file: links_file.map(|x| x.to_string()),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: links_file.map(Into::into),
+        },
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -80,16 +94,19 @@ fn run_authorize_test_with_linked_policies(
 }
 
 fn run_link_test(
-    policies_file: &str,
-    links_file: &str,
-    template_id: &str,
-    linked_id: &str,
+    policies_file: impl Into<String>,
+    links_file: impl Into<String>,
+    template_id: impl Into<String>,
+    linked_id: impl Into<String>,
     env: HashMap<SlotId, String>,
     expected: CedarExitCode,
 ) {
     let cmd = LinkArgs {
-        policies_file: policies_file.into(),
-        template_linked_file: links_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: Some(links_file.into()),
+        },
         template_id: template_id.into(),
         new_id: linked_id.into(),
         arguments: Arguments { data: env },
@@ -98,25 +115,34 @@ fn run_link_test(
     assert_eq!(output, expected);
 }
 
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
+#[track_caller]
 fn run_format_test(policies_file: &str) {
+    let original = std::fs::read_to_string(policies_file).unwrap();
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("format")
+        .arg("-p")
         .arg(policies_file)
         .assert();
+    let formatted =
+        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
     assert_eq!(
-        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable"),
-        std::fs::read_to_string(policies_file).unwrap()
+        original, formatted,
+        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
     );
 }
 
 fn run_authorize_test_context(
-    policies_file: &str,
-    entities_file: &str,
-    principal: &str,
-    action: &str,
-    resource: &str,
-    context_file: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
+    context_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -126,10 +152,15 @@ fn run_authorize_test_context(
             resource: Some(resource.into()),
             context_json_file: Some(context_file.into()),
             request_json_file: None,
+            request_validation: true,
         },
-        policies_file: policies_file.into(),
-        template_linked_file: None,
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -139,9 +170,9 @@ fn run_authorize_test_context(
 }
 
 fn run_authorize_test_json(
-    policies_file: &str,
-    entities_file: &str,
-    request_json: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    request_json_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -150,11 +181,16 @@ fn run_authorize_test_json(
             action: None,
             resource: None,
             context_json_file: None,
-            request_json_file: Some(request_json.into()),
+            request_json_file: Some(request_json_file.into()),
+            request_validation: true,
         },
-        policies_file: policies_file.into(),
-        template_linked_file: None,
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -415,15 +451,61 @@ fn test_authorize_samples() {
         "sample-data/tiny_sandboxes/sample7/request.json",
         CedarExitCode::Success,
     );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/entity.json",
+        "sample-data/tiny_sandboxes/sample8/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/entity.json",
+        "sample-data/tiny_sandboxes/sample9/request.json",
+        CedarExitCode::Success,
+    );
 }
 
-fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExitCode) {
+#[track_caller]
+fn run_validate_test(
+    policies_file: impl Into<String>,
+    schema_file: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.into();
+
+    // Run with JSON schema
     let cmd = ValidateArgs {
-        schema_file: schema_file.into(),
-        policies_file: policies_file.into(),
+        schema_file: schema_file.clone(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.clone()),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        schema_format: SchemaFormat::Json,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
+
+    // Run with human schema
+    let cmd = ValidateArgs {
+        schema_file: schema_file
+            .strip_suffix(".json")
+            .expect("`schema_file` should be the JSON schema")
+            .to_string(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Human,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        schema_format: SchemaFormat::Human,
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{:#?}", cmd)
 }
 
 #[test]
@@ -515,17 +597,33 @@ fn test_validate_samples() {
         "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
         CedarExitCode::Success,
     );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::ValidationFailure,
+    );
 }
 
 fn run_evaluate_test(
-    request_json_file: &str,
-    entities_file: &str,
-    expression: &str,
+    request_json_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    expression: impl Into<String>,
     exit_code: CedarExitCode,
     expected: EvalResult,
 ) {
     let cmd = EvaluateArgs {
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: Some(entities_file.into()),
         request: RequestArgs {
             principal: None,
@@ -533,8 +631,9 @@ fn run_evaluate_test(
             resource: None,
             context_json_file: None,
             request_json_file: Some(request_json_file.into()),
+            request_validation: true,
         },
-        expression: expression.to_owned(),
+        expression: expression.into(),
     };
     let output = evaluate(&cmd);
     assert_eq!(exit_code, output.0, "{:#?}", cmd,);
@@ -828,4 +927,131 @@ fn test_format_samples() {
     use glob::glob;
     let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
     ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
+}
+
+#[test]
+fn test_format_write() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    // See https://doc.rust-lang.org/cargo/reference/environment-variables.html for the
+    // CARGO_TARGET_TMPDIR environment variable.
+    let tmp_dir = env!("CARGO_TARGET_TMPDIR");
+    let unformatted_file = format!("{}/unformatted.cedar", tmp_dir);
+    std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
+    let original = std::fs::read_to_string(&unformatted_file).unwrap();
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_eq!(
+        original, formatted,
+        "original and formatted should be the same without -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .arg("-w")
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_ne!(
+        original, formatted,
+        "original and formatted should differ under -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+}
+
+#[test]
+fn test_format_check() {
+    const POLICY_REQUIRING_FORMAT: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    const POLICY_ALREADY_FORMATTED: &str = "sample-data/tiny_sandboxes/format/formatted.cedar";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_REQUIRING_FORMAT)
+        .arg("-c")
+        .assert()
+        .code(1);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_ALREADY_FORMATTED)
+        .arg("-c")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_write_check_are_mutually_exclusive() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_SOURCE)
+        .arg("-w")
+        .arg("-c")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the argument '--write' cannot be used with '--check'",
+        ));
+}
+
+#[test]
+fn test_require_policies_for_write() {
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-w")
+        .write_stdin("permit (principal, action, resource);")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the following required arguments were not provided:\n  --policies <FILE>",
+        ));
+}
+
+#[test]
+fn test_json_policy() {
+    let json_policies: &str = "sample-data/tiny_sandboxes/json_policy/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json_policy/entity.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policies)
+        .assert()
+        .code(0);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("authorize")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .assert()
+        .code(0);
 }

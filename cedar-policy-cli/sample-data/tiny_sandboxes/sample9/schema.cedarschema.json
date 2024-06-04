@@ -1,0 +1,44 @@
+{
+    "": {
+        "entityTypes": {
+            "User": { },
+            "ScreenTime": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "owner": {
+                            "type": "Entity",
+                            "name": "User"
+                        }
+                    }
+                }
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "ScreenTime"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "edit": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}

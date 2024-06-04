@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ impl Type {
     /// Shorthand for constructing an entity type.
     pub fn entity_type(name: Name) -> Self {
         Type::Entity {
-            ty: EntityType::Concrete(name),
+            ty: EntityType::Specified(name),
         }
     }
 }
@@ -81,7 +81,7 @@ impl std::fmt::Display for Type {
             Self::Record => write!(f, "record"),
             Self::Entity { ty } => match ty {
                 EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Concrete(name) => write!(f, "(entity of type {})", name),
+                EntityType::Specified(name) => write!(f, "(entity of type `{}`)", name),
             },
             Self::Extension { name } => write!(f, "{}", name),
         }

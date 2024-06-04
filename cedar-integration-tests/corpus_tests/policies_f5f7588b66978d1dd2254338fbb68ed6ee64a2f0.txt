@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource == a::"f\0"
-) when {
-  (true && (!((a::"f\0" like "*\0") like "\0"))) && ((!principal) like "\0")
-};

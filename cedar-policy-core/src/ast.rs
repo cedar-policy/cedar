@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,10 @@ mod entity;
 pub use entity::*;
 mod extension;
 pub use extension::*;
+mod id;
+pub use id::*;
+mod integer;
+pub use integer::{InputInteger, Integer};
 mod literal;
 pub use literal::*;
 mod name;
@@ -30,6 +34,8 @@ mod ops;
 pub use ops::*;
 mod pattern;
 pub use pattern::*;
+mod partial_value;
+pub use partial_value::*;
 mod policy;
 pub use policy::*;
 mod policy_set;

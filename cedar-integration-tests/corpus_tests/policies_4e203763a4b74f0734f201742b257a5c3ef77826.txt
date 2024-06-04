@@ -1,8 +1,0 @@
-@Fwwwww(":\u{f}\0")
-forbid(
-  principal,
-  action in [m::Action::"action",m::Action::"action"],
-  resource
-) when {
-  true
-};

@@ -1,4 +1,21 @@
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::Loc;
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -25,12 +42,22 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
             // the normalized representation is indeed the one that was provided
             Ok(parsed)
         } else {
-            Err(ParseError::ToAST(ToASTError::NonNormalizedString {
-                kind: Self::describe_self(),
-                src: s.to_string(),
-                normalized_src,
-            })
-            .into())
+            let diff_byte = s
+                .bytes()
+                .zip(normalized_src.bytes())
+                .enumerate()
+                .find(|(_, (b0, b1))| b0 != b1)
+                .map(|(idx, _)| idx)
+                .unwrap_or(s.len().min(normalized_src.len()));
+
+            Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+                ToASTErrorKind::NonNormalizedString {
+                    kind: Self::describe_self(),
+                    src: s.to_string(),
+                    normalized_src,
+                },
+                Loc::new(diff_byte, s.into()),
+            ))))
         }
     }
 

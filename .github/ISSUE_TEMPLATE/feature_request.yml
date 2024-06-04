@@ -14,12 +14,13 @@ body:
       description: What component of Cedar does this feature relate to?
       multiple: true
       options:
-        - Cedar language features
-        - Cedar validation features
-        - Cedar syntax changes/additions
-        - User level API changes
-        - Internal refactors/changes
+        - Cedar language or syntax features/changes
+        - Cedar validation features/changes
+        - User level API features/changes
+        - CLI features/changes
+        - Error message improvements
         - Documentation and code comments
+        - Internal refactors/changes -- consider "Internal improvement" instead of "Feature request"
         - Other
     validations:
       required: true

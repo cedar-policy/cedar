@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-//! Public Rust interface for Cedar
+// Includes the cedar-policy README as the top-level documentation for this
+// crate. This also acts as a test that the example code in the README
+// compiles. If changing the docs away from using the readme verbatim, be sure
+// to add a separate test specifically for README examples by introducing a
+// private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
 #![deny(
@@ -29,13 +34,16 @@
     clippy::doc_markdown
 )]
 #![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
+// enable doc_auto_cfg feature if docsrs cfg is present
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 /// Rust public API
 mod api;
+
 pub use api::*;
 
-/// Frontend utilities, see comments in the module itself
-pub mod frontend;
+/// FFI utilities, see comments in the module itself
+pub mod ffi;
 
-#[cfg(feature = "integration_testing")]
-pub mod integration_testing;
+mod prop_test_policy_set;
+mod tests;

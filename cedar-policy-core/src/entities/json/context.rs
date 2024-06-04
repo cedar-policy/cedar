@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-use super::{JsonDeserializationError, JsonDeserializationErrorContext, SchemaType, ValueParser};
-use crate::ast::{Context, ExprKind};
+use super::{
+    err::{JsonDeserializationError, JsonDeserializationErrorContext},
+    SchemaType, ValueParser,
+};
+use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
+use miette::Diagnostic;
 use std::collections::HashMap;
+use thiserror::Error;
 
 /// Trait for schemas that can inform the parsing of Context data
 pub trait ContextSchema {
@@ -32,6 +37,7 @@ impl ContextSchema for NullContextSchema {
     fn context_type(&self) -> SchemaType {
         SchemaType::Record {
             attrs: HashMap::new(),
+            open_attrs: false,
         }
     }
 }
@@ -65,8 +71,9 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     }
 
     /// Parse context JSON (in `&str` form) into a `Context` object
-    pub fn from_json_str(&self, json: &str) -> Result<Context, JsonDeserializationError> {
-        let val = serde_json::from_str(json)?;
+    pub fn from_json_str(&self, json: &str) -> Result<Context, ContextJsonDeserializationError> {
+        let val =
+            serde_json::from_str(json).map_err(|e| JsonDeserializationError::Serde(e.into()))?;
         self.from_json_value(val)
     }
 
@@ -74,26 +81,38 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     pub fn from_json_value(
         &self,
         json: serde_json::Value,
-    ) -> Result<Context, JsonDeserializationError> {
-        let vparser = ValueParser::new(self.extensions.clone());
+    ) -> Result<Context, ContextJsonDeserializationError> {
+        let vparser = ValueParser::new(self.extensions);
         let expected_ty = self.schema.map(|s| s.context_type());
-        let rexpr = vparser.val_into_rexpr(json, expected_ty.as_ref(), || {
+        let rexpr = vparser.val_into_restricted_expr(json, expected_ty.as_ref(), || {
             JsonDeserializationErrorContext::Context
         })?;
-        match rexpr.expr_kind() {
-            ExprKind::Record { .. } => Ok(Context::from_expr(rexpr)),
-            _ => Err(JsonDeserializationError::ExpectedContextToBeRecord {
-                got: Box::new(rexpr),
-            }),
-        }
+        Context::from_expr(rexpr.as_borrowed(), self.extensions)
+            .map_err(ContextJsonDeserializationError::ContextCreation)
     }
 
     /// Parse context JSON (in `std::io::Read` form) into a `Context` object
     pub fn from_json_file(
         &self,
         json: impl std::io::Read,
-    ) -> Result<Context, JsonDeserializationError> {
+    ) -> Result<Context, ContextJsonDeserializationError> {
         let val = serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.from_json_value(val)
     }
+}
+
+/// Errors possible when deserializing request context from JSON
+#[derive(Debug, Diagnostic, Error)]
+pub enum ContextJsonDeserializationError {
+    /// Any JSON deserialization error
+    ///
+    /// (Note: as of this writing, `JsonDeserializationError` actually contains
+    /// many variants that aren't possible here)
+    #[error("while parsing context, {0}")]
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] JsonDeserializationError),
+    /// Error constructing the `Context` itself
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextCreation(#[from] ContextCreationError),
 }

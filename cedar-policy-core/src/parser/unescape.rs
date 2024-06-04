@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,16 @@
  */
 
 use crate::ast::PatternElem;
+use itertools::Itertools;
+use miette::Diagnostic;
+use nonempty::NonEmpty;
 use rustc_lexer::unescape::{unescape_str, EscapeError};
 use smol_str::SmolStr;
 use std::ops::Range;
 use thiserror::Error;
 
-pub(crate) fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>> {
+/// Unescape a string following Cedar's string escape rules
+pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> {
     let mut unescaped_str = String::new();
     let mut errs = Vec::new();
     let mut callback = |range, r| match r {
@@ -32,14 +36,17 @@ pub(crate) fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>
         }),
     };
     unescape_str(s, &mut callback);
-    if errs.is_empty() {
-        Ok(unescaped_str.into())
+    if let Some((head, tails)) = errs.split_first() {
+        Err(NonEmpty {
+            head: head.clone(),
+            tail: tails.iter().cloned().collect_vec(),
+        })
     } else {
-        Err(errs)
+        Ok(unescaped_str.into())
     }
 }
 
-pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>> {
+pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeError>> {
     let mut unescaped_str = Vec::new();
     let mut errs = Vec::new();
     let bytes = s.as_bytes(); // to inspect string element in O(1) time
@@ -58,22 +65,27 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
         Err(err) => errs.push(UnescapeError { err, input: s.to_owned(), range }),
     };
     unescape_str(s, &mut callback);
-    if errs.is_empty() {
-        Ok(unescaped_str)
+    if let Some((head, tails)) = errs.split_first() {
+        Err(NonEmpty {
+            head: head.clone(),
+            tail: tails.iter().cloned().collect_vec(),
+        })
     } else {
-        Err(errs)
+        Ok(unescaped_str)
     }
 }
 
 /// Errors generated when processing escapes
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Diagnostic, Error, PartialEq, Eq)]
 pub struct UnescapeError {
     /// underlying EscapeError
     err: EscapeError,
     /// copy of the input string which had the error
+    #[source_code]
     input: String,
     /// Range of the input string where the error occurred
     /// This range must be within the length of `input`
+    #[label]
     range: Range<usize>,
 }
 
@@ -118,18 +130,22 @@ impl std::fmt::Display for UnescapeError {
     // PANIC SAFETY By invariant, the range will always be within the bounds of `input`
     #[allow(clippy::indexing_slicing)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {}", self.err, &self.input[self.range.clone()])
+        write!(
+            f,
+            "the input `{}` is not a valid escape",
+            &self.input[self.range.clone()],
+        )
     }
 }
 
 #[cfg(test)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use super::to_unescaped_string;
     use crate::ast;
-    use crate::parser::{
-        err::{ParseError, ParseErrors},
-        text_to_cst,
-    };
+    use crate::parser::err::ToASTErrorKind;
+    use crate::parser::text_to_cst;
 
     #[test]
     fn test_string_escape() {
@@ -165,7 +181,7 @@ mod test {
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
@@ -181,18 +197,17 @@ mod test {
         );
 
         // invalid ASCII escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)
             .is_none());
-        assert!(matches!(
-            errs.as_slice(),
-            [ParseError::ToAST(_), ParseError::ToAST(_)]
-        ));
+        assert_eq!(errs.len(), 2);
+        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
 
         // valid `\*` surrounded by chars
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
@@ -202,14 +217,13 @@ mod test {
         );
 
         // invalid escapes
-        let mut errs = ParseErrors::new();
+        let mut errs = vec![];
         assert!(text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)
             .is_none());
-        assert!(matches!(
-            errs.as_slice(),
-            [ParseError::ToAST(_), ParseError::ToAST(_)]
-        ));
+        assert_eq!(errs.len(), 2);
+        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
     }
 }

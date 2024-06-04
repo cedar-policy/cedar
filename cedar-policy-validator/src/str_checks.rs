@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,87 +15,35 @@
  */
 
 use cedar_policy_core::ast::{Pattern, PolicyID, Template};
-use thiserror::Error;
+use cedar_policy_core::parser::Loc;
 
 use crate::expr_iterator::expr_text;
 use crate::expr_iterator::TextKind;
+use crate::ValidationWarning;
 use unicode_security::GeneralSecurityProfile;
 use unicode_security::MixedScript;
-
-/// Returned by the standalone `confusable_string_checker` function, which checks a policy set for potentially confusing/obfuscating text.
-#[derive(Debug, Clone)]
-pub struct ValidationWarning<'a> {
-    location: &'a PolicyID,
-    kind: ValidationWarningKind,
-}
-
-impl<'a> ValidationWarning<'a> {
-    pub fn location(&self) -> &'a PolicyID {
-        self.location
-    }
-
-    pub fn kind(&self) -> &ValidationWarningKind {
-        &self.kind
-    }
-
-    pub fn to_kind_and_location(self) -> (&'a PolicyID, ValidationWarningKind) {
-        (self.location, self.kind)
-    }
-}
-
-impl std::fmt::Display for ValidationWarning<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "warning: {} in policy with id {}",
-            self.kind, self.location
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Error, Eq)]
-pub enum ValidationWarningKind {
-    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
-    #[error("string \"{0}\" contains mixed scripts")]
-    MixedScriptString(String),
-    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
-    #[error("string \"{0}\" contains BIDI control characters")]
-    BidiCharsInString(String),
-    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
-    #[error("identifier `{0}` contains BIDI control characters")]
-    BidiCharsInIdentifier(String),
-    /// An id contains mixed scripts. This can cause characters to be confused for each other.
-    #[error("identifier `{0}` contains mixed scripts")]
-    MixedScriptIdentifier(String),
-    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
-    #[error("identifier `{0}` contains characters that fall outside of the General Security Profile for Identifiers")]
-    ConfusableIdentifier(String),
-}
 
 /// Perform identifier and string safety checks.
 pub fn confusable_string_checks<'a>(
     p: impl Iterator<Item = &'a Template>,
-) -> impl Iterator<Item = ValidationWarning<'a>> {
+) -> impl Iterator<Item = ValidationWarning> {
     let mut warnings = vec![];
 
     for policy in p {
         let e = policy.condition();
         for str in expr_text(&e) {
             let warning = match str {
-                TextKind::String(s) => permissable_str(s),
-                TextKind::Identifier(i) => permissable_ident(i),
-                TextKind::Pattern(p) => {
+                TextKind::String(span, s) => permissable_str(span, policy.id(), s),
+                TextKind::Identifier(span, i) => permissable_ident(span, policy.id(), i),
+                TextKind::Pattern(span, p) => {
                     let pat = Pattern::new(p.iter().copied());
                     let as_str = format!("{pat}");
-                    permissable_str(&as_str)
+                    permissable_str(span, policy.id(), &as_str)
                 }
             };
 
-            if let Some(w) = warning {
-                warnings.push(ValidationWarning {
-                    location: policy.id(),
-                    kind: w,
-                })
+            if let Some(warning) = warning {
+                warnings.push(warning)
             }
         }
     }
@@ -103,23 +51,47 @@ pub fn confusable_string_checks<'a>(
     warnings.into_iter()
 }
 
-fn permissable_str(s: &str) -> Option<ValidationWarningKind> {
+fn permissable_str(loc: Option<&Loc>, policy_id: &PolicyID, s: &str) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
-        Some(ValidationWarningKind::BidiCharsInString(s.to_string()))
+        Some(ValidationWarning::bidi_chars_strings(
+            loc.cloned(),
+            policy_id.clone(),
+            s.to_string(),
+        ))
     } else if !s.is_single_script() {
-        Some(ValidationWarningKind::MixedScriptString(s.to_string()))
+        Some(ValidationWarning::mixed_script_string(
+            loc.cloned(),
+            policy_id.clone(),
+            s.to_string(),
+        ))
     } else {
         None
     }
 }
 
-fn permissable_ident(s: &str) -> Option<ValidationWarningKind> {
+fn permissable_ident(
+    loc: Option<&Loc>,
+    policy_id: &PolicyID,
+    s: &str,
+) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
-        Some(ValidationWarningKind::BidiCharsInIdentifier(s.to_string()))
+        Some(ValidationWarning::bidi_chars_identifier(
+            loc.cloned(),
+            policy_id.clone(),
+            s,
+        ))
     } else if !s.chars().all(|c| c.identifier_allowed()) {
-        Some(ValidationWarningKind::ConfusableIdentifier(s.to_string()))
+        Some(ValidationWarning::confusable_identifier(
+            loc.cloned(),
+            policy_id.clone(),
+            s,
+        ))
     } else if !s.is_single_script() {
-        Some(ValidationWarningKind::MixedScriptIdentifier(s.to_string()))
+        Some(ValidationWarning::mixed_script_identifier(
+            loc.cloned(),
+            policy_id.clone(),
+            s,
+        ))
     } else {
         None
     }
@@ -138,32 +110,51 @@ const BIDI_CHARS: [char; 9] = [
     '\u{2069}',
 ];
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-
     use super::*;
-    use cedar_policy_core::{ast::PolicySet, parser::parse_policy};
-
+    use cedar_policy_core::{
+        ast::PolicySet,
+        parser::{parse_policy, Loc},
+    };
+    use std::sync::Arc;
     #[test]
     fn strs() {
-        assert!(permissable_str("test").is_none());
-        assert!(permissable_str("test\t\t").is_none());
-        match permissable_str("say_һello") {
-            Some(ValidationWarningKind::MixedScriptString(_)) => (),
-            o => panic!("should have produced MixedScriptString: {:?}", o),
-        };
+        assert_eq!(
+            permissable_str(None, &PolicyID::from_string("0"), "test"),
+            None
+        );
+        assert_eq!(
+            permissable_str(None, &PolicyID::from_string("0"), "test\t\t"),
+            None
+        );
+        assert_eq!(
+            permissable_str(None, &PolicyID::from_string("0"), "say_һello"),
+            Some(ValidationWarning::mixed_script_string(
+                None,
+                PolicyID::from_string("0"),
+                "say_һello"
+            ))
+        );
     }
 
     #[test]
     #[allow(clippy::invisible_characters)]
     fn idents() {
-        assert!(permissable_ident("test").is_none());
-        match permissable_ident("is​Admin") {
-            Some(ValidationWarningKind::ConfusableIdentifier(_)) => (),
+        assert_eq!(
+            permissable_ident(None, &PolicyID::from_string("0"), "test"),
+            None
+        );
+        match permissable_ident(None, &PolicyID::from_string("0"), "is​Admin") {
+            Some(ValidationWarning::ConfusableIdentifier(_)) => (),
             o => panic!("should have produced ConfusableIdentifier: {:?}", o),
         };
-        match permissable_ident("say_һello") {
-            Some(ValidationWarningKind::MixedScriptIdentifier(_)) => (),
+        match permissable_ident(None, &PolicyID::from_string("0"), "say_һello") {
+            Some(ValidationWarning::MixedScriptIdentifier(_)) => (),
             o => panic!("should have produced MixedScriptIdentifier: {:?}", o),
         };
     }
@@ -181,18 +172,18 @@ mod test {
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
-        let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
-            kind,
-            ValidationWarningKind::MixedScriptIdentifier(r#"say_һello"#.to_string())
+            warning,
+            &ValidationWarning::mixed_script_identifier(
+                None,
+                PolicyID::from_string("test"),
+                r#"say_һello"#
+            )
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: identifier `say_һello` contains mixed scripts in policy with id test"
+            "for policy `test`, identifier `say_һello` contains mixed scripts"
         );
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
 
     #[test]
@@ -224,18 +215,18 @@ mod test {
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
-        let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
-            kind,
-            ValidationWarningKind::MixedScriptString(r#"*_һello"#.to_string())
+            warning,
+            &ValidationWarning::mixed_script_string(
+                Some(Loc::new(64..94, Arc::from(src))),
+                PolicyID::from_string("test"),
+                r#"*_һello"#
+            )
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: string \"*_һello\" contains mixed scripts in policy with id test"
+            "for policy `test`, string `\"*_һello\"` contains mixed scripts"
         );
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
 
     #[test]
@@ -253,14 +244,17 @@ mod test {
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
-        let kind = warning.kind().clone();
-        let location = warning.location();
         assert_eq!(
-            kind,
-            ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
+            warning,
+            &ValidationWarning::bidi_chars_strings(
+                Some(Loc::new(90..131, Arc::from(src))),
+                PolicyID::from_string("test"),
+                r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#
+            )
         );
-        assert_eq!(format!("{warning}"), "warning: string \"user‮ ⁦&& principal.is_admin⁩ ⁦\" contains BIDI control characters in policy with id test");
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
+        assert_eq!(
+            format!("{warning}"),
+            "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters"
+        );
     }
 }

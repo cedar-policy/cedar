@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright Cedar Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,18 +19,20 @@
 # Clippy is automatically run against PRs on GitHub.  Clippy lints are
 # controlled for all of our crates by `./.cargo/config.toml`.
 
+
+# Check that panics are prefixed with a line that has "PANIC SAFETY" in it
 total_panics=0
 failed=0
 
 crates=($(cargo metadata --no-deps --format-version 1 | jq -r '.packages | map(.name) | join(" ")'))
-panic_markers=("unwrap_used expect_used fallible_impl_from unreachable indexing_slicing")
+panic_markers=("unwrap_used expect_used fallible_impl_from unreachable indexing_slicing panic")
 
 for crate in ${crates[@]}; do
     crate_panics=0
     for panic_marker in ${panic_markers[@]}; do
-        while read -r filename linenum ; do 
+        while read -r filename linenum ; do
             msg_line=$(($linenum - 1))
-            if sed "$msg_line!d" $filename | grep 'PANIC SAFETY' > /dev/null ; then 
+            if sed "$msg_line!d" $filename | grep 'PANIC SAFETY' > /dev/null ; then
                 crate_panics=$(($crate_panics + 1))
             else
                 echo "Unchecked panic at $filename:$linenum"
@@ -45,4 +47,21 @@ done
 
 echo "Total Panics: $total_panics"
 
-exit $failed
+if ((failed > 0))
+then
+    exit $failed
+else
+    # Check for "should_panic"s without "expected = ..."
+    num_should_panic=$(grep -inr --include \*.rs should_panic | wc -l)
+    echo "num 'should_panic's " $num_should_panic
+    num_should_panic_lparen=$(grep -inr --include \*.rs should_panic\( | wc -l)
+    echo "num 'should_panic('s " $num_should_panic_lparen
+    if ((num_should_panic == num_should_panic_lparen))
+    then
+        exit 0
+    else
+        echo "failed should_panic( test"
+        echo "every 'should_panic' should also be a 'should_panic('"
+        exit 1
+    fi
+fi

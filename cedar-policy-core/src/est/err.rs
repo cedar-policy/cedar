@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,27 +15,44 @@
  */
 
 use crate::ast;
-use crate::entities::JsonDeserializationError;
+use crate::entities::json::err::JsonDeserializationError;
+use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
+use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors arising while converting a policy from its JSON representation (aka EST) into an AST
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum FromJsonError {
     /// Error while deserializing JSON
     #[error(transparent)]
+    #[diagnostic(transparent)]
     JsonDeserializationError(#[from] JsonDeserializationError),
     /// Tried to convert an EST representing a template to an AST representing a static policy
     #[error("tried to convert JSON representing a template to a static policy: {0}")]
+    #[diagnostic(transparent)]
     TemplateToPolicy(#[from] ast::UnexpectedSlotError),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
-    #[error("invalid slot name, or used in wrong position")]
+    #[error("invalid slot name or slot used in wrong position")]
+    #[diagnostic(help(
+        "principal slots must be named `?principal` and resource slots must be named `?resource`"
+    ))]
     InvalidSlotName,
     /// EST contained a template slot for `action`. This is not currently allowed
-    #[error("specified a slot for action")]
+    #[error("slots are not allowed for actions")]
     ActionSlot,
+    /// EST contained a template slot in policy condition
+    #[error("found template slot {slot} in a `{clausetype}` clause")]
+    #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
+    SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        slot: ast::SlotId,
+        /// Clause type, e.g. "when" or "unless"
+        clausetype: &'static str,
+    },
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("missing operator, found empty object")]
     MissingOperator,
@@ -56,15 +73,31 @@ pub enum FromJsonError {
         arg2: ast::Expr,
     },
     /// Error thrown while processing string escapes
-    #[error("invalid escape patterns: {:?}", .0.iter().map(|e| e.to_string()).collect::<Vec<String>>())]
-    UnescapeError(Vec<unescape::UnescapeError>),
+    // show just the first error in the main error message, like in [`ParseErrors`]; see #326 and discussion on #477
+    #[error("{}", .0.first())]
+    UnescapeError(#[related] NonEmpty<unescape::UnescapeError>),
+    /// Error reported when the entity type tested by an `is` expression cannot be parsed.
+    #[error("invalid entity type: {0}")]
+    #[diagnostic(transparent)]
+    InvalidEntityType(ParseErrors),
+    /// Error reported when a policy set has duplicate ids
+    #[error("Error creating policy set: {0}")]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] ast::PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error("Error linking policy set: {0}")]
+    #[diagnostic(transparent)]
+    Linking(#[from] ast::LinkingError),
+    /// Error reported when the extension function name is unknown
+    #[error("Invalid extension function name: `{0}`")]
+    UnknownExtFunc(ast::Name),
 }
 
-/// Errors while instantiating a policy
-#[derive(Debug, PartialEq, Error)]
-pub enum InstantiationError {
+/// Errors while linking a policy
+#[derive(Debug, PartialEq, Diagnostic, Error)]
+pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
-    #[error("failed to instantiate template: no value provided for {slot}")]
+    #[error("failed to link template: no value provided for `{slot}`")]
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,

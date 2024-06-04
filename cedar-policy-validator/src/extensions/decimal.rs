@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+//! Note on panic safety
+//! If any of the panics in this file are triggered, that means that this file has become
+//! out-of-date with the decimal extension definition in CedarCore.
+//! This is tested by the `extension_schema_correctness()` test
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
@@ -21,9 +25,13 @@ use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::{decimal, Extensions};
 use std::str::FromStr;
 
+/// Note on safety:
+/// This module depends on the Cedar parser only constructing AST with valid extension calls
 /// If any of the panics in this file are triggered, that means that this file has become
 /// out-of-date with the decimal extension definition in CedarCore.
 
+// PANIC SAFETY see `Note on safety` above
+#[allow(clippy::panic)]
 fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
     match fname {
         "decimal" => vec![Type::primitive_string()],
@@ -34,6 +42,8 @@ fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
     }
 }
 
+// PANIC SAFETY see `Note on safety` above
+#[allow(clippy::panic)]
 fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
     match fname {
         "decimal" => decimal_ty.clone(),
@@ -44,6 +54,8 @@ fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
     }
 }
 
+// PANIC SAFETY see `Note on safety` above
+#[allow(clippy::panic)]
 fn get_argument_check(fname: &str) -> Option<ArgumentCheckFn> {
     match fname {
         "decimal" => Some(Box::new(validate_decimal_string)),
@@ -81,18 +93,29 @@ pub fn extension_schema() -> ExtensionSchema {
 /// Extra validation step for the `decimal` function.
 /// Note that `exprs` will have already been checked to contain the correct number of arguments.
 fn validate_decimal_string(exprs: &[Expr]) -> Result<(), String> {
-    match exprs.get(0) {
+    match exprs.first() {
         Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
             let exts = Extensions::all_available();
             let evaluator = RestrictedEvaluator::new(&exts);
             match RestrictedExpr::from_str(&format!("decimal({arg})")) {
                 Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
+                    Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
                 },
-                Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
+                Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
             }
         }
         _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // Ensures that `extension_schema()` does not panic
+    #[test]
+    fn extension_schema_correctness() {
+        let _ = extension_schema();
     }
 }

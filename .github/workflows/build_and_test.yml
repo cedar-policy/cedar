@@ -1,0 +1,99 @@
+name: Build and Test
+on:
+    workflow_call:
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
+    # doesn't trigger a fresh build.
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: ./panic_safety.sh
+      - run: cargo doc --all-features --no-deps
+
+      # All targets are run with the same `RUSTFLAGS
+      - run: cargo build --verbose
+      - run: cargo test --verbose
+      - run: cargo bench --no-run --profile=dev
+      - run: cargo test --verbose --no-default-features
+      - run: cargo build --verbose --features "experimental"
+      - run: cargo test --verbose --features "experimental"
+      - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+
+  run-integration-tests:
+    uses: ./.github/workflows/run_integration_tests_reusable.yml
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+
+  # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
+  # don't effect it. As a side effect, this will run in parallel, saving some
+  # time.
+  clippy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      # Clippy is configured by `.cargo/config.toml` to deny on lints like
+      # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
+      # looks for comments where we've added an `allow` directive for clippy.
+      - run: cargo clippy --all-features
+
+  # Run `cargo fmt` independently so that tests are executed even if you forgot
+  # to format before pushing.
+  format:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo fmt --all --check
+
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v1
+
+  # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: taiki-e/install-action@cargo-hack
+    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+
+  wasm-build:
+    name: run wasm build script
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ use clap::Parser;
 use miette::ErrorHook;
 
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, format_policies, link, slice, validate, CedarExitCode, Cli,
-    Commands, ErrorFormat,
+    authorize, check_parse, evaluate, format_policies, link, new, slice, translate_schema,
+    validate, CedarExitCode, Cli, Commands, ErrorFormat,
 };
 
 fn main() -> CedarExitCode {
@@ -48,5 +48,7 @@ fn main() -> CedarExitCode {
         Commands::Format(args) => format_policies(&args),
         Commands::Link(args) => link(&args),
         Commands::Slice(args) => slice(&args),
+        Commands::TranslateSchema(args) => translate_schema(&args),
+        Commands::New(args) => new(&args),
     }
 }

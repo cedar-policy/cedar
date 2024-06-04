@@ -17,94 +17,37 @@ jobs:
     outputs:
       branch_name: ${{ steps.get_branch_name.outputs.branch_name }}
 
-  cedar-drt:
-    name: CedarDRT
-    runs-on: ubuntu-latest
+  build-cedar-drt:
     needs: get-branch-name
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-spec
-        uses: actions/checkout@v3
-        with:
-          repository: cedar-policy/cedar-spec
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-spec
-      - name: checkout cedar
-        uses: actions/checkout@v3
-        with:
-          path: cedar-spec/cedar
-      - name: build cedar-drt
-        working-directory: cedar-spec/cedar-drt
-        run: RUSTFLAGS="-D warnings" cargo build
-      - name: build cedar-drt/fuzz
-        working-directory: cedar-spec/cedar-drt/fuzz
-        run: RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_drt_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
-  cedar-java:
-    name: CedarJava
-    runs-on: ubuntu-latest
+  build-cedar-java:
     needs: get-branch-name
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-java
-        uses: actions/checkout@v3
-        with:
-          repository: cedar-policy/cedar-java
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-java
-      - name: checkout cedar
-        uses: actions/checkout@v3
-        with:
-          path: cedar-java/cedar
-      - name: configure cedar-java
-        working-directory: cedar-java/CedarJava
-        shell: bash
-        run: bash config.sh run_int_tests
-      - name: build cedar-java/CedarJavaFFI
-        working-directory: cedar-java/CedarJavaFFI
-        run: RUSTFLAGS="-D warnings" cargo build
-      - name: build cedar-java/CedarJava
-        working-directory: cedar-java/CedarJava
-        run: export MUST_RUN_CEDAR_INTEGRATION_TESTS=1 && ./gradlew build
+    uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_java_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
+  build-cedar-examples-hello-world:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_rust_hello_world_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
-  cedar-examples:
-    name: CedarExamples
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-examples
-        uses: actions/checkout@v3
-        with:
-          repository: cedar-policy/cedar-examples
-          ref: main
-          path: ./cedar-examples
-      - name: checkout cedar
-        uses: actions/checkout@v3
-        with:
-          path: cedar-examples/cedar
-      - name: build rust-hello-world
-        working-directory: cedar-examples/cedar-rust-hello-world
-        run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
-             cargo build
-             cargo test
-      - name: build tinytodo
-        working-directory: cedar-examples/tinytodo
-        run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
-             cargo build
-             cargo test
+  run-cedar-examples-use-cases:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/run_example_use_cases_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
+  build-tiny-todo:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}

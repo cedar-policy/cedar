@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-use smol_str::SmolStr;
 
 use crate::ast::*;
 use crate::entities::SchemaType;
@@ -74,9 +72,9 @@ impl std::fmt::Debug for Extension {
 #[derive(Debug, Clone)]
 pub enum ExtensionOutputValue {
     /// A concrete value from an extension call
-    Concrete(Value),
+    Known(Value),
     /// An unknown returned from an extension call
-    Unknown(SmolStr),
+    Unknown(Unknown),
 }
 
 impl<T> From<T> for ExtensionOutputValue
@@ -84,7 +82,7 @@ where
     T: Into<Value>,
 {
     fn from(v: T) -> Self {
-        ExtensionOutputValue::Concrete(v.into())
+        ExtensionOutputValue::Known(v.into())
     }
 }
 
@@ -162,6 +160,7 @@ impl ExtensionFunction {
                         name.clone(),
                         0,
                         args.len(),
+                        None, // evaluator will add the source location later
                     ))
                 }
             }),
@@ -180,12 +179,13 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| match args.get(0) {
+            Box::new(move |args: &[Value]| match args.first() {
                 Some(arg) => func(arg.clone()),
                 None => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             None,
@@ -210,6 +210,7 @@ impl ExtensionFunction {
                     name.clone(),
                     1,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),
@@ -236,6 +237,7 @@ impl ExtensionFunction {
                     name.clone(),
                     2,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),
@@ -265,6 +267,7 @@ impl ExtensionFunction {
                     name.clone(),
                     3,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),
@@ -312,8 +315,8 @@ impl ExtensionFunction {
     /// Call the `ExtensionFunction` with the given args
     pub fn call(&self, args: &[Value]) -> evaluator::Result<PartialValue> {
         match (self.func)(args)? {
-            ExtensionOutputValue::Concrete(v) => Ok(PartialValue::Value(v)),
-            ExtensionOutputValue::Unknown(name) => Ok(PartialValue::Residual(Expr::unknown(name))),
+            ExtensionOutputValue::Known(v) => Ok(PartialValue::Value(v)),
+            ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
     }
 }
@@ -346,15 +349,32 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the fully reduced AST
-/// for the arguments
+/// Object container for extension values, also stores the constructor-and-args
+/// that can reproduce the value (important for converting the value back to
+/// `RestrictedExpr` for instance)
 pub struct ExtensionValueWithArgs {
     value: Arc<dyn InternalExtensionValue>,
-    args: Vec<Expr>,
-    constructor: Name,
+    pub(crate) constructor: Name,
+    /// Args are stored in `RestrictedExpr` form, just because that's most
+    /// convenient for reconstructing a `RestrictedExpr` that reproduces this
+    /// extension value
+    pub(crate) args: Vec<RestrictedExpr>,
 }
 
 impl ExtensionValueWithArgs {
+    /// Create a new `ExtensionValueWithArgs`
+    pub fn new(
+        value: Arc<dyn InternalExtensionValue + Send + Sync>,
+        constructor: Name,
+        args: Vec<RestrictedExpr>,
+    ) -> Self {
+        Self {
+            value,
+            constructor,
+            args,
+        }
+    }
+
     /// Get the internal value
     pub fn value(&self) -> &(dyn InternalExtensionValue) {
         self.value.as_ref()
@@ -365,23 +385,15 @@ impl ExtensionValueWithArgs {
         self.value.typename()
     }
 
-    /// Constructor
-    pub fn new(
-        value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        args: Vec<Expr>,
-        constructor: Name,
-    ) -> Self {
-        Self {
-            value,
-            args,
-            constructor,
-        }
+    /// Get the constructor and args that can reproduce this value
+    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
+        (&self.constructor, &self.args)
     }
 }
 
 impl From<ExtensionValueWithArgs> for Expr {
     fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor, val.args)
+        ExprBuilder::new().call_extension_fn(val.constructor, val.args.into_iter().map(Into::into))
     }
 }
 
@@ -408,7 +420,7 @@ impl Eq for ExtensionValueWithArgs {}
 
 impl PartialOrd for ExtensionValueWithArgs {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
+        Some(self.cmp(other))
     }
 }
 

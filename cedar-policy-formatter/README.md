@@ -10,11 +10,11 @@ The easiest way to format your Cedar policies is via [Cedar CLI](../cedar-policy
 ```shell
 # Default indentation is two spaces.
 # Default line width is 80.
-cedar format my-policies.cedar
+cedar format -p my-policies.cedar
 # I want more indentation.
-cedar format -i 4 my-policies.cedar
+cedar format -i 4 -p my-policies.cedar
 # I like shorter lines.
-cedar format -l 40 my-policies.cedar
+cedar format -l 40 -p my-policies.cedar
 ```
 
 ## Usage
@@ -34,3 +34,18 @@ cedar format -h
 
 Generated documentation for the latest version can be accessed on
 [docs.rs](https://docs.rs/cedar-policy-formatter).
+
+## Testing
+
+Tests for this package use [`insta`](https://insta.rs/) for snapshot testing.
+Tests are executed with the usual `cargo test`, but, if your changes introduce
+a difference in how we format any of the test policies, the tests will fail,
+printing a nicely formatted diff as the error message. You can then run `cargo insta review`
+to review how formatting has changed. If the change is expected, accept it
+and commit the updated snapshot file. Otherwise, reject the change, and fix it
+as you would any other failing test case.
+
+You can add new test cases just just by placing a `.cedar` file in the `tests`
+directory. The next run of `cargo test` will fail because there is no snapshot
+file. Run `cargo insta review` to review the formatted output for the new
+tests. Accept and commit the snapshot if it is correct.

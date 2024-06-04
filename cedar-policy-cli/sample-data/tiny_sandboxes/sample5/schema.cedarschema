@@ -1,0 +1,6 @@
+entity User in [UserGroup] { addr: __cedar::ipaddr };
+entity UserGroup;
+entity Photo in [Album] { owner: User };
+entity Album in [Album];
+
+action edit, view appliesTo { principal: [User], resource: [Photo] };

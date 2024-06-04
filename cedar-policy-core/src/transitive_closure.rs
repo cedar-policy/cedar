@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 //! Module containing code to compute the transitive closure of a graph.
 //! This is a generic utility, and not specific to Cedar.
 
-use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -125,11 +124,11 @@ where
             if let Some(parent) = entities.get(parent_uid) {
                 for grandparent in parent.out_edges() {
                     if !entity.has_edge_to(grandparent) {
-                        return Err(TcError::MissingTcEdge {
-                            child: entity.get_key(),
-                            parent: parent_uid.clone(),
-                            grandparent: grandparent.clone(),
-                        });
+                        return Err(TcError::missing_tc_edge(
+                            entity.get_key(),
+                            parent_uid.clone(),
+                            grandparent.clone(),
+                        ));
                     }
                 }
             }
@@ -175,9 +174,7 @@ where
     for entity in entities.values() {
         let key = entity.get_key();
         if entity.out_edges().contains(&key) {
-            return Err(TcError::HasCycle {
-                vertex_with_loop: key,
-            });
+            return Err(TcError::has_cycle(key));
         }
     }
     Ok(())
@@ -185,6 +182,8 @@ where
 
 // PANIC SAFETY test cases
 #[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod tests {
     use crate::ast::{Entity, EntityUID};
@@ -199,7 +198,11 @@ mod tests {
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c)]);
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
@@ -227,7 +230,11 @@ mod tests {
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut entities = HashMap::from([(c.uid(), c), (b.uid(), b), (a.uid(), a)]);
+        let mut entities = HashMap::from([
+            (c.uid().clone(), c),
+            (b.uid().clone(), b),
+            (a.uid().clone(), a),
+        ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
@@ -259,11 +266,11 @@ mod tests {
         d.add_ancestor(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -302,11 +309,11 @@ mod tests {
         ham.add_ancestor(EntityUID::with_eid("eggs"));
         let eggs = Entity::with_uid(EntityUID::with_eid("eggs"));
         let mut entities = HashMap::from([
-            (ham.uid(), ham),
-            (bar.uid(), bar),
-            (foo.uid(), foo),
-            (eggs.uid(), eggs),
-            (baz.uid(), baz),
+            (ham.uid().clone(), ham),
+            (bar.uid().clone(), bar),
+            (foo.uid().clone(), foo),
+            (eggs.uid().clone(), eggs),
+            (baz.uid().clone(), baz),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -346,11 +353,11 @@ mod tests {
         d.add_ancestor(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -398,14 +405,14 @@ mod tests {
         g.add_ancestor(EntityUID::with_eid("E"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -460,12 +467,12 @@ mod tests {
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let f = Entity::with_uid(EntityUID::with_eid("F"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -510,14 +517,14 @@ mod tests {
         let g = Entity::with_uid(EntityUID::with_eid("G"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -559,14 +566,14 @@ mod tests {
         a.add_ancestor(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("B"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b)]);
+        let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
-                assert!(vertex_with_loop == EntityUID::with_eid("B"));
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
@@ -582,8 +589,8 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
-                assert!(vertex_with_loop == EntityUID::with_eid("B"));
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
@@ -605,17 +612,22 @@ mod tests {
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("A"));
         let d = Entity::with_uid(EntityUID::with_eid("D"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c), (d.uid(), d)]);
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+        ]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("A")
-                        || vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -634,11 +646,11 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("A")
-                        || vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -669,14 +681,14 @@ mod tests {
         let mut h = Entity::with_uid(EntityUID::with_eid("H"));
         h.add_ancestor(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -687,14 +699,14 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle(err)) => {
                 // two possible cycles
                 assert!(
-                    vertex_with_loop == EntityUID::with_eid("B")
-                        || vertex_with_loop == EntityUID::with_eid("C")
-                        || vertex_with_loop == EntityUID::with_eid("D")
-                        || vertex_with_loop == EntityUID::with_eid("E")
-                        || vertex_with_loop == EntityUID::with_eid("H")
+                    err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("D")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("E")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("H")
                 );
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -727,12 +739,12 @@ mod tests {
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
         ]);
         // fails TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -743,9 +755,7 @@ mod tests {
         // but still fail cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(TcError::HasCycle {
-                vertex_with_loop: _,
-            }) => (), // Every vertex is in a cycle
+            Err(TcError::HasCycle(_)) => (), // Every vertex is in a cycle
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
     }

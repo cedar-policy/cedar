@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,42 +14,87 @@
  * limitations under the License.
  */
 
+use super::id::Id;
+use itertools::Itertools;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use smol_str::ToSmolStr;
 use std::sync::Arc;
 
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
-
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
 use super::PrincipalOrResource;
 
-/// Arc::unwrap_or_clone() isn't stabilized as of this writing, but this is its implementation
-//
-// TODO: use `Arc::unwrap_or_clone()` once stable
-pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
-    Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
-}
-
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone)]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
     pub(crate) path: Arc<Vec<Id>>,
+    /// Location of the name in source
+    pub(crate) loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`.
+impl PartialEq for Name {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.path == other.path
+    }
+}
+impl Eq for Name {}
+
+impl std::hash::Hash for Name {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash the ty and eid, in line with the `PartialEq` impl which compares
+        // the ty and eid.
+        self.id.hash(state);
+        self.path.hash(state);
+    }
+}
+
+impl PartialOrd for Name {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Name {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id).then(self.path.cmp(&other.path))
+    }
+}
+
+/// A shortcut for `Name::unqualified_name`
+impl From<Id> for Name {
+    fn from(value: Id) -> Self {
+        Self::unqualified_name(value)
+    }
+}
+
+/// Convert a `Name` to an `Id`
+/// The error type is the unit type because the reason the conversion fails
+/// is obvious
+impl TryFrom<Name> for Id {
+    type Error = ();
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.is_unqualified() {
+            Ok(value.id)
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl Name {
     /// A full constructor for `Name`
-    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         Self {
             id: basename,
             path: Arc::new(path.into_iter().collect()),
+            loc,
         }
     }
 
@@ -58,6 +103,7 @@ impl Name {
         Self {
             id,
             path: Arc::new(vec![]),
+            loc: None,
         }
     }
 
@@ -67,15 +113,21 @@ impl Name {
         Ok(Self {
             id: s.parse()?,
             path: Arc::new(vec![]),
+            loc: None,
         })
     }
 
     /// Given a type basename and a namespace (as a `Name` itself),
     /// return a `Name` representing the type's fully qualified name
-    pub fn type_in_namespace(basename: Id, namespace: Name) -> Name {
-        let mut path = unwrap_or_clone(namespace.path);
+    pub fn type_in_namespace(basename: Id, namespace: Name, loc: Option<Loc>) -> Name {
+        let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
-        Name::new(basename, path)
+        Name::new(basename, path, loc)
+    }
+
+    /// Get the source location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Get the basename of the `Name` (ie, with namespaces stripped).
@@ -97,6 +149,36 @@ impl Name {
     pub fn namespace(&self) -> String {
         self.path.iter().join("::")
     }
+
+    /// Prefix the name with a optional namespace
+    /// When the name is not an `Id`, it doesn't make sense to prefix any
+    /// namespace and hence this method returns a copy of `self`
+    /// When the name is an `Id`, prefix it with the optional namespace
+    /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
+    /// prefix `A` with `Some(B::C)` yields `B::C::A`
+    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<&Name>) -> Name {
+        if self.is_unqualified() {
+            // Ideally, we want to implement `IntoIterator` for `Name`
+            match namespace {
+                Some(namespace) => Self::new(
+                    self.basename().clone(),
+                    namespace
+                        .namespace_components()
+                        .chain(std::iter::once(namespace.basename()))
+                        .cloned(),
+                    self.loc.clone(),
+                ),
+                None => self.clone(),
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Test if a `Name` is an `Id`
+    pub fn is_unqualified(&self) -> bool {
+        self.path.is_empty()
+    }
 }
 
 impl std::fmt::Display for Name {
@@ -106,6 +188,17 @@ impl std::fmt::Display for Name {
         }
         write!(f, "{}", self.id)?;
         Ok(())
+    }
+}
+
+/// Serialize a `Name` using its `Display` implementation
+/// This serialization implementation is used in the JSON schema format.
+impl Serialize for Name {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_smolstr().serialize(serializer)
     }
 }
 
@@ -124,13 +217,53 @@ impl FromNormalizedStr for Name {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            id: u.arbitrary()?,
+            path: u.arbitrary()?,
+            loc: None,
+        })
+    }
+}
+
+struct NameVisitor;
+
+impl<'de> serde::de::Visitor<'de> for NameVisitor {
+    type Value = Name;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a name consisting of an optional namespace and id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Name::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
+    }
+}
+
+/// Deserialize a `Name` using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(NameVisitor)
+    }
+}
+
 /// Identifier for a slot
 /// Clone is O(1).
 // This simply wraps a separate enum -- currently `ValidSlotId` -- in case we
 // want to generalize later
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SlotId(ValidSlotId);
+pub struct SlotId(pub(crate) ValidSlotId);
 
 impl SlotId {
     /// Get the slot for `principal`
@@ -171,7 +304,7 @@ impl std::fmt::Display for SlotId {
 
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-enum ValidSlotId {
+pub(crate) enum ValidSlotId {
     #[serde(rename = "?principal")]
     Principal,
     #[serde(rename = "?resource")]
@@ -185,6 +318,32 @@ impl std::fmt::Display for ValidSlotId {
             ValidSlotId::Resource => "resource",
         };
         write!(f, "?{s}")
+    }
+}
+
+/// [`SlotId`] plus a source location
+#[derive(Debug, Clone)]
+pub struct Slot {
+    /// [`SlotId`]
+    pub id: SlotId,
+    /// Source location, if available
+    pub loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
+/// are equal.
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Slot {}
+
+impl std::hash::Hash for Slot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash only the id, in line with the `PartialEq` impl which compares
+        // only the id
+        self.id.hash(state);
     }
 }
 
@@ -204,121 +363,9 @@ mod vars_test {
     }
 }
 
-/// Identifiers. Anything in `Id` should be a valid identifier (and not contain,
-/// for instance, spaces or characters like '+').
-//
-// For now, internally, `Id`s are just owned `SmolString`s.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-pub struct Id(SmolStr);
-
-impl Id {
-    /// Create a new `Id` from a `String`, where it is the caller's
-    /// responsibility to ensure that the string is indeed a valid identifier.
-    ///
-    /// When possible, callers should not use this, and instead use `s.parse()`,
-    /// which checks that `s` is a valid identifier, and returns a parse error
-    /// if not.
-    ///
-    /// This method was created for the `From<cst::Ident> for Id` impl to use.
-    /// Since `parser::parse_ident()` implicitly uses that `From` impl itself,
-    /// if we tried to make that `From` impl go through `.parse()` like everyone
-    /// else, we'd get infinite recursion.  And, we assert that `cst::Ident` is
-    /// always already checked to contain a valid identifier, otherwise it would
-    /// never have been created.
-    pub(crate) fn new_unchecked(s: impl Into<SmolStr>) -> Id {
-        Id(s.into())
-    }
-
-    /// Get the underlying string
-    pub fn to_smolstr(self) -> SmolStr {
-        self.0
-    }
-}
-
-impl AsRef<str> for Id {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.0)
-    }
-}
-
-// allow `.parse()` on a string to make an `Id`
-impl std::str::FromStr for Id {
-    type Err = ParseErrors;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        crate::parser::parse_ident(s)
-    }
-}
-
-impl FromNormalizedStr for Id {
-    fn describe_self() -> &'static str {
-        "Id"
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for Id {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        // identifier syntax:
-        // IDENT     := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
-        // BOOL      := 'true' | 'false'
-        // RESERVED  := BOOL | 'if' | 'then' | 'else' | 'in' | 'like' | 'has'
-
-        let construct_list = |s: &str| s.chars().collect::<Vec<char>>();
-        let list_concat = |s1: &[char], s2: &[char]| [s1, s2].concat();
-        // the set of the first character of an identifier
-        let head_letters = construct_list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_");
-        // the set of the remaining characters of an identifier
-        let tail_letters = list_concat(&construct_list("0123456789"), &head_letters);
-        // identifier character count minus 1
-        let remaining_length = u.int_in_range(0..=16)?;
-        let mut cs = vec![*u.choose(&head_letters)?];
-        cs.extend(
-            (0..remaining_length)
-                .map(|_| u.choose(&tail_letters))
-                .collect::<Result<Vec<&char>, _>>()?,
-        );
-        let mut s: String = cs.into_iter().collect();
-        // Should the parsing fails, the string should be reserved word.
-        // Append a `_` to create a valid Id.
-        if crate::parser::parse_ident(&s).is_err() {
-            s.push('_');
-        }
-        Ok(Self::new_unchecked(s))
-    }
-
-    fn size_hint(depth: usize) -> (usize, Option<usize>) {
-        arbitrary::size_hint::and_all(&[
-            // for arbitrary length
-            <usize as arbitrary::Arbitrary>::size_hint(depth),
-            // for arbitrary choices
-            // we use the size hint of a vector of `u8` to get an underestimate of bytes required by the sequence of choices.
-            <Vec<u8> as arbitrary::Arbitrary>::size_hint(depth),
-        ])
-    }
-}
-
 #[cfg(test)]
 mod test {
-
     use super::*;
-
-    #[test]
-    fn normalized_id() {
-        Id::from_normalized_str("foo").expect("should be OK");
-        Id::from_normalized_str("foo::bar").expect_err("shouldn't be OK");
-        Id::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
-        Id::from_normalized_str(" foo").expect_err("shouldn't be OK");
-        Id::from_normalized_str("foo ").expect_err("shouldn't be OK");
-        Id::from_normalized_str("foo\n").expect_err("shouldn't be OK");
-        Id::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
-    }
 
     #[test]
     fn normalized_name() {
@@ -329,5 +376,37 @@ mod test {
         Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn prefix_namespace() {
+        assert_eq!(
+            "foo::bar::baz",
+            Name::from_normalized_str("baz")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some(&"foo::bar".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "C::D",
+            Name::from_normalized_str("C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some(&"A::B".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some(&"A::B::C".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "B::C::D",
+            Name::from_normalized_str("B::C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some(&"A".parse().unwrap()))
+                .to_smolstr()
+        );
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,20 @@
  */
 
 use crate::ast::*;
+use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, EntityJson};
+use crate::evaluator::{EvaluationError, RestrictedEvaluator};
+use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use thiserror::Error;
 
 /// We support two types of entities. The first is a nominal type (e.g., User, Action)
 /// and the second is an unspecified type, which is used (internally) to represent cases
@@ -30,7 +37,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum EntityType {
     /// Concrete nominal type
-    Concrete(Name),
+    Specified(Name),
     /// Unspecified
     Unspecified,
 }
@@ -39,31 +46,61 @@ impl EntityType {
     /// Is this an Action entity type
     pub fn is_action(&self) -> bool {
         match self {
-            Self::Concrete(name) => name.basename() == &Id::new_unchecked("Action"),
+            Self::Specified(name) => name.basename() == &Id::new_unchecked("Action"),
             Self::Unspecified => false,
         }
     }
 }
 
 // Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
-// `Unspecified` never conflicts with `Concrete(name)`.
+// `Unspecified` never conflicts with `Specified(name)`.
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unspecified => write!(f, "<Unspecified>"),
-            Self::Concrete(name) => write!(f, "{}", name),
+            Self::Specified(name) => write!(f, "{}", name),
         }
     }
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
     /// EID of the entity
     eid: Eid,
+    /// Location of the entity in policy source
+    #[serde(skip)]
+    loc: Option<Loc>,
+}
+
+/// `PartialEq` implementation ignores the `loc`.
+impl PartialEq for EntityUID {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.eid == other.eid
+    }
+}
+impl Eq for EntityUID {}
+
+impl std::hash::Hash for EntityUID {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash the ty and eid, in line with the `PartialEq` impl which compares
+        // the ty and eid.
+        self.ty.hash(state);
+        self.eid.hash(state);
+    }
+}
+
+impl PartialOrd for EntityUID {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for EntityUID {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ty.cmp(&other.ty).then(self.eid.cmp(&other.eid))
+    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -82,6 +119,7 @@ impl EntityUID {
         Self {
             ty: Self::test_entity_type(),
             eid: Eid(eid.into()),
+            loc: None,
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -95,7 +133,7 @@ impl EntityUID {
     pub(crate) fn test_entity_type() -> EntityType {
         let name = Name::parse_unqualified_name("test_entity_type")
             .expect("test_entity_type should be a valid identifier");
-        EntityType::Concrete(name)
+        EntityType::Specified(name)
     }
     // by default, Coverlay does not track coverage for lines after a line
     // containing #[cfg(test)].
@@ -106,8 +144,9 @@ impl EntityUID {
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
-            ty: EntityType::Concrete(Name::parse_unqualified_name(typename)?),
+            ty: EntityType::Specified(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
+            loc: None,
         })
     }
 
@@ -117,11 +156,17 @@ impl EntityUID {
         (self.ty, self.eid)
     }
 
+    /// Get the source location for this `EntityUID`.
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
+    }
+
     /// Create a nominally-typed `EntityUID` with the given typename and EID
-    pub fn from_components(name: Name, eid: Eid) -> Self {
+    pub fn from_components(name: Name, eid: Eid, loc: Option<Loc>) -> Self {
         Self {
-            ty: EntityType::Concrete(name),
+            ty: EntityType::Specified(name),
             eid,
+            loc,
         }
     }
 
@@ -130,6 +175,7 @@ impl EntityUID {
         Self {
             ty: EntityType::Unspecified,
             eid,
+            loc: None,
         }
     }
 
@@ -151,7 +197,7 @@ impl EntityUID {
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::\"{}\"", self.entity_type(), self.eid)
+        write!(f, "{}::\"{}\"", self.entity_type(), self.eid.escaped())
     }
 }
 
@@ -170,7 +216,26 @@ impl FromNormalizedStr for EntityUID {
     }
 }
 
-/// EID type is just a SmolStr for now
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            ty: u.arbitrary()?,
+            eid: u.arbitrary()?,
+            loc: None,
+        })
+    }
+}
+
+/// The `Eid` type represents the id of an `Entity`, without the typename.
+/// Together with the typename it comprises an `EntityUID`.
+/// For example, in `User::"alice"`, the `Eid` is `alice`.
+///
+/// `Eid` does not implement `Display`, partly because it is unclear whether
+/// `Display` should produce an escaped representation or an unescaped representation
+/// (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
+/// To get an escaped representation, use `.escaped()`.
+/// To get an unescaped representation, use `.as_ref()`.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub struct Eid(SmolStr);
 
@@ -178,6 +243,11 @@ impl Eid {
     /// Construct an Eid
     pub fn new(eid: impl Into<SmolStr>) -> Self {
         Eid(eid.into())
+    }
+
+    /// Get the contents of the `Eid` as an escaped string
+    pub fn escaped(&self) -> SmolStr {
+        self.0.escape_debug().collect()
     }
 }
 
@@ -201,23 +271,18 @@ impl<'a> arbitrary::Arbitrary<'a> for Eid {
     }
 }
 
-impl std::fmt::Display for Eid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.escape_debug())
-    }
-}
-
 /// Entity datatype
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Entity {
     /// UID
     uid: EntityUID,
 
-    /// Internal HashMap of attributes.
+    /// Internal BTreMap of attributes.
+    /// We use a btreemap so that the keys have a determenistic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
-    /// `RestrictedExpr`s.
-    attrs: HashMap<SmolStr, RestrictedExpr>,
+    /// `RestrictedExpr`s, for mostly historical reasons.
+    attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 
     /// Set of ancestors of this `Entity` (i.e., all direct and transitive
     /// parents), as UIDs
@@ -230,6 +295,53 @@ impl Entity {
         uid: EntityUID,
         attrs: HashMap<SmolStr, RestrictedExpr>,
         ancestors: HashSet<EntityUID>,
+        extensions: &Extensions<'_>,
+    ) -> Result<Self, EntityAttrEvaluationError> {
+        let evaluator = RestrictedEvaluator::new(extensions);
+        let evaluated_attrs = attrs
+            .into_iter()
+            .map(|(k, v)| {
+                let attr_val = evaluator
+                    .partial_interpret(v.as_borrowed())
+                    .map_err(|err| EntityAttrEvaluationError {
+                        uid: uid.clone(),
+                        attr: k.clone(),
+                        err,
+                    })?;
+                Ok((k, attr_val.into()))
+            })
+            .collect::<Result<_, EntityAttrEvaluationError>>()?;
+        Ok(Entity {
+            uid,
+            attrs: evaluated_attrs,
+            ancestors,
+        })
+    }
+
+    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    ///
+    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
+    /// as `PartialValue`.
+    pub fn new_with_attr_partial_value(
+        uid: EntityUID,
+        attrs: HashMap<SmolStr, PartialValue>,
+        ancestors: HashSet<EntityUID>,
+    ) -> Self {
+        Entity {
+            uid,
+            attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO(#540): can we do this without disassembling and reassembling the HashMap
+            ancestors,
+        }
+    }
+
+    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    ///
+    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
+    /// as `PartialValueSerializedAsExpr`.
+    pub fn new_with_attr_partial_value_serialized_as_expr(
+        uid: EntityUID,
+        attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+        ancestors: HashSet<EntityUID>,
     ) -> Self {
         Entity {
             uid,
@@ -239,13 +351,13 @@ impl Entity {
     }
 
     /// Get the UID of this entity
-    pub fn uid(&self) -> EntityUID {
-        self.uid.clone()
+    pub fn uid(&self) -> &EntityUID {
+        &self.uid
     }
 
     /// Get the value for the given attribute, or `None` if not present
-    pub fn get(&self, attr: &str) -> Option<&RestrictedExpr> {
-        self.attrs.get(attr)
+    pub fn get(&self, attr: &str) -> Option<&PartialValue> {
+        self.attrs.get(attr).map(|v| v.as_ref())
     }
 
     /// Is this `Entity` a descendant of `e` in the entity hierarchy?
@@ -258,39 +370,49 @@ impl Entity {
         self.ancestors.iter()
     }
 
+    /// Get the number of attributes on this entity
+    pub fn attrs_len(&self) -> usize {
+        self.attrs.len()
+    }
+
+    /// Iterate over this entity's attribute names
+    pub fn keys(&self) -> impl Iterator<Item = &SmolStr> {
+        self.attrs.keys()
+    }
+
     /// Iterate over this entity's attributes
-    pub fn attrs(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
-        self.attrs
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_borrowed()))
+    pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
+        self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
     }
 
     /// Create an `Entity` with the given UID, no attributes, and no parents.
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
             uid,
-            attrs: HashMap::new(),
+            attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
         }
     }
 
-    /// Read-only access the internal `attrs` map of String to RestrictedExpr.
-    /// This function is available only inside Core.
-    pub(crate) fn attrs_map(&self) -> &HashMap<SmolStr, RestrictedExpr> {
-        &self.attrs
-    }
-
-    /// Read-only access the internal `ancestors` hashset.
-    /// This function is available only inside Core.
-    pub(crate) fn ancestors_set(&self) -> &HashSet<EntityUID> {
-        &self.ancestors
+    /// Test if two `Entity` objects are deep/structurally equal.
+    /// That is, not only do they have the same UID, but also the same
+    /// attributes, attribute values, and ancestors.
+    pub(crate) fn deep_eq(&self, other: &Self) -> bool {
+        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
     }
 
     /// Set the given attribute to the given value.
     // Only used for convenience in some tests and when fuzzing
     #[cfg(any(test, fuzzing))]
-    pub fn set_attr(&mut self, attr: SmolStr, val: RestrictedExpr) {
-        self.attrs.insert(attr, val);
+    pub fn set_attr(
+        &mut self,
+        attr: SmolStr,
+        val: RestrictedExpr,
+        extensions: &Extensions<'_>,
+    ) -> Result<(), EvaluationError> {
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        self.attrs.insert(attr, val.into());
+        Ok(())
     }
 
     /// Mark the given `UID` as an ancestor of this `Entity`.
@@ -303,6 +425,47 @@ impl Entity {
     #[cfg(fuzzing)]
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
+    }
+
+    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    pub fn into_inner(
+        self,
+    ) -> (
+        EntityUID,
+        HashMap<SmolStr, PartialValue>,
+        HashSet<EntityUID>,
+    ) {
+        let Self {
+            uid,
+            attrs,
+            ancestors,
+        } = self;
+        (
+            uid,
+            attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
+            ancestors,
+        )
+    }
+
+    /// Write the entity to a json document
+    pub fn write_to_json(&self, f: impl std::io::Write) -> Result<(), EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        serde_json::to_writer_pretty(f, &ejson).map_err(JsonSerializationError::from)?;
+        Ok(())
+    }
+
+    /// write the entity to a json value
+    pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let v = serde_json::to_value(ejson).map_err(JsonSerializationError::from)?;
+        Ok(v)
+    }
+
+    /// write the entity to a json string
+    pub fn to_json_string(&self) -> Result<String, EntitiesError> {
+        let ejson = EntityJson::from_entity(self)?;
+        let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
+        Ok(string)
     }
 }
 
@@ -322,7 +485,7 @@ impl StaticallyTyped for Entity {
 
 impl TCNode<EntityUID> for Entity {
     fn get_key(&self) -> EntityUID {
-        self.uid()
+        self.uid().clone()
     }
 
     fn add_edge_to(&mut self, k: EntityUID) {
@@ -353,6 +516,62 @@ impl std::fmt::Display for Entity {
     }
 }
 
+/// `PartialValue`, but serialized as a `RestrictedExpr`.
+///
+/// (Extension values can't be directly serialized, but can be serialized as
+/// `RestrictedExpr`)
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PartialValueSerializedAsExpr(
+    #[serde_as(as = "TryFromInto<RestrictedExpr>")] PartialValue,
+);
+
+impl AsRef<PartialValue> for PartialValueSerializedAsExpr {
+    fn as_ref(&self) -> &PartialValue {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for PartialValueSerializedAsExpr {
+    type Target = PartialValue;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<PartialValue> for PartialValueSerializedAsExpr {
+    fn from(value: PartialValue) -> PartialValueSerializedAsExpr {
+        PartialValueSerializedAsExpr(value)
+    }
+}
+
+impl From<PartialValueSerializedAsExpr> for PartialValue {
+    fn from(value: PartialValueSerializedAsExpr) -> PartialValue {
+        value.0
+    }
+}
+
+impl std::fmt::Display for PartialValueSerializedAsExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Error type for evaluation errors when evaluating an entity attribute.
+/// Contains some extra contextual information and the underlying
+/// `EvaluationError`.
+#[derive(Debug, Diagnostic, Error)]
+#[error("failed to evaluate attribute `{attr}` of `{uid}`: {err}")]
+pub struct EntityAttrEvaluationError {
+    /// UID of the entity where the error was encountered
+    pub uid: EntityUID,
+    /// Attribute of the entity where the error was encountered
+    pub attr: SmolStr,
+    /// Underlying evaluation error
+    #[diagnostic(transparent)]
+    pub err: EvaluationError,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -369,12 +588,14 @@ mod test {
         let e2 = EntityUID::from_components(
             Name::parse_unqualified_name("test_entity_type").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
         let e3 = EntityUID::unspecified_from_eid(Eid("foo".into()));
         let e4 = EntityUID::unspecified_from_eid(Eid("bar".into()));
         let e5 = EntityUID::from_components(
             Name::parse_unqualified_name("Unspecified").expect("should be a valid identifier"),
             Eid("foo".into()),
+            None,
         );
 
         // an EUID is equal to itself

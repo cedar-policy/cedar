@@ -69,9 +69,12 @@ impl<'s, 'e> Slicer<'s, 'e> {
     /// Get a slice of the policy set
     pub fn get_slice(&self, request: &Request) -> PolicySet {
         let (req_principal, req_resource) = match (request.principal(), request.resource()) {
-            (EntityUIDEntry::Concrete(principal), EntityUIDEntry::Concrete(resource)) => {
-                (principal.as_ref(), resource.as_ref())
-            }
+            (
+                EntityUIDEntry::Known {
+                    euid: principal, ..
+                },
+                EntityUIDEntry::Known { euid: resource, .. },
+            ) => (principal.as_ref(), resource.as_ref()),
             _ => unreachable!("partial evaluation is not enabled!"),
         };
         let keys = self.make_keys(req_principal, req_resource);

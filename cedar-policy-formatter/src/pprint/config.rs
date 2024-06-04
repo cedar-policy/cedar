@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,15 @@ use super::token::WrappedToken;
 pub struct Config {
     pub line_width: usize,
     pub indent_width: isize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            line_width: 80,
+            indent_width: 2,
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,19 @@
 
 use crate::ast::*;
 use crate::evaluator::EvaluationError;
+use miette::Diagnostic;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum AuthorizationError {
-    /// Failed to eagerly evaluate entity attributes when initializing the `Evaluator`.
-    #[error("error occurred while evaluating entity attributes: {0}")]
-    AttributeEvaluationError(EvaluationError),
-
     /// An error occurred when evaluating a policy.
-    #[error("error occurred while evaluating policy `{}`: {}", &.id, &.error)]
+    #[error("while evaluating policy `{id}`: {error}")]
     PolicyEvaluationError {
         /// Id of the policy with an error
         id: PolicyID,
-        /// Specific evaluation error
+        /// Underlying evaluation error
+        #[diagnostic(transparent)]
         error: EvaluationError,
     },
 }

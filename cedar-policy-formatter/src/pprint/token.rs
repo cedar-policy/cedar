@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -103,6 +103,9 @@ pub enum Token {
 
     #[token("like")]
     Like,
+
+    #[token("is")]
+    Is,
 
     #[token("then")]
     Then,
@@ -248,6 +251,7 @@ impl fmt::Display for Token {
             Self::LParen => write!(f, "("),
             Self::Le => write!(f, "<="),
             Self::Like => write!(f, "like"),
+            Self::Is => write!(f, "is"),
             Self::Lt => write!(f, "<"),
             Self::Modulo => write!(f, "%"),
             Self::Mul => write!(f, "*"),

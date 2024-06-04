@@ -1,7 +1,0 @@
-forbid(
-  principal,
-  action in [Action::"",Action::""],
-  resource
-) when {
-  (true && "~") && ""
-};

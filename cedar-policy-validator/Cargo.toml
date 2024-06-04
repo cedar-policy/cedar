@@ -1,8 +1,9 @@
 [package]
 name = "cedar-policy-validator"
 edition = "2021"
+rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 
-version = "2.3.0"
+version = "4.0.0"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Validator for the Cedar Policy language."
@@ -11,16 +12,25 @@ homepage = "https://cedarpolicy.com"
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=2.3.0", path = "../cedar-policy-core" }
+cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
+miette = "7.1.0"
 thiserror = "1.0"
-itertools = "0.10"
+itertools = "0.13"
 unicode-security = "0.1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
+lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
+lazy_static = "1.4.0"
+nonempty = "0.10.0"
+
+# wasm dependencies
+serde-wasm-bindgen = { version = "0.6", optional = true }
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -31,3 +41,14 @@ decimal = ["cedar-policy-core/decimal"]
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
+
+# Experimental features.
+partial-validate = []
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+
+[dev-dependencies]
+cool_asserts = "2.0"
+cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["test-util"] }
+
+[build-dependencies]
+lalrpop = "0.20.0"

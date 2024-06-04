@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@
 use std::fmt::{self, Write};
 
 use super::cst::*;
-use super::node::ASTNode;
+use super::node::Node;
 
 /// Helper struct to handle non-existent nodes
-struct View<'a, T>(&'a ASTNode<Option<T>>);
+struct View<'a, T>(&'a Node<Option<T>>);
 impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(n) = &self.0.as_inner() {
@@ -123,7 +123,7 @@ impl fmt::Display for Annotation {
 impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
-        if let Some(name) = &self.name {
+        if let Some(name) = &self.unused_type_name {
             write!(f, ": {}", View(name))?;
         }
         if let Some((op, expr)) = &self.ineq {
@@ -190,6 +190,26 @@ impl fmt::Display for Relation {
             Relation::Like { target, pattern } => {
                 write!(f, "{} like {}", View(target), View(pattern))?;
             }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity: None,
+            } => {
+                write!(f, "{} is {}", View(target), View(entity_type))?;
+            }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity: Some(in_entity),
+            } => {
+                write!(
+                    f,
+                    "{} is {} in {}",
+                    View(target),
+                    View(entity_type),
+                    View(in_entity)
+                )?;
+            }
         }
         Ok(())
     }
@@ -204,6 +224,7 @@ impl fmt::Display for RelOp {
             RelOp::NotEq => write!(f, "!="),
             RelOp::Eq => write!(f, "=="),
             RelOp::In => write!(f, "in"),
+            RelOp::InvalidSingleEq => write!(f, "="),
         }
     }
 }
@@ -390,6 +411,7 @@ impl fmt::Display for Ident {
             Ident::In => write!(f, "in"),
             Ident::Has => write!(f, "has"),
             Ident::Like => write!(f, "like"),
+            Ident::Is => write!(f, "is"),
             Ident::If => write!(f, "if"),
             Ident::Then => write!(f, "then"),
             Ident::Else => write!(f, "else"),
@@ -421,16 +443,17 @@ impl fmt::Display for Str {
 impl std::fmt::Display for Slot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let src = match self {
-            Slot::Principal => "principal",
-            Slot::Resource => "resource",
+            Slot::Principal => "?principal",
+            Slot::Resource => "?resource",
+            Slot::Other(slot) => slot.as_ref(),
         };
-        write!(f, "?{src}")
+        write!(f, "{src}")
     }
 }
 
 /// Format an iterator as a natural-language string, separating items with
 /// commas and a conjunction (e.g., "and", "or") between the last two items.
-pub(crate) fn join_with_conjunction<T, W: Write>(
+pub fn join_with_conjunction<T, W: Write>(
     f: &mut W,
     conjunction: &str,
     items: impl IntoIterator<Item = T>,
@@ -472,7 +495,7 @@ mod test {
 
     #[test]
     fn idempotent1() {
-        // Note: the context field in the head is no longer supported and
+        // Note: the context field in the scope is no longer supported and
         // will produce an error during CST -> AST conversion. But it is
         // still correctly parsed & displayed by the CST code.
         let cstnode1 = text_to_cst::parse_policies(

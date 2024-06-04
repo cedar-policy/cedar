@@ -1,0 +1,6 @@
+entity User in [UserGroup];
+entity UserGroup;
+entity Photo in [Album];
+entity Album in [Album];
+
+action view appliesTo { principal: [User], resource: [Photo] };

@@ -1,7 +1,0 @@
-forbid(
-  principal == F::":::",
-  action == Action::"action",
-  resource
-) when {
-  true
-};

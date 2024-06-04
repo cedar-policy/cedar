@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-use super::node::ASTNode;
 use smol_str::SmolStr;
+
 // shortcut because we need CST nodes to potentially be empty,
 // for example, if part of it failed the parse, we can
 // still recover other parts
-type Node<N> = ASTNode<Option<N>>;
+type Node<N> = super::node::Node<Option<N>>;
 
-/// The set of policy statements that forms an authorization policy
+/// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policies(pub Vec<Node<Policy>>);
 
@@ -66,14 +66,17 @@ pub struct VariableDef {
     /// identifier, expected:
     /// principal, action, resource
     pub variable: Node<Ident>,
-    /// type of entity
-    pub name: Option<Node<Name>>,
+    /// type of entity using previously considered `var : type` syntax. This is
+    /// not used for anything other than error reporting.
+    pub unused_type_name: Option<Node<Name>>,
+    /// type of entity using current `var is type` syntax
+    pub entity_type: Option<Node<Add>>,
     /// hierarchy of entity
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
 
 /// Any identifier, including special ones
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(unused)] // definitional, or for later improvements
 pub enum Ident {
     // Variables
@@ -105,6 +108,8 @@ pub enum Ident {
     Has,
     /// like
     Like,
+    /// is
+    Is,
     /// if
     If,
     /// then
@@ -187,6 +192,15 @@ pub enum Relation {
         /// pattern to match on
         pattern: Node<Add>,
     },
+    /// Built-in '.. is .. (in ..)?' operation
+    IsIn {
+        /// element that may be an entity type and `in` an entity
+        target: Node<Add>,
+        /// entity type to check for
+        entity_type: Node<Add>,
+        /// entity that the target may be `in`
+        in_entity: Option<Node<Add>>,
+    },
 }
 
 /// The operation involved in a comparision
@@ -206,6 +220,10 @@ pub enum RelOp {
     Eq,
     /// in
     In,
+    /// =
+    ///
+    /// This is always invalid, but included so we can give a nice error suggesting '==' instead
+    InvalidSingleEq,
 }
 
 /// Allowed Ops for Add
@@ -303,7 +321,7 @@ pub enum Primary {
 }
 
 /// UID and Type of named items
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// path, like: "name0::name1::name"
     pub path: Vec<Node<Ident>>,
@@ -355,10 +373,12 @@ pub enum Slot {
     Principal,
     /// Slot for Resource Constraints
     Resource,
+    /// Slot other than one of the valid slots
+    Other(SmolStr),
 }
 
 impl Slot {
-    /// Check if a slot matches a head variable.
+    /// Check if a slot matches a scope variable.
     pub fn matches(&self, var: crate::ast::Var) -> bool {
         matches!(
             (self, var),
