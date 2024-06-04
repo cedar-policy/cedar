@@ -146,12 +146,12 @@ impl TryFrom<cst::Cond> for Clause {
         let maybe_is_when = cond.cond.to_cond_is_when();
         match cond.expr {
             None => {
-                let ident = maybe_is_when.map(|is_when| {
+                let maybe_ident = maybe_is_when.map(|is_when| {
                     cst::Ident::Ident(if is_when { "when" } else { "unless" }.into())
-                })?;
+                });
                 Err(cond
                     .cond
-                    .to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
+                    .to_ast_err(ToASTErrorKind::EmptyClause(maybe_ident.ok()))
                     .into())
             }
             Some(ref e) => {
