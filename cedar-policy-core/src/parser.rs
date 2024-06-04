@@ -19,7 +19,7 @@
 /// Concrete Syntax Tree def used as parser first pass
 pub mod cst;
 /// Step two: convert CST to package AST
-pub(crate) mod cst_to_ast;
+mod cst_to_ast;
 /// error handling utilities
 pub mod err;
 /// implementations for formatting, like `Display`
@@ -35,6 +35,8 @@ pub use node::Node;
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
 pub mod unescape;
+/// Utility functions
+pub mod util;
 
 use smol_str::SmolStr;
 use std::collections::HashMap;

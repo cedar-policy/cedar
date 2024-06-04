@@ -22,9 +22,9 @@ use crate::entities::json::{
 };
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
-use crate::parser::cst_to_ast::flatten_tuple_2;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
+use crate::parser::util::flatten_tuple_2;
 use crate::parser::{Loc, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;

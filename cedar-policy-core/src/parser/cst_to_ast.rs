@@ -40,6 +40,7 @@ use super::err::{
 use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
+use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::{
     self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
     PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
@@ -76,67 +77,6 @@ fn load_styles() -> ExtStyles<'static> {
         };
     }
     ExtStyles { functions, methods }
-}
-
-pub(crate) fn flatten_tuple_2<T1, T2>(res1: Result<T1>, res2: Result<T2>) -> Result<(T1, T2)> {
-    match res1 {
-        Ok(v1) => res2.map(|v2| (v1, v2)),
-        Err(mut errs1) => {
-            let _ = res2.map_err(|errs2| errs1.extend(errs2));
-            Err(errs1)
-        }
-    }
-}
-
-fn flatten_tuple_3<T1, T2, T3>(
-    res1: Result<T1>,
-    res2: Result<T2>,
-    res3: Result<T3>,
-) -> Result<(T1, T2, T3)> {
-    match res1 {
-        Ok(v1) => match res2 {
-            Ok(v2) => res3.map(|v3| (v1, v2, v3)),
-            Err(mut errs2) => {
-                let _ = res3.map_err(|errs3| errs2.extend(errs3));
-                Err(errs2)
-            }
-        },
-        Err(mut errs1) => {
-            let _ = res2.map_err(|errs2| errs1.extend(errs2));
-            let _ = res3.map_err(|errs3| errs1.extend(errs3));
-            Err(errs1)
-        }
-    }
-}
-
-pub(crate) fn flatten_tuple_4<T1, T2, T3, T4>(
-    res1: Result<T1>,
-    res2: Result<T2>,
-    res3: Result<T3>,
-    res4: Result<T4>,
-) -> Result<(T1, T2, T3, T4)> {
-    match res1 {
-        Ok(v1) => match res2 {
-            Ok(v2) => match res3 {
-                Ok(v3) => res4.map(|v4| (v1, v2, v3, v4)),
-                Err(mut errs3) => {
-                    let _ = res4.map_err(|errs4| errs3.extend(errs4));
-                    Err(errs3)
-                }
-            },
-            Err(mut errs2) => {
-                let _ = res3.map_err(|errs3| errs2.extend(errs3));
-                let _ = res4.map_err(|errs4| errs2.extend(errs4));
-                Err(errs2)
-            }
-        },
-        Err(mut errs1) => {
-            let _ = res2.map_err(|errs2| errs1.extend(errs2));
-            let _ = res3.map_err(|errs3| errs1.extend(errs3));
-            let _ = res4.map_err(|errs4| errs1.extend(errs4));
-            Err(errs1)
-        }
-    }
 }
 
 impl Node<Option<cst::Policies>> {
@@ -829,14 +769,12 @@ impl ExprOrSpecial<'_> {
         match self {
             Self::Var { var, .. } => Ok(construct_string_from_var(var)),
             Self::Name { name, loc } => name.into_valid_attr(loc),
-            Self::StrLit { lit, loc } => {
-                match to_unescaped_string(lit) {
-                    Ok(s) => Ok(s),
-                    Err(escape_errs) => Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                        ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
-                    }))),
-                }
-            }
+            Self::StrLit { lit, loc } => to_unescaped_string(lit).map_err(|escape_errs| {
+                ParseErrors::new_from_nonempty(
+                    escape_errs
+                        .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()),
+                )
+            }),
             Self::Expr { expr, loc } => Err(ToASTError::new(
                 ToASTErrorKind::InvalidAttribute(expr.to_string().into()),
                 loc,
@@ -847,14 +785,11 @@ impl ExprOrSpecial<'_> {
 
     pub(crate) fn into_pattern(self) -> Result<Vec<PatternElem>> {
         match &self {
-            Self::StrLit { lit, .. } => match to_pattern(lit) {
-                Ok(pat) => Ok(pat),
-                Err(escape_errs) => {
-                    Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                        self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                    })))
-                }
-            },
+            Self::StrLit { lit, .. } => to_pattern(lit).map_err(|escape_errs| {
+                ParseErrors::new_from_nonempty(
+                    escape_errs.map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                )
+            }),
             Self::Var { var, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidPattern(var.to_string()))
                 .into()),
@@ -869,14 +804,11 @@ impl ExprOrSpecial<'_> {
     /// to string literal
     fn into_string_literal(self) -> Result<SmolStr> {
         match &self {
-            Self::StrLit { lit, .. } => match to_unescaped_string(lit) {
-                Ok(s) => Ok(s),
-                Err(escape_errs) => {
-                    Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                        self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                    })))
-                }
-            },
+            Self::StrLit { lit, .. } => to_unescaped_string(lit).map_err(|escape_errs| {
+                ParseErrors::new_from_nonempty(
+                    escape_errs.map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                )
+            }),
             Self::Var { var, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidString(var.to_string()))
                 .into()),
