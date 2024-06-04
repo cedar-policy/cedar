@@ -1567,23 +1567,17 @@ impl PrincipalOrResourceConstraint {
         }
     }
 
-    /// Get an iterator over all of the entity uids in this constraint.
-    pub fn iter_euids(&'_ self) -> impl Iterator<Item = &'_ EntityUID> {
+    /// Get the entity uid in this constraint or `None` if it is impossible
+    pub fn get_euid(&self) -> Option<&EntityUID> {
         match self {
-            PrincipalOrResourceConstraint::Any => EntityIterator::None,
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::Is(_) => EntityIterator::None,
+            PrincipalOrResourceConstraint::Any => None,
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
 
@@ -1591,7 +1585,8 @@ impl PrincipalOrResourceConstraint {
     /// The Unspecified entity type does not have a `Name`, so it is excluded
     /// from this iter.
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
-        self.iter_euids()
+        self.get_euid()
+            .into_iter()
             .filter_map(|euid| match euid.entity_type() {
                 EntityType::Specified(name) => Some(name),
                 EntityType::Unspecified => None,
@@ -2075,48 +2070,39 @@ mod test {
     #[test]
     fn template_por_iter() {
         let e = Arc::new(EntityUID::with_eid("eid"));
-        assert_eq!(PrincipalOrResourceConstraint::Any.iter_euids().count(), 0);
+        assert_eq!(PrincipalOrResourceConstraint::Any.get_euid(), None);
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(e.clone()))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(e.clone())).get_euid(),
+            Some(e.as_ref())
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::In(EntityReference::Slot).get_euid(),
+            None
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone()))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone())).get_euid(),
+            Some(e.as_ref())
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot).get_euid(),
+            None
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::EUID(e))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::IsIn(
+                "T".parse().unwrap(),
+                EntityReference::EUID(e.clone())
+            )
+            .get_euid(),
+            Some(e.as_ref())
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Is("T".parse().unwrap())
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::Is("T".parse().unwrap()).get_euid(),
+            None
         );
         assert_eq!(
             PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+                .get_euid(),
+            None
         );
     }
 
