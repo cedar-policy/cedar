@@ -96,7 +96,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 Decision::Deny,
                 "test {} failed for request \"{}\" \n Parse errors should only occur for deny",
                 jsonfile.display(),
-                &json_request.desc
+                &json_request.description
             );
             assert!(
                 parse_errs
@@ -118,7 +118,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg("--schema-format")
             .arg("human")
             .assert()
-            .append_context("validation", json_request.desc.clone());
+            .append_context("validation", json_request.description.clone());
 
         if test.should_validate {
             validation_cmd.success(); // assert it succeeded
@@ -165,7 +165,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg("human")
             .arg("--verbose") // so that reasons are displayed
             .assert()
-            .append_context("authorization", json_request.desc.clone());
+            .append_context("authorization", json_request.description.clone());
 
         let authorize_cmd = match json_request.decision {
             Decision::Deny => authorize_cmd.code(2),
@@ -180,7 +180,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 output.contains(&error.to_string()),
                 "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
-                &json_request.desc,
+                &json_request.description,
                 String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
             );
         }
@@ -190,7 +190,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 output.contains("no policies applied to this request"),
                 "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
-                &json_request.desc,
+                &json_request.description,
                 String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
             );
         } else {
@@ -200,7 +200,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                     output.contains(&reason.to_string()),
                     "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
                     jsonfile.display(),
-                    &json_request.desc,
+                    &json_request.description,
                     String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
                 );
             }
