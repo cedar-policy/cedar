@@ -538,7 +538,7 @@ impl Node<Option<cst::VariableDef>> {
                 ))),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    entity_type.to_expr_or_special()?.into_name()?,
+                    Arc::new(entity_type.to_expr_or_special()?.into_name()?),
                     eref,
                 )),
                 (cst::RelOp::InvalidSingleEq, _) => {
@@ -547,9 +547,9 @@ impl Node<Option<cst::VariableDef>> {
                 (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op))),
             }
         } else if let Some(entity_type) = &vardef.entity_type {
-            Ok(PrincipalOrResourceConstraint::Is(
+            Ok(PrincipalOrResourceConstraint::Is(Arc::new(
                 entity_type.to_expr_or_special()?.into_name()?,
-            ))
+            )))
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
         }?;
@@ -935,7 +935,7 @@ impl RefKind for EntityReference {
     }
 
     fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::euid(e))
+        Ok(EntityReference::euid(Arc::new(e)))
     }
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
@@ -3901,27 +3901,27 @@ mod tests {
         for (src, p, a, r) in [
             (
                 r#"permit(principal is User, action, resource);"#,
-                PrincipalConstraint::is_entity_type("User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type(Arc::new("User".parse().unwrap())),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is principal, action, resource);"#,
-                PrincipalConstraint::is_entity_type("principal".parse().unwrap()),
+                PrincipalConstraint::is_entity_type(Arc::new("principal".parse().unwrap())),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is A::User, action, resource);"#,
-                PrincipalConstraint::is_entity_type("A::User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type(Arc::new("A::User".parse().unwrap())),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_entity_type_in(
-                    "User".parse().unwrap(),
-                    r#"Group::"thing""#.parse().unwrap(),
+                    Arc::new("User".parse().unwrap()),
+                    Arc::new(r#"Group::"thing""#.parse().unwrap()),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
@@ -3929,8 +3929,8 @@ mod tests {
             (
                 r#"permit(principal is principal in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_entity_type_in(
-                    "principal".parse().unwrap(),
-                    r#"Group::"thing""#.parse().unwrap(),
+                    Arc::new("principal".parse().unwrap()),
+                    Arc::new(r#"Group::"thing""#.parse().unwrap()),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
@@ -3938,15 +3938,15 @@ mod tests {
             (
                 r#"permit(principal is A::User in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_entity_type_in(
-                    "A::User".parse().unwrap(),
-                    r#"Group::"thing""#.parse().unwrap(),
+                    Arc::new("A::User".parse().unwrap()),
+                    Arc::new(r#"Group::"thing""#.parse().unwrap()),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is User in ?principal, action, resource);"#,
-                PrincipalConstraint::is_entity_type_in_slot("User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type_in_slot(Arc::new("User".parse().unwrap())),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
@@ -3954,22 +3954,22 @@ mod tests {
                 r#"permit(principal, action, resource is Folder);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_entity_type("Folder".parse().unwrap()),
+                ResourceConstraint::is_entity_type(Arc::new("Folder".parse().unwrap())),
             ),
             (
                 r#"permit(principal, action, resource is Folder in Folder::"inner");"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
                 ResourceConstraint::is_entity_type_in(
-                    "Folder".parse().unwrap(),
-                    r#"Folder::"inner""#.parse().unwrap(),
+                    Arc::new("Folder".parse().unwrap()),
+                    Arc::new(r#"Folder::"inner""#.parse().unwrap()),
                 ),
             ),
             (
                 r#"permit(principal, action, resource is Folder in ?resource);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_entity_type_in_slot("Folder".parse().unwrap()),
+                ResourceConstraint::is_entity_type_in_slot(Arc::new("Folder".parse().unwrap())),
             ),
         ] {
             let policy = parse_policy_template(None, src).unwrap();

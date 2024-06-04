@@ -444,7 +444,7 @@ impl Validator {
             PrincipalOrResourceConstraint::Is(entity_type)
             | PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot) => Box::new(
                 if self.schema.is_known_entity_type(entity_type) {
-                    Some(entity_type)
+                    Some(entity_type.as_ref())
                 } else {
                     None
                 }
@@ -455,7 +455,7 @@ impl Validator {
                     self.schema
                         .get_entity_types_in(in_entity.as_ref())
                         .into_iter()
-                        .filter(move |k| &entity_type == k),
+                        .filter(move |k| &entity_type.as_ref() == k),
                 )
             }
         }
@@ -578,10 +578,10 @@ mod test {
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
-            ResourceConstraint::is_eq(
+            ResourceConstraint::is_eq(Arc::new(
                 EntityUID::with_eid_and_type(foo_type, "foo_name")
                     .expect("should be a valid identifier"),
-            ),
+            )),
             Expr::val(true),
         );
 
@@ -896,11 +896,11 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq(EntityUID::from_components(
+            PrincipalConstraint::is_eq(Arc::new(EntityUID::from_components(
                 entity_type,
                 Eid::new("bar"),
                 None,
-            )),
+            ))),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
@@ -1038,7 +1038,7 @@ mod test {
         let foo_type = "foo_type";
         let euid_foo = EntityUID::with_eid_and_type(foo_type, "foo_name")
             .expect("should be a valid identifier");
-        let principal_constraint = PrincipalConstraint::is_eq(euid_foo.clone());
+        let principal_constraint = PrincipalConstraint::is_eq(Arc::new(euid_foo.clone()));
 
         let schema_file = NamespaceDefinition::new(
             [(
@@ -1170,9 +1170,9 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq(principal),
+            PrincipalConstraint::is_eq(Arc::new(principal)),
             ActionConstraint::is_eq(action),
-            ResourceConstraint::is_eq(resource),
+            ResourceConstraint::is_eq(Arc::new(resource)),
             Expr::val(true),
         );
 
@@ -1542,7 +1542,7 @@ mod test {
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_in([action_grandparent_euid]),
-            ResourceConstraint::is_in(resource_grandparent_euid),
+            ResourceConstraint::is_in(Arc::new(resource_grandparent_euid)),
             Expr::val(true),
         );
 
@@ -1565,7 +1565,7 @@ mod test {
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
-            ResourceConstraint::is_eq(EntityUID::unspecified_from_eid(Eid::new("foo"))),
+            ResourceConstraint::is_eq(Arc::new(EntityUID::unspecified_from_eid(Eid::new("foo")))),
             Expr::val(true),
         );
         let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
@@ -1583,7 +1583,7 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_in(EntityUID::unspecified_from_eid(Eid::new("foo"))),
+            PrincipalConstraint::is_in(Arc::new(EntityUID::unspecified_from_eid(Eid::new("foo")))),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
