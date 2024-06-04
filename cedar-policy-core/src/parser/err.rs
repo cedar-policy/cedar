@@ -18,7 +18,6 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
 
 use either::Either;
 use lalrpop_util as lalr;
@@ -225,9 +224,11 @@ pub enum ToASTErrorKind {
     EmptyClause(Option<cst::Ident>),
     /// Returned when the internal invariant around annotation info has been violated
     #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
+    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
     AnnotationInvariantViolation,
     /// Returned when membership chains do not resolve to an expression, violating an internal invariant
     #[error("internal invariant violated. Membership chain did not resolve to an expression")]
+    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
     MembershipInvariantViolation,
     /// Returned for a non-parse-able string literal
     #[error("invalid string literal: `{0}`")]
@@ -346,6 +347,7 @@ pub enum ToASTErrorKind {
     /// conversion, which will terminate parsing. So it should be unreachable
     /// in later stages.
     #[error("internal invariant violated. Parsed data node should not be empty")]
+    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
     EmptyNodeInvariantViolation,
     /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
     #[error("the right hand side of a `has` expression must be a field name or string literal")]
@@ -379,10 +381,6 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
-    /// Returned when a policy or expression failed to parse, but no explicit error was returned.
-    #[error("unknown parse error")]
-    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
-    Unknown,
 }
 
 impl ToASTErrorKind {
@@ -715,6 +713,24 @@ impl ParseErrors {
             .for_each(|errs| first.extend(errs.iter().cloned()));
         Some(first)
     }
+
+    /// If there are any `Err`s in the input, this function will return a
+    /// combined version of all errors. Otherwise, it will return a vector of
+    /// all the `Ok` values.
+    pub(crate) fn transpose<T>(
+        i: impl IntoIterator<Item = Result<T, ParseErrors>>,
+    ) -> Result<Vec<T>, Self> {
+        let mut errs = vec![];
+        let oks: Vec<_> = i
+            .into_iter()
+            .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
+            .collect();
+        if let Some(combined_errs) = Self::flatten(errs) {
+            Err(combined_errs)
+        } else {
+            Ok(oks)
+        }
+    }
 }
 
 impl Display for ParseErrors {
@@ -810,29 +826,7 @@ impl DerefMut for ParseErrors {
 
 impl<T: Into<ParseError>> From<T> for ParseErrors {
     fn from(err: T) -> Self {
-        vec![err.into()].into()
-    }
-}
-
-impl From<Vec<ParseError>> for ParseErrors {
-    /// Convert a `Vec<ParseError> to a `ParseErrors`, inserting the `Unknown`
-    /// error if necessary.
-    fn from(errs: Vec<ParseError>) -> Self {
-        ParseErrors::from_iter(errs).unwrap_or_else(|| {
-            ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
-                ToASTErrorKind::Unknown,
-                Loc::new(0, Arc::from("")),
-            )))
-        })
-    }
-}
-
-impl From<Vec<ToASTError>> for ParseErrors {
-    fn from(errs: Vec<ToASTError>) -> Self {
-        errs.into_iter()
-            .map(Into::into)
-            .collect::<Vec<ParseError>>()
-            .into()
+        ParseErrors::singleton(err.into())
     }
 }
 
