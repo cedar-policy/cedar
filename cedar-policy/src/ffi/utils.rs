@@ -16,10 +16,14 @@
 
 //! Utility functions and types for JSON interface
 use crate::{Policy, SchemaWarning, Template};
-use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
+
+// Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
+// `*_json_str` APIs will correctly error if the input JSON string contains
+// duplicate keys.
+pub use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -237,10 +241,8 @@ impl PolicySet {
 #[serde(rename_all = "camelCase")]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
-    #[serde(rename = "human")]
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    #[serde(rename = "json")]
     Json(JsonValueWithNoDuplicateKeys),
 }
 

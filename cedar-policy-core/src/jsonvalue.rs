@@ -22,6 +22,10 @@ use serde::{Deserialize, Serialize};
 /// Wrapper around `serde_json::Value`, with a different `Deserialize`
 /// implementation, such that duplicate keys in JSON objects (maps/records) are
 /// not allowed (result in an error).
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JsonValueWithNoDuplicateKeys(serde_json::Value);
 

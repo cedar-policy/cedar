@@ -48,6 +48,7 @@ use cedar_policy_validator::RequestValidationError; // this type is unsuitable f
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
@@ -1165,7 +1166,10 @@ impl From<authorizer::Response> for Response {
 }
 
 /// Used to select how a policy will be validated.
-#[derive(Default, Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ValidationMode {
     /// Validate that policies do not contain any type errors, and additionally
