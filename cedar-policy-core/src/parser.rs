@@ -162,8 +162,9 @@ pub fn parse_policy_to_est_and_ast(
 /// Parse a policy or template (either one works) to its EST representation
 pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::ParseErrors> {
     // We parse to EST and AST even though we only want the EST because some
-    // checks are only applied by the CST-to-EST conversion, and we do not want
-    // to return any EST if the policy text would not parse normally.
+    // checks are applied by the CST-to-AST conversion and not CST-to-EST, and
+    // we do not want to return any EST if the policy text would not parse
+    // normally.
     parse_policy_template_to_est_and_ast(None, text).map(|(est, _ast)| est)
 }
 
