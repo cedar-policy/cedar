@@ -18,6 +18,7 @@ use crate::ast::*;
 use crate::parser::Loc;
 use itertools::Itertools;
 use miette::Diagnostic;
+use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
@@ -1679,6 +1680,30 @@ impl ActionConstraint {
                 EntityType::Specified(name) => Some(name),
                 EntityType::Unspecified => None,
             })
+    }
+
+    /// Check that all of the EUIDs in an action constraint have the type
+    /// `Action`, under an arbitrary namespace.
+    pub fn contains_only_action_types(self) -> Result<Self, NonEmpty<Arc<EntityUID>>> {
+        match self {
+            ActionConstraint::Any => Ok(self),
+            ActionConstraint::In(ref euids) => {
+                if let Some(euids) =
+                    NonEmpty::collect(euids.iter().filter(|euid| !euid.is_action()).cloned())
+                {
+                    Err(euids)
+                } else {
+                    Ok(self)
+                }
+            }
+            ActionConstraint::Eq(ref euid) => {
+                if euid.is_action() {
+                    Ok(self)
+                } else {
+                    Err(nonempty![euid.clone()])
+                }
+            }
+        }
     }
 }
 
