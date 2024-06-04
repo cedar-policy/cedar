@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{FromJsonError, LinkingError};
+use super::{FromJsonError, InvalidActionType, LinkingError};
 use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
 use crate::{ast, FromNormalizedStr};
 use serde::{Deserialize, Serialize};
@@ -667,7 +667,7 @@ impl From<ast::ActionConstraint> for ActionConstraint {
 impl TryFrom<ActionConstraint> for ast::ActionConstraint {
     type Error = FromJsonError;
     fn try_from(constraint: ActionConstraint) -> Result<ast::ActionConstraint, Self::Error> {
-        match constraint {
+        let ast_action_constriant = match constraint {
             ActionConstraint::All => Ok(ast::ActionConstraint::Any),
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => Ok(ast::ActionConstraint::Eq(
                 Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
@@ -689,6 +689,15 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             }
-        }
+        }?;
+
+        ast_action_constriant
+            .contains_only_action_types()
+            .map_err(|non_action_euids| {
+                InvalidActionType {
+                    euids: non_action_euids,
+                }
+                .into()
+            })
     }
 }
