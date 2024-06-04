@@ -19,9 +19,11 @@
 use clap::Parser;
 use miette::ErrorHook;
 
+#[cfg(feature = "policy-slicing")]
+use cedar_policy_cli::slice;
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, format_policies, link, new, slice, translate_schema,
-    validate, CedarExitCode, Cli, Commands, ErrorFormat,
+    authorize, check_parse, evaluate, format_policies, link, new, translate_schema, validate,
+    CedarExitCode, Cli, Commands, ErrorFormat,
 };
 
 fn main() -> CedarExitCode {
@@ -47,6 +49,7 @@ fn main() -> CedarExitCode {
         Commands::Validate(args) => validate(&args),
         Commands::Format(args) => format_policies(&args),
         Commands::Link(args) => link(&args),
+        #[cfg(feature = "policy-slicing")]
         Commands::Slice(args) => slice(&args),
         Commands::TranslateSchema(args) => translate_schema(&args),
         Commands::New(args) => new(&args),

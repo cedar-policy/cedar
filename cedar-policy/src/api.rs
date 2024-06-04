@@ -43,6 +43,7 @@ use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
+#[cfg(feature = "policy-slicing")]
 use cedar_policy_core::slicer::Slicer;
 use cedar_policy_core::FromNormalizedStr;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
@@ -3645,7 +3646,8 @@ pub fn eval_expression(
     ))
 }
 
-/// Get a slice of a policy set based on a reques and a store
+/// Get a slice of a policy set based on a request and a store
+#[cfg(feature = "policy-slicing")]
 pub fn get_policy_set_slice(
     request: &Request,
     entities: &Entities,

@@ -96,6 +96,7 @@ pub enum Commands {
     /// Format a policy set
     Format(FormatArgs),
     /// Slice a policy set
+    #[cfg(feature = "policy-slicing")]
     Slice(SliceArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
@@ -429,6 +430,7 @@ pub struct NewArgs {
     pub name: String,
 }
 
+#[cfg(feature = "policy-slicing")]
 #[derive(Args, Debug)]
 pub struct SliceArgs {
     /// Request args (incorporated by reference)
@@ -989,6 +991,7 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
     serde_json::to_writer(f, linked).into_diagnostic()
 }
 
+#[cfg(feature = "policy-slicing")]
 fn slice_inner(args: &SliceArgs) -> Result<()> {
     let policies = args.policies.get_policy_set()?;
     let entities = load_entities(
@@ -1007,6 +1010,7 @@ fn slice_inner(args: &SliceArgs) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "policy-slicing")]
 pub fn slice(args: &SliceArgs) -> CedarExitCode {
     match slice_inner(args) {
         Ok(_) => CedarExitCode::Success,

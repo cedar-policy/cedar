@@ -50,6 +50,7 @@ test-util = []
 
 # Experimental features.
 partial-eval = []
+policy-slicing = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]
