@@ -38,6 +38,11 @@ use std::collections::{BTreeMap, HashMap};
 extern crate tsify;
 
 /// Serde JSON structure for policies and templates in the EST format
+/// Note: Before attempting to build an `est::Policy` from a `cst::Policy` you
+/// must first ensure that the CST can be transformed into an AST. The
+/// CST-to-EST transformation does not duplicate all checks performed by the
+/// CST-to-AST transformation, so attempting to convert an invalid CST to an EST
+/// may succeeded.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
