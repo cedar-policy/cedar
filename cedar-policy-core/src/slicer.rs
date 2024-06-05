@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
- //! This module contains a simple policy slicer.
+//! This module contains a simple policy slicer.
 
 use std::{
     collections::{HashMap, HashSet},
