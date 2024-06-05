@@ -144,7 +144,7 @@ mod test {
 
     use super::to_unescaped_string;
     use crate::ast;
-    use crate::parser::err::ToASTErrorKind;
+    use crate::parser::err::{ParseError, ToASTErrorKind};
     use crate::parser::text_to_cst;
 
     #[test]
@@ -181,11 +181,10 @@ mod test {
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes
-        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
-            .to_expr(&mut errs)
+            .to_expr()
             .expect("failed conversion").expr_kind(),
             ast::ExprKind::Like {
                 expr: _,
@@ -197,33 +196,30 @@ mod test {
         );
 
         // invalid ASCII escapes
-        let mut errs = vec![];
-        assert!(text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
+        let errs = text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
-            .to_expr(&mut errs)
-            .is_none());
+            .to_expr()
+            .unwrap_err();
         assert_eq!(errs.len(), 2);
-        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
-        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
+        assert_matches!(&errs[1], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
 
         // valid `\*` surrounded by chars
-        let mut errs = vec![];
         assert!(
             matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
-            .to_expr(&mut errs)
+            .to_expr()
             .expect("failed conversion").expr_kind(),
             ast::ExprKind::Like { expr: _, pattern} if pattern.to_string() == *r"👀👀\*🤞🤞\*🤝")
         );
 
         // invalid escapes
-        let mut errs = vec![];
-        assert!(text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
+        let errs = text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
-            .to_expr(&mut errs)
-            .is_none());
+            .to_expr()
+            .unwrap_err();
         assert_eq!(errs.len(), 2);
-        assert_matches!(errs[0].kind(), ToASTErrorKind::Unescape(_));
-        assert_matches!(errs[1].kind(), ToASTErrorKind::Unescape(_));
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
+        assert_matches!(&errs[1], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
     }
 }

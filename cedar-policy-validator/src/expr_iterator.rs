@@ -48,9 +48,18 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
     template
         .principal_constraint()
         .as_inner()
-        .iter_euids()
+        .get_euid()
+        .into_iter()
+        .map(|euid| euid.as_ref())
         .chain(template.action_constraint().iter_euids())
-        .chain(template.resource_constraint().as_inner().iter_euids())
+        .chain(
+            template
+                .resource_constraint()
+                .as_inner()
+                .get_euid()
+                .into_iter()
+                .map(|euid| euid.as_ref()),
+        )
         .chain(expr_entity_uids(template.non_scope_constraints()))
 }
 

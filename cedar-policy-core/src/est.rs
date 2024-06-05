@@ -29,6 +29,7 @@ use crate::ast;
 use crate::entities::json::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -111,86 +112,57 @@ impl Clause {
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
-        let mut errs = vec![];
-        let effect = policy.effect.to_effect(&mut errs);
-        let (principal, action, resource) = policy.extract_scope(&mut errs);
-        let (annot_success, annotations) = policy.get_ast_annotations(&mut errs);
-        let conditions = policy
-            .conds
-            .into_iter()
-            .map(|node| {
-                let (cond, loc) = node.into_inner();
-                let cond = cond.ok_or_else(|| {
-                    ParseErrors::singleton(ToASTError::new(ToASTErrorKind::EmptyClause(None), loc))
-                })?;
-                cond.try_into()
-            })
-            .collect::<Result<Vec<_>, ParseErrors>>();
+        let maybe_effect = policy.effect.to_effect();
+        let maybe_scope = policy.extract_scope();
+        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
+            let (cond, loc) = node.into_inner();
+            let cond = cond.ok_or_else(|| {
+                ParseErrors::singleton(ToASTError::new(ToASTErrorKind::EmptyClause(None), loc))
+            })?;
+            cond.try_into()
+        }));
 
-        match (
+        let (effect, annotations, (principal, action, resource), conditions) = flatten_tuple_4(
+            maybe_effect,
+            maybe_annotations,
+            maybe_scope,
+            maybe_conditions,
+        )?;
+        Ok(Policy {
             effect,
-            principal,
-            action,
-            resource,
+            principal: principal.into(),
+            action: action.into(),
+            resource: resource.into(),
             conditions,
-            annot_success,
-            errs.is_empty(),
-        ) {
-            (
-                Some(effect),
-                Some(principal),
-                Some(action),
-                Some(resource),
-                Ok(conditions),
-                true,
-                true,
-            ) => Ok(Policy {
-                effect,
-                principal: principal.into(),
-                action: action.into(),
-                resource: resource.into(),
-                conditions,
-                annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
-            }),
-            (_, _, _, _, Err(mut cond_errs), _, _) => {
-                cond_errs.extend(errs);
-                Err(cond_errs)
-            }
-            _ => Err(errs.into()),
-        }
+            annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
+        })
     }
 }
 
 impl TryFrom<cst::Cond> for Clause {
     type Error = ParseErrors;
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
-        let mut errs = vec![];
-        let is_when = cond.cond.to_cond_is_when(&mut errs);
-        let expr: Result<Expr, ParseErrors> = match cond.expr {
+        let maybe_is_when = cond.cond.to_cond_is_when();
+        match cond.expr {
             None => {
-                let ident = is_when.map(|is_when| {
+                let maybe_ident = maybe_is_when.map(|is_when| {
                     cst::Ident::Ident(if is_when { "when" } else { "unless" }.into())
                 });
                 Err(cond
                     .cond
-                    .to_ast_err(ToASTErrorKind::EmptyClause(ident))
+                    .to_ast_err(ToASTErrorKind::EmptyClause(maybe_ident.ok()))
                     .into())
             }
-            Some(ref e) => e.try_into(),
-        };
-        match (expr, errs.is_empty()) {
-            (Ok(expr), true) => Ok(match is_when {
-                // PANIC SAFETY `is_when` must be `Some` when `errs` is empty
-                #[allow(clippy::unreachable)]
-                None => unreachable!("should have had an err in this case"),
-                Some(true) => Clause::When(expr),
-                Some(false) => Clause::Unless(expr),
-            }),
-            (Err(mut expr_errs), _) => {
-                expr_errs.extend(errs);
-                Err(expr_errs)
+            Some(ref e) => {
+                let maybe_expr = e.try_into();
+                let (is_when, expr) = flatten_tuple_2(maybe_is_when, maybe_expr)?;
+                Ok(if is_when {
+                    Clause::When(expr)
+                } else {
+                    Clause::Unless(expr)
+                })
             }
-            (_, false) => Err(errs.into()),
         }
     }
 }
@@ -4005,5 +3977,123 @@ mod issue_891 {
         let est =
             parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
         assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "resorThanOrEqual".parse().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod issue_925 {
+    use crate::{
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn invalid_action_type() {
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "==",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entities": [
+                        {
+                            "type": "NotAction",
+                            "id": "view",
+                        },
+                        {
+                            "type": "Other",
+                            "id": "edit",
+                        }
+                    ]
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
     }
 }
