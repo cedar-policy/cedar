@@ -449,7 +449,7 @@ impl Diagnostic for ShadowsEntityWarning {
         Some(Box::new(
             std::iter::once(&self.entity_loc)
                 .chain(std::iter::once(&self.common_loc))
-                .map(|loc| LabeledSpan::underline(loc)),
+                .map(LabeledSpan::underline),
         ))
     }
 

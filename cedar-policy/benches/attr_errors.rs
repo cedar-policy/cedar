@@ -6,7 +6,6 @@ const LARGE_SIZE: usize = 100_000;
 pub fn large_context_record(c: &mut Criterion) {
     let large_context = Context::from_pairs(
         (1..=LARGE_SIZE)
-            .into_iter()
             .map(|i| (format!("a{i}"), RestrictedExpression::new_bool(true)))
             .collect::<Vec<_>>(),
     )

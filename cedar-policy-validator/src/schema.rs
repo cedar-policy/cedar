@@ -431,7 +431,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
-                        if !entity_types.contains_key(&p_entity) {
+                        if !entity_types.contains_key(p_entity) {
                             undeclared_e.insert(p_entity.clone());
                         }
                     }
@@ -442,7 +442,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
-                        if !entity_types.contains_key(&r_entity) {
+                        if !entity_types.contains_key(r_entity) {
                             undeclared_e.insert(r_entity.clone());
                         }
                     }
@@ -1843,10 +1843,7 @@ mod test {
 
         match schema {
             Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(s)))
-                if s == "A::MyLong".parse().unwrap() =>
-            {
-                ()
-            }
+                if s == "A::MyLong".parse().unwrap() => {}
             _ => panic!("should have errored because schema fragments have duplicate types"),
         };
     }

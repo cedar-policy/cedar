@@ -459,7 +459,7 @@ impl PolicySet {
 
     /// Lookup a template by policy id
     pub fn get_template(&self, id: &PolicyID) -> Option<Arc<Template>> {
-        self.templates.get(id).map(Arc::clone)
+        self.templates.get(id).cloned()
     }
 
     /// Lookup an policy by policy id

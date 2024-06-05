@@ -347,7 +347,7 @@ impl SchemaType {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: ty.prefix_common_type_references_with_namespace(ns.clone()),
+                                ty: ty.prefix_common_type_references_with_namespace(ns),
                                 required,
                             },
                         )

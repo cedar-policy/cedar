@@ -1235,31 +1235,19 @@ impl Node<Option<cst::Unary>> {
     fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let unary = self.try_as_inner()?;
 
-        // A thunk to delay the evaluation of `item`
-        let maybe_item = || unary.item.to_expr_or_special();
-
         match unary.op {
-            None => maybe_item(),
-            Some(cst::NegOp::Bang(0)) => maybe_item(),
-            Some(cst::NegOp::Dash(0)) => maybe_item(),
+            None => unary.item.to_expr_or_special(),
             Some(cst::NegOp::Bang(n)) => {
-                let item = maybe_item().and_then(|i| i.into_expr());
-                if n % 2 == 0 {
-                    item.map(|i| ExprOrSpecial::Expr {
-                        expr: construct_expr_not(
-                            construct_expr_not(i, self.loc.clone()),
-                            self.loc.clone(),
-                        ),
-                        loc: self.loc.clone(),
-                    })
-                } else {
-                    // safe to collapse to !
-                    item.map(|i| ExprOrSpecial::Expr {
-                        expr: construct_expr_not(i, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })
-                }
+                (0..n).fold(unary.item.to_expr_or_special(), |inner, _| {
+                    inner
+                        .and_then(|e| e.into_expr())
+                        .map(|expr| ExprOrSpecial::Expr {
+                            expr: construct_expr_not(expr, self.loc.clone()),
+                            loc: self.loc.clone(),
+                        })
+                })
             }
+            Some(cst::NegOp::Dash(0)) => unary.item.to_expr_or_special(),
             Some(cst::NegOp::Dash(c)) => {
                 // Test if there is a negative numeric literal.
                 // A negative numeric literal should match regex pattern
@@ -1286,7 +1274,10 @@ impl Node<Option<cst::Unary>> {
                 } else {
                     // If the operand is not a CST literal, convert it into
                     // an expression.
-                    (maybe_item().and_then(|i| i.into_expr()), c)
+                    (
+                        unary.item.to_expr_or_special().and_then(|i| i.into_expr()),
+                        c,
+                    )
                 };
                 // Fold the expression into a series of negation operations.
                 (0..rc)
@@ -2136,16 +2127,12 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
-        let expr = text_to_cst::parse_expr(text)
+        text_to_cst::parse_expr(text)
             .expect("failed parser")
             .to_expr()
             .unwrap_or_else(|errs| {
-                panic!(
-                    "failed conversion to AST:\n{:?}",
-                    miette::Report::new(ParseErrors::from(errs))
-                )
-            });
-        expr
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
     }
 
     #[track_caller]
@@ -2163,13 +2150,12 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_policy_succeeds(text: &str) -> ast::StaticPolicy {
-        let expr = text_to_cst::parse_policy(text)
+        text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
                 panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
-            });
-        expr
+            })
     }
 
     #[track_caller]
@@ -3569,14 +3555,17 @@ mod tests {
             (
                 "!!!1 + 2 == 3",
                 Expr::is_eq(
-                    Expr::add(Expr::not(Expr::val(1)), Expr::val(2)),
+                    Expr::add(Expr::not(Expr::not(Expr::not(Expr::val(1)))), Expr::val(2)),
                     Expr::val(3),
                 ),
             ),
             (
                 "!!!!1 + 2 == 3",
                 Expr::is_eq(
-                    Expr::add(Expr::not(Expr::not(Expr::val(1))), Expr::val(2)),
+                    Expr::add(
+                        Expr::not(Expr::not(Expr::not(Expr::not(Expr::val(1))))),
+                        Expr::val(2),
+                    ),
                     Expr::val(3),
                 ),
             ),
