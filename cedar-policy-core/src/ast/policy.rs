@@ -1567,7 +1567,7 @@ impl PrincipalOrResourceConstraint {
         }
     }
 
-    /// Get the entity uid in this constraint or `None` if it is impossible
+    /// Get the entity uid in this constraint or `None` if there are no uids in the constraint
     pub fn get_euid(&self) -> Option<&Arc<EntityUID>> {
         match self {
             PrincipalOrResourceConstraint::Any => None,
