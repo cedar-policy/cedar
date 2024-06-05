@@ -14,42 +14,53 @@
  * limitations under the License.
  */
 
-use std::collections::{HashMap, HashSet};
+
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 
 use crate::{
-    ast::{Eid, EntityUID, EntityUIDEntry, PolicyID, PolicySet, Request},
+    ast::{EntityUID, EntityUIDEntry, PolicyID, PolicySet, Request},
     entities::{Dereference, Entities},
 };
 
-/// Cedar policy slicer
+/// Simple policy slicer
 #[derive(Debug, Clone)]
 pub struct Slicer<'s, 'e> {
+    // Entity store snapshot
     store: &'e Entities,
+    // Input policy set
     policy_set: &'s PolicySet,
-    indexed: HashMap<(EntityUID, EntityUID), HashSet<&'s PolicyID>>,
+    // Policies indexed by (principal, resource) tuple
+    indexed: HashMap<(Option<Arc<EntityUID>>, Option<Arc<EntityUID>>), HashSet<&'s PolicyID>>,
 }
 
 impl<'s, 'e> Slicer<'s, 'e> {
-    fn any() -> EntityUID {
-        EntityUID::unspecified_from_eid(Eid::new(""))
-    }
     /// Construct a slicer
     pub fn new(policy_set: &'s PolicySet, store: &'e Entities) -> Self {
-        let mut indexed: HashMap<(EntityUID, EntityUID), HashSet<&'s PolicyID>> = HashMap::new();
+        let mut indexed: HashMap<
+            (Option<Arc<EntityUID>>, Option<Arc<EntityUID>>),
+            HashSet<&'s PolicyID>,
+        > = HashMap::new();
+        // Construct policy indices
         for policy in policy_set.policies() {
-            let key = match (
-                policy.principal_constraint().constraint.iter_euids().next(),
-                policy.resource_constraint().constraint.iter_euids().next(),
-            ) {
-                (Some(head_principal), Some(head_resource)) => {
-                    (head_principal.clone(), head_resource.clone())
-                }
-                (Some(head_principal), None) => (head_principal.clone(), Self::any()),
-                (None, Some(head_resource)) => (Self::any(), head_resource.clone()),
-                (None, None) => (Self::any(), Self::any()),
-            };
+            let key = (
+                policy
+                    .principal_constraint()
+                    .constraint
+                    .iter_euids()
+                    .next()
+                    .map(|e| Arc::new(e.clone())),
+                policy
+                    .resource_constraint()
+                    .constraint
+                    .iter_euids()
+                    .next()
+                    .map(|e| Arc::new(e.clone())),
+            );
             if let Some(set) = indexed.get_mut(&key) {
                 set.insert(policy.id());
             } else {
@@ -65,14 +76,17 @@ impl<'s, 'e> Slicer<'s, 'e> {
 
     fn make_keys(
         &self,
-        principal: &EntityUID,
-        resource: &EntityUID,
-    ) -> impl Iterator<Item = (EntityUID, EntityUID)> {
-        let make_iter = |uid: &EntityUID| {
-            std::iter::once(uid.clone())
-                .chain(std::iter::once(Self::any()))
-                .chain(match self.store.entity(uid) {
-                    Dereference::Data(e) => e.ancestors().map(|uid| uid.clone()).collect_vec(),
+        principal: Arc<EntityUID>,
+        resource: Arc<EntityUID>,
+    ) -> impl Iterator<Item = (Option<Arc<EntityUID>>, Option<Arc<EntityUID>>)> {
+        let make_iter = |uid: Arc<EntityUID>| {
+            std::iter::once(Some(uid.clone()))
+                .chain(std::iter::once(None))
+                .chain(match self.store.entity(&uid) {
+                    Dereference::Data(e) => e
+                        .ancestors()
+                        .map(|uid| Some(Arc::new(uid.clone())))
+                        .collect_vec(),
                     Dereference::Residual(_) => unreachable!("partial evaluation is not enabled!"),
                     Dereference::NoSuchEntity => vec![],
                 })
@@ -88,7 +102,7 @@ impl<'s, 'e> Slicer<'s, 'e> {
                     euid: principal, ..
                 },
                 EntityUIDEntry::Known { euid: resource, .. },
-            ) => (principal.as_ref(), resource.as_ref()),
+            ) => (principal.clone(), resource.clone()),
             _ => unreachable!("partial evaluation is not enabled!"),
         };
         let keys = self.make_keys(req_principal, req_resource);
