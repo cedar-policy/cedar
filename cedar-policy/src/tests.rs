@@ -3762,7 +3762,7 @@ mod issue_779 {
     #[test]
     fn issue_779() {
         let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
-        let human = r#"namespace Foo { entity User; action View; invalid }"#;
+        let human = r"namespace Foo { entity User; action View; invalid }";
 
         assert_matches!(Schema::from_json_str(human), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
