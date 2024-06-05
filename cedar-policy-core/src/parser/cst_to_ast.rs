@@ -2136,16 +2136,12 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
-        let expr = text_to_cst::parse_expr(text)
+        text_to_cst::parse_expr(text)
             .expect("failed parser")
             .to_expr()
             .unwrap_or_else(|errs| {
-                panic!(
-                    "failed conversion to AST:\n{:?}",
-                    miette::Report::new(ParseErrors::from(errs))
-                )
-            });
-        expr
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
     }
 
     #[track_caller]
@@ -2163,13 +2159,12 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_policy_succeeds(text: &str) -> ast::StaticPolicy {
-        let expr = text_to_cst::parse_policy(text)
+        text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
                 panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
-            });
-        expr
+            })
     }
 
     #[track_caller]

@@ -143,7 +143,7 @@ pub mod to_human_syntax_errors {
 
         /// Get the names that had collisions
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            self.names.iter().map(|n| n.as_str())
+            self.names.iter().map(smol_str::SmolStr::as_str)
         }
     }
 }
@@ -354,22 +354,22 @@ impl ValidationError {
     /// Extract the policy id of the policy where the validator found the issue.
     pub fn policy_id(&self) -> &crate::PolicyId {
         match self {
-            ValidationError::UnrecognizedEntityType(e) => e.policy_id(),
-            ValidationError::UnrecognizedActionId(e) => e.policy_id(),
-            ValidationError::InvalidActionApplication(e) => e.policy_id(),
-            ValidationError::UnspecifiedEntity(e) => e.policy_id(),
-            ValidationError::UnexpectedType(e) => e.policy_id(),
-            ValidationError::IncompatibleTypes(e) => e.policy_id(),
-            ValidationError::UnsafeAttributeAccess(e) => e.policy_id(),
-            ValidationError::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
-            ValidationError::UndefinedFunction(e) => e.policy_id(),
-            ValidationError::MultiplyDefinedFunction(e) => e.policy_id(),
-            ValidationError::WrongNumberArguments(e) => e.policy_id(),
-            ValidationError::WrongCallStyle(e) => e.policy_id(),
-            ValidationError::FunctionArgumentValidation(e) => e.policy_id(),
-            ValidationError::EmptySetForbidden(e) => e.policy_id(),
-            ValidationError::NonLitExtConstructor(e) => e.policy_id(),
-            ValidationError::HierarchyNotRespected(e) => e.policy_id(),
+            Self::UnrecognizedEntityType(e) => e.policy_id(),
+            Self::UnrecognizedActionId(e) => e.policy_id(),
+            Self::InvalidActionApplication(e) => e.policy_id(),
+            Self::UnspecifiedEntity(e) => e.policy_id(),
+            Self::UnexpectedType(e) => e.policy_id(),
+            Self::IncompatibleTypes(e) => e.policy_id(),
+            Self::UnsafeAttributeAccess(e) => e.policy_id(),
+            Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
+            Self::UndefinedFunction(e) => e.policy_id(),
+            Self::MultiplyDefinedFunction(e) => e.policy_id(),
+            Self::WrongNumberArguments(e) => e.policy_id(),
+            Self::WrongCallStyle(e) => e.policy_id(),
+            Self::FunctionArgumentValidation(e) => e.policy_id(),
+            Self::EmptySetForbidden(e) => e.policy_id(),
+            Self::NonLitExtConstructor(e) => e.policy_id(),
+            Self::HierarchyNotRespected(e) => e.policy_id(),
         }
     }
 }
@@ -471,12 +471,12 @@ impl ValidationWarning {
     /// Extract the policy id of the policy where the validator found the issue.
     pub fn policy_id(&self) -> &PolicyId {
         match self {
-            ValidationWarning::MixedScriptString(w) => w.policy_id(),
-            ValidationWarning::BidiCharsInString(w) => w.policy_id(),
-            ValidationWarning::BidiCharsInIdentifier(w) => w.policy_id(),
-            ValidationWarning::MixedScriptIdentifier(w) => w.policy_id(),
-            ValidationWarning::ConfusableIdentifier(w) => w.policy_id(),
-            ValidationWarning::ImpossiblePolicy(w) => w.policy_id(),
+            Self::MixedScriptString(w) => w.policy_id(),
+            Self::BidiCharsInString(w) => w.policy_id(),
+            Self::BidiCharsInIdentifier(w) => w.policy_id(),
+            Self::MixedScriptIdentifier(w) => w.policy_id(),
+            Self::ConfusableIdentifier(w) => w.policy_id(),
+            Self::ImpossiblePolicy(w) => w.policy_id(),
         }
     }
 }
