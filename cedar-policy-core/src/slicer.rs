@@ -28,6 +28,9 @@ use crate::{
     entities::{Dereference, Entities},
 };
 
+/// Key type to index policies
+pub type IndexKey = (Option<Arc<EntityUID>>, Option<Arc<EntityUID>>);
+
 /// Simple policy slicer
 #[derive(Debug)]
 pub struct Slicer<'s, 'e> {
@@ -37,16 +40,13 @@ pub struct Slicer<'s, 'e> {
     policy_set: &'s PolicySet,
     // Policies indexed by (principal, resource) tuple
     // An unconstrained variable is indexed by `None`
-    indexed: HashMap<(Option<Arc<EntityUID>>, Option<Arc<EntityUID>>), HashSet<&'s PolicyID>>,
+    indexed: HashMap<IndexKey, HashSet<&'s PolicyID>>,
 }
 
 impl<'s, 'e> Slicer<'s, 'e> {
     /// Construct a slicer
     pub fn new(policy_set: &'s PolicySet, store: &'e Entities) -> Self {
-        let mut indexed: HashMap<
-            (Option<Arc<EntityUID>>, Option<Arc<EntityUID>>),
-            HashSet<&'s PolicyID>,
-        > = HashMap::new();
+        let mut indexed: HashMap<IndexKey, HashSet<&'s PolicyID>> = HashMap::new();
         // Construct policy indices
         for policy in policy_set.policies() {
             let key = (
@@ -74,7 +74,7 @@ impl<'s, 'e> Slicer<'s, 'e> {
         &self,
         principal: Arc<EntityUID>,
         resource: Arc<EntityUID>,
-    ) -> Option<impl Iterator<Item = (Option<Arc<EntityUID>>, Option<Arc<EntityUID>>)>> {
+    ) -> Option<impl Iterator<Item = IndexKey>> {
         let make_iter = |e: &Entity| {
             vec![Some(Arc::new(e.uid().clone()))]
                 .into_iter()
@@ -96,12 +96,12 @@ impl<'s, 'e> Slicer<'s, 'e> {
                     .cartesian_product(make_iter(resource)),
             ),
             (Dereference::Data(principal), Dereference::NoSuchEntity) => {
-                Some(make_iter(principal).cartesian_product(vec![None, Some(resource)].into_iter()))
+                Some(make_iter(principal).cartesian_product(vec![None, Some(resource)]))
             }
             (Dereference::NoSuchEntity, Dereference::NoSuchEntity) => Some(
                 vec![None, Some(principal)]
                     .into_iter()
-                    .cartesian_product(vec![None, Some(resource)].into_iter()),
+                    .cartesian_product(vec![None, Some(resource)]),
             ),
         }
     }
