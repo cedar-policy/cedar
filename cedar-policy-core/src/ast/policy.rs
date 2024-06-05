@@ -1206,7 +1206,7 @@ impl PrincipalConstraint {
     }
 
     /// Constrained to equal a specific euid.
-    pub fn is_eq(euid: EntityUID) -> Self {
+    pub fn is_eq(euid: Arc<EntityUID>) -> Self {
         PrincipalConstraint {
             constraint: PrincipalOrResourceConstraint::is_eq(euid),
         }
@@ -1220,7 +1220,7 @@ impl PrincipalConstraint {
     }
 
     /// Hierarchical constraint.
-    pub fn is_in(euid: EntityUID) -> Self {
+    pub fn is_in(euid: Arc<EntityUID>) -> Self {
         PrincipalConstraint {
             constraint: PrincipalOrResourceConstraint::is_in(euid),
         }
@@ -1234,21 +1234,21 @@ impl PrincipalConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Name) -> Self {
+    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1313,7 +1313,7 @@ impl ResourceConstraint {
     }
 
     /// Constrained to equal a specific euid.
-    pub fn is_eq(euid: EntityUID) -> Self {
+    pub fn is_eq(euid: Arc<EntityUID>) -> Self {
         ResourceConstraint {
             constraint: PrincipalOrResourceConstraint::is_eq(euid),
         }
@@ -1334,28 +1334,28 @@ impl ResourceConstraint {
     }
 
     /// Hierarchical constraint.
-    pub fn is_in(euid: EntityUID) -> Self {
+    pub fn is_in(euid: Arc<EntityUID>) -> Self {
         ResourceConstraint {
             constraint: PrincipalOrResourceConstraint::is_in(euid),
         }
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Name) -> Self {
+    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1396,8 +1396,8 @@ pub enum EntityReference {
 
 impl EntityReference {
     /// Create an entity reference to a specific EntityUID
-    pub fn euid(euid: EntityUID) -> Self {
-        Self::EUID(Arc::new(euid))
+    pub fn euid(euid: Arc<EntityUID>) -> Self {
+        Self::EUID(euid)
     }
 
     /// Transform into an expression AST
@@ -1479,9 +1479,9 @@ pub enum PrincipalOrResourceConstraint {
     /// Equality constraint
     Eq(EntityReference),
     /// Type constraint,
-    Is(Name),
+    Is(Arc<Name>),
     /// Type constraint with a hierarchy constraint
-    IsIn(Name, EntityReference),
+    IsIn(Arc<Name>, EntityReference),
 }
 
 impl PrincipalOrResourceConstraint {
@@ -1491,7 +1491,7 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Constrained to equal a specific euid.
-    pub fn is_eq(euid: EntityUID) -> Self {
+    pub fn is_eq(euid: Arc<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::Eq(EntityReference::euid(euid))
     }
 
@@ -1506,22 +1506,22 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Hierarchical constraint.
-    pub fn is_in(euid: EntityUID) -> Self {
+    pub fn is_in(euid: Arc<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::In(EntityReference::euid(euid))
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
     }
 
     /// Type constraint with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::euid(in_entity))
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Name) -> Self {
+    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type)
     }
 
@@ -1538,11 +1538,11 @@ impl PrincipalOrResourceConstraint {
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into()))
             }
             PrincipalOrResourceConstraint::IsIn(entity_type, euid) => Expr::and(
-                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone()),
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.as_ref().clone()),
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into())),
             ),
             PrincipalOrResourceConstraint::Is(entity_type) => {
-                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone())
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.as_ref().clone())
             }
         }
     }
@@ -1568,23 +1568,17 @@ impl PrincipalOrResourceConstraint {
         }
     }
 
-    /// Get an iterator over all of the entity uids in this constraint.
-    pub fn iter_euids(&'_ self) -> impl Iterator<Item = &'_ EntityUID> {
+    /// Get the entity uid in this constraint or `None` if there are no uids in the constraint
+    pub fn get_euid(&self) -> Option<&Arc<EntityUID>> {
         match self {
-            PrincipalOrResourceConstraint::Any => EntityIterator::None,
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => {
-                EntityIterator::One(euid)
-            }
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => EntityIterator::None,
-            PrincipalOrResourceConstraint::Is(_) => EntityIterator::None,
+            PrincipalOrResourceConstraint::Any => None,
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
 
@@ -1592,14 +1586,15 @@ impl PrincipalOrResourceConstraint {
     /// The Unspecified entity type does not have a `Name`, so it is excluded
     /// from this iter.
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
-        self.iter_euids()
+        self.get_euid()
+            .into_iter()
             .filter_map(|euid| match euid.entity_type() {
                 EntityType::Specified(name) => Some(name),
                 EntityType::Unspecified => None,
             })
             .chain(match self {
                 PrincipalOrResourceConstraint::Is(entity_type)
-                | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type),
+                | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type.as_ref()),
                 _ => None,
             })
     }
@@ -1819,7 +1814,7 @@ pub mod test_generators {
     use super::*;
 
     pub fn all_por_constraints() -> impl Iterator<Item = PrincipalOrResourceConstraint> {
-        let euid = EntityUID::with_eid("test");
+        let euid = Arc::new(EntityUID::with_eid("test"));
         let v = vec![
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::is_eq(euid.clone()),
@@ -2100,48 +2095,42 @@ mod test {
     #[test]
     fn template_por_iter() {
         let e = Arc::new(EntityUID::with_eid("eid"));
-        assert_eq!(PrincipalOrResourceConstraint::Any.iter_euids().count(), 0);
+        assert_eq!(PrincipalOrResourceConstraint::Any.get_euid(), None);
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(e.clone()))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(e.clone())).get_euid(),
+            Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::In(EntityReference::Slot).get_euid(),
+            None
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone()))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone())).get_euid(),
+            Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot).get_euid(),
+            None
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::EUID(e))
-                .iter_euids()
-                .count(),
-            1
+            PrincipalOrResourceConstraint::IsIn(
+                Arc::new("T".parse().unwrap()),
+                EntityReference::EUID(e.clone())
+            )
+            .get_euid(),
+            Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Is("T".parse().unwrap())
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::Is(Arc::new("T".parse().unwrap())).get_euid(),
+            None
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::Slot)
-                .iter_euids()
-                .count(),
-            0
+            PrincipalOrResourceConstraint::IsIn(
+                Arc::new("T".parse().unwrap()),
+                EntityReference::Slot
+            )
+            .get_euid(),
+            None
         );
     }
 
@@ -2204,7 +2193,7 @@ mod test {
             e.into_expr(SlotId::principal()),
             Expr::slot(SlotId::principal())
         );
-        let e = EntityReference::euid(EntityUID::with_eid("eid"));
+        let e = EntityReference::euid(Arc::new(EntityUID::with_eid("eid")));
         assert_eq!(
             e.into_expr(SlotId::principal()),
             Expr::val(EntityUID::with_eid("eid"))
@@ -2216,8 +2205,9 @@ mod test {
         let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot);
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == ?principal");
-        let t =
-            PrincipalOrResourceConstraint::Eq(EntityReference::euid(EntityUID::with_eid("test")));
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::euid(Arc::new(
+            EntityUID::with_eid("test"),
+        )));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == test_entity_type::\"test\"");
     }

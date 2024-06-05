@@ -568,15 +568,22 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
                     Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_entity_type(entity_type),
+                        None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
+                            entity_type,
+                        )),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                entity_type,
-                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                                Arc::new(entity_type),
+                                Arc::new(
+                                    entity
+                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                                ),
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type)
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
+                                entity_type,
+                            ))
                         }
                     })
                 }),
@@ -626,15 +633,22 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
                     Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_entity_type(entity_type),
+                        None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
+                            entity_type,
+                        )),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                entity_type,
-                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                                Arc::new(entity_type),
+                                Arc::new(
+                                    entity
+                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                                ),
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type)
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
+                                entity_type,
+                            ))
                         }
                     })
                 }),
