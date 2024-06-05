@@ -125,6 +125,10 @@ impl<'s, 'e> Slicer<'s, 'e> {
             let policy_ids: HashSet<&PolicyID> = keys
                 .flat_map(|key| self.indexed.get(&key).cloned().unwrap_or_default())
                 .collect();
+
+            //PANIC SAFETY: a slice should be constructible from a subset of a
+            // policy set
+            #[allow(clippy::unwrap_used)]
             PolicySet::try_from_iter(
                 self.policy_set
                     .policies()
@@ -233,6 +237,63 @@ mod test {
         assert_eq!(
             get_ids(&slicer.get_slice(&req)),
             HashSet::from_iter(["unconstrained".into()])
+        );
+    }
+
+    #[test]
+    fn test_bottom() {
+        let ps = get_policy_set();
+        let es = get_entity_store();
+        let slicer = Slicer::new(&ps, &es);
+        let req = create_req("a", "b");
+        assert_eq!(
+            get_ids(&slicer.get_slice(&req)),
+            HashSet::from_iter([
+                "1".into(),
+                "2".into(),
+                "3".into(),
+                "4".into(),
+                "5".into(),
+                "6".into(),
+                "7".into(),
+                "unconstrained".into()
+            ])
+        );
+        let req = create_req("a", "d");
+        assert_eq!(
+            get_ids(&slicer.get_slice(&req)),
+            HashSet::from_iter([
+                "1".into(),
+                "3".into(),
+                "4".into(),
+                "5".into(),
+                "6".into(),
+                "7".into(),
+                "unconstrained".into()
+            ])
+        );
+        let req = create_req("e", "b");
+        assert_eq!(
+            get_ids(&slicer.get_slice(&req)),
+            HashSet::from_iter(["2".into(), "4".into(), "7".into(), "unconstrained".into()])
+        );
+    }
+
+    #[test]
+    fn test_middle() {
+        let ps = get_policy_set();
+        let es = get_entity_store();
+        let slicer = Slicer::new(&ps, &es);
+        let req = create_req("c", "d");
+        assert_eq!(
+            get_ids(&slicer.get_slice(&req)),
+            HashSet::from_iter([
+                "3".into(),
+                "4".into(),
+                "5".into(),
+                "7".into(),
+                "unconstrained".into()
+            ])
         );
     }
 }
