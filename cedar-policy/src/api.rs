@@ -3654,5 +3654,7 @@ pub fn get_policy_set_slice(
     policy_set: &PolicySet,
 ) -> PolicySet {
     let slicer = Slicer::new(&policy_set.ast, &entities.0);
+    //PANIC SAFETY: a core policy set should be a valid api policy set
+    #[allow(clippy::unwrap_used)]
     PolicySet::from_str(&slicer.get_slice(&request.0).to_string()).unwrap()
 }
