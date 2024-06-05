@@ -126,8 +126,7 @@ impl<'s, 'e> Slicer<'s, 'e> {
                 .flat_map(|key| self.indexed.get(&key).cloned().unwrap_or_default())
                 .collect();
 
-            //PANIC SAFETY: a slice should be constructible from a subset of a
-            // policy set
+            //PANIC SAFETY: a slice should be constructible from a subset of the policy set
             #[allow(clippy::unwrap_used)]
             PolicySet::try_from_iter(
                 self.policy_set

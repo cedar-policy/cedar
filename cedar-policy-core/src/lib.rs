@@ -34,7 +34,7 @@ pub mod evaluator;
 pub mod extensions;
 pub mod jsonvalue;
 pub mod parser;
-//#[cfg(feature = "policy-slicing")]
+#[cfg(feature = "policy-slicing")]
 pub mod slicer;
 pub mod transitive_closure;
 
