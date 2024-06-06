@@ -40,7 +40,7 @@ ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
 
 # Enables `Arbitrary` implementations for several types in this crate
-arbitrary = ["dep:arbitrary"]
+arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 
 # Experimental features.
 partial-validate = []
