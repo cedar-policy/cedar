@@ -647,6 +647,12 @@ impl Entities {
     pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
     }
+
+    /// Visualize an `Entities` object in the graphviz `dot`
+    /// format.
+    pub fn to_dot_str(&self) -> std::result::Result<String, std::fmt::Error> {
+        self.0.to_dot_str()
+    }
 }
 
 /// Utilities for defining `IntoIterator` over `Entities`

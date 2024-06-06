@@ -48,6 +48,7 @@ fn main() -> CedarExitCode {
         Commands::Format(args) => format_policies(&args),
         Commands::Link(args) => link(&args),
         Commands::TranslatePolicy(args) => translate_policy(&args),
+        Commands::Visualize(args) => visualize(&args),
         Commands::TranslateSchema(args) => translate_schema(&args),
         Commands::New(args) => new(&args),
     }
