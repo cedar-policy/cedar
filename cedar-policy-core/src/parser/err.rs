@@ -672,7 +672,8 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
     Some(expected_string)
 }
 
-/// Multiple parse errors.
+/// Represents one or more [`ParseError`]s encountered when parsing a policy or
+/// template.
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution when
