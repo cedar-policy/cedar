@@ -82,10 +82,6 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let schema_file = resolve_integration_test_path(&test.schema);
 
     for json_request in test.requests.into_iter() {
-        let policies_text = std::fs::read_to_string(policy_file.clone())
-            .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
-        let policies_res = PolicySet::from_str(&policies_text)
-            .unwrap_or_else(|e| panic!("unexpected parse errors in test {}: {e}", &test.policies));
         let validation_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
             .arg("validate")
