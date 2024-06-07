@@ -39,6 +39,11 @@ use std::collections::{BTreeMap, HashMap};
 extern crate tsify;
 
 /// Serde JSON structure for policies and templates in the EST format
+/// Note: Before attempting to build an `est::Policy` from a `cst::Policy` you
+/// must first ensure that the CST can be transformed into an AST. The
+/// CST-to-EST transformation does not duplicate all checks performed by the
+/// CST-to-AST transformation, so attempting to convert an invalid CST to an EST
+/// may succeed.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3958,24 +3963,62 @@ mod test {
 
 #[cfg(test)]
 mod issue_891 {
-    use crate::{est::FromJsonError, parser::parse_policy_or_template_to_est};
+    use crate::est::{self, FromJsonError};
     use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    fn est_json_with_body(body: serde_json::Value) -> serde_json::Value {
+        json!(
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": body,
+                    }
+                ]
+            }
+        )
+    }
 
     #[test]
     fn invalid_extension_func() {
-        let src = "permit(principal, action, resource) when {principal == resource.ow4()};";
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = est_json_with_body(json!( { "ow4": [ { "Var": "principal" } ] }));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
         assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ow4".parse().unwrap());
 
-        let src = r#"permit(principal, action, resource) when {principal == resource.ownerOrEqual(decimal("0.75"))};"#;
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = est_json_with_body(json!(
+            {
+                "==": {
+                    "left": {"Var": "principal"},
+                    "right": {
+                        "ownerOrEqual": [
+                            {"Var": "resource"},
+                            {"decimal": [{ "Value": "0.75" }]}
+                        ]
+                    }
+                }
+            }
+        ));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
         assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ownerOrEqual".parse().unwrap());
 
-        let src = r#"permit(principal, action, resource) when {principal == resorThanOrEqual(decimal("0.75"))};"#;
-        let est =
-            parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
+        let src = est_json_with_body(json!(
+            {
+                "==": {
+                    "left": {"Var": "principal"},
+                    "right": {
+                        "resorThanOrEqual": [
+                            {"decimal": [{ "Value": "0.75" }]}
+                        ]
+                    }
+                }
+            }
+        ));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
         assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "resorThanOrEqual".parse().unwrap());
     }
 }
