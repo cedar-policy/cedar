@@ -64,7 +64,7 @@ impl RestrictedExpr {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: Expr) -> Result<Self, RestrictedExprError> {
+    pub fn new(expr: Expr) -> Result<Self, RestrictedExpressionError> {
         is_restricted(&expr)?;
         Ok(Self(expr))
     }
@@ -275,7 +275,7 @@ impl TryFrom<PartialValue> for RestrictedExpr {
             PartialValue::Value(v) => Ok(RestrictedExpr::from(v)),
             PartialValue::Residual(expr) => match RestrictedExpr::new(expr) {
                 Ok(e) => Ok(e),
-                Err(RestrictedExprError::InvalidRestrictedExpression(
+                Err(RestrictedExpressionError::InvalidRestrictedExpression(
                     restricted_expr_errors::InvalidRestrictedExpressionError { expr, .. },
                 )) => Err(PartialValueToRestrictedExprError::NontrivialResidual {
                     residual: Box::new(expr),
@@ -322,7 +322,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExprError> {
+    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExpressionError> {
         is_restricted(expr)?;
         Ok(Self(expr))
     }
@@ -452,7 +452,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 /// Helper function: does the given `Expr` qualify as a "restricted" expression.
 ///
 /// Returns `Ok(())` if yes, or a `RestrictedExpressionError` if no.
-fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
+fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
         ExprKind::Unknown(_) => Ok(()),
@@ -617,7 +617,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
-pub enum RestrictedExprError {
+pub enum RestrictedExpressionError {
     /// An expression was expected to be a "restricted" expression, but contained
     /// a feature that is not allowed in restricted expressions.
     #[error(transparent)]
@@ -680,7 +680,7 @@ pub enum RestrictedExpressionParseError {
     /// restricted expression, for the reason indicated in the underlying error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExprError),
+    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
 }
 
 #[cfg(test)]
