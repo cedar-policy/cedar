@@ -32,11 +32,9 @@ mod multi;
 
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
-use cedar_policy::PolicySet;
 use cedar_testing::integration_testing::JsonTest;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Diagnostic> {
     EntityUid::from_json(v).map(|euid| euid.to_string())
