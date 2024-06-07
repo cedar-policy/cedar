@@ -28,7 +28,7 @@ pub use scope_constraints::*;
 use crate::ast;
 use crate::entities::json::EntityUidJson;
 use crate::parser::cst;
-use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -220,10 +220,11 @@ impl Clause {
     fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
         let first_slot = e.slots().next();
         if let Some(slot) = first_slot {
-            Err(FromJsonError::SlotsInConditionClause {
-                slot: slot.id,
-                clausetype: if is_when { "when" } else { "unless" },
-            })
+            Err(parse_errors::SlotsInConditionClause {
+                slot,
+                clause_type: if is_when { "when" } else { "unless" },
+            }
+            .into())
         } else {
             Ok(e)
         }
@@ -3966,17 +3967,17 @@ mod issue_891 {
         let src = "permit(principal, action, resource) when {principal == resource.ow4()};";
         let est =
             parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ow4".parse().unwrap());
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ow4".parse().unwrap());
 
         let src = r#"permit(principal, action, resource) when {principal == resource.ownerOrEqual(decimal("0.75"))};"#;
         let est =
             parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "ownerOrEqual".parse().unwrap());
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ownerOrEqual".parse().unwrap());
 
         let src = r#"permit(principal, action, resource) when {principal == resorThanOrEqual(decimal("0.75"))};"#;
         let est =
             parse_policy_or_template_to_est(src).expect("cst to est conversion should succeed");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtFunc(n)) if n == "resorThanOrEqual".parse().unwrap());
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "resorThanOrEqual".parse().unwrap());
     }
 }
 
@@ -4017,7 +4018,7 @@ mod issue_925 {
                 expect_err(
                     &src,
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                    &ExpectedErrorMessageBuilder::error(r#"expected an entity uid with type `Action` but got `NotAction::"view"`"#)
                         .help("action entities must have type `Action`, optionally in a namespace")
                         .build()
                 );
@@ -4050,7 +4051,7 @@ mod issue_925 {
                 expect_err(
                     &src,
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"`"#)
+                    &ExpectedErrorMessageBuilder::error(r#"expected an entity uid with type `Action` but got `NotAction::"view"`"#)
                         .help("action entities must have type `Action`, optionally in a namespace")
                         .build()
                 );
@@ -4089,7 +4090,7 @@ mod issue_925 {
                 expect_err(
                     &src,
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"expected that action entity uids would have the type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
+                    &ExpectedErrorMessageBuilder::error(r#"expected entity uids with type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
                         .help("action entities must have type `Action`, optionally in a namespace")
                         .build()
                 );

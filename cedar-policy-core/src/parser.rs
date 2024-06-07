@@ -281,7 +281,7 @@ pub(crate) mod test_utils {
 
     /// Expect that the given `ParseErrors` contains at least one error with the given `ExpectedErrorMessage`.
     ///
-    /// `src` is the original input text (which the miette labels index into).
+    /// `src` is the original input text, just for better assertion-failure messages.
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_some_error_matches(
         src: &str,
@@ -289,7 +289,7 @@ pub(crate) mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
-            errs.iter().any(|e| msg.matches(Some(src), e)),
+            errs.iter().any(|e| msg.matches(e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
@@ -375,11 +375,12 @@ mod test {
 
 #[cfg(test)]
 mod eval_tests {
-    use super::err::ToASTErrorKind;
+    use test_utils::{expect_n_errors, expect_some_error_matches};
+
     use super::*;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
-    use crate::parser::err::ParseError;
+    use crate::test_utils::ExpectedErrorMessageBuilder;
 
     use std::sync::Arc;
 
@@ -387,22 +388,30 @@ mod eval_tests {
     fn entity_literals1() {
         let src = r#"Test::{ test : "Test" }"#;
         let errs = parse_euid(src).unwrap_err();
-        assert_eq!(errs.len(), 1);
-        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
-        assert!(errs
-            .iter()
-            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
+                .help("entity literals should have a form like `Namespace::User::\"alice\"`")
+                .exactly_one_underline("Test::{ test : \"Test\" }")
+                .build(),
+        );
     }
 
     #[test]
     fn entity_literals2() {
         let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
         let errs = parse_policy(None, src).unwrap_err();
-        assert_eq!(errs.len(), 1);
-        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
-        assert!(errs
-            .iter()
-            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
+                .help("entity literals should have a form like `Namespace::User::\"alice\"`")
+                .exactly_one_underline("Test::{ test : \"Test\" }")
+                .build(),
+        );
     }
 
     #[test]
@@ -654,7 +663,7 @@ mod parse_tests {
             permit(principal, action, resource) when { principal.name.like == "3" };
             "#;
         let p = parse_policyset_to_ests_and_pset(src);
-        assert_matches!(p, Err(e) => expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `like`").exactly_one_underline("like").build()));
+        assert_matches!(p, Err(e) => expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: like").exactly_one_underline("like").build()));
     }
 
     #[test]
