@@ -281,7 +281,7 @@ pub(crate) mod test_utils {
 
     /// Expect that the given `ParseErrors` contains at least one error with the given `ExpectedErrorMessage`.
     ///
-    /// `src` is the original input text, just for better assertion-failure messages.
+    /// `src` is the original input text (which the miette labels index into).
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_some_error_matches(
         src: &str,
@@ -289,7 +289,7 @@ pub(crate) mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
-            errs.iter().any(|e| msg.matches(e)),
+            errs.iter().any(|e| msg.matches(Some(src), e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );

@@ -24,8 +24,6 @@
 
 //! Shared test utilities.
 
-use std::str::from_utf8;
-
 /// Describes the contents of an error message. Fields are based on the contents
 /// of `miette::Diagnostic`.
 #[derive(Debug)]
@@ -121,8 +119,12 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// Return a boolean indicating whether a given error matches this expected message.
     /// (If you want to assert that it matches, use [`expect_err()`] instead,
     /// for much better assertion-failure messages.)
-    pub fn matches(&self, error: &impl miette::Diagnostic) -> bool {
-        self.matches_error(error) && self.matches_help(error) && self.matches_underlines(error)
+    ///
+    /// `src` is the full source text (which the miette labels index into).
+    /// It can be omitted only in the case where we expect no underlines.
+    /// Panics if this invariant is violated.
+    pub fn matches(&self, src: Option<&'a str>, error: &impl miette::Diagnostic) -> bool {
+        self.matches_error(error) && self.matches_help(error) && self.matches_underlines(src, error)
     }
 
     /// Internal helper: whether the main error message matches
@@ -208,7 +210,7 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// `src` is the full source text (which the miette labels index into).
     /// It can be omitted only in the case where we expect no underlines.
     /// Panics if this invariant is violated.
-    fn matches_underlines(&self, err: &impl miette::Diagnostic) -> bool {
+    fn matches_underlines(&self, src: Option<&'a str>, err: &impl miette::Diagnostic) -> bool {
         let expected_num_labels = self.underlines.len();
         let actual_num_labels = err.labels().map(|iter| iter.count()).unwrap_or(0);
         if expected_num_labels != actual_num_labels {
@@ -217,9 +219,8 @@ impl<'a> ExpectedErrorMessage<'a> {
         if expected_num_labels == 0 {
             true
         } else {
-            let src = err.source_code().expect(
-                "`source_code` should be `None` only in the case where we expect no underlines",
-            );
+            let src =
+                src.expect("src can be `None` only in the case where we expect no underlines");
             for (expected, actual) in self
                 .underlines
                 .iter()
@@ -227,11 +228,7 @@ impl<'a> ExpectedErrorMessage<'a> {
             {
                 let actual_snippet = {
                     let span = actual.inner();
-                    let raw_data = src
-                        .read_span(span, 0, 0)
-                        .expect("`read_span` should succeed for a valid error")
-                        .data();
-                    from_utf8(raw_data).expect("should be able to convert [&u8] to str")
+                    &src[span.offset()..span.offset() + span.len()]
                 };
                 if expected != &actual_snippet {
                     return false;
