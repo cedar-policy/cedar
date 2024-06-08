@@ -253,7 +253,7 @@ impl cst::Policy {
             scope1.to_principal_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Principal),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -263,7 +263,7 @@ impl cst::Policy {
             scope2.to_action_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Action),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -272,7 +272,7 @@ impl cst::Policy {
             scope3.to_resource_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Resource),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -284,7 +284,7 @@ impl cst::Policy {
                 if let Some(def) = extra_var.as_inner() {
                     errs.push(
                         extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeConstraints(def.clone()))
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone()))
                             .into(),
                     )
                 }
@@ -438,9 +438,7 @@ impl Node<Option<cst::Ident>> {
             cst::Ident::Action => Ok(ast::Var::Action),
             cst::Ident::Resource => Ok(ast::Var::Resource),
             ident => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidScopeConstraintVariable(
-                    ident.clone(),
-                ))
+                .to_ast_err(ToASTErrorKind::InvalidScopeVariable(ident.clone()))
                 .into()),
         }
     }
@@ -528,6 +526,7 @@ impl Node<Option<cst::VariableDef>> {
             let eref = rel_expr.to_ref_or_slot(var)?;
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
+                (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
                     Arc::new(entity_type.to_expr_or_special()?.into_name()?),
@@ -536,7 +535,7 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::InvalidSingleEq, _) => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
-                (_, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator)),
+                (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Ok(PrincipalOrResourceConstraint::Is(Arc::new(
@@ -591,7 +590,7 @@ impl Node<Option<cst::VariableDef>> {
                 cst::RelOp::InvalidSingleEq => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
-                _ => Err(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator)),
+                op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
             action_constraint
                 .contains_only_action_types()
@@ -2734,7 +2733,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this policy has an extra constraint in the scope: context",
+                "this policy has an extra element in the scope: context",
             )
             .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
             .exactly_one_underline("context")
@@ -3868,17 +3867,17 @@ mod tests {
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
-                    "invalid policy scope constraint",
+                    "`is` cannot be used together with `==`",
                 ).help(
-                    "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
+                    "try using `_ is _ in _`"
                 ).exactly_one_underline("principal is User == User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
                 ExpectedErrorMessageBuilder::error(
-                    "invalid policy scope constraint",
+                    "`is` cannot be used together with `==`",
                 ).help(
-                    "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
+                    "try using `_ is _ in _`"
                 ).exactly_one_underline("resource is Doc == Doc::\"a\"").build(),
             ),
             (
@@ -4418,25 +4417,25 @@ mod tests {
         let p_src = r#"permit(principal > User::"alice", action, resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "invalid policy scope constraint",
+                "invalid operator in the policy scope: >",
                 ).help(
-                "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
             ).exactly_one_underline("principal > User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "invalid policy scope constraint",
+                "invalid operator in the action scope: !=",
                 ).help(
-                "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
+                "action scope clauses can only use `==` or `in`"
             ).exactly_one_underline("action != Action::\"view\"").build());
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "invalid policy scope constraint",
+                "invalid operator in the policy scope: <=",
                 ).help(
-                "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
             ).exactly_one_underline("resource <= Folder::\"things\"").build());
         });
         let p_src = r#"permit(principal = User::"alice", action, resource);"#;

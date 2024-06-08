@@ -158,15 +158,15 @@ pub enum ToASTErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     SlotsInConditionClause(#[from] parse_errors::SlotsInConditionClause),
-    /// Returned when a policy is missing one of the three required scope clauses
+    /// Returned when a policy is missing one of the three required scope elements
     /// (`principal`, `action`, and `resource`)
     #[error("this policy is missing the `{0}` variable in the scope")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    MissingScopeConstraint(ast::Var),
-    /// Returned when a policy has an extra scope clause
-    #[error("this policy has an extra constraint in the scope: {0}")]
+    MissingScopeVariable(ast::Var),
+    /// Returned when a policy has an extra scope element
+    #[error("this policy has an extra element in the scope: {0}")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    ExtraScopeConstraints(cst::VariableDef),
+    ExtraScopeElement(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
@@ -192,27 +192,34 @@ pub enum ToASTErrorKind {
     /// `action`, or `resource`
     #[error("found an invalid variable in the policy scope: {0}")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    InvalidScopeConstraintVariable(cst::Ident),
+    InvalidScopeVariable(cst::Ident),
     /// Returned when a policy scope clause contains the wrong variable.
     /// (`principal` must be in the first clause, etc...)
     #[error("found the variable `{got}` where the variable `{expected}` must be used")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
     IncorrectVariable {
-        /// The variable that is expected in this clause
+        /// The variable that is expected
         expected: ast::Var,
-        /// The variable that was present in this clause
+        /// The variable that was present
         got: ast::Var,
     },
-    /// Returned when a policy scope clause uses an form not allowed in scopes
-    #[error("invalid policy scope constraint")]
-    #[diagnostic(help(
-        "policy scope constraints can only include `==`, `in`, `is`, or `_ is _ in _`"
-    ))]
-    InvalidConstraintOperator,
+    /// Returned when a policy scope uses an operator not allowed in scopes
+    #[error("invalid operator in the policy scope: {0}")]
+    #[diagnostic(help("policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"))]
+    InvalidScopeOperator(cst::RelOp),
+    /// Returned when an action scope uses an operator not allowed in action scopes
+    /// (special case of `InvalidScopeOperator`)
+    #[error("invalid operator in the action scope: {0}")]
+    #[diagnostic(help("action scope clauses can only use `==` or `in`"))]
+    InvalidActionScopeOperator(cst::RelOp),
     /// Returned when the action scope clause contains an `is`
     #[error("`is` cannot appear in the action scope")]
     #[diagnostic(help("try moving `action is ..` into a `when` condition"))]
     IsInActionScope,
+    /// Returned when an `is` operator is used together with `==`
+    #[error("`is` cannot be used together with `==`")]
+    #[diagnostic(help("try using `_ is _ in _`"))]
+    IsWithEq,
     /// Returned when an entity uid used as an action does not have the type `Action`
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -255,7 +262,7 @@ pub enum ToASTErrorKind {
     #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
     #[diagnostic(help("try using `==` to test for equality"))]
     InvalidIsType(String),
-    /// Returned when an unexpected node is in the policy scope clause
+    /// Returned when an unexpected node is in the policy scope
     #[error("expected {expected}, found {got}")]
     WrongNode {
         /// What the expected AST node kind was
