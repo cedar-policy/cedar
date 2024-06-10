@@ -1831,7 +1831,7 @@ impl Node<Option<cst::Ref>> {
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
                 Ok(construct_refr(p, e, self.loc.clone()))
             }
-            r => Err(self
+            r @ cst::Ref::Ref { .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         }
