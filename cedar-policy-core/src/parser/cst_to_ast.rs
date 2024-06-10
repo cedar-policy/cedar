@@ -840,6 +840,8 @@ impl Node<Option<cst::Expr>> {
 /// Type level marker for parsing sets of entity uids or single uids
 /// This presents having either a large level of code duplication
 /// or runtime data.
+/// This marker is (currently) only used for translating entity references
+/// in the policy scope.
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
@@ -860,7 +862,7 @@ impl RefKind for SingleEntity {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_one_expected(
+            ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
@@ -871,7 +873,7 @@ impl RefKind for SingleEntity {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_one_expected(
+            ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
@@ -896,7 +898,7 @@ impl RefKind for EntityReference {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_two_expected(
+            ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
@@ -921,7 +923,7 @@ impl RefKind for OneOrMultipleRefs {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_two_expected(
+            ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
@@ -2695,7 +2697,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "expected single entity uid or template slot, got: set of entity uids",
+                "expected single entity uid or template slot, found set of entity uids",
             )
             .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
             .build(),
@@ -4268,31 +4270,31 @@ mod tests {
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action in ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action == ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in [?bar], resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?bar").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?bar").build(),
             ),
         ];
 
@@ -4452,7 +4454,7 @@ mod tests {
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
 
@@ -4460,7 +4462,7 @@ mod tests {
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
     }
 
