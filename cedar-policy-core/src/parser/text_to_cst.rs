@@ -121,150 +121,188 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
+    use crate::parser::test_utils::*;
+    use crate::test_utils::*;
+
     use super::*;
+
+    #[track_caller]
+    fn assert_parse_succeeds<T>(
+        parse: impl FnOnce(&str) -> Result<Node<Option<T>>, err::ParseErrors>,
+        text: &str,
+    ) -> T {
+        parse(text)
+            .unwrap_or_else(|errs| panic!("failed to parse:\n{:?}", miette::Report::new(errs)))
+            .node
+            .expect("failed get CST")
+    }
+
+    #[track_caller]
+    fn assert_parse_fails<T: std::fmt::Debug>(
+        parse: impl FnOnce(&str) -> Result<Node<Option<T>>, err::ParseErrors>,
+        text: &str,
+    ) -> err::ParseErrors {
+        match parse(text) {
+            Ok(node) => {
+                panic!("parsing should have failed, but succeeded with:\n{node:?}")
+            }
+            Err(errs) => errs,
+        }
+    }
 
     #[test]
     fn expr1() {
-        assert!(parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         1
-        "#
-        )
-        .expect("parser fail")
-        .node
-        .is_some());
+        "#,
+        );
     }
 
     #[test]
     fn expr2() {
-        assert!(parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         "string"
-        "#
-        )
-        .expect("parser fail")
-        .node
-        .is_some());
+        "#,
+        );
     }
 
     #[test]
     fn expr3() {
-        assert!(parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         "string".foo == !7
-        "#
-        )
-        .expect("parser fail")
-        .node
-        .is_some());
+        "#,
+        );
     }
 
     #[test]
     fn expr4() {
-        let result = parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         5 < 3 || -7 == 2 && 3 >= 6
         "#,
-        )
-        .expect("parser fail")
-        .node;
-        assert!(result.is_some());
+        );
     }
 
     #[test]
     fn expr5() {
-        assert!(parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         if 7 then 6 > 5 else !5 || "thursday"
-        "#
-        )
-        .expect("parser fail")
-        .node
-        .is_some());
+        "#,
+        );
     }
 
     #[test]
     fn expr6() {
-        let result = parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
         if 7 then 6 > 5 else !5 || "thursday" && ((8) >= "fish")
         "#,
-        )
-        .expect("parser fail")
-        .node;
-        assert!(result.is_some());
+        );
     }
 
     #[test]
     fn expr_overflow() {
         // an error is not a crash!
-        assert!(parse_expr(
-            r#"
+        let src = r#"
             principal == -5555555555555555555555
-        "#
-        )
-        .is_err());
-        assert!(parse_expr(
-            r#"
+        "#;
+        let errs = assert_parse_fails(parse_expr, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "integer parse error: number too large to fit in target type",
+            )
+            .exactly_one_underline("5555555555555555555555")
+            .build(),
+        );
+        let src = r#"
             principal == 5555555555555555555555
-        "#
-        )
-        .is_err());
+        "#;
+        let errs = assert_parse_fails(parse_expr, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "integer parse error: number too large to fit in target type",
+            )
+            .exactly_one_underline("5555555555555555555555")
+            .build(),
+        );
     }
 
     #[test]
     fn variable1() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, var:h in 1);
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn variable2() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, more in 2);
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn variable3() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action:a_name, resource);
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn variable4() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principalorsomeotherident, action, resource);
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn variable6() {
-        let policy = parse_policy(
-            r#"
-                permit(var : in 6, action, resource);
-            "#,
+        let src = r#"
+            permit(var : in 6, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policy, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `6`")
+                .exactly_one_underline_with_label(
+                    "6",
+                    "expected `!=`, `)`, `,`, `::`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
         );
-        assert!(policy.is_err());
     }
 
     #[test]
     fn member1() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -272,12 +310,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member2() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -285,12 +323,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member3() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -298,12 +336,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member4() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -311,12 +349,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member5() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -324,12 +362,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member6() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -337,33 +375,38 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test] // we no longer support named structs
     fn member7() {
-        let policy = parse_policy(
-            r#"
-                permit(principal, action, resource)
-                when{
-                    one{num:true,trivia:"first!"}
-                };
-            "#,
+        let src = r#"
+            permit(principal, action, resource)
+            when{
+                one{num:true,trivia:"first!"}
+            };
+        "#;
+        let errs = assert_parse_fails(parse_policy, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `{`")
+                .exactly_one_underline_with_label("{", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`")
+                .build(),
         );
-        let errs = match policy.err() {
-            Some(pes) => pes,
-            _ => panic!("Expected parsing policy to error"),
-        };
-        assert!(errs.len() == 2);
-        assert!(format!("{:?}", errs[0])
-            .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (98, \"{\", 99)"));
-        assert!(format!("{:?}", errs[1])
-            .contains("ToCST(ToCSTError { err: UnrecognizedToken { token: (141, \"}\", 142)"));
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `}`")
+                .exactly_one_underline_with_label("}", "expected `;` or identifier")
+                .build(),
+        );
     }
 
     #[test]
     fn member8() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -371,12 +414,12 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn member9() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal, action, resource)
                 when{
@@ -384,166 +427,193 @@ mod tests {
                 };
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn ident1() {
-        let ident = parse_ident(
+        assert_parse_succeeds(
+            parse_ident,
             r#"
                 principal
             "#,
         );
-        assert!(ident.is_ok());
     }
 
     #[test]
     fn ident2() {
-        let ident = parse_ident(
+        // specialized parser for idents does not care about keywords
+        assert_parse_succeeds(
+            parse_ident,
             r#"
                 if
             "#,
         );
-        // specialized parser for idents has no limits
-        assert!(ident.is_ok());
-        let ident = parse_ident(
+        // specialized parser for idents does not care about keywords
+        assert_parse_succeeds(
+            parse_ident,
             r#"
                 false
             "#,
         );
-        // specialized parser for idents has no limits
-        assert!(ident.is_ok());
     }
 
     #[test]
     fn ident3() {
-        let ident = parse_expr(
+        // keywords are not valid variable names
+        let src = r#"
+            if
+        "#;
+        let errs = assert_parse_fails(parse_expr, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected end of input")
+                .exactly_one_underline_with_label("", "expected `!`, `(`, `-`, `::`, `[`, `{`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`")
+                .build(),
+        );
+        // other random variable names are fine at this stage, although an error
+        // will be raised during the CST->AST step
+        assert_parse_succeeds(
+            parse_expr,
             r#"
-                if
+                foo
             "#,
         );
-        // Not a valid variable name (but then, only the 4 special vars make it to AST)
-        assert!(ident.is_err());
-        let name = parse_expr(
+        // valid variable names are obviously ok
+        assert_parse_succeeds(
+            parse_expr,
+            r#"
+                foo
+            "#,
+        );
+        // keywords are ok to use in paths at this stage, although an error will
+        // be raised during the CST->AST step
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 if::then::else
             "#,
         );
-        // is a valid path component
-        assert!(name.is_ok());
-        let names = parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 if::true::then::false::else::true
             "#,
         );
-        // is a valid path component
-        assert!(names.is_ok());
     }
 
     #[test]
     fn ident4() {
-        let ident = parse_expr(
+        // some keywords can be used as functions
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 true(true)
             "#,
         );
-        // can be used as a function
-        assert!(ident.is_ok());
-        let ident = parse_expr(
-            r#"
-                if(true)
-            "#,
+        // but some keywords cannot because of parse confusion
+        let src = r#"
+            if(true)
+        "#;
+        let errs = assert_parse_fails(parse_expr, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected end of input")
+                .exactly_one_underline_with_label("", "expected `then`")
+                .build(),
         );
-        // but this on cannot because of parse confusion
-        assert!(ident.is_err());
     }
 
     #[test]
     fn ident5() {
-        let ident = parse_expr(
+        // keywords are ok to use as attributes at this stage, although an error
+        // will be raised during the CST->AST step
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 {true : false}
             "#,
         );
-        // can be used as record init, but this may not parse to AST
-        // because true is a value, not an identifier
-        assert!(ident.is_ok());
-        let ident = parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 { if : true }
             "#,
         );
-        // special case allows this one to be an identifier
-        assert!(ident.is_ok());
     }
 
     #[test]
     fn ident6() {
-        let ident = parse_expr(
+        // keywords are ok to use as attributes at this stage, although an error
+        // will be raised during the CST->AST step
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 {true : false} has false
             "#,
         );
-        // can be used as record init, but this may not parse to AST
-        // because true is a value, not an identifier
-        assert!(ident.is_ok());
-        let ident = parse_expr(
+        assert_parse_succeeds(
+            parse_expr,
             r#"
                 { if : true } has if
             "#,
         );
-        // special case allows this one to be an identifier
-        assert!(ident.is_ok());
     }
 
     #[test]
     fn comments_has() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ principal //comment p
                 has //comment has
                 age //comment
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_like() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ principal //comment p
                 like //comment like
 
                 age //comment
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_and() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ 1 //comment p
                 &&  //comment &&
                     //comment &&
                 "hello" //comment
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_or() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ 1 //comment 1
                       //  comment 1
@@ -552,15 +622,16 @@ mod tests {
                 "hello" //comment
                         //comment hello
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_add() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ 1 //comment 1
                         //comment 1_2
@@ -569,15 +640,16 @@ mod tests {
                  2 //comment 2
                     //comment 2
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_paren() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{
                 ( //comment 1
@@ -586,15 +658,16 @@ mod tests {
                     ) //comment 3
                 ) //comment 4
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_set() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{
                 [ // comment 1
@@ -615,15 +688,16 @@ mod tests {
 
                 ) //comment 20
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_if() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{
                 ( //comment open outer
@@ -639,42 +713,45 @@ mod tests {
                     ) //comment close inner
                     ) //comment close outer
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_member_access() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal, action,resource)
                 when{ principal. //comment .
                 age // comment age
                 };
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_principal() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 permit(principal //comment 1
                  ==
                   User::"alice" //comment 3
                   ,  //comment 4
                    action,resource);
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_annotation() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
         //comment policy
         // comment policy 2
         @anno("good annotation")  // comments after annotation
@@ -684,15 +761,16 @@ mod tests {
                   User::"alice" //comment 3
                   ,  //comment 4
                    action,resource);
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn comments_policy() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                 //comment policy 1
                 //comment policy 2
                 permit( //comment 3
@@ -711,33 +789,44 @@ mod tests {
                 //comment 5
                 //comment 6
                 ;
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
         //multi-line comments (`/* ... */`) are not allowed
-        let policy = parse_policy(
-            r#" /* multi-line
+        let src = r#" /* multi-line
             comment */
                 permit(principal, action, resource)
                 when{
                     one.two
                 };
-            "#,
+            "#;
+        let errs = assert_parse_fails(parse_policy, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `/`")
+                .exactly_one_underline_with_label("/", "expected `@` or identifier")
+                .build(),
         );
-        assert!(policy.is_err());
-        let expr = parse_expr(
-            r#"
+        let src = r#"
             1 /* multi-line
             comment */d
-            "#,
+            "#;
+        let errs = assert_parse_fails(parse_expr, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `*`")
+                .exactly_one_underline_with_label("*", "expected `!`, `(`, `-`, `[`, `{`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`")
+                .build(),
         );
-        assert!(expr.is_err());
     }
 
     #[test]
     fn no_comments_policy() {
         // single line comments (`// ...`) are valid anywhere
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
                permit(
                 principal
                 ==
@@ -749,58 +838,61 @@ mod tests {
                 resource
                 )
                 ;
-            "#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+            "#,
+        );
     }
 
     #[test]
     fn no_comments_policy2() {
-        let policy_text = r#"permit (
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit (
     principal == IAM::Principal::"arn:aws:iam::12345678901:user/Dave",
     action == S3::Action::"GetAccountPublicAccessBlock",
     resource == Account::"12345678901"
-    );"#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+    );"#,
+        );
     }
 
     #[test]
     fn no_comments_policy4() {
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
     permit(principal,action,resource,context)
     when {
     context.contains(3,"four",five(6,7))
-};"#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+};"#,
+        );
     }
     #[test]
     fn no_comments_policy5() {
-        let policy_text = r#"
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
     permit (
     principal,
     action,
     resource == Album::{uid: "772358b3-de11-42dc-8681-f0a32e34aab8",
     displayName: "vacation_photos"}
-);"#;
-        let policy = parse_policy(policy_text);
-        assert!(policy.is_ok());
+);"#,
+        );
     }
 
     #[test]
     fn policies1() {
-        let policy = parse_policy(
+        assert_parse_succeeds(
+            parse_policy,
             r#"
                 permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#,
         );
-        assert!(policy.is_ok());
     }
 
     #[test]
     fn policies2() {
-        let result = parse_policies(
+        assert_parse_succeeds(
+            parse_policies,
             r#"
                 permit(
                     principal in Group::"jane_friends",  // Policy c1
@@ -810,50 +902,50 @@ mod tests {
                 );
             "#,
         );
-        assert!(result.is_ok());
     }
 
     #[test]
     fn policies3() {
-        assert!(parse_policies(
+        let policies = assert_parse_succeeds(
+            parse_policies,
             r#"
             forbid(principal, action, resource)           // Policy c2
             when   { "private" in resource.tags }  // resource.tags is a set of strings
             unless { resource in user.account };
-        "#
-        )
-        // check that all policy statements are successful
-        .expect("parse fail")
-        .node
-        .expect("no data")
-        .0
-        .iter()
-        .all(|p| p.node.is_some()));
+        "#,
+        );
+
+        // Check that internal nodes successfully parsed
+        assert!(
+            policies.0.iter().all(|p| p.node.is_some()),
+            "Unexpected parser failure"
+        );
     }
 
     #[test]
     // repeat of prior test but with a typo
     // typos are not caught by the cst parser
     fn policies3p() {
-        assert!(parse_policies(
+        let policies = assert_parse_succeeds(
+            parse_policies,
             r#"
             forbid(principality, action, resource)           // Policy c2
             when   { "private" in resource.tags }  // resource.tags is a set of strings
             unless { resource in user.account };
-        "#
-        )
-        // check that all policy statements are successful
-        .expect("parse fail")
-        .node
-        .expect("no data")
-        .0
-        .iter()
-        .all(|p| p.node.is_some()));
+        "#,
+        );
+
+        // Check that internal nodes successfully parsed
+        assert!(
+            policies.0.iter().all(|p| p.node.is_some()),
+            "Unexpected parser failure"
+        );
     }
 
     #[test]
     fn policies4() {
-        let result = parse_policies(
+        let policies = assert_parse_succeeds(
+            parse_policies,
             r#"
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
 
@@ -865,16 +957,19 @@ mod tests {
             when   { "private" in resource.tags }  // resource.tags is a set of strings
             unless { resource in user.account };
         "#,
-        )
-        .expect("parse fail")
-        .node
-        .expect("no data");
-        assert!(result.0.iter().all(|p| p.node.is_some()));
+        );
+
+        // Check that internal nodes successfully parsed
+        assert!(
+            policies.0.iter().all(|p| p.node.is_some()),
+            "Unexpected parser failure"
+        );
     }
 
     #[test]
     fn policies5() {
-        assert!(parse_policies(
+        let policies = assert_parse_succeeds(
+            parse_policies,
             r#"
             permit (
                 principal == User::"alice",
@@ -884,14 +979,14 @@ mod tests {
             advice {
                 "{\"type\":\"PhotoFilterInstruction\", \"anonymize\":true}"
             };
-        "#
-        )
-        .expect("parse fail")
-        .node
-        .expect("no data")
-        .0
-        .into_iter()
-        .all(|p| p.node.is_some()));
+        "#,
+        );
+
+        // Check that internal nodes successfully parsed
+        assert!(
+            policies.0.iter().all(|p| p.node.is_some()),
+            "Unexpected parser failure"
+        );
     }
 
     #[test]
@@ -918,67 +1013,162 @@ mod tests {
 
     #[test]
     fn policy_annotations() {
-        let policies = parse_policies(
+        let policies = assert_parse_succeeds(
+            parse_policies,
             r#"
             @anno("good annotation") permit (principal, action, resource);
             @anno1("good")@anno2("annotation") permit (principal, action, resource);
             @long6wordphraseisident007("good annotation") permit (principal, action, resource);
             @   spacy  (  "  good  annotation  "  )   permit (principal, action, resource);
         "#,
-        )
-        .expect("parse fail")
-        .node
-        .expect("no data");
-        let success = policies
-            .0
-            .into_iter()
-            .filter_map(|p| p.node)
-            .collect::<Vec<_>>();
-        assert!(success.len() == 4);
+        );
+        // should have successfully parsed 4 policies
+        assert_eq!(
+            policies
+                .0
+                .into_iter()
+                .filter_map(|p| p.node)
+                .collect::<Vec<_>>()
+                .len(),
+            4
+        );
 
-        let _policy = parse_policy(
-            r#"
+        let src = r#"
             @bad-annotation("bad") permit (principal, action, resource);
-        "#,
-        )
-        .expect_err("should fail on dash");
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `-`")
+                .exactly_one_underline_with_label("-", "expected `(`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `\"bad\"`")
+                .exactly_one_underline_with_label("\"bad\"", "expected `)` or identifier")
+                .build(),
+        );
 
-        let _policy = parse_policy(
-            r#"
+        let src = r#"
             @bad_annotation("bad","annotation") permit (principal, action, resource);
-        "#,
-        )
-        .expect_err("should fail on list");
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `,`")
+                .exactly_one_underline_with_label(",", "expected `)`")
+                .build(),
+        );
 
-        let _policy = parse_policy(
-            r#"
+        let src = r#"
             @bad_annotation(bad_annotation) permit (principal, action, resource);
-        "#,
-        )
-        .expect_err("should fail without string");
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `bad_annotation`")
+                .exactly_one_underline_with_label("bad_annotation", "expected string literal")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
+                .exactly_one_underline_with_label(")", "expected `(`")
+                .build(),
+        );
 
-        let _policy = parse_policy(
-            r#"
+        let src = r#"
             permit (@comment("your name here") principal, action, resource);
-        "#,
-        )
-        .expect_err("should fail with poor placement");
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 4);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `@`")
+                .exactly_one_underline_with_label("@", "expected `)` or identifier")
+                .build(),
+        );
+        // 2 copies of the `,` error
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `,`")
+                .exactly_one_underline_with_label(",", "expected `(`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
+                .exactly_one_underline_with_label(")", "expected `(`")
+                .build(),
+        );
+
+        let src = r#"
+            @hi mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `mom`")
+                .exactly_one_underline_with_label("mom", "expected `(`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
+                .exactly_one_underline_with_label(
+                    "\"this should be invalid\"",
+                    "expected `)` or identifier",
+                )
+                .build(),
+        );
+
+        let src = r#"
+            @hi+mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
+                .exactly_one_underline_with_label("+", "expected `(`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
+                .exactly_one_underline_with_label(
+                    "\"this should be invalid\"",
+                    "expected `)` or identifier",
+                )
+                .build(),
+        );
     }
 
     #[test]
     fn parse_idempotent() {
         let many_policies =
             std::fs::read_to_string("src/parser/testfiles/policies.cedar").expect("missing file");
-        let cst1 = parse_policies(&many_policies)
-            .expect("parse fail")
-            .node
-            .expect("no data");
+        let cst1 = assert_parse_succeeds(parse_policies, &many_policies);
         let revert = format!("{}", cst1);
-        //println!("{:#}", cst1);
-        let cst2 = parse_policies(&revert)
-            .expect("parse fail")
-            .node
-            .expect("no data");
-        assert!(cst1 == cst2);
+        let cst2 = assert_parse_succeeds(parse_policies, &revert);
+        assert_eq!(cst1, cst2);
     }
 }
