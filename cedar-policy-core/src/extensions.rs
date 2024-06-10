@@ -211,7 +211,7 @@ impl ExtensionFunctionLookupError {
     }
 }
 
-/// Error subtypes for `ExtensionFunctionLookupError`
+/// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
     use crate::entities::SchemaType;

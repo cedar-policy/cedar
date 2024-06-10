@@ -192,18 +192,17 @@ impl Validator {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
+    use crate::Result;
 
     use super::*;
     use cedar_policy_core::{
         ast::{self, Expr, PolicyID},
         parser::{self, Loc},
     };
-    use itertools::Itertools;
-
-    use crate::schema_error::Result;
 
     #[test]
     fn top_level_validate() -> Result<()> {
