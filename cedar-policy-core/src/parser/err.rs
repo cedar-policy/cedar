@@ -27,7 +27,7 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::{self, Expr, ExprConstructionError, InputInteger, PolicyID, Var};
+use crate::ast;
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -69,8 +69,8 @@ pub enum LiteralParseError {
     #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
     /// Parsed successfully as an expression, but failed to construct a literal
-    #[error("invalid literal: `{0}`")]
-    InvalidLiteral(Expr),
+    #[error("invalid literal: {0}")]
+    InvalidLiteral(ast::Expr),
 }
 
 /// Error from the CST -> AST transform
@@ -129,140 +129,140 @@ impl ToASTError {
     }
 }
 
+const POLICY_SCOPE_HELP: &str =
+    "policy scopes must contain a `principal`, `action`, and `resource` element in that order";
+
 /// Details about a particular kind of `ToASTError`.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTErrorKind {
     /// Returned when we attempt to parse a template with a conflicting id
     #[error("a template with id `{0}` already exists in the policy set")]
-    DuplicateTemplateId(PolicyID),
+    DuplicateTemplateId(ast::PolicyID),
     /// Returned when we attempt to parse a policy with a conflicting id
     #[error("a policy with id `{0}` already exists in the policy set")]
-    DuplicatePolicyId(PolicyID),
+    DuplicatePolicyId(ast::PolicyID),
     /// Returned when a template is encountered but a static policy is expected
-    #[error("expected a static policy, got a template containing the slot {slot}")]
+    #[error("expected a static policy, got a template containing the slot {}", slot.id)]
     #[diagnostic(help("try removing the template slot(s) from this policy"))]
     UnexpectedTemplate {
         /// Slot that was found (which is not valid in a static policy)
-        slot: cst::Slot,
+        slot: ast::Slot,
     },
-    /// Returned when we attempt to parse a policy or template with duplicate or conflicting annotations
+    /// Returned when we attempt to parse a policy or template with duplicate or
+    /// conflicting annotations
     #[error("duplicate annotation: @{0}")]
     DuplicateAnnotation(ast::AnyId),
-    /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
-    #[error("found template slot {slot} in a `{clausetype}` clause")]
-    #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
-    SlotsInConditionClause {
-        /// Slot that was found in a when/unless clause
-        slot: cst::Slot,
-        /// Clause type, e.g. "when" or "unless"
-        clausetype: &'static str,
-    },
-    /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
+    /// Returned when a policy contains template slots in a when/unless clause.
+    /// This is not currently supported; see [RFC 3](https://github.com/cedar-policy/rfcs/pull/3).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SlotsInConditionClause(#[from] parse_errors::SlotsInConditionClause),
+    /// Returned when a policy is missing one of the three required scope elements
+    /// (`principal`, `action`, and `resource`)
     #[error("this policy is missing the `{0}` variable in the scope")]
-    MissingScopeConstraint(Var),
-    /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra constraint in the scope: `{0}`")]
-    #[diagnostic(help(
-        "a policy must have exactly `principal`, `action`, and `resource` constraints"
-    ))]
-    ExtraScopeConstraints(cst::VariableDef),
+    #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
+    MissingScopeVariable(ast::Var),
+    /// Returned when a policy has an extra scope element
+    #[error("this policy has an extra element in the scope: {0}")]
+    #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
+    ExtraScopeElement(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
-    #[error("this identifier is reserved and cannot be used: `{0}`")]
+    #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
     /// Returned when a policy contains an invalid identifier.
-    /// This error is not currently returned, but is here for future-proofing.
-    /// See [`cst::Ident::Invalid`]
-    #[error("not a valid identifier: `{0}`")]
+    /// This error is not currently returned, but is here for future-proofing;
+    /// see [`cst::Ident::Invalid`].
+    #[error("invalid identifier: {0}")]
     InvalidIdentifier(String),
     /// Returned when a policy uses '=' as a binary operator.
     /// '=' is not an operator in Cedar; we can suggest '==' instead.
     #[error("'=' is not a valid operator in Cedar")]
     #[diagnostic(help("try using '==' instead"))]
     InvalidSingleEq,
-    /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
-    #[error("not a valid policy effect: `{0}`")]
+    /// Returned when a policy uses an effect keyword beyond `permit` or `forbid`
+    #[error("invalid policy effect: {0}")]
     #[diagnostic(help("effect must be either `permit` or `forbid`"))]
     InvalidEffect(cst::Ident),
     /// Returned when a policy uses a condition keyword beyond `when` or `unless`
-    #[error("not a valid policy condition: `{0}`")]
+    #[error("invalid policy condition: {0}")]
     #[diagnostic(help("condition must be either `when` or `unless`"))]
     InvalidCondition(cst::Ident),
-    /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
-    #[error("expected a variable that is valid in the policy scope; found: `{0}`")]
-    #[diagnostic(help(
-        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
-    ))]
-    InvalidScopeConstraintVariable(cst::Ident),
-    /// Returned when a policy contains an invalid method name
-    #[error("not a valid method name: `{0}`")]
-    InvalidMethodName(String),
+    /// Returned when a policy uses a variable in the scope beyond `principal`,
+    /// `action`, or `resource`
+    #[error("found an invalid variable in the policy scope: {0}")]
+    #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
+    InvalidScopeVariable(cst::Ident),
     /// Returned when a policy scope clause contains the wrong variable.
     /// (`principal` must be in the first clause, etc...)
     #[error("found the variable `{got}` where the variable `{expected}` must be used")]
-    #[diagnostic(help(
-        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
-    ))]
+    #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
     IncorrectVariable {
-        /// The variable that is expected in this clause
-        expected: Var,
-        /// The variable that was present in this clause
-        got: Var,
+        /// The variable that is expected
+        expected: ast::Var,
+        /// The variable that was present
+        got: ast::Var,
     },
-    /// Returned when a policy scope clause uses an operator not allowed in scopes.
-    #[error("not a valid policy scope constraint: {0}")]
-    #[diagnostic(help(
-        "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
-    ))]
-    InvalidConstraintOperator(cst::RelOp),
-    /// Returned when an Entity UID used as an action does not have the type `Action`
-    #[error("expected an entity uid with the type `Action` but got `{0}`")]
-    #[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
-    InvalidActionType(crate::ast::EntityUID),
+    /// Returned when a policy scope uses an operator not allowed in scopes
+    #[error("invalid operator in the policy scope: {0}")]
+    #[diagnostic(help("policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"))]
+    InvalidScopeOperator(cst::RelOp),
+    /// Returned when an action scope uses an operator not allowed in action scopes
+    /// (special case of `InvalidScopeOperator`)
+    #[error("invalid operator in the action scope: {0}")]
+    #[diagnostic(help("action scope clauses can only use `==` or `in`"))]
+    InvalidActionScopeOperator(cst::RelOp),
+    /// Returned when the action scope clause contains an `is`
+    #[error("`is` cannot appear in the action scope")]
+    #[diagnostic(help("try moving `action is ..` into a `when` condition"))]
+    IsInActionScope,
+    /// Returned when an `is` operator is used together with `==`
+    #[error("`is` cannot be used together with `==`")]
+    #[diagnostic(help("try using `_ is _ in _`"))]
+    IsWithEq,
+    /// Returned when an entity uid used as an action does not have the type `Action`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when a condition clause is empty
     #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
     EmptyClause(Option<cst::Ident>),
-    /// Returned when the internal invariant around annotation info has been violated
-    #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
-    #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
-    AnnotationInvariantViolation,
-    /// Returned when membership chains do not resolve to an expression, violating an internal invariant
+    /// Returned when membership chains do not resolve to an expression,
+    /// violating an internal invariant
     #[error("internal invariant violated. Membership chain did not resolve to an expression")]
     #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
     MembershipInvariantViolation,
     /// Returned for a non-parse-able string literal
-    #[error("invalid string literal: `{0}`")]
+    #[error("invalid string literal: {0}")]
     InvalidString(String),
-    /// Returned for attempting to use an arbitrary variable name. Cedar does not support arbitrary variables.
-    #[error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")]
-    #[diagnostic(help("did you mean to enclose `{0}` in quotes to make a string?"))]
+    /// Returned when attempting to use an arbitrary variable name.
+    /// Cedar does not support arbitrary variables.
+    #[error("invalid variable: {0}")]
+    #[diagnostic(help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `{0}` in quotes to make a string?"))]
     ArbitraryVariable(SmolStr),
-    /// Returned for attempting to use an invalid attribute name
-    #[error("not a valid attribute name: `{0}`")]
+    /// Returned when attempting to use an invalid attribute name
+    #[error("invalid attribute name: {0}")]
     #[diagnostic(help("attribute names can either be identifiers or string literals"))]
     InvalidAttribute(SmolStr),
-    /// Returned for attempting to use an invalid attribute name in a record name
-    #[error("record literal has invalid attributes")]
-    InvalidAttributesInRecordLiteral,
-    /// Returned for attempting to use an attribute with a namespace
+    /// Returned when attempting to use an attribute with a namespace
     #[error("`{0}` cannot be used as an attribute as it contains a namespace")]
     PathAsAttribute(String),
     /// Returned when a policy attempts to call a method function-style
     #[error("`{0}` is a method, not a function")]
-    #[diagnostic(help("use a method-style call: `e.{0}(..)`"))]
-    FunctionCallOnMethod(crate::ast::Id),
+    #[diagnostic(help("use a method-style call `e.{0}(..)`"))]
+    FunctionCallOnMethod(ast::Id),
     /// Returned when a policy attempts to call a function in the method style
     #[error("`{0}` is a function, not a method")]
-    #[diagnostic(help("use a function-style call: `{0}(..)`"))]
-    MethodCallOnFunction(crate::ast::Id),
+    #[diagnostic(help("use a function-style call `{0}(..)`"))]
+    MethodCallOnFunction(ast::Id),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
     #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
     #[diagnostic(help("try using `==` to test for equality"))]
-    IsInvalidName(String),
-    /// Returned when an unexpected node is in the policy scope clause
+    InvalidIsType(String),
+    /// Returned when an unexpected node is in the policy scope
     #[error("expected {expected}, found {got}")]
     WrongNode {
         /// What the expected AST node kind was
@@ -286,39 +286,43 @@ pub enum ToASTErrorKind {
     /// Any `ExprConstructionError` can also happen while converting CST to AST
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExprConstructionError(#[from] ExprConstructionError),
+    ExprConstructionError(#[from] ast::ExprConstructionError),
     /// Returned when a policy contains an integer literal that is out of range
     #[error("integer literal `{0}` is too large")]
-    #[diagnostic(help("maximum allowed integer literal is `{}`", InputInteger::MAX))]
+    #[diagnostic(help("maximum allowed integer literal is `{}`", ast::InputInteger::MAX))]
     IntegerLiteralTooLarge(u64),
     /// Returned when a unary operator is chained more than 4 times in a row
     #[error("too many occurrences of `{0}`")]
     #[diagnostic(help("cannot chain more the 4 applications of a unary operator"))]
-    UnaryOpLimit(crate::ast::UnaryOp),
+    UnaryOpLimit(ast::UnaryOp),
     /// Returned when a variable is called as a function, which is not allowed.
     /// Functions are not first class values in Cedar
     #[error("`{0}(...)` is not a valid function call")]
     #[diagnostic(help("variables cannot be called as functions"))]
-    VariableCall(crate::ast::Var),
+    VariableCall(ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
-    #[error("attempted to call `{0}.{1}`, but `{0}` does not have any methods")]
-    NoMethods(crate::ast::Name, ast::Id),
+    #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
+    NoMethods(ast::Name, ast::Id),
+    /// Returned when a policy attempts to call a method that does not exist
+    #[error("`{0}` is not a valid method")]
+    UnknownMethod(String),
     /// Returned when a policy attempts to call a function that does not exist
-    #[error("`{0}` is not a function")]
-    NotAFunction(crate::ast::Name),
+    #[error("`{0}` is not a valid function")]
+    UnknownFunction(ast::Name),
     /// Returned when a policy attempts to write an entity literal
-    #[error("entity literals are not supported")]
-    UnsupportedEntityLiterals,
+    #[error("invalid entity literal: {0}")]
+    #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]
+    InvalidEntityLiteral(String),
     /// Returned when an expression is the target of a function call.
     /// Functions are not first class values in Cedar
-    #[error("function calls must be of the form: `<name>(arg1, arg2, ...)`")]
+    #[error("function calls must be of the form `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
-    #[error("incorrect member access `{0}.{1}`, `{0}` has no fields or methods")]
-    InvalidAccess(crate::ast::Name, SmolStr),
+    #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
+    InvalidAccess(ast::Name, SmolStr),
     /// Returned when a policy attempts to index on a fields of a value with no fields
-    #[error("incorrect indexing expression `{0}[{1}]`, `{0}` has no fields")]
-    InvalidIndex(crate::ast::Name, SmolStr),
+    #[error("invalid indexing expression `{0}[{1}]`, `{0}` has no fields")]
+    InvalidIndex(ast::Name, SmolStr),
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,
@@ -328,11 +332,8 @@ pub enum ToASTErrorKind {
     #[error("type constraints using `:` are not supported")]
     #[diagnostic(help("try using `is` instead"))]
     TypeConstraints,
-    /// Returned when a policy uses a path in an invalid context
-    #[error("a path is not valid in this context")]
-    InvalidPath,
     /// Returned when a string needs to be fully normalized
-    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): `{src}`")]
+    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): {src}")]
     #[diagnostic(help("the normalized form is `{normalized_src}`"))]
     NonNormalizedString {
         /// The kind of string we are expecting
@@ -349,12 +350,6 @@ pub enum ToASTErrorKind {
     #[error("internal invariant violated. Parsed data node should not be empty")]
     #[diagnostic(help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the text that failed to parse"))]
     EmptyNodeInvariantViolation,
-    /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
-    #[error("the right hand side of a `has` expression must be a field name or string literal")]
-    HasNonLiteralRHS,
-    /// Returned when a CST expression is invalid
-    #[error("`{0}` is not a valid expression")]
-    InvalidExpression(cst::Name),
     /// Returned when a function or method is called with the wrong arity
     #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} argument{}", if .expected == &1 { "" } else { "s" }, if .got == &1 { "" } else { "s" })]
     WrongArity {
@@ -369,14 +364,10 @@ pub enum ToASTErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Unescape(#[from] UnescapeError),
-    /// Returns when a policy scope has incorrect EntityUIDs/Template Slots
+    /// Returned when a policy scope has incorrect entity uids or template slots
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RefCreation(#[from] RefCreationError),
-    /// Returned when an `is` appears in an invalid position in the policy scope
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidIs(#[from] InvalidIsError),
+    WrongEntityArgument(#[from] parse_errors::WrongEntityArgument),
     /// Returned when a policy contains a template slot other than `?principal` or `?resource`
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
@@ -405,74 +396,105 @@ impl ToASTErrorKind {
             got,
         }
     }
-}
 
-// Either::Left(r) => write!(f, "expected {r}, got {}", self.got),
-// Either::Right((r1, r2)) => write!(f, "expected {r1} or {r2}, got: {}", self.got),
+    /// Constructor for the [`ToASTErrorKind::SlotsInConditionClause`] error
+    pub fn slots_in_condition_clause(slot: ast::Slot, clause_type: &'static str) -> Self {
+        parse_errors::SlotsInConditionClause { slot, clause_type }.into()
+    }
 
-/// Error surrounding EntityUIds/Template slots in policy scopes
-#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-pub enum RefCreationError {
-    /// Error surrounding EntityUIds/Template slots in policy scopes
-    #[error("expected {}, got: {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
-    RefCreation {
-        /// What kinds of references the given scope clause required.
-        /// Some scope clauses require exactly one kind of reference, some require one of two
-        expected: Either<Ref, (Ref, Ref)>,
-        /// The kind of reference that was present in the policy
-        got: Ref,
-    },
-}
-
-impl RefCreationError {
-    /// Constructor for when a policy scope requires exactly one kind of reference
-    pub fn one_expected(expected: Ref, got: Ref) -> Self {
-        Self::RefCreation {
+    /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
+    /// one kind of entity argument was expected
+    pub fn wrong_entity_argument_one_expected(
+        expected: parse_errors::Ref,
+        got: parse_errors::Ref,
+    ) -> Self {
+        parse_errors::WrongEntityArgument {
             expected: Either::Left(expected),
             got,
         }
+        .into()
     }
 
-    /// Constructor for when a policy scope requires one of two kinds of references
-    pub fn two_expected(r1: Ref, r2: Ref, got: Ref) -> Self {
+    /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
+    /// one of two kinds of entity argument was expected
+    pub fn wrong_entity_argument_two_expected(
+        r1: parse_errors::Ref,
+        r2: parse_errors::Ref,
+        got: parse_errors::Ref,
+    ) -> Self {
         let expected = Either::Right((r1, r2));
-        Self::RefCreation { expected, got }
+        parse_errors::WrongEntityArgument { expected, got }.into()
     }
 }
 
-/// The 3 kinds of literals that can be in a policy scope
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Ref {
-    /// A single entity uids
-    Single,
-    /// A list of entity uids
-    Set,
-    /// A template slot
-    Template,
-}
+/// Error subtypes for [`ToASTErrorKind`]
+pub mod parse_errors {
 
-impl std::fmt::Display for Ref {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Ref::Single => write!(f, "single entity uid"),
-            Ref::Template => write!(f, "template slot"),
-            Ref::Set => write!(f, "set of entity uids"),
+    use std::sync::Arc;
+
+    use super::*;
+
+    /// Details about a `SlotsInConditionClause` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("found template slot {} in a `{clause_type}` clause", slot.id)]
+    #[diagnostic(help("slots are currently unsupported in `{clause_type}` clauses"))]
+    pub struct SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        pub(crate) slot: ast::Slot,
+        /// Clause type, e.g. "when" or "unless"
+        pub(crate) clause_type: &'static str,
+    }
+
+    /// Details about an `InvalidActionType` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
+    pub struct InvalidActionType {
+        pub(crate) euids: NonEmpty<Arc<ast::EntityUID>>,
+    }
+
+    impl std::fmt::Display for InvalidActionType {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let subject = if self.euids.len() > 1 {
+                "entity uids"
+            } else {
+                "an entity uid"
+            };
+            write!(f, "expected {subject} with type `Action` but got ")?;
+            join_with_conjunction(f, "and", self.euids.iter(), |f, e| write!(f, "`{e}`"))
         }
     }
-}
 
-/// Error when `is` appears in the policy scope in a position where it is
-/// forbidden.
-#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-pub enum InvalidIsError {
-    /// The action scope may not contain an `is`
-    #[error("`is` cannot appear in the action scope")]
-    #[diagnostic(help("try moving `action is ..` into a `when` condition"))]
-    ActionScope,
-    /// An `is` cannot appear with this operator in the policy scope
-    #[error("`is` cannot appear in the scope at the same time as `{0}`")]
-    #[diagnostic(help("try moving `is` into a `when` condition"))]
-    WrongOp(cst::RelOp),
+    /// Details about an `WrongEntityArgument` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("expected {}, found {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
+    pub struct WrongEntityArgument {
+        /// What kinds of references the given scope clause required.
+        /// Some scope clauses require exactly one kind of reference, some require one of two
+        pub(crate) expected: Either<Ref, (Ref, Ref)>,
+        /// The kind of reference that was present in the policy
+        pub(crate) got: Ref,
+    }
+
+    /// The 3 kinds of literals that can be in a policy scope
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Ref {
+        /// A single entity uids
+        Single,
+        /// A list of entity uids
+        Set,
+        /// A template slot
+        Template,
+    }
+
+    impl std::fmt::Display for Ref {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Ref::Single => write!(f, "single entity uid"),
+                Ref::Template => write!(f, "template slot"),
+                Ref::Set => write!(f, "set of entity uids"),
+            }
+        }
+    }
 }
 
 /// Error from the text -> CST parser

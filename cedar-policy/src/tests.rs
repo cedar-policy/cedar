@@ -3922,10 +3922,7 @@ mod issue_606 {
         let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
-            Err(FromJsonError::SlotsInConditionClause {
-                slot: _,
-                clausetype: "when"
-            })
+            Err(FromJsonError::SlotsInConditionClause(_))
         ));
     }
 }
