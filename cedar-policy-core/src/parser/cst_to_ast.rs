@@ -529,6 +529,17 @@ impl Node<Option<cst::VariableDef>> {
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
+            // special check for the syntax `_ in _ is _`
+            if op == &cst::RelOp::In {
+                match rel_expr.to_expr() {
+                    Ok(expr) => {
+                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                            return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
+                        }
+                    }
+                    Err(_) => (), // ignore
+                }
+            }
             let eref = rel_expr.to_ref_or_slot(var)?;
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
@@ -1065,18 +1076,24 @@ impl Node<Option<cst::Relation>> {
                 } else {
                     Ok(())
                 };
-
                 let (first, rest, _) = flatten_tuple_3(maybe_first, maybe_rest, maybe_extra_elmts)?;
                 let mut rest = rest.into_iter();
                 let second = rest.next();
                 match second {
                     None => Ok(first),
-                    Some((&op, second)) => first.into_expr().and_then(|first| {
+                    Some((&op, second)) => {
+                        let first = first.into_expr()?;
+                        // special check for the syntax `_ in _ is _`
+                        if op == cst::RelOp::In
+                            && matches!(second.expr_kind(), ast::ExprKind::Is { .. })
+                        {
+                            return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
+                        }
                         Ok(ExprOrSpecial::Expr {
                             expr: construct_expr_rel(first, op, second, self.loc.clone())?,
                             loc: self.loc.clone(),
                         })
-                    }),
+                    }
                 }
             }
             cst::Relation::Has { target, field } => {
@@ -3921,11 +3938,23 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Group::"friends" is User"#).build(),
+                ExpectedErrorMessageBuilder::error("invalid syntax `_ in _ is _`")
+                    .help("try `_ is _ in _`")
+                    .exactly_one_underline(r#"principal in Group::"friends" is User"#)
+                    .build(),
+            ),
+            (
+                r#"permit(principal, action in Group::"action_group" is Action, resource);"#,
+                ExpectedErrorMessageBuilder::error("`is` cannot appear in the action scope")
+                    .exactly_one_underline(r#"Group::"action_group" is Action"#)
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Folder::"folder" is File"#).build(),
+                ExpectedErrorMessageBuilder::error("invalid syntax `_ in _ is _`")
+                    .help("try `_ is _ in _`")
+                    .exactly_one_underline(r#"resource in Group::"folder" is File"#)
+                    .build(),
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
@@ -4138,6 +4167,12 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     "unexpected token `==`"
                 ).exactly_one_underline("==").build(),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
+                ExpectedErrorMessageBuilder::error(
+                    "unexpected token `is`"
+                ).exactly_one_underline(r#"is"#).build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
