@@ -26,7 +26,7 @@ use cedar_policy_core::parser::{
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
-use miette::{Diagnostic, LabeledSpan, Severity, SourceSpan};
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -415,55 +415,76 @@ impl Diagnostic for ToJsonSchemaError {
     }
 }
 
-/// Warnings when builtin Cedar names are shadowed
-#[derive(Debug, Clone, Error)]
-#[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
-pub struct ShadowsBuiltinWarning {
-    pub(crate) name: SmolStr,
-    pub(crate) loc: Loc,
-}
+/// Error subtypes for [`SchemaWarning`]
+pub mod schema_warnings {
+    use cedar_policy_core::parser::Loc;
+    use miette::Diagnostic;
+    use smol_str::SmolStr;
+    use thiserror::Error;
 
-impl Diagnostic for ShadowsBuiltinWarning {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(std::iter::once(LabeledSpan::underline(
-            self.loc.span,
-        ))))
+    /// Warning when a builtin Cedar name is shadowed
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Clone, Error)]
+    #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
+    pub struct ShadowsBuiltinWarning {
+        pub(crate) name: SmolStr,
+        pub(crate) loc: Loc,
     }
 
-    fn severity(&self) -> Option<miette::Severity> {
-        Some(Severity::Warning)
+    impl Diagnostic for ShadowsBuiltinWarning {
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
+                self.loc.span,
+            ))))
+        }
+
+        fn severity(&self) -> Option<miette::Severity> {
+            Some(miette::Severity::Warning)
+        }
+    }
+
+    /// Warning when an entity name is shadowed by a common type name
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Clone, Error)]
+    #[error("The common type name {name} shadows an entity name")]
+    pub struct ShadowsEntityWarning {
+        pub(crate) name: SmolStr,
+        pub(crate) entity_loc: Loc,
+        pub(crate) common_loc: Loc,
+    }
+
+    impl Diagnostic for ShadowsEntityWarning {
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            Some(Box::new(
+                std::iter::once(&self.entity_loc)
+                    .chain(std::iter::once(&self.common_loc))
+                    .map(miette::LabeledSpan::underline),
+            ))
+        }
+
+        fn severity(&self) -> Option<miette::Severity> {
+            Some(miette::Severity::Warning)
+        }
     }
 }
 
-/// Warnings when entity names are shadowed by common type names
-#[derive(Debug, Clone, Error)]
-#[error("The common type name {name} shadows an entity name")]
-pub struct ShadowsEntityWarning {
-    pub(crate) name: SmolStr,
-    pub(crate) entity_loc: Loc,
-    pub(crate) common_loc: Loc,
-}
-
-impl Diagnostic for ShadowsEntityWarning {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(
-            std::iter::once(&self.entity_loc)
-                .chain(std::iter::once(&self.common_loc))
-                .map(LabeledSpan::underline),
-        ))
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        Some(Severity::Warning)
-    }
-}
-
+/// Warning when constructing a schema
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
 pub enum SchemaWarning {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ShadowsBuiltin(#[from] ShadowsBuiltinWarning),
+    ShadowsBuiltin(#[from] schema_warnings::ShadowsBuiltinWarning),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ShadowsEntity(#[from] ShadowsEntityWarning),
+    ShadowsEntity(#[from] schema_warnings::ShadowsEntityWarning),
 }

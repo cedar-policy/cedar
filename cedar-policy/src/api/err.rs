@@ -16,21 +16,19 @@
 
 //! This module defines the publicly exported error types.
 
-use crate::EntityUid;
-use crate::PolicyId;
-use cedar_policy_core::ast;
-pub use cedar_policy_core::ast::RestrictedExpressionParseError;
-use cedar_policy_core::authorizer;
-use cedar_policy_core::est;
+use crate::{EntityUid, PolicyId};
+pub use cedar_policy_core::ast::{
+    restricted_expr_errors, RestrictedExpressionError, RestrictedExpressionParseError,
+};
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
 pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
-pub use cedar_policy_validator::human_schema::SchemaWarning;
-pub use cedar_policy_validator::schema_error;
+use cedar_policy_core::{ast, authorizer, est};
+pub use cedar_policy_validator::human_schema::{schema_warnings, SchemaWarning};
+pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
-use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -40,74 +38,82 @@ pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PolicyEvaluationError(#[from] PolicyEvaluationError),
+    PolicyEvaluationError(#[from] authorization_errors::PolicyEvaluationError),
 }
 
-impl AuthorizationError {
-    /// Get the id of the erroring policy
-    pub fn id(&self) -> &PolicyId {
-        match self {
-            Self::PolicyEvaluationError(e) => e.id(),
+/// Error subtypes for [`AuthorizationError`]
+pub mod authorization_errors {
+    use crate::{EvaluationError, PolicyId};
+    use cedar_policy_core::{ast, authorizer};
+    use miette::Diagnostic;
+    use ref_cast::RefCast;
+    use thiserror::Error;
+
+    /// An error occurred when evaluating a policy
+    #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+    #[error("while evaluating policy `{id}`: {error}")]
+    pub struct PolicyEvaluationError {
+        /// Id of the policy with an error
+        id: ast::PolicyID,
+        /// Underlying evaluation error
+        #[diagnostic(transparent)]
+        error: EvaluationError,
+    }
+
+    impl PolicyEvaluationError {
+        /// Get the [`PolicyId`] of the erroring policy
+        pub fn policy_id(&self) -> &PolicyId {
+            PolicyId::ref_cast(&self.id)
+        }
+
+        /// Get the underlying [`EvaluationError`]
+        pub fn inner(&self) -> &EvaluationError {
+            &self.error
+        }
+
+        /// Consume this error, producing the underlying [`EvaluationError`]
+        pub fn into_inner(self) -> EvaluationError {
+            self.error
         }
     }
-}
 
-/// An error occurred when evaluating a policy
-#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
-#[error("while evaluating policy `{id}`: {error}")]
-pub struct PolicyEvaluationError {
-    /// Id of the policy with an error
-    id: ast::PolicyID,
-    /// Underlying evaluation error
-    #[diagnostic(transparent)]
-    error: EvaluationError,
-}
-
-impl PolicyEvaluationError {
-    /// Get the [`PolicyId`] of the erroring policy
-    pub fn id(&self) -> &PolicyId {
-        PolicyId::ref_cast(&self.id)
-    }
-
-    /// Get the underlying [`EvaluationError`]
-    pub fn inner(&self) -> &EvaluationError {
-        &self.error
-    }
-
-    /// Consume this error, producing the underlying [`EvaluationError`]
-    pub fn into_inner(self) -> EvaluationError {
-        self.error
+    #[doc(hidden)]
+    impl From<authorizer::AuthorizationError> for PolicyEvaluationError {
+        fn from(e: authorizer::AuthorizationError) -> Self {
+            match e {
+                authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
+                    Self { id, error }
+                }
+            }
+        }
     }
 }
 
 #[doc(hidden)]
 impl From<authorizer::AuthorizationError> for AuthorizationError {
     fn from(value: authorizer::AuthorizationError) -> Self {
-        match value {
-            authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
-                Self::PolicyEvaluationError(PolicyEvaluationError { id, error })
-            }
-        }
+        Self::PolicyEvaluationError(value.into())
     }
 }
 
 /// Errors that can be encountered when re-evaluating a partial response
-#[derive(Debug, Error)]
-pub enum ReAuthorizeError {
+#[derive(Debug, Diagnostic, Error)]
+pub enum ReauthorizationError {
     /// An evaluation error was encountered
-    #[error("{err}")]
-    Evaluation {
-        /// The evaluation error
-        #[from]
-        err: EvaluationError,
-    },
-    /// A policy id conflict was found
-    #[error("{err}")]
-    PolicySet {
-        /// The conflicting ids
-        #[from]
-        err: cedar_policy_core::ast::PolicySetError,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// A policy set error was encountered
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] PolicySetError),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::ast::PolicySetError> for ReauthorizationError {
+    fn from(e: cedar_policy_core::ast::PolicySetError) -> Self {
+        Self::PolicySet(e.into())
+    }
 }
 
 /// Errors serializing Schemas to the natural syntax
@@ -159,24 +165,18 @@ impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHum
     }
 }
 
-mod human_schema_error {
-    use crate::schema_error::SchemaError;
+/// Error subtypes for [`HumanSchemaError`]
+pub mod human_schema_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    /// Parsing errors for human-readable schemas
+    /// Error parsing a schema in human-readable syntax
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct ParseError(#[from] pub(super) cedar_policy_validator::HumanSyntaxParseError);
 
-    /// Errors when converting parsed human-readable schemas into full schemas
-    #[derive(Debug, Error, Diagnostic)]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    pub struct CoreError(#[from] pub(super) SchemaError);
-
-    /// IO errors when parsing human-readable schemas
+    /// IO error while parsing a human-readable schema
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     pub struct IoError(#[from] pub(super) std::io::Error);
@@ -184,42 +184,34 @@ mod human_schema_error {
 
 /// Errors when parsing schemas
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum HumanSchemaError {
-    /// Error parsing a schema in natural syntax
+    /// Error parsing a schema in human-readable syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parse(#[from] human_schema_error::ParseError),
-    /// Errors combining fragments into full schemas
+    Parse(#[from] human_schema_errors::ParseError),
+    /// IO error while parsing a human-readable schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Core(#[from] human_schema_error::CoreError),
-    /// IO errors while parsing
+    Io(#[from] human_schema_errors::IoError),
+    /// Encountered a `SchemaError` while parsing a human-readable schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Io(#[from] human_schema_error::IoError),
+    Schema(#[from] SchemaError),
 }
 
 #[doc(hidden)]
 impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
     fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
         match value {
-            cedar_policy_validator::HumanSchemaError::Core(core) => {
-                human_schema_error::CoreError(core).into()
-            }
-            cedar_policy_validator::HumanSchemaError::IO(io_err) => {
-                human_schema_error::IoError(io_err).into()
+            cedar_policy_validator::HumanSchemaError::Schema(e) => e.into(),
+            cedar_policy_validator::HumanSchemaError::IO(e) => {
+                human_schema_errors::IoError(e).into()
             }
             cedar_policy_validator::HumanSchemaError::Parsing(e) => {
-                human_schema_error::ParseError(e).into()
+                human_schema_errors::ParseError(e).into()
             }
         }
-    }
-}
-
-#[doc(hidden)]
-impl From<crate::schema_error::SchemaError> for HumanSchemaError {
-    fn from(value: crate::schema_error::SchemaError) -> Self {
-        human_schema_error::CoreError(value).into()
     }
 }
 
@@ -264,15 +256,12 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     }
 }
 
-/// This module contains definitions for structs containing detailed information
-/// about each validation error. Errors are primarily documented on their
-/// variants in [`ValidationError`].
+/// Error subtypes for [`ValidationError`].
+/// Errors are primarily documented on their variants in [`ValidationError`].
 pub mod validation_errors;
 
 /// An error generated by the validator when it finds a potential problem in a
-/// policy. The error contains a enumeration that specifies the kind of problem,
-/// and provides details specific to that kind of problem. The error also records
-/// where the problem was encountered.
+/// policy.
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ValidationError {
@@ -430,9 +419,8 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
     }
 }
 
-/// This module contains definitions for structs containing detailed information
-/// about each validation warning. Warnings are primarily documented on their
-/// variants in [`ValidationWarning`].
+/// Error subtypes for [`ValidationWarning`].
+/// Validation warnings are primarily documented on their variants in [`ValidationWarning`].
 pub mod validation_warnings;
 
 /// Represents the different kinds of validation warnings and information
@@ -507,8 +495,8 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
     }
 }
 
-/// Error structs for the variants of `PolicySetError`
-pub mod policy_set_error_structs {
+/// Error subtypes for [`PolicySetError`]
+pub mod policy_set_errors {
     use super::Error;
     use crate::PolicyId;
     use miette::Diagnostic;
@@ -521,15 +509,46 @@ pub mod policy_set_error_structs {
         pub(crate) id: PolicyId,
     }
 
+    impl AlreadyDefined {
+        /// Get the [`PolicyId`] for which there was a duplicate
+        pub fn duplicate_id(&self) -> &PolicyId {
+            &self.id
+        }
+    }
+
     /// Expected a static policy, but a template-linked policy was provided
     #[derive(Debug, Diagnostic, Error)]
     #[error("expected a static policy, but a template-linked policy was provided")]
-    pub struct ExpectedStatic {}
+    pub struct ExpectedStatic {
+        /// A private field, just so the public interface notes this as a
+        /// private-fields struct and not a empty-fields struct for semver
+        /// purposes (e.g., consumers cannot construct this type with
+        /// `ExpectedStatic {}`)
+        _dummy: (),
+    }
+
+    impl ExpectedStatic {
+        pub(crate) fn new() -> Self {
+            Self { _dummy: () }
+        }
+    }
 
     /// Expected a template, but a static policy was provided.
     #[derive(Debug, Diagnostic, Error)]
     #[error("expected a template, but a static policy was provided")]
-    pub struct ExpectedTemplate {}
+    pub struct ExpectedTemplate {
+        /// A private field, just so the public interface notes this as a
+        /// private-fields struct and not a empty-fields struct for semver
+        /// purposes (e.g., consumers cannot construct this type with
+        /// `ExpectedTemplate {}`)
+        _dummy: (),
+    }
+
+    impl ExpectedTemplate {
+        pub(crate) fn new() -> Self {
+            Self { _dummy: () }
+        }
+    }
 
     /// Error when removing a static policy that doesn't exist
     #[derive(Debug, Diagnostic, Error)]
@@ -538,11 +557,25 @@ pub mod policy_set_error_structs {
         pub(crate) policy_id: PolicyId,
     }
 
-    /// Error when removing a static policy that doesn't exist
+    impl PolicyNonexistentError {
+        /// Get the [`PolicyId`] of the policy which didn't exist
+        pub fn policy_id(&self) -> &PolicyId {
+            &self.policy_id
+        }
+    }
+
+    /// Error when removing a template that doesn't exist
     #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove template `{template_id}` because it does not exist")]
     pub struct TemplateNonexistentError {
         pub(crate) template_id: PolicyId,
+    }
+
+    impl TemplateNonexistentError {
+        /// Get the [`PolicyId`] of the template which didn't exist
+        pub fn template_id(&self) -> &PolicyId {
+            &self.template_id
+        }
     }
 
     /// Error when removing a template with active links
@@ -552,6 +585,13 @@ pub mod policy_set_error_structs {
         pub(crate) template_id: PolicyId,
     }
 
+    impl RemoveTemplateWithActiveLinksError {
+        /// Get the [`PolicyId`] of the template which had active links
+        pub fn template_id(&self) -> &PolicyId {
+            &self.template_id
+        }
+    }
+
     /// Error when removing a template that is not a template
     #[derive(Debug, Diagnostic, Error)]
     #[error("unable to remove policy template `{template_id}` because it is not a template")]
@@ -559,11 +599,25 @@ pub mod policy_set_error_structs {
         pub(crate) template_id: PolicyId,
     }
 
-    /// Error when unlinking a template
+    impl RemoveTemplateNotTemplateError {
+        /// Get the [`PolicyId`] of the template which is not a template
+        pub fn template_id(&self) -> &PolicyId {
+            &self.template_id
+        }
+    }
+
+    /// Error when unlinking a template-linked policy
     #[derive(Debug, Diagnostic, Error)]
     #[error("unable to unlink policy `{policy_id}` because it does not exist")]
     pub struct LinkNonexistentError {
         pub(crate) policy_id: PolicyId,
+    }
+
+    impl LinkNonexistentError {
+        /// Get the [`PolicyId`] of the link which does not exist
+        pub fn policy_id(&self) -> &PolicyId {
+            &self.policy_id
+        }
     }
 
     /// Error when removing a link that is not a link
@@ -571,6 +625,30 @@ pub mod policy_set_error_structs {
     #[error("unable to unlink `{policy_id}` because it is not a link")]
     pub struct UnlinkLinkNotLinkError {
         pub(crate) policy_id: PolicyId,
+    }
+
+    impl UnlinkLinkNotLinkError {
+        /// Get the [`PolicyId`] of the link which is not a link
+        pub fn policy_id(&self) -> &PolicyId {
+            &self.policy_id
+        }
+    }
+
+    /// Error when converting a policy from JSON format
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("Error deserializing a policy/template from JSON: {inner}")]
+    #[diagnostic(transparent)]
+    pub struct FromJsonError {
+        #[from]
+        pub(crate) inner: cedar_policy_core::est::FromJsonError,
+    }
+
+    /// Error during JSON ser/de of the policy set (as opposed to individual policies)
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("Error serializing / deserializing PolicySet to / from JSON: {inner})")]
+    pub struct JsonPolicySetError {
+        #[from]
+        pub(crate) inner: serde_json::Error,
     }
 }
 
@@ -582,58 +660,55 @@ pub enum PolicySetError {
     /// templates or the set of policies.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    AlreadyDefined(#[from] policy_set_error_structs::AlreadyDefined),
+    AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
     #[error("unable to link template: {0}")]
     #[diagnostic(transparent)]
-    LinkingError(#[from] ast::LinkingError),
+    Linking(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExpectedStatic(#[from] policy_set_error_structs::ExpectedStatic),
+    ExpectedStatic(#[from] policy_set_errors::ExpectedStatic),
     /// Expected a template, but a static policy was provided.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExpectedTemplate(#[from] policy_set_error_structs::ExpectedTemplate),
+    ExpectedTemplate(#[from] policy_set_errors::ExpectedTemplate),
     /// Error when removing a static policy that doesn't exist
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PolicyNonexistentError(#[from] policy_set_error_structs::PolicyNonexistentError),
+    PolicyNonexistent(#[from] policy_set_errors::PolicyNonexistentError),
     /// Error when removing a template that doesn't exist
     #[error(transparent)]
     #[diagnostic(transparent)]
-    TemplateNonexistentError(#[from] policy_set_error_structs::TemplateNonexistentError),
+    TemplateNonexistent(#[from] policy_set_errors::TemplateNonexistentError),
     /// Error when removing a template with active links
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RemoveTemplateWithActiveLinksError(
-        #[from] policy_set_error_structs::RemoveTemplateWithActiveLinksError,
-    ),
+    RemoveTemplateWithActiveLinks(#[from] policy_set_errors::RemoveTemplateWithActiveLinksError),
     /// Error when removing a template that is not a template
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RemoveTemplateNotTemplateError(
-        #[from] policy_set_error_structs::RemoveTemplateNotTemplateError,
-    ),
+    RemoveTemplateNotTemplate(#[from] policy_set_errors::RemoveTemplateNotTemplateError),
     /// Error when unlinking a linked policy
     #[error(transparent)]
     #[diagnostic(transparent)]
-    LinkNonexistentError(#[from] policy_set_error_structs::LinkNonexistentError),
+    LinkNonexistent(#[from] policy_set_errors::LinkNonexistentError),
     /// Error when removing a link that is not a link
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnlinkLinkNotLinkError(#[from] policy_set_error_structs::UnlinkLinkNotLinkError),
-    /// Error when converting from EST
-    #[error("Error deserializing a policy/template from JSON: {0}")]
+    UnlinkLinkNotLink(#[from] policy_set_errors::UnlinkLinkNotLinkError),
+    /// Error when converting from JSON format
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    FromJson(#[from] cedar_policy_core::est::FromJsonError),
-    /// Error when converting to EST
+    FromJson(#[from] policy_set_errors::FromJsonError),
+    /// Error when converting to JSON format
     #[error("Error serializing a policy to JSON: {0}")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
-    /// Errors encountered in JSON ser/de of the policy set (as opposed to individual policies)
-    #[error("Error serializing / deserializing PolicySet to / from JSON: {0})")]
-    Json(#[from] serde_json::Error),
+    /// Error during JSON ser/de of the policy set (as opposed to individual policies)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    JsonPolicySet(#[from] policy_set_errors::JsonPolicySetError),
 }
 
 #[doc(hidden)]
@@ -641,7 +716,7 @@ impl From<ast::PolicySetError> for PolicySetError {
     fn from(e: ast::PolicySetError) -> Self {
         match e {
             ast::PolicySetError::Occupied { id } => {
-                Self::AlreadyDefined(policy_set_error_structs::AlreadyDefined {
+                Self::AlreadyDefined(policy_set_errors::AlreadyDefined {
                     id: PolicyId::new(id),
                 })
             }
@@ -652,7 +727,7 @@ impl From<ast::PolicySetError> for PolicySetError {
 #[doc(hidden)]
 impl From<ast::UnexpectedSlotError> for PolicySetError {
     fn from(_: ast::UnexpectedSlotError) -> Self {
-        Self::ExpectedStatic(policy_set_error_structs::ExpectedStatic {})
+        Self::ExpectedStatic(policy_set_errors::ExpectedStatic::new())
     }
 }
 
@@ -666,27 +741,27 @@ pub enum PolicyToJsonError {
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Link(#[from] json_errors::JsonLinkError),
+    Link(#[from] policy_to_json_errors::JsonLinkError),
     /// Error in the JSON serialization
     #[error(transparent)]
-    JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
+    JsonSerialization(#[from] policy_to_json_errors::PolicyJsonSerializationError),
 }
 
 #[doc(hidden)]
 impl From<est::LinkingError> for PolicyToJsonError {
     fn from(e: est::LinkingError) -> Self {
-        json_errors::JsonLinkError::from(e).into()
+        policy_to_json_errors::JsonLinkError::from(e).into()
     }
 }
 
 impl From<serde_json::Error> for PolicyToJsonError {
     fn from(e: serde_json::Error) -> Self {
-        json_errors::PolicyJsonSerializationError::from(e).into()
+        policy_to_json_errors::PolicyJsonSerializationError::from(e).into()
     }
 }
 
-/// Error types related to JSON processing
-pub mod json_errors {
+/// Error subtypes for [`PolicyToJsonError`]
+pub mod policy_to_json_errors {
     use cedar_policy_core::est;
     use miette::Diagnostic;
     use thiserror::Error;

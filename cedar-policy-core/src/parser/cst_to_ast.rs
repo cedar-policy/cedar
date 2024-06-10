@@ -840,6 +840,8 @@ impl Node<Option<cst::Expr>> {
 /// Type level marker for parsing sets of entity uids or single uids
 /// This presents having either a large level of code duplication
 /// or runtime data.
+/// This marker is (currently) only used for translating entity references
+/// in the policy scope.
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
@@ -860,7 +862,7 @@ impl RefKind for SingleEntity {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_one_expected(
+            ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
@@ -871,7 +873,7 @@ impl RefKind for SingleEntity {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_one_expected(
+            ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
@@ -896,7 +898,7 @@ impl RefKind for EntityReference {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_two_expected(
+            ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
@@ -921,7 +923,7 @@ impl RefKind for OneOrMultipleRefs {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            ToASTErrorKind::ref_creation_two_expected(
+            ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
@@ -1829,7 +1831,7 @@ impl Node<Option<cst::Ref>> {
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
                 Ok(construct_refr(p, e, self.loc.clone()))
             }
-            r => Err(self
+            r @ cst::Ref::Ref { .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         }
@@ -2675,7 +2677,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "expected single entity uid or template slot, got: set of entity uids",
+                "expected single entity uid or template slot, found set of entity uids",
             )
             .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
             .build(),

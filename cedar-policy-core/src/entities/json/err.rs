@@ -19,7 +19,7 @@ use std::fmt::Display;
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
     BorrowedRestrictedExpr, ContextCreationError, EntityAttrEvaluationError, EntityUID, Expr,
-    ExprKind, Name, PartialValue, PolicyID, RestrictedExpr, RestrictedExprError,
+    ExprKind, Name, PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
@@ -62,7 +62,7 @@ pub enum JsonDeserializationError {
     /// Restricted expression error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RestrictedExpressionError(#[from] RestrictedExprError),
+    RestrictedExpressionError(#[from] RestrictedExpressionError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error(transparent)]
     #[diagnostic(transparent)]

@@ -367,7 +367,7 @@ pub enum ToASTErrorKind {
     /// Returned when a policy scope has incorrect entity uids or template slots
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RefCreation(#[from] parse_errors::RefCreation),
+    WrongEntityArgument(#[from] parse_errors::WrongEntityArgument),
     /// Returned when a policy contains a template slot other than `?principal` or `?resource`
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
@@ -402,29 +402,32 @@ impl ToASTErrorKind {
         parse_errors::SlotsInConditionClause { slot, clause_type }.into()
     }
 
-    /// Constructor for the [`ToASTErrorKind::RefCreation`] error when a policy
-    /// scope requires exactly one kind of reference
-    pub fn ref_creation_one_expected(expected: parse_errors::Ref, got: parse_errors::Ref) -> Self {
-        parse_errors::RefCreation {
+    /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
+    /// one kind of entity argument was expected
+    pub fn wrong_entity_argument_one_expected(
+        expected: parse_errors::Ref,
+        got: parse_errors::Ref,
+    ) -> Self {
+        parse_errors::WrongEntityArgument {
             expected: Either::Left(expected),
             got,
         }
         .into()
     }
 
-    /// Constructor for the [`ToASTErrorKind::RefCreation`] error when a policy
-    /// scope requires one of two kinds of references
-    pub fn ref_creation_two_expected(
+    /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
+    /// one of two kinds of entity argument was expected
+    pub fn wrong_entity_argument_two_expected(
         r1: parse_errors::Ref,
         r2: parse_errors::Ref,
         got: parse_errors::Ref,
     ) -> Self {
         let expected = Either::Right((r1, r2));
-        parse_errors::RefCreation { expected, got }.into()
+        parse_errors::WrongEntityArgument { expected, got }.into()
     }
 }
 
-/// Error subtypes for `ToASTErrorKind`
+/// Error subtypes for [`ToASTErrorKind`]
 pub mod parse_errors {
 
     use std::sync::Arc;
@@ -461,10 +464,10 @@ pub mod parse_errors {
         }
     }
 
-    /// Details about an `RefCreation` error.
+    /// Details about an `WrongEntityArgument` error.
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-    #[error("expected {}, got: {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
-    pub struct RefCreation {
+    #[error("expected {}, found {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
+    pub struct WrongEntityArgument {
         /// What kinds of references the given scope clause required.
         /// Some scope clauses require exactly one kind of reference, some require one of two
         pub(crate) expected: Either<Ref, (Ref, Ref)>,
@@ -691,7 +694,8 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
     Some(expected_string)
 }
 
-/// Multiple parse errors.
+/// Represents one or more [`ParseError`]s encountered when parsing a policy or
+/// template.
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution when

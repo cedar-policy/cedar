@@ -22,4 +22,4 @@ pub mod parser;
 mod test;
 pub mod to_json_schema;
 pub use err::ParseError;
-pub use err::SchemaWarning;
+pub use err::{schema_warnings, SchemaWarning};

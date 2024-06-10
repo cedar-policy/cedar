@@ -1100,7 +1100,7 @@ fn interpret_primary(
                     }
                 }
             }
-            r => Err(node
+            r @ cst::Ref::Ref { .. } => Err(node
                 .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         },

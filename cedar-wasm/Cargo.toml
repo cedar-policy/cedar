@@ -3,7 +3,7 @@ name = "cedar-wasm"
 version = "4.0.0"
 edition = "2021"
 rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
-description = "WASM bindings and typescript types for Cedar lib"
+description = "Wasm bindings and typescript types for Cedar lib"
 license = "Apache-2.0"
 
 exclude = ['/build']
@@ -34,4 +34,6 @@ cool_asserts = "2.0"
 
 [build-dependencies]
 cargo-lock = "9.0.0"
+# Lock `url` (dependencies of cargo-lock) to 2.5.0 until we know if Unicode 3.0 license is ok.
+url = "=2.5.0"
 itertools = "0.13.0"

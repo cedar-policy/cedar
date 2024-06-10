@@ -16,7 +16,8 @@
 
 use itertools::Itertools;
 use pretty::RcDoc;
-use regex::Regex;
+
+use crate::token::regex_constants;
 
 use super::token::{Comment, WrappedToken};
 
@@ -161,13 +162,6 @@ fn remove_empty_interior_lines(s: &str) -> String {
 
 /// Remove empty lines, safely handling newlines that occur in quotations.
 pub fn remove_empty_lines(text: &str) -> String {
-    // PANIC SAFETY: this regex pattern is valid
-    #[allow(clippy::unwrap_used)]
-    let comment_regex = Regex::new(r"//[^\n]*").unwrap();
-    // PANIC SAFETY: this regex pattern is valid
-    #[allow(clippy::unwrap_used)]
-    let string_regex = Regex::new(r#""(\\.|[^"\\])*""#).unwrap();
-
     let mut index = 0;
     let mut final_text = String::new();
 
@@ -176,8 +170,8 @@ pub fn remove_empty_lines(text: &str) -> String {
         // call `remove_empty_interior_lines` on all the text _outside_ of
         // strings. Comments should be skipped to avoid interpreting a quote in
         // a comment as a string.
-        let comment_match = comment_regex.find_at(text, index);
-        let string_match = string_regex.find_at(text, index);
+        let comment_match = regex_constants::COMMENT.find_at(text, index);
+        let string_match = regex_constants::STRING.find_at(text, index);
         match (comment_match, string_match) {
             (Some(m1), Some(m2)) => {
                 // Handle the earlier match

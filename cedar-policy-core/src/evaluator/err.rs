@@ -101,7 +101,7 @@ pub enum EvaluationError {
 
 impl EvaluationError {
     /// Extract the source location of the error, if one is attached
-    pub fn source_loc(&self) -> Option<&Loc> {
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
             Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
             Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
@@ -309,7 +309,7 @@ impl EvaluationError {
     }
 }
 
-/// Error subtypes for `EvaluationError`
+/// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
     use crate::ast::{BinaryOp, EntityUID, Expr, Name, SlotId, Type, UnaryOp, Value};
     use crate::parser::Loc;

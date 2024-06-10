@@ -482,7 +482,6 @@ mod test {
 
     use super::*;
     use crate::{
-        err::schema_error::*,
         schema_file_format::{NamespaceDefinition, *},
         validation_errors::{UnrecognizedEntityType, UnspecifiedEntity},
         ValidationMode, ValidationWarning, Validator,
@@ -491,7 +490,7 @@ mod test {
     use cool_asserts::assert_matches;
 
     #[test]
-    fn validate_entity_type_empty_schema() -> Result<()> {
+    fn validate_entity_type_empty_schema() {
         let src = r#"permit(principal, action, resource == foo_type::"foo_name");"#;
         let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
@@ -506,8 +505,6 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-
-        Ok(())
     }
 
     #[test]
@@ -558,7 +555,7 @@ mod test {
     }
 
     #[test]
-    fn validate_entity_type_in_singleton_schema() -> Result<()> {
+    fn validate_entity_type_in_singleton_schema() {
         let foo_type = "foo_type";
         let schema_file = NamespaceDefinition::new(
             [(
@@ -590,12 +587,10 @@ mod test {
             validate.validate_entity_types(&policy).next().is_none(),
             "Did not expect any validation errors."
         );
-
-        Ok(())
     }
 
     #[test]
-    fn validate_entity_type_not_in_singleton_schema() -> Result<()> {
+    fn validate_entity_type_not_in_singleton_schema() {
         let schema_file = NamespaceDefinition::new(
             [(
                 "foo_type".parse().unwrap(),
@@ -623,12 +618,10 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-
-        Ok(())
     }
 
     #[test]
-    fn validate_action_id_empty_schema() -> Result<()> {
+    fn validate_action_id_empty_schema() {
         let src = r#"permit(principal, action == Action::"foo_name", resource);"#;
         let policy = parse_policy_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
@@ -643,12 +636,10 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-
-        Ok(())
     }
 
     #[test]
-    fn validate_action_id_in_singleton_schema() -> Result<()> {
+    fn validate_action_id_in_singleton_schema() {
         let foo_name = "foo_name";
         let schema_file = NamespaceDefinition::new(
             [],
@@ -680,8 +671,6 @@ mod test {
             validate.validate_action_ids(&policy).next().is_none(),
             "Did not expect any validation errors."
         );
-
-        Ok(())
     }
 
     #[test]
@@ -733,7 +722,7 @@ mod test {
     }
 
     #[test]
-    fn undefined_entity_type_in_principal_slot() -> Result<()> {
+    fn undefined_entity_type_in_principal_slot() {
         let p_name = "User";
         let schema_file = NamespaceDefinition::new(
             [(
@@ -774,12 +763,10 @@ mod test {
             }
             _ => panic!("Unexpected variant of ValidationErrorKind."),
         };
-
-        Ok(())
     }
 
     #[test]
-    fn validate_action_id_not_in_singleton_schema() -> Result<()> {
+    fn validate_action_id_not_in_singleton_schema() {
         let schema_file = NamespaceDefinition::new(
             [],
             [(
@@ -808,11 +795,10 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-        Ok(())
     }
 
     #[test]
-    fn validate_namespaced_action_id_in_schema() -> Result<()> {
+    fn validate_namespaced_action_id_in_schema() {
         let descriptors: SchemaFragment = serde_json::from_str(
             r#"
                 {
@@ -841,11 +827,10 @@ mod test {
         let validate = Validator::new(schema);
         let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
-        Ok(())
     }
 
     #[test]
-    fn validate_namespaced_invalid_action() -> Result<()> {
+    fn validate_namespaced_invalid_action() {
         let descriptors: SchemaFragment = serde_json::from_str(
             r#"
                 {
@@ -873,12 +858,10 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-
-        Ok(())
     }
 
     #[test]
-    fn validate_namespaced_entity_type_in_schema() -> Result<()> {
+    fn validate_namespaced_entity_type_in_schema() {
         let descriptors: SchemaFragment = serde_json::from_str(
             r#"
                 {
@@ -910,11 +893,10 @@ mod test {
         let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
 
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
-        Ok(())
     }
 
     #[test]
-    fn validate_namespaced_invalid_entity_type() -> Result<()> {
+    fn validate_namespaced_invalid_entity_type() {
         let descriptors: SchemaFragment = serde_json::from_str(
             r#"
                 {
@@ -942,12 +924,10 @@ mod test {
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
-
-        Ok(())
     }
 
     #[test]
-    fn get_possible_actions_eq() -> Result<()> {
+    fn get_possible_actions_eq() {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
@@ -971,12 +951,10 @@ mod test {
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([&euid_foo]), actions);
-
-        Ok(())
     }
 
     #[test]
-    fn get_possible_actions_in_no_parents() -> Result<()> {
+    fn get_possible_actions_in_no_parents() {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
@@ -1000,12 +978,10 @@ mod test {
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([&euid_foo]), actions);
-
-        Ok(())
     }
 
     #[test]
-    fn get_possible_actions_in_set_no_parents() -> Result<()> {
+    fn get_possible_actions_in_set_no_parents() {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
@@ -1029,12 +1005,10 @@ mod test {
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([&euid_foo]), actions);
-
-        Ok(())
     }
 
     #[test]
-    fn get_possible_principals_eq() -> Result<()> {
+    fn get_possible_principals_eq() {
         let foo_type = "foo_type";
         let euid_foo = EntityUID::with_eid_and_type(foo_type, "foo_name")
             .expect("should be a valid identifier");
@@ -1059,8 +1033,6 @@ mod test {
             .map(cedar_policy_core::ast::EntityType::Specified)
             .collect::<HashSet<_>>();
         assert_eq!(HashSet::from([euid_foo.components().0]), principals);
-
-        Ok(())
     }
 
     fn schema_with_single_principal_action_resource(
@@ -1162,7 +1134,7 @@ mod test {
     }
 
     #[test]
-    fn validate_action_apply_correct() -> Result<()> {
+    fn validate_action_apply_correct() {
         let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
 
         let policy = Template::new(
@@ -1178,7 +1150,6 @@ mod test {
 
         let validator = Validator::new(schema);
         assert_validate_policy_succeeds(&validator, &policy);
-        Ok(())
     }
 
     #[test]
@@ -1448,7 +1419,7 @@ mod test {
     }
 
     #[test]
-    fn test_with_tc_computation() -> Result<()> {
+    fn test_with_tc_computation() {
         let action_name = "foo";
         let action_parent_name = "foo_parent";
         let action_grandparent_name = "foo_grandparent";
@@ -1548,11 +1519,10 @@ mod test {
 
         let validator = Validator::new(schema);
         assert_validate_policy_succeeds(&validator, &policy);
-        Ok(())
     }
 
     #[test]
-    fn unspecified_entity_in_scope() -> Result<()> {
+    fn unspecified_entity_in_scope() {
         // Note: it's not possible to create an unspecified entity through the parser,
         // so we have to test using manually-constructed policies.
         let validate = Validator::new(ValidatorSchema::empty());
@@ -1596,12 +1566,10 @@ mod test {
                 assert_eq!("foo", eid);
             }
         );
-
-        Ok(())
     }
 
     #[test]
-    fn unspecified_entity_in_additional_constraints() -> Result<()> {
+    fn unspecified_entity_in_additional_constraints() {
         let validate = Validator::new(ValidatorSchema::empty());
 
         // resource == Unspecified::"foo"
@@ -1628,8 +1596,6 @@ mod test {
                 assert_eq!("foo", eid);
             }
         );
-
-        Ok(())
     }
 
     #[test]
