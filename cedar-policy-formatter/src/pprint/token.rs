@@ -18,15 +18,21 @@
 #![allow(clippy::indexing_slicing)]
 use itertools::Itertools;
 use logos::{Logos, Span};
-use regex::Regex;
 use smol_str::SmolStr;
 use std::fmt::{self, Display};
 
+// PANIC SAFETY: These regex patterns are valid
+#[allow(clippy::unwrap_used)]
+pub(crate) mod regex_constants {
+    use regex::Regex;
+    lazy_static::lazy_static! {
+        pub static ref COMMENT : Regex = Regex::new(r"//[^\n\r]*").unwrap();
+        pub static ref STRING : Regex = Regex::new(r#""(\\.|[^"\\])*""#).unwrap();
+    }
+}
+
 pub fn get_comment(text: &str) -> String {
-    // PANIC SAFETY: this regex pattern is valid
-    #[allow(clippy::unwrap_used)]
-    let mut comment = Regex::new(r"//[^\n\r]*")
-        .unwrap()
+    let mut comment = regex_constants::COMMENT
         .find_iter(text)
         .map(|c| c.as_str().trim_end())
         .join("\n");
