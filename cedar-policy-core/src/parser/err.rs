@@ -427,7 +427,7 @@ impl ToASTErrorKind {
     }
 }
 
-/// Error subtypes for `ToASTErrorKind`
+/// Error subtypes for [`ToASTErrorKind`]
 pub mod parse_errors {
 
     use std::sync::Arc;
