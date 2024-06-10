@@ -955,7 +955,7 @@ impl PartialResponse {
         auth: &Authorizer,
         r: Request,
         es: &Entities,
-    ) -> Result<Self, ReAuthorizeError> {
+    ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
         let evaluator = RestrictedEvaluator::new(&exts);
         let mapping = mapping
@@ -1243,7 +1243,7 @@ impl SchemaFragment {
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1280,7 +1280,7 @@ impl SchemaFragment {
     }
 
     /// Create a `SchemaFragment` directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
@@ -1289,15 +1289,13 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn to_json_value(self) -> Result<serde_json::Value, schema_error::SchemaError> {
-        serde_json::to_value(self.lossless)
-            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
+    pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
+        serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn as_json_string(&self) -> Result<String, schema_error::SchemaError> {
-        serde_json::to_string(&self.lossless)
-            .map_err(|e| schema_error::SchemaError::JsonSerialization(e.into()))
+    pub fn as_json_string(&self) -> Result<String, SchemaError> {
+        serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
@@ -1308,7 +1306,7 @@ impl SchemaFragment {
 }
 
 impl TryInto<Schema> for SchemaFragment {
-    type Error = schema_error::SchemaError;
+    type Error = SchemaError;
 
     /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
     /// need to have all entity types defined, so an error will be returned if
@@ -1324,7 +1322,7 @@ impl TryInto<Schema> for SchemaFragment {
 }
 
 impl FromStr for SchemaFragment {
-    type Err = schema_error::SchemaError;
+    type Err = SchemaError;
     /// Construct `SchemaFragment` from a string containing a schema formatted
     /// in the cedar schema format. This can fail if the string is not valid
     /// JSON, or if the JSON structure does not form a valid schema. This
@@ -1346,7 +1344,7 @@ impl FromStr for SchemaFragment {
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
 
 impl FromStr for Schema {
-    type Err = schema_error::SchemaError;
+    type Err = SchemaError;
 
     /// Construct a schema from a string containing a schema formatted in the
     /// Cedar schema format. This can fail if it is not possible to parse a
@@ -1366,7 +1364,7 @@ impl Schema {
     /// fragment.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = SchemaFragment>,
-    ) -> Result<Self, schema_error::SchemaError> {
+    ) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
@@ -1377,7 +1375,7 @@ impl Schema {
 
     /// Create a `Schema` from a JSON value (which should be an object of the
     /// shape required for Cedar schemas).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, schema_error::SchemaError> {
+    pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
                 json,
@@ -1388,7 +1386,7 @@ impl Schema {
 
     /// Create a `Schema` from a string containing JSON in the appropriate
     /// shape.
-    pub fn from_json_str(json: &str) -> Result<Self, schema_error::SchemaError> {
+    pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_str(
                 json,
@@ -1399,7 +1397,7 @@ impl Schema {
 
     /// Create a `Schema` directly from a file containing JSON in the
     /// appropriate shape.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, schema_error::SchemaError> {
+    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
             Extensions::all_available(),
@@ -1686,12 +1684,14 @@ impl PolicySet {
         let mut pset = Self::default();
 
         for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId::new(id)), policy)?;
+            let template = Template::from_est(Some(PolicyId::new(id)), policy)
+                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
             pset.add_template(template)?;
         }
 
         for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId::new(id)), policy)?;
+            let p = Policy::from_est(Some(PolicyId::new(id)), policy)
+                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
             pset.add(p)?;
         }
 
@@ -1713,26 +1713,30 @@ impl PolicySet {
 
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_str(src.as_ref())?;
+        let est: est::PolicySet = serde_json::from_str(src.as_ref())
+            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Self::from_est(est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON value
     pub fn from_json_value(src: serde_json::Value) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_value(src)?;
+        let est: est::PolicySet = serde_json::from_value(src)
+            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Self::from_est(est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON reader
     pub fn from_json_file(r: impl std::io::Read) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_reader(r)?;
+        let est: est::PolicySet = serde_json::from_reader(r)
+            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Self::from_est(est)
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
     pub fn to_json(self) -> Result<serde_json::Value, PolicySetError> {
         let est = self.est()?;
-        let value = serde_json::to_value(est)?;
+        let value = serde_json::to_value(est)
+            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Ok(value)
     }
 
@@ -1790,7 +1794,7 @@ impl PolicySet {
             Ok(())
         } else {
             Err(PolicySetError::ExpectedStatic(
-                policy_set_error_structs::ExpectedStatic {},
+                policy_set_errors::ExpectedStatic::new(),
             ))
         }
     }
@@ -1800,8 +1804,8 @@ impl PolicySet {
     /// This will error if the policy is not a static policy.
     pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::PolicyNonexistentError(
-                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            return Err(PolicySetError::PolicyNonexistent(
+                policy_set_errors::PolicyNonexistentError { policy_id },
             ));
         };
         if self
@@ -1813,8 +1817,8 @@ impl PolicySet {
         } else {
             //Restore self.policies
             self.policies.insert(policy_id.clone(), policy);
-            Err(PolicySetError::PolicyNonexistentError(
-                policy_set_error_structs::PolicyNonexistentError { policy_id },
+            Err(PolicySetError::PolicyNonexistent(
+                policy_set_errors::PolicyNonexistentError { policy_id },
             ))
         }
     }
@@ -1833,8 +1837,8 @@ impl PolicySet {
     /// This will error if `policy_id` is not a template.
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
-            return Err(PolicySetError::TemplateNonexistentError(
-                policy_set_error_structs::TemplateNonexistentError { template_id },
+            return Err(PolicySetError::TemplateNonexistent(
+                policy_set_errors::TemplateNonexistentError { template_id },
             ));
         };
         // If self.templates and self.ast disagree, authorization cannot be trusted.
@@ -1847,14 +1851,14 @@ impl PolicySet {
             Ok(_) => Ok(template),
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
                 self.templates.insert(template_id.clone(), template);
-                Err(PolicySetError::RemoveTemplateWithActiveLinksError(
-                    policy_set_error_structs::RemoveTemplateWithActiveLinksError { template_id },
+                Err(PolicySetError::RemoveTemplateWithActiveLinks(
+                    policy_set_errors::RemoveTemplateWithActiveLinksError { template_id },
                 ))
             }
             Err(ast::PolicySetTemplateRemovalError::NotTemplateError(_)) => {
                 self.templates.insert(template_id.clone(), template);
-                Err(PolicySetError::RemoveTemplateNotTemplateError(
-                    policy_set_error_structs::RemoveTemplateNotTemplateError { template_id },
+                Err(PolicySetError::RemoveTemplateNotTemplate(
+                    policy_set_errors::RemoveTemplateNotTemplateError { template_id },
                 ))
             }
             Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
@@ -1873,8 +1877,8 @@ impl PolicySet {
             .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
                 |_| {
-                    Err(PolicySetError::TemplateNonexistentError(
-                        policy_set_error_structs::TemplateNonexistentError { template_id },
+                    Err(PolicySetError::TemplateNonexistent(
+                        policy_set_errors::TemplateNonexistentError { template_id },
                     ))
                 },
                 |v| Ok(v.map(PolicyId::ref_cast)),
@@ -1958,9 +1962,9 @@ impl PolicySet {
         // trying to link a static policy, which we want to error on here.
         let Some(template) = self.templates.get(&template_id) else {
             return Err(if self.policies.contains_key(&template_id) {
-                PolicySetError::ExpectedTemplate(policy_set_error_structs::ExpectedTemplate {})
+                PolicySetError::ExpectedTemplate(policy_set_errors::ExpectedTemplate::new())
             } else {
-                PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
+                PolicySetError::Linking(ast::LinkingError::NoSuchTemplate {
                     id: template_id.into(),
                 })
             });
@@ -1973,7 +1977,7 @@ impl PolicySet {
                 new_id.clone().into(),
                 unwrapped_vals.clone(),
             )
-            .map_err(PolicySetError::LinkingError)?;
+            .map_err(PolicySetError::Linking)?;
 
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
         #[allow(clippy::expect_used)]
@@ -2011,8 +2015,8 @@ impl PolicySet {
     /// Returns the policy that was unlinked.
     pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
-            return Err(PolicySetError::LinkNonexistentError(
-                policy_set_error_structs::LinkNonexistentError { policy_id },
+            return Err(PolicySetError::LinkNonexistent(
+                policy_set_errors::LinkNonexistentError { policy_id },
             ));
         };
         // If self.policies and self.ast disagree, authorization cannot be trusted.
@@ -2023,8 +2027,8 @@ impl PolicySet {
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
                 self.policies.insert(policy_id.clone(), policy);
-                Err(PolicySetError::UnlinkLinkNotLinkError(
-                    policy_set_error_structs::UnlinkLinkNotLinkError { policy_id },
+                Err(PolicySetError::UnlinkLinkNotLink(
+                    policy_set_errors::UnlinkLinkNotLinkError { policy_id },
                 ))
             }
             Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {

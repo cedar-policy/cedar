@@ -253,7 +253,7 @@ impl From<crate::AuthorizationError> for AuthorizationError {
     fn from(e: crate::AuthorizationError) -> Self {
         match e {
             crate::AuthorizationError::PolicyEvaluationError(e) => {
-                Self::new(e.id().clone(), e.into_inner())
+                Self::new(e.policy_id().clone(), e.into_inner())
             }
         }
     }

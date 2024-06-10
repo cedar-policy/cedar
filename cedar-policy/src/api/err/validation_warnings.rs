@@ -41,7 +41,7 @@ macro_rules! wrap_core_warning {
         pub struct $s(cedar_policy_validator::validation_warnings::$s);
 
         impl $s {
-            /// Access the `[PolicyId]` for the policy where this warning was found.
+            /// Access the [`PolicyId`] for the policy where this warning was found.
             pub fn policy_id(&self) -> &PolicyId {
                 PolicyId::ref_cast(&self.0.policy_id)
             }

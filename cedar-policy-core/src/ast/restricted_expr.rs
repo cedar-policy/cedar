@@ -64,7 +64,7 @@ impl RestrictedExpr {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: Expr) -> Result<Self, RestrictedExprError> {
+    pub fn new(expr: Expr) -> Result<Self, RestrictedExpressionError> {
         is_restricted(&expr)?;
         Ok(Self(expr))
     }
@@ -275,11 +275,11 @@ impl TryFrom<PartialValue> for RestrictedExpr {
             PartialValue::Value(v) => Ok(RestrictedExpr::from(v)),
             PartialValue::Residual(expr) => match RestrictedExpr::new(expr) {
                 Ok(e) => Ok(e),
-                Err(RestrictedExprError::InvalidRestrictedExpression { expr, .. }) => {
-                    Err(PartialValueToRestrictedExprError::NontrivialResidual {
-                        residual: Box::new(expr),
-                    })
-                }
+                Err(RestrictedExpressionError::InvalidRestrictedExpression(
+                    restricted_expr_errors::InvalidRestrictedExpressionError { expr, .. },
+                )) => Err(PartialValueToRestrictedExprError::NontrivialResidual {
+                    residual: Box::new(expr),
+                }),
             },
         }
     }
@@ -322,7 +322,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExprError> {
+    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExpressionError> {
         is_restricted(expr)?;
         Ok(Self(expr))
     }
@@ -452,54 +452,69 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 /// Helper function: does the given `Expr` qualify as a "restricted" expression.
 ///
 /// Returns `Ok(())` if yes, or a `RestrictedExpressionError` if no.
-fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
+fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
         ExprKind::Unknown(_) => Ok(()),
-        ExprKind::Var(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
+        ExprKind::Var(_) => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "variables".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::Slot(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::Slot(_) => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "template slots".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::If { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::If { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "if-then-else".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::And { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::And { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "&&".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::Or { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::Or { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "||".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::UnaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_smolstr(),
-            expr: expr.clone(),
-        }),
-        ExprKind::BinaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_smolstr(),
-            expr: expr.clone(),
-        }),
-        ExprKind::GetAttr { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::UnaryApp { op, .. } => {
+            Err(restricted_expr_errors::InvalidRestrictedExpressionError {
+                feature: op.to_smolstr(),
+                expr: expr.clone(),
+            }
+            .into())
+        }
+        ExprKind::BinaryApp { op, .. } => {
+            Err(restricted_expr_errors::InvalidRestrictedExpressionError {
+                feature: op.to_smolstr(),
+                expr: expr.clone(),
+            }
+            .into())
+        }
+        ExprKind::GetAttr { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "attribute accesses".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::HasAttr { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::HasAttr { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'has'".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::Like { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::Like { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'like'".into(),
             expr: expr.clone(),
-        }),
-        ExprKind::Is { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+        }
+        .into()),
+        ExprKind::Is { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'is'".into(),
             expr: expr.clone(),
-        }),
+        }
+        .into()),
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
         ExprKind::Set(exprs) => exprs.iter().try_for_each(is_restricted),
         ExprKind::Record(map) => map.values().try_for_each(is_restricted),
@@ -597,38 +612,55 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 
 /// Error when constructing a restricted expression from unrestricted
 /// expression
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum RestrictedExprError {
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
+pub enum RestrictedExpressionError {
     /// An expression was expected to be a "restricted" expression, but contained
-    /// a feature that is not allowed in restricted expressions. The `feature`
-    /// argument is a string description of the feature that is not allowed.
-    /// The `expr` argument is the expression that uses the disallowed feature.
-    /// Note that it is potentially a sub-expression of a larger expression.
-    #[error("not allowed to use {feature} in a restricted expression: `{expr}`")]
-    InvalidRestrictedExpression {
-        /// what disallowed feature appeared in the expression
-        feature: SmolStr,
-        /// the (sub-)expression that uses the disallowed feature
-        expr: Expr,
-    },
+    /// a feature that is not allowed in restricted expressions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidRestrictedExpression(#[from] restricted_expr_errors::InvalidRestrictedExpressionError),
 }
 
-// custom impl of `Diagnostic`: take location info from the embedded subexpression
-impl Diagnostic for RestrictedExprError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        match self {
-            Self::InvalidRestrictedExpression { expr, .. } => expr.source_loc().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            }),
-        }
+/// Error subtypes for [`RestrictedExprError`]
+pub mod restricted_expr_errors {
+    use super::Expr;
+    use miette::Diagnostic;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// An expression was expected to be a "restricted" expression, but contained
+    /// a feature that is not allowed in restricted expressions.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Clone, PartialEq, Eq, Error)]
+    #[error("not allowed to use {feature} in a restricted expression: `{expr}`")]
+    pub struct InvalidRestrictedExpressionError {
+        /// String description of what disallowed feature appeared in the expression
+        pub(crate) feature: SmolStr,
+        /// the (sub-)expression that uses the disallowed feature. This may be a
+        /// sub-expression of a larger expression.
+        pub(crate) expr: Expr,
     }
 
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        match self {
-            Self::InvalidRestrictedExpression { expr, .. } => expr
+    // custom impl of `Diagnostic`: take source location from the `expr` field
+    impl Diagnostic for InvalidRestrictedExpressionError {
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            self.expr.source_loc().map(|loc| {
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
+                    as Box<dyn Iterator<Item = _>>
+            })
+        }
+
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.expr
                 .source_loc()
-                .map(|loc| &loc.src as &dyn miette::SourceCode),
+                .map(|loc| &loc.src as &dyn miette::SourceCode)
         }
     }
 }
@@ -648,7 +680,7 @@ pub enum RestrictedExpressionParseError {
     /// restricted expression, for the reason indicated in the underlying error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExprError),
+    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
 }
 
 #[cfg(test)]

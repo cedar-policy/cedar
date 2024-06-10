@@ -4319,7 +4319,7 @@ pub mod test {
     fn assert_restricted_expression_error(e: Expr) {
         assert_matches!(
             BorrowedRestrictedExpr::new(&e),
-            Err(RestrictedExprError::InvalidRestrictedExpression { .. })
+            Err(RestrictedExpressionError::InvalidRestrictedExpression { .. })
         );
     }
 

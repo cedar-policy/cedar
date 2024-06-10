@@ -288,7 +288,9 @@ impl CedarTestImplementation for RustEngine {
                 .map(|e| {
                     // Error messages should only include the policy id to use the
                     // `ErrorComparisonMode::PolicyIds` mode.
-                    let policy_id = e.id();
+                    let policy_id = match e {
+                        cedar_policy::AuthorizationError::PolicyEvaluationError(e) => e.policy_id(),
+                    };
                     ffi::AuthorizationError::new_from_report(
                         policy_id.clone(),
                         miette!("{policy_id}"),
