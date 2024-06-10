@@ -1149,43 +1149,43 @@ mod tests {
 
         (
             r#"permit(principal, action == ?action, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot")
                 .exactly_one_underline("?action")
                 .build(),
         ),
         (
             r#"permit(principal, action in ?action, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot")
                 .exactly_one_underline("?action")
                 .build(),
         ),
         (
             r#"permit(principal, action == ?principal, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot")
                 .exactly_one_underline("?principal")
                 .build(),
         ),
         (
             r#"permit(principal, action in ?principal, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot")
                 .exactly_one_underline("?principal")
                 .build(),
         ),
         (
             r#"permit(principal, action == ?resource, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot")
                 .exactly_one_underline("?resource")
                 .build(),
         ),
         (
             r#"permit(principal, action in ?resource, resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot")
                 .exactly_one_underline("?resource")
                 .build(),
         ),
         (
             r#"permit(principal, action in [?bar], resource);"#,
-            ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot")
+            ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot")
                 .exactly_one_underline("?bar")
                 .build(),
         ),
@@ -1387,7 +1387,7 @@ mod tests {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids")
+                &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids")
                     .exactly_one_underline(r#"[Action::"view", Action::"edit"]"#)
                     .build()
             );
@@ -1401,7 +1401,7 @@ mod tests {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids")
+                &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids")
                     .exactly_one_underline(r#"[Action::"view"]"#)
                     .build()
             );
