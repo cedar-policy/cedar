@@ -20,10 +20,11 @@
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
-use cedar_policy_core::ast::{Expr, ExprKind, Literal, RestrictedExpr};
-use cedar_policy_core::evaluator::RestrictedEvaluator;
-use cedar_policy_core::extensions::{ipaddr, Extensions};
-use std::str::FromStr;
+use cedar_policy_core::ast::{Expr, ExprKind, Literal, Name};
+use cedar_policy_core::extensions::ipaddr;
+use itertools::Itertools;
+
+use super::eval_extension_constructor;
 
 /// Note on safety:
 /// This module depends on the Cedar parser only constructing AST with valid extension calls
@@ -32,8 +33,11 @@ use std::str::FromStr;
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_types(fname: &str, ipaddr_ty: &Type) -> Vec<types::Type> {
-    match fname {
+fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
         "ip" => vec![Type::primitive_string()],
         "isIpv4" | "isIpv6" | "isLoopback" | "isMulticast" => vec![ipaddr_ty.clone()],
         "isInRange" => vec![ipaddr_ty.clone(), ipaddr_ty.clone()],
@@ -43,8 +47,11 @@ fn get_argument_types(fname: &str, ipaddr_ty: &Type) -> Vec<types::Type> {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_return_type(fname: &str, ipaddr_ty: &Type) -> Type {
-    match fname {
+fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
         "ip" => ipaddr_ty.clone(),
         "isIpv4" | "isIpv6" | "isLoopback" | "isMulticast" | "isInRange" => {
             Type::primitive_boolean()
@@ -55,9 +62,17 @@ fn get_return_type(fname: &str, ipaddr_ty: &Type) -> Type {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_check(fname: &str) -> Option<ArgumentCheckFn> {
-    match fname {
-        "ip" => Some(Box::new(validate_ip_string)),
+fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
+        "ip" => {
+            let fname = fname.clone();
+            Some(Box::new(move |args| {
+                validate_ip_string(fname.clone(), args)
+            }))
+        }
         "isIpv4" | "isIpv6" | "isLoopback" | "isMulticast" | "isInRange" => None,
         _ => panic!("unexpected ipaddr extension function name: {fname}"),
     }
@@ -71,18 +86,16 @@ pub fn extension_schema() -> ExtensionSchema {
     let fun_tys: Vec<ExtensionFunctionType> = ipaddr_ext
         .funcs()
         .map(|f| {
-            let fname = f.name();
-            let fstring = fname.to_string();
-            let return_type = get_return_type(&fstring, &ipaddr_ty);
+            let return_type = get_return_type(f.name(), &ipaddr_ty);
             debug_assert!(f
                 .return_type()
                 .map(|ty| return_type.is_consistent_with(ty))
                 .unwrap_or_else(|| return_type == Type::Never));
             ExtensionFunctionType::new(
-                fname.clone(),
-                get_argument_types(&fstring, &ipaddr_ty),
+                f.name().clone(),
+                get_argument_types(f.name(), &ipaddr_ty),
                 return_type,
-                get_argument_check(&fstring),
+                get_argument_check(f.name()),
             )
         })
         .collect();
@@ -90,20 +103,14 @@ pub fn extension_schema() -> ExtensionSchema {
 }
 
 /// Extra validation step for the `ip` function.
-/// Note that `exprs` will have already been checked to contain the correct number of arguments.
-fn validate_ip_string(exprs: &[Expr]) -> Result<(), String> {
-    match exprs.first() {
-        Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
-            let exts = Extensions::all_available();
-            let evaluator = RestrictedEvaluator::new(&exts);
-
-            match RestrictedExpr::from_str(&format!("ip({arg})")) {
-                Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
-                    Ok(_) => Ok(()),
-                    Err(_) => Err(format!("Failed to parse as IP address: `{arg}`")),
-                },
-                Err(_) => Err(format!("Failed to parse as IP address: `{arg}`")),
-            }
+/// Note we already checked that `exprs` contains correct number of arguments,
+/// these arguments have the correct types, and that they are all literals.
+fn validate_ip_string(ip_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+    match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
+        Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
+            eval_extension_constructor(ip_constructor_name, s.clone())
+                .map(|_| ())
+                .map_err(|_| format!("Failed to parse as IP address: `{lit_arg}`"))
         }
         _ => Ok(()),
     }
