@@ -95,13 +95,8 @@ impl Path {
     }
 
     /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`)
-    pub fn is_in_cedar(&self) -> bool {
-        self.0.node.is_in_cedar()
-    }
-
-    /// Is this name exactly the cedar namespace?
-    pub fn is_cedar(&self) -> bool {
-        self.0.node.is_cedar()
+    pub fn is_reserved(&self) -> bool {
+        self.0.node.is_reserved()
     }
 }
 
@@ -136,23 +131,20 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
-    fn is_in_cedar(&self) -> bool {
+    /// Is this referring to a name _in__ the reserved namespace that starts
+    /// with `__cedar`
+    fn is_reserved(&self) -> bool {
         // `0` is the position of the most significant namespace
-        self.namespace
-            .first()
-            .map(|id| id.as_ref() == CEDAR_NAMESPACE)
-            .unwrap_or(false)
-    }
-
-    /// Is this name exactly the cedar namespace?
-    fn is_cedar(&self) -> bool {
-        self.namespace.is_empty() && self.basename.as_ref() == CEDAR_NAMESPACE
+        self.iter().next().unwrap().as_ref() == CEDAR_NAMESPACE
     }
 
     /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
     fn is_in_unqualified_or_cedar(&self) -> bool {
-        self.namespace.is_empty() || self.is_in_cedar()
+        match self.namespace.as_slice() {
+            [] => true,
+            [_] => self.is_reserved(),
+            _ => false,
+        }
     }
 }
 
@@ -352,36 +344,18 @@ mod test {
     #[test]
     fn in_unqual() {
         let p = Path::single("foo".parse().unwrap(), loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
         assert!(p.is_in_unqualified_or_cedar());
     }
 
     #[test]
     fn qual() {
         let p = Path::new("foo".parse().unwrap(), ["bar".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
         assert!(!p.is_in_unqualified_or_cedar());
     }
 
     #[test]
     fn in_cedar() {
         let p = Path::new("foo".parse().unwrap(), ["__cedar".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(p.is_in_cedar());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar2() {
-        let p = Path::new(
-            "foo".parse().unwrap(),
-            ["__cedar".parse().unwrap(), "bar".parse().unwrap()],
-            loc(),
-        );
-        assert!(!p.is_cedar());
-        assert!(p.is_in_cedar());
         assert!(p.is_in_unqualified_or_cedar());
     }
 
@@ -392,24 +366,18 @@ mod test {
             ["bar".parse().unwrap(), "__cedar".parse().unwrap()],
             loc(),
         );
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
         assert!(!p.is_in_unqualified_or_cedar());
     }
 
     #[test]
     fn is_cedar() {
         let p = Path::new("__cedar".parse().unwrap(), [], loc());
-        assert!(p.is_cedar());
-        assert!(!p.is_in_cedar());
         assert!(p.is_in_unqualified_or_cedar());
     }
 
     #[test]
     fn is_cedar2() {
         let p = Path::new("__cedar".parse().unwrap(), ["foo".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
         assert!(!p.is_in_unqualified_or_cedar());
     }
 

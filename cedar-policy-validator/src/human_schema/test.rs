@@ -1140,10 +1140,16 @@ mod parser_tests {
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
+    use cool_asserts::assert_matches;
 
     use crate::{
+        human_schema::{
+            err::{ToJsonSchemaError, ToJsonSchemaErrors},
+            parser::{parse_natural_schema_fragment, parse_schema},
+            to_json_schema::custom_schema_to_json_schema,
+        },
         types::{EntityLUB, Type},
-        SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
+        HumanSchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
     #[test]
@@ -1734,6 +1740,44 @@ mod translator_tests {
         "#,
         );
         assert!(schema.is_err());
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar::A {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"
+                entity __cedar;
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
     }
 }
 

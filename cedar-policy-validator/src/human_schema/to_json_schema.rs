@@ -141,7 +141,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_namespace(&self, n: Namespace) -> Result<NamespaceDefinition, ToJsonSchemaErrors> {
         // Ensure we aren't using a reserved namespace
         match n.name.as_ref() {
-            Some(name) if name.node.is_cedar() || name.node.is_in_cedar() => {
+            Some(name) if name.node.is_reserved() => {
                 Err(ToJsonSchemaError::UseReservedNamespace(name.loc.clone()))
             }
             _ => Ok(()),
