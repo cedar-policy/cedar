@@ -556,6 +556,14 @@ impl SchemaTypeVisitor {
                 Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
             }
             Some("Set") => {
+                match error_if_any_fields() {
+                    Err(_) => {}
+                    Ok(_) => {
+                        return Ok(SchemaType::TypeDef {
+                            type_name: "Set".parse().unwrap(),
+                        });
+                    }
+                }
                 error_if_fields(
                     &[Attributes, AdditionalAttributes, Name],
                     &[type_field_name!(Element)],
@@ -570,6 +578,14 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Record") => {
+                match error_if_any_fields() {
+                    Err(_) => {}
+                    Ok(_) => {
+                        return Ok(SchemaType::TypeDef {
+                            type_name: "Record".parse().unwrap(),
+                        });
+                    }
+                }
                 error_if_fields(
                     &[Element, Name],
                     &[
@@ -590,6 +606,14 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Entity") => {
+                match error_if_any_fields() {
+                    Err(_) => {}
+                    Ok(_) => {
+                        return Ok(SchemaType::TypeDef {
+                            type_name: "Entity".parse().unwrap(),
+                        });
+                    }
+                }
                 error_if_fields(
                     &[Element, Attributes, AdditionalAttributes],
                     &[type_field_name!(Name)],
@@ -611,6 +635,14 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Extension") => {
+                match error_if_any_fields() {
+                    Err(_) => {}
+                    Ok(_) => {
+                        return Ok(SchemaType::TypeDef {
+                            type_name: "Extension".parse().unwrap(),
+                        });
+                    }
+                }
                 error_if_fields(
                     &[Element, Attributes, AdditionalAttributes],
                     &[type_field_name!(Name)],
@@ -688,15 +720,7 @@ fn is_partial_schema_default(b: &bool) -> bool {
 // do this automatically, but it returns an empty slice for the variants names
 // of `SchemaTypeVariant`.
 // https://docs.rs/serde-aux/latest/serde_aux/serde_introspection/fn.serde_introspect.html
-pub(crate) static SCHEMA_TYPE_VARIANT_TAGS: &[&str] = &[
-    "String",
-    "Long",
-    "Boolean",
-    "Set",
-    "Record",
-    "Entity",
-    "Extension",
-];
+pub(crate) static PRIMITIVE_TYPES: &[&str] = &["String", "Long", "Boolean"];
 
 impl SchemaType {
     /// Is this `SchemaType` an extension type, or does it contain one
@@ -1069,7 +1093,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "missing field `name`")]
     fn schema_file_with_missing_field() {
         let src = serde_json::json!(
         {
