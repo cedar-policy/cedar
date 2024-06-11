@@ -372,6 +372,9 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
+    /// Returned when an entity type starts with `__cedar`
+    #[error("Entity type `{0}` uses reserved namespace that starts with `__cedar`")]
+    ReservedNamespace(ast::Name),
 }
 
 impl ToASTErrorKind {

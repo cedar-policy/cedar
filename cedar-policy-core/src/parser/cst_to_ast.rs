@@ -1829,7 +1829,7 @@ impl Node<Option<cst::Ref>> {
                 });
 
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
-                Ok(construct_refr(p, e, self.loc.clone()))
+                Ok(construct_refr(p, e, self.loc.clone())?)
             }
             r @ cst::Ref::Ref { .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
@@ -1939,9 +1939,13 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
         loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
+fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> Result<ast::EntityUID> {
     let eid = ast::Eid::new(n);
-    ast::EntityUID::from_components(p, eid, Some(loc))
+    if p.is_reserved() {
+        Err(ParseError::ToAST(ToASTError::new(ToASTErrorKind::ReservedNamespace(p), loc)).into())
+    } else {
+        Ok(ast::EntityUID::from_components(p, eid, Some(loc)))
+    }
 }
 fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).val(r)
@@ -2110,6 +2114,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
+    use ast::Name;
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4596,5 +4601,21 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        assert_matches!(parse_expr(r#"__cedar::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(n) if *n == "__cedar".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"__cedar::A::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(n) if *n == "__cedar::A".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(n) if *n == "__cedar::Action".parse::<Name>().unwrap())));
     }
 }

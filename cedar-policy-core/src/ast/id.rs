@@ -19,6 +19,8 @@ use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
+const RESERVED_ID: &str = "__cedar";
+
 /// Identifiers. Anything in `Id` should be a valid identifier, this means it
 /// does not contain, for instance, spaces or characters like '+'; and also is
 /// not one of the Cedar reserved identifiers (at time of writing,
@@ -49,6 +51,13 @@ impl Id {
     /// Get the underlying string
     pub fn into_smolstr(self) -> SmolStr {
         self.0
+    }
+
+    /// Return if the `Id` is reserved (i.e., `__cedar`)
+    /// Note that it does not test if the `Id` string is a reserved keyword
+    /// as the parser already ensures that it is not
+    pub fn is_reserved(&self) -> bool {
+        self.as_ref() == RESERVED_ID
     }
 }
 
