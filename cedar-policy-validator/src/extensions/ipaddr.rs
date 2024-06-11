@@ -35,7 +35,7 @@ use super::eval_extension_constructor;
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
     if !fname.is_unqualified() {
-        panic!("unexpected decimal extension function name: {fname}")
+        panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
         "ip" => vec![Type::primitive_string()],
@@ -49,7 +49,7 @@ fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
 #[allow(clippy::panic)]
 fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
     if !fname.is_unqualified() {
-        panic!("unexpected decimal extension function name: {fname}")
+        panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
         "ip" => ipaddr_ty.clone(),
@@ -64,7 +64,7 @@ fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
 #[allow(clippy::panic)]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
     if !fname.is_unqualified() {
-        panic!("unexpected decimal extension function name: {fname}")
+        panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
         "ip" => {
