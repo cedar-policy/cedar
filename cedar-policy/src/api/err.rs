@@ -24,11 +24,11 @@ pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
-pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::human_schema::{schema_warnings, SchemaWarning};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
+use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -730,6 +730,30 @@ impl From<ast::UnexpectedSlotError> for PolicySetError {
         Self::ExpectedStatic(policy_set_errors::ExpectedStatic::new())
     }
 }
+
+/// Represents one or more [`ParseError`]s encountered when parsing a policy or
+/// expression.
+/// By default, the `Diagnostic` and `Error` implementations will only print the
+/// first error. If you want to see all errors, use `.iter()` or `.into_iter()`.
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct ParseErrors(#[from] cedar_policy_core::parser::err::ParseErrors);
+
+impl ParseErrors {
+    /// Get every [`ParseError`] associated with this [`ParseErrors`] object.
+    /// The returned iterator is guaranteed to be nonempty.
+    pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
+        self.0.iter().map(ParseError::ref_cast)
+    }
+}
+
+/// Errors that can occur when parsing policies or expressions.
+#[derive(Debug, Diagnostic, Error, RefCast)]
+#[repr(transparent)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct ParseError(#[from] cedar_policy_core::parser::err::ParseError);
 
 /// Errors that can happen when getting the JSON representation of a policy
 #[derive(Debug, Diagnostic, Error)]

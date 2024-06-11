@@ -1613,7 +1613,9 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_str).map(EntityNamespace)
+        ast::Name::from_normalized_str(namespace_str)
+            .map(EntityNamespace)
+            .map_err(Into::into)
     }
 }
 
@@ -2777,7 +2779,8 @@ impl LosslessPolicy {
         match self {
             Self::Est(est) => Ok(est.clone()),
             Self::Text { text, slots } => {
-                let est = parser::parse_policy_or_template_to_est(text)?;
+                let est =
+                    parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?;
                 if slots.is_empty() {
                     Ok(est)
                 } else {
@@ -2907,7 +2910,9 @@ impl FromStr for Expression {
 
     /// create an Expression using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        ast::Expr::from_str(expression).map(Expression)
+        ast::Expr::from_str(expression)
+            .map(Expression)
+            .map_err(Into::into)
     }
 }
 

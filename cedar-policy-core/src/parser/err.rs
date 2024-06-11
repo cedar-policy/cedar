@@ -45,10 +45,6 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
 /// Errors that can occur when parsing Cedar policies or expressions.
-//
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
 #[derive(Clone, Debug, Diagnostic, Error, PartialEq, Eq)]
 pub enum ParseError {
     /// Error from the text -> CST parser
@@ -696,10 +692,6 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
 
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// template.
-//
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseErrors(NonEmpty<ParseError>);
 
