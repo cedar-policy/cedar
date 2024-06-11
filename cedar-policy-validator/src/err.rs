@@ -209,6 +209,10 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
+    /// The schema used reserved namespace that starts with `__cedar`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedNamespace(#[from] schema_errors::ReservedNamespaceError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -521,4 +525,13 @@ pub mod schema_errors {
             })
         }
     }
+
+    /// This error is thrown when there's a reference to reserved namespace
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Error, Debug, Diagnostic)]
+    #[error("Used reserved namespace `{0}`")]
+    pub struct ReservedNamespaceError(pub(crate) Name);
 }

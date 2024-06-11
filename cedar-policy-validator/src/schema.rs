@@ -2328,6 +2328,75 @@ mod test {
                     .build());
         });
     }
+
+    #[test]
+    fn reserved_namespace() {
+        let src: serde_json::Value = json!({
+            "__cedar": {
+                "commonTypes": { },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+
+        let src: serde_json::Value = json!({
+            "__cedar::A": {
+                "commonTypes": { },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar::A".parse().unwrap());
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "__cedar": {
+                        "type": "String",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+
+        // But this one is Ok?
+        let src: serde_json::Value = json!({
+            "A": {
+                "commonTypes": {
+                    "__cedar": {
+                        "type": "String",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Ok(_));
+
+        // We report `ReservedNamespaceError` instead of missing definitions
+        // because `__cedar` is not applicable like the human-readable schema
+        // format
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "A": {
+                        "type": "__cedar",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+    }
 }
 
 #[cfg(test)]

@@ -211,6 +211,11 @@ impl ValidatorNamespaceDef {
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorNamespaceDef> {
+        if let Some(n) = &namespace {
+            if n.is_reserved() {
+                return Err(ReservedNamespaceError(n.clone()).into());
+            }
+        }
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
         Self::check_action_behavior(&namespace_def, action_behavior)?;
@@ -249,10 +254,16 @@ impl ValidatorNamespaceDef {
                 )));
             }
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
+            if name.is_reserved() {
+                // We've ruled out the case where the namespace is reserved
+                // So it can only error in the empty namespace, where we only
+                // need to report the id
+                return Err(ReservedNamespaceError(Name::unqualified_name(id)).into());
+            }
             match type_defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(
-                        schema_ty.prefix_common_type_references_with_namespace(schema_namespace),
+                        schema_ty.prefix_common_type_references_with_namespace(schema_namespace)?,
                     );
                 }
                 Entry::Occupied(_) => {
@@ -276,19 +287,32 @@ impl ValidatorNamespaceDef {
         let mut entity_types = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
+            if name.is_reserved() {
+                // We've ruled out the case where the namespace is reserved
+                // So it can only error in the empty namespace, where we only
+                // need to report the id
+                return Err(ReservedNamespaceError(Name::unqualified_name(id)).into());
+            }
             match entity_types.entry(name) {
                 Entry::Vacant(ventry) => {
+                    let mut parents: HashSet<Name> = HashSet::new();
+                    for ty in entity_type.member_of_types {
+                        let ty = ty.prefix_namespace_if_unqualified(schema_namespace);
+                        if ty.is_reserved() {
+                            // We've ruled out the case where the namespace is reserved
+                            // So it can only error in the empty namespace or
+                            // when it's fully qualified
+                            return Err(ReservedNamespaceError(ty).into());
+                        }
+                        parents.insert(ty);
+                    }
                     ventry.insert(EntityTypeFragment {
                         attributes: Self::try_schema_type_into_validator_type(
                             schema_namespace,
                             entity_type.shape.into_inner(),
                             extensions,
                         )?,
-                        parents: entity_type
-                            .member_of_types
-                            .into_iter()
-                            .map(|ty| ty.prefix_namespace_if_unqualified(schema_namespace))
-                            .collect(),
+                        parents,
                     });
                 }
                 Entry::Occupied(_) => {
@@ -639,10 +663,14 @@ impl ValidatorNamespaceDef {
                 }
             }
             SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
-                Ok(Type::named_entity_reference(
-                    name.prefix_namespace_if_unqualified(default_namespace),
-                )
-                .into())
+                let name = name.prefix_namespace_if_unqualified(default_namespace);
+                if name.is_reserved() {
+                    // We've ruled out the case where the namespace is reserved
+                    // So it can only error in the empty namespace or when it
+                    // is fully-qualified
+                    return Err(ReservedNamespaceError(name).into());
+                }
+                Ok(Type::named_entity_reference(name).into())
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
                 let extension_type_name = Name::unqualified_name(name);
@@ -667,6 +695,12 @@ impl ValidatorNamespaceDef {
             SchemaType::TypeDef { type_name } => {
                 let defined_type_name =
                     type_name.prefix_namespace_if_unqualified(default_namespace);
+                if defined_type_name.is_reserved() {
+                    // We've ruled out the case where the namespace is reserved
+                    // So it can only error in the empty namespace or when it
+                    // is fully-qualified
+                    return Err(ReservedNamespaceError(defined_type_name).into());
+                }
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
                         UndeclaredCommonTypesError(HashSet::from([defined_type_name])).into(),

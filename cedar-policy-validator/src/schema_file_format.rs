@@ -336,32 +336,44 @@ impl SchemaType {
     pub(crate) fn prefix_common_type_references_with_namespace(
         self,
         ns: Option<&Name>,
-    ) -> SchemaType {
+    ) -> Result<SchemaType> {
         match self {
             Self::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes,
-            }) => Self::Type(SchemaTypeVariant::Record {
-                attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, TypeOfAttribute { ty, required })| {
-                        (
-                            attr,
-                            TypeOfAttribute {
-                                ty: ty.prefix_common_type_references_with_namespace(ns),
-                                required,
-                            },
-                        )
-                    },
-                )),
+            }) => Ok(Self::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(
+                    attributes
+                        .into_iter()
+                        .map(|(attr, TypeOfAttribute { ty, required })| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    ty: ty.prefix_common_type_references_with_namespace(ns)?,
+                                    required,
+                                },
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                ),
                 additional_attributes,
+            })),
+            Self::Type(SchemaTypeVariant::Set { element }) => {
+                Ok(Self::Type(SchemaTypeVariant::Set {
+                    element: Box::new(element.prefix_common_type_references_with_namespace(ns)?),
+                }))
+            }
+            Self::TypeDef { type_name } => Ok({
+                let type_name = type_name.prefix_namespace_if_unqualified(ns);
+                if type_name.is_reserved() {
+                    // We've ruled out the case where the namespace is reserved
+                    // So it can only error in the empty namespace or when it
+                    // is fully-qualified
+                    return Err(ReservedNamespaceError(type_name).into());
+                }
+                Self::TypeDef { type_name }
             }),
-            Self::Type(SchemaTypeVariant::Set { element }) => Self::Type(SchemaTypeVariant::Set {
-                element: Box::new(element.prefix_common_type_references_with_namespace(ns)),
-            }),
-            Self::TypeDef { type_name } => Self::TypeDef {
-                type_name: type_name.prefix_namespace_if_unqualified(ns),
-            },
-            _ => self,
+            _ => Ok(self),
         }
     }
 }

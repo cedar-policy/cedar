@@ -1144,12 +1144,11 @@ mod translator_tests {
 
     use crate::{
         human_schema::{
-            err::{ToJsonSchemaError, ToJsonSchemaErrors},
-            parser::{parse_natural_schema_fragment, parse_schema},
+            err::ToJsonSchemaError, parser::parse_schema,
             to_json_schema::custom_schema_to_json_schema,
         },
         types::{EntityLUB, Type},
-        HumanSchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
+        SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
     #[test]
@@ -1777,7 +1776,10 @@ mod translator_tests {
             .unwrap(),
         )
         .map(|_| ());
-        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
+
+        // The result is Ok here because we want to report the error later
+        // in the schema parsing pipeline
+        assert_matches!(schema, Ok(_));
     }
 }
 
