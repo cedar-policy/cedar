@@ -585,11 +585,9 @@ impl SchemaTypeVisitor {
                                 &[type_field_name!(Element)],
                             )?;
 
-                            // PANIC SAFETY: There are four fields allowed and the
-                            // previous function rules out three of them, ensuring
-                            // `element` exists
-                            #[allow(clippy::unwrap_used)]
                             Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                                // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them, ensuring `element` exists
+                                #[allow(clippy::unwrap_used)]
                                 element: Box::new(element.unwrap()?),
                             }))
                         }
@@ -630,9 +628,7 @@ impl SchemaTypeVisitor {
                                 &[Element, Attributes, AdditionalAttributes],
                                 &[type_field_name!(Name)],
                             )?;
-                            // PANIC SAFETY: There are four fields allowed and the
-                            // previous function rules out three of them, ensuring
-                            // `name` exists
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Entity {
@@ -656,9 +652,7 @@ impl SchemaTypeVisitor {
                                 &[type_field_name!(Name)],
                             )?;
 
-                            // PANIC SAFETY: There are four fields allowed and the
-                            // previous function rules out three of them, ensuring
-                            // `name` exists
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Extension {
