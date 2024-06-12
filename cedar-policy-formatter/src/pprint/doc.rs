@@ -68,10 +68,10 @@ impl Doc for Node<Option<VariableDef>> {
                     }
                     None => get_comment_after_end(vd.variable.loc.span, &mut context.tokens)?,
                 };
-                get_leading_comment_doc_from_str(&start_comment.leading_comment).append(
+                get_leading_comment_doc_from_str(start_comment.leading_comment()).append(
                     var_doc
                         .append(get_trailing_comment_doc_from_str(
-                            &start_comment.trailing_comment,
+                            start_comment.trailing_comment(),
                             RcDoc::nil(),
                         ))
                         .append(is_doc)
@@ -105,17 +105,17 @@ impl Doc for Node<Option<Cond>> {
                 let expr_leading_comment =
                     get_leading_comment_at_start(expr.loc.span, &mut context.tokens)?;
                 let expr_doc = expr.to_doc(context)?;
-                get_leading_comment_doc_from_str(&cond_comment.leading_comment).append(
+                get_leading_comment_doc_from_str(cond_comment.leading_comment()).append(
                     cond_doc
                         .append(get_trailing_comment_doc_from_str(
-                            &cond_comment.trailing_comment,
+                            cond_comment.trailing_comment(),
                             RcDoc::line(),
                         ))
                         .append(
-                            get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
+                            get_leading_comment_doc_from_str(lb_comment.leading_comment()).append(
                                 RcDoc::text("{").append(
                                     get_trailing_comment_doc_from_str(
-                                        &lb_comment.trailing_comment,
+                                        lb_comment.trailing_comment(),
                                         RcDoc::line(),
                                     )
                                     .append(
@@ -132,17 +132,17 @@ impl Doc for Node<Option<Cond>> {
                         .group(),
                 )
             }
-            None => get_leading_comment_doc_from_str(&cond_comment.leading_comment).append(
+            None => get_leading_comment_doc_from_str(cond_comment.leading_comment()).append(
                 cond_doc
                     .append(get_trailing_comment_doc_from_str(
-                        &cond_comment.trailing_comment,
+                        cond_comment.trailing_comment(),
                         RcDoc::line(),
                     ))
                     .append(
-                        get_leading_comment_doc_from_str(&lb_comment.leading_comment).append(
+                        get_leading_comment_doc_from_str(lb_comment.leading_comment()).append(
                             RcDoc::text("{")
                                 .append(get_trailing_comment_doc_from_str(
-                                    &lb_comment.trailing_comment,
+                                    lb_comment.trailing_comment(),
                                     RcDoc::line(),
                                 ))
                                 .append(rb_doc)
