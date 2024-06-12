@@ -499,19 +499,17 @@ impl<'de> Visitor<'de> for SchemaTypeVisitor {
     }
 }
 
-lazy_static::lazy_static! {
-    // PANIC SAFETY `Set` is a valid `Name`
-    #[allow(clippy::expect_used)]
-    static ref SET_NAME : Name = Name::parse_unqualified_name("Set").expect("valid identifier");
-    // PANIC SAFETY `Record` is a valid `Name`
-    #[allow(clippy::expect_used)]
-    static ref RECORD_NAME : Name = Name::parse_unqualified_name("Record").expect("valid identifier");
-    // PANIC SAFETY `Entity` is a valid `Name`
-    #[allow(clippy::expect_used)]
-    static ref ENTITY_NAME : Name = Name::parse_unqualified_name("Entity").expect("valid identifier");
-    // PANIC SAFETY `Extension` is a valid `Name`
-    #[allow(clippy::expect_used)]
-    static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("Extension").expect("valid identifier");
+// PANIC SAFETY `Set`, `Record`, `Entity`, and `Extension` are valid `Name`s
+#[allow(clippy::expect_used)]
+pub(crate) mod static_names {
+    use cedar_policy_core::ast::Name;
+
+    lazy_static::lazy_static! {
+        pub(crate) static ref SET_NAME : Name = Name::parse_unqualified_name("Set").expect("valid identifier");
+        pub(crate) static ref RECORD_NAME : Name = Name::parse_unqualified_name("Record").expect("valid identifier");
+        pub(crate) static ref ENTITY_NAME : Name = Name::parse_unqualified_name("Entity").expect("valid identifier");
+        pub(crate) static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("Extension").expect("valid identifier");
+    }
 }
 
 impl SchemaTypeVisitor {
@@ -529,6 +527,7 @@ impl SchemaTypeVisitor {
     where
         M: MapAccess<'de>,
     {
+        use static_names::*;
         use TypeFields::*;
         let mut present_fields = [
             (Type, type_name.is_some()),
