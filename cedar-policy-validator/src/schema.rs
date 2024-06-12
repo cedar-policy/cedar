@@ -2328,6 +2328,219 @@ mod test {
                     .build());
         });
     }
+
+    #[test]
+    fn test_common_type_name_conflicts() {
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Record": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Record"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Ok(_));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Extension": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Extension"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Ok(_));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Entity": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Entity"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Ok(_));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Set": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Set"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Ok(_));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Long": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Long"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::CommonTypeNameConflict(CommonTypeNameConflictError(n))) if n == "Long".parse().unwrap());
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Boolean": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Boolean"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::CommonTypeNameConflict(CommonTypeNameConflictError(n))) if n == "Boolean".parse().unwrap());
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "String": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "String"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::CommonTypeNameConflict(CommonTypeNameConflictError(n))) if n == "String".parse().unwrap());
+    }
 }
 
 #[cfg(test)]
