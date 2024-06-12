@@ -777,7 +777,15 @@ impl ExprOrSpecial<'_> {
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
             Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
-            Self::Name { name, .. } => Ok(name),
+            Self::Name { ref name, .. } => {
+                if name.is_reserved() {
+                    Err(self
+                        .to_ast_err(ToASTErrorKind::ReservedNamespace(name.clone()))
+                        .into())
+                } else {
+                    Ok(name.clone())
+                }
+            }
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
@@ -4617,5 +4625,9 @@ mod tests {
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(n) if *n == "__cedar::Action".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"principal is __cedar::A"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(n) if *n == "__cedar::A".parse::<Name>().unwrap())));
     }
 }
