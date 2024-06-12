@@ -529,7 +529,8 @@ impl SchemaTypeVisitor {
     {
         use static_names::*;
         use TypeFields::*;
-        let mut present_fields = [
+        // Fields that remain to be parsed
+        let mut remaining_fields = [
             (Type, type_name.is_some()),
             (Element, element.is_some()),
             (Attributes, attributes.is_some()),
@@ -544,14 +545,14 @@ impl SchemaTypeVisitor {
         match type_name.transpose()?.as_ref() {
             Some(s) => {
                 // We've concluded that type exists
-                present_fields.remove(&Type);
+                remaining_fields.remove(&Type);
                 // Used to generate the appropriate serde error if a field is present
                 // when it is not expected.
                 let error_if_fields = |fs: &[TypeFields],
                                        expected: &'static [&'static str]|
                  -> std::result::Result<(), M::Error> {
                     for f in fs {
-                        if present_fields.contains(f) {
+                        if remaining_fields.contains(f) {
                             return Err(serde::de::Error::unknown_field(f.as_str(), expected));
                         }
                     }
@@ -574,7 +575,7 @@ impl SchemaTypeVisitor {
                         Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
                     }
                     "Set" => {
-                        if present_fields.is_empty() {
+                        if remaining_fields.is_empty() {
                             Ok(SchemaType::TypeDef {
                                 type_name: SET_NAME.clone(),
                             })
@@ -592,7 +593,7 @@ impl SchemaTypeVisitor {
                         }
                     }
                     "Record" => {
-                        if present_fields.is_empty() {
+                        if remaining_fields.is_empty() {
                             Ok(SchemaType::TypeDef {
                                 type_name: RECORD_NAME.clone(),
                             })
@@ -618,7 +619,7 @@ impl SchemaTypeVisitor {
                         }
                     }
                     "Entity" => {
-                        if present_fields.is_empty() {
+                        if remaining_fields.is_empty() {
                             Ok(SchemaType::TypeDef {
                                 type_name: ENTITY_NAME.clone(),
                             })
@@ -641,7 +642,7 @@ impl SchemaTypeVisitor {
                         }
                     }
                     "Extension" => {
-                        if present_fields.is_empty() {
+                        if remaining_fields.is_empty() {
                             Ok(SchemaType::TypeDef {
                                 type_name: EXTENSION_NAME.clone(),
                             })
