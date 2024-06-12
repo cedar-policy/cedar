@@ -29,13 +29,13 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
 use miette::miette;
 use serde::{Deserialize, Serialize};
-use smol_str::ToSmolStr;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 /// Return type for `CedarTestImplementation` methods
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult<T> {
     /// The request succeeded
     Success(T),
@@ -67,11 +67,13 @@ impl<T> TestResult<T> {
 
 /// Simple wrapper around u128 to remind ourselves that timing info is in microseconds.
 #[derive(Debug, Deserialize)]
+#[serde(transparent)]
 pub struct Micros(pub u128);
 
 /// Version of `Response` used for testing. Includes a
 /// `ffi::Response` and a map with timing information.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestResponse {
     /// Actual response
     pub response: ffi::Response,
@@ -82,6 +84,7 @@ pub struct TestResponse {
 
 /// Version of `ValidationResult` used for testing.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestValidationResult {
     /// Validation errors
     pub errors: Vec<String>,
@@ -93,14 +96,11 @@ pub struct TestValidationResult {
 pub mod partial {
     use super::*;
     #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
     pub struct FlatPartialResponse {
-        #[serde(rename = "knownPermits")]
         pub known_permits: HashSet<String>,
-        #[serde(rename = "knownForbids")]
         pub known_forbids: HashSet<String>,
-        #[serde(rename = "determiningUnderApprox")]
         pub determining_under_approx: HashSet<String>,
-        #[serde(rename = "determiningOverApprox")]
         pub determining_over_approx: HashSet<String>,
         pub decision: Decision,
     }
@@ -288,9 +288,11 @@ impl CedarTestImplementation for RustEngine {
                 .map(|e| {
                     // Error messages should only include the policy id to use the
                     // `ErrorComparisonMode::PolicyIds` mode.
-                    let policy_id = e.id();
+                    let policy_id = match e {
+                        cedar_policy::AuthorizationError::PolicyEvaluationError(e) => e.policy_id(),
+                    };
                     ffi::AuthorizationError::new_from_report(
-                        policy_id.to_smolstr(),
+                        policy_id.clone(),
                         miette!("{policy_id}"),
                     )
                 })

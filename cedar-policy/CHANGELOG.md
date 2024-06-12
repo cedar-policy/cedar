@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
+- JSON format Cedar policies will now fail to parse if the action scope
+  constraint contains a non-action entity type, matching the behavior for
+  human-readable Cedar policies. (#943, resolving #925)
 
 ## [3.2.1] - 2024-05-31
 

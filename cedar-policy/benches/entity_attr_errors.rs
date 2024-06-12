@@ -35,7 +35,6 @@ fn choose<'a>(policies: &'a [PolicySet], rng: &'a mut oorandom::Rand32) -> &'a P
 pub fn large_context_record(c: &mut Criterion) {
     let mut rng = oorandom::Rand32::new(4); // chosen by fair dice role
     let large_attr = (1..=LARGE_SIZE)
-        .into_iter()
         .map(|i| (format!("a{i}"), RestrictedExpression::new_bool(true)))
         .collect::<HashMap<_, _>>();
     let large_entity =
@@ -65,7 +64,7 @@ pub fn large_context_record(c: &mut Criterion) {
             let policy = choose(&policies, &mut rng);
             auth.is_authorized(
                 black_box(&req),
-                black_box(&policy),
+                black_box(policy),
                 black_box(&large_entities),
             )
         })
@@ -76,7 +75,7 @@ pub fn large_context_record(c: &mut Criterion) {
             let policy = choose(&policies, &mut rng);
             auth.is_authorized(
                 black_box(&req),
-                black_box(&policy),
+                black_box(policy),
                 black_box(&small_entities),
             )
         })

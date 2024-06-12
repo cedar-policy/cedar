@@ -36,10 +36,7 @@ use super::{
         ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
         QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
     },
-    err::{
-        SchemaWarning, ShadowsBuiltinWarning, ShadowsEntityWarning, ToJsonSchemaError,
-        ToJsonSchemaErrors,
-    },
+    err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
 /// Convert a custom schema AST into the JSON representation
@@ -607,7 +604,7 @@ fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = Schem
     for (common_name, common_src_node) in n.common_types.iter() {
         // Check if it shadows a entity name in the same namespace
         if let Some(entity_src_node) = n.entities.get(common_name) {
-            let warning = ShadowsEntityWarning {
+            let warning = schema_warnings::ShadowsEntityWarning {
                 name: common_name.to_smolstr(),
                 entity_loc: entity_src_node.loc.clone(),
                 common_loc: common_src_node.loc.clone(),
@@ -635,7 +632,7 @@ fn extract_name<N: Clone>(n: Node<N>) -> (N, Node<()>) {
 fn shadows_builtin((name, node): (&Id, &Node<()>)) -> Option<SchemaWarning> {
     if EXTENSIONS.contains(&name.as_ref()) || BUILTIN_TYPES.contains(&name.as_ref()) {
         Some(
-            ShadowsBuiltinWarning {
+            schema_warnings::ShadowsBuiltinWarning {
                 name: name.to_smolstr(),
                 loc: node.loc.clone(),
             }

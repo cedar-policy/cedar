@@ -34,10 +34,9 @@ use super::test_utils::{
 };
 use crate::{
     diagnostics::ValidationError,
-    schema_error::SchemaError,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    SchemaFragment, ValidationWarning, ValidatorSchema,
+    SchemaError, SchemaFragment, ValidationWarning, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {

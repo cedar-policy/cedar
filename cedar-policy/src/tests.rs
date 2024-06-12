@@ -569,7 +569,7 @@ mod policy_set_tests {
 
         assert_matches!(
             r,
-            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) =>{
+            Err(PolicySetError::Linking(LinkingError::PolicyIdConflict { id })) =>{
                 assert_eq!(id, ast::PolicyID::from_string("id"));
             }
         );
@@ -613,7 +613,7 @@ mod policy_set_tests {
             )
             .expect_err("Should have failed due to conflict with existing link id");
         match err {
-            PolicySetError::LinkingError(_) => (),
+            PolicySetError::Linking(_) => (),
             e => panic!("Wrong error: {e}"),
         }
 
@@ -726,7 +726,7 @@ mod policy_set_tests {
 
         assert_matches!(
             pset.remove_static(PolicyId::from_str("t").unwrap()),
-            Err(PolicySetError::PolicyNonexistentError(_))
+            Err(PolicySetError::PolicyNonexistent(_))
         );
 
         let result = pset.unlink(linked_policy_id.clone());
@@ -734,7 +734,7 @@ mod policy_set_tests {
 
         assert_matches!(
             pset.remove_static(PolicyId::from_str("t").unwrap()),
-            Err(PolicySetError::PolicyNonexistentError(_))
+            Err(PolicySetError::PolicyNonexistent(_))
         );
 
         //Deny
@@ -757,7 +757,7 @@ mod policy_set_tests {
         //Can't remove template that is still linked
         assert_matches!(
             pset.remove_template(PolicyId::from_str("t").unwrap()),
-            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //Unlink first, then remove
@@ -800,11 +800,11 @@ mod policy_set_tests {
         );
         assert_matches!(
             pset.remove_static(PolicyId::from_str("policy3").unwrap()),
-            Err(PolicySetError::PolicyNonexistentError(_))
+            Err(PolicySetError::PolicyNonexistent(_))
         );
         assert_matches!(
             pset.remove_template(PolicyId::from_str("policy3").unwrap()),
-            Err(PolicySetError::TemplateNonexistentError(_))
+            Err(PolicySetError::TemplateNonexistent(_))
         );
     }
 
@@ -990,7 +990,7 @@ mod policy_set_tests {
         assert_eq!(response.decision(), Decision::Deny);
 
         let result = pset.unlink(linked_policy_id);
-        assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
+        assert_matches!(result, Err(PolicySetError::LinkNonexistent(_)));
     }
 
     #[test]
@@ -1029,7 +1029,7 @@ mod policy_set_tests {
             0
         );
         let result = pset.unlink(linked_policy_id.clone());
-        assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
+        assert_matches!(result, Err(PolicySetError::LinkNonexistent(_)));
 
         pset.link(
             PolicyId::from_str("template").unwrap(),
@@ -1094,7 +1094,7 @@ mod policy_set_tests {
         //Can't remove template
         assert_matches!(
             pset.remove_template(PolicyId::from_str("template").unwrap()),
-            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //Can't add policy named template
@@ -1134,13 +1134,13 @@ mod policy_set_tests {
         //Cannot remove "linked"
         assert_matches!(
             pset.remove_static(PolicyId::from_str("linked").unwrap()),
-            Err(PolicySetError::PolicyNonexistentError(_))
+            Err(PolicySetError::PolicyNonexistent(_))
         );
 
         //Cannot remove "template"
         assert_matches!(
             pset.remove_static(PolicyId::from_str("template").unwrap()),
-            Err(PolicySetError::PolicyNonexistentError(_))
+            Err(PolicySetError::PolicyNonexistent(_))
         );
 
         //template count 2
@@ -1170,7 +1170,7 @@ mod policy_set_tests {
         //can't remove template1
         assert_matches!(
             pset.remove_template(PolicyId::from_str("template").unwrap()),
-            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //unlink other policy, template count 0
@@ -1194,7 +1194,7 @@ mod policy_set_tests {
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .err()
                 .unwrap(),
-            PolicySetError::TemplateNonexistentError(_)
+            PolicySetError::TemplateNonexistent(_)
         );
     }
 
@@ -1334,7 +1334,7 @@ mod policy_set_tests {
                 PolicyId::from_str("policy3").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::LinkingError(
+            Err(PolicySetError::Linking(
                 LinkingError::PolicyIdConflict { .. }
             ))
         );
@@ -1346,7 +1346,7 @@ mod policy_set_tests {
                 PolicyId::from_str("policy0").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::LinkingError(
+            Err(PolicySetError::Linking(
                 LinkingError::PolicyIdConflict { .. }
             ))
         );
@@ -1364,7 +1364,7 @@ mod policy_set_tests {
                 PolicyId::from_str("policy1").unwrap(),
                 env,
             ),
-            Err(PolicySetError::LinkingError(
+            Err(PolicySetError::Linking(
                 LinkingError::PolicyIdConflict { .. }
             ))
         );
@@ -1475,7 +1475,7 @@ mod schema_tests {
                 }
             }}"#
             )),
-            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
+            Err(crate::SchemaError::JsonDeserialization(_))
         );
     }
 }
@@ -2912,7 +2912,7 @@ mod schema_based_parsing_tests {
         let src = "{ , .. }";
         assert_matches!(
             Schema::from_str(src),
-            Err(crate::schema_error::SchemaError::JsonDeserialization(_))
+            Err(crate::SchemaError::JsonDeserialization(_))
         );
     }
 
@@ -3762,7 +3762,7 @@ mod issue_779 {
     #[test]
     fn issue_779() {
         let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
-        let human = r#"namespace Foo { entity User; action View; invalid }"#;
+        let human = r"namespace Foo { entity User; action View; invalid }";
 
         assert_matches!(Schema::from_json_str(human), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
@@ -3922,10 +3922,7 @@ mod issue_606 {
         let template = Template::from_json(Some(tid), est_json);
         assert!(matches!(
             template,
-            Err(FromJsonError::SlotsInConditionClause {
-                slot: _,
-                clausetype: "when"
-            })
+            Err(FromJsonError::SlotsInConditionClause(_))
         ));
     }
 }
@@ -4559,7 +4556,7 @@ mod policy_set_est_tests {
         let template1 = PolicyId::new("non_existent").into();
         assert_matches!(
             err,
-            PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+            PolicySetError::Linking(ast::LinkingError::NoSuchTemplate { id }) if id == template1
         );
     }
 
@@ -4634,7 +4631,7 @@ mod policy_set_est_tests {
         let just_principal = vec![SlotId::principal().into()];
         assert_matches!(
             err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
+            PolicySetError::Linking(ast::LinkingError::ArityError {
                 unbound_values,
                 extra_values
             }) if extra_values.is_empty() && unbound_values == just_principal
@@ -4715,7 +4712,7 @@ mod policy_set_est_tests {
         let just_resource = vec![SlotId::resource().into()];
         assert_matches!(
             err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
+            PolicySetError::Linking(ast::LinkingError::ArityError {
                 unbound_values,
                 extra_values
             }) if unbound_values.is_empty() && extra_values == just_resource

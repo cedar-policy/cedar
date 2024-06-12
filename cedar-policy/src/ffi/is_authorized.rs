@@ -17,17 +17,15 @@
 //! This module contains the `is_authorized` entry points that other language
 //! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
+use super::utils::{DetailedError, JsonValueWithNoDuplicateKeys, PolicySet, Schema, WithWarnings};
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     Request, SlotId,
 };
-use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
 use miette::{miette, Diagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, MapPreventDuplicates};
-use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
@@ -154,7 +152,7 @@ pub struct Response {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostics {
-    /// `PolicyId`s of the policies that contributed to the decision.
+    /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
     #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
     reason: HashSet<PolicyId>,
@@ -225,7 +223,8 @@ impl Diagnostics {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
-    pub policy_id: SmolStr,
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+    pub policy_id: PolicyId,
     /// Error (or warning).
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
@@ -235,14 +234,14 @@ pub struct AuthorizationError {
 impl AuthorizationError {
     /// Create an `AuthorizationError` from a policy ID and any `miette` error
     pub fn new(
-        policy_id: impl Into<SmolStr>,
+        policy_id: impl Into<PolicyId>,
         error: impl miette::Diagnostic + Send + Sync + 'static,
     ) -> Self {
         Self::new_from_report(policy_id, miette::Report::new(error))
     }
 
     /// Create an `AuthorizationError` from a policy ID and a `miette::Report`
-    pub fn new_from_report(policy_id: impl Into<SmolStr>, report: miette::Report) -> Self {
+    pub fn new_from_report(policy_id: impl Into<PolicyId>, report: miette::Report) -> Self {
         Self {
             policy_id: policy_id.into(),
             error: report.into(),
@@ -254,7 +253,7 @@ impl From<crate::AuthorizationError> for AuthorizationError {
     fn from(e: crate::AuthorizationError) -> Self {
         match e {
             crate::AuthorizationError::PolicyEvaluationError(e) => {
-                Self::new(e.id().to_smolstr(), e.into_inner())
+                Self::new(e.policy_id().clone(), e.into_inner())
             }
         }
     }
@@ -280,7 +279,7 @@ pub struct ResidualResponse {
     errored: HashSet<PolicyId>,
     may_be_determining: HashSet<PolicyId>,
     must_be_determining: HashSet<PolicyId>,
-    residuals: HashMap<PolicyId, serde_json::Value>,
+    residuals: HashMap<PolicyId, JsonValueWithNoDuplicateKeys>,
     nontrivial_residuals: HashSet<PolicyId>,
 }
 
@@ -312,22 +311,22 @@ impl ResidualResponse {
     }
 
     /// (Borrowed) Iterator over the set of residual policies
-    pub fn residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+    pub fn residuals(&self) -> impl Iterator<Item = &JsonValueWithNoDuplicateKeys> {
         self.residuals.values()
     }
 
     /// (Owned) Iterator over the set of residual policies
-    pub fn into_residuals(self) -> impl Iterator<Item = serde_json::Value> {
+    pub fn into_residuals(self) -> impl Iterator<Item = JsonValueWithNoDuplicateKeys> {
         self.residuals.into_values()
     }
 
-    /// Get the residual policy for a specified [`PolicyId`] if it exists
-    pub fn residual(&self, p: &PolicyId) -> Option<&serde_json::Value> {
+    /// Get the residual policy for a specified id if it exists
+    pub fn residual(&self, p: &PolicyId) -> Option<&JsonValueWithNoDuplicateKeys> {
         self.residuals.get(p)
     }
 
     /// (Borrowed) Iterator over the set of non-trivial residual policies
-    pub fn nontrivial_residuals(&self) -> impl Iterator<Item = &serde_json::Value> {
+    pub fn nontrivial_residuals(&self) -> impl Iterator<Item = &JsonValueWithNoDuplicateKeys> {
         self.residuals.iter().filter_map(|(id, policy)| {
             if self.nontrivial_residuals.contains(id) {
                 Some(policy)
@@ -369,7 +368,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
                 .collect(),
             residuals: partial_response
                 .all_residuals()
-                .map(|e| e.to_json().map(|json| (e.id().clone(), json)))
+                .map(|e| e.to_json().map(|json| (e.id().clone(), json.into())))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -467,7 +466,7 @@ pub struct AuthorizationCall {
     /// parsing of `context`, and not for request validation.
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
-    enable_request_validation: bool,
+    validate_request: bool,
     /// The slice containing entities and policies
     slice: RecvdSlice,
 }
@@ -556,7 +555,7 @@ impl AuthorizationCall {
             action,
             resource,
             context,
-            if self.enable_request_validation {
+            if self.validate_request {
                 schema.as_ref()
             } else {
                 None
@@ -625,7 +624,7 @@ impl AuthorizationCall {
             b = b.resource(resource);
         }
         b = b.context(context);
-        let request = if self.enable_request_validation {
+        let request = if self.validate_request {
             match schema.as_ref() {
                 Some(schema_ref) => match b.schema(schema_ref).build() {
                     Ok(req) => Some(req),
@@ -1857,7 +1856,7 @@ mod test {
             "schema": {
                 "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
             },
-            "enableRequestValidation": false,
+            "validateRequest": false,
         });
 
         assert_is_authorized_json(good_call);

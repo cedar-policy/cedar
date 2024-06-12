@@ -35,6 +35,8 @@ pub use node::Node;
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
 pub mod unescape;
+/// Utility functions
+pub mod util;
 
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -161,11 +163,11 @@ pub fn parse_policy_to_est_and_ast(
 
 /// Parse a policy or template (either one works) to its EST representation
 pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::ParseErrors> {
-    let cst = text_to_cst::parse_policy(text)?;
-    // PANIC SAFETY Shouldn't be `none` since `parse_policy()` didn't return `Err`
-    #[allow(clippy::expect_used)]
-    let cst_node = cst.node.expect("missing policy or template node");
-    cst_node.try_into()
+    // We parse to EST and AST even though we only want the EST because some
+    // checks are applied by the CST-to-AST conversion and not CST-to-EST, and
+    // we do not want to return any EST if the policy text would not parse
+    // normally.
+    parse_policy_template_to_est_and_ast(None, text).map(|(est, _ast)| est)
 }
 
 /// parse an Expr
@@ -173,16 +175,8 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 /// Private to this crate. Users outside Core should use `Expr`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_expr(ptext)?;
-    let Some(ast) = cst.to_expr(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_expr()
 }
 
 /// parse a RestrictedExpr
@@ -201,16 +195,8 @@ pub(crate) fn parse_restrictedexpr(
 /// Private to this crate. Users outside Core should use `EntityUID`'s `FromStr`
 /// impl or its constructors
 pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_ref(euid)?;
-    let Some(ast) = cst.to_ref(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_ref()
 }
 
 /// parse a Name
@@ -218,16 +204,8 @@ pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors>
 /// Private to this crate. Users outside Core should use `Name`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_name(name)?;
-    let Some(ast) = cst.to_name(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_name()
 }
 
 /// parse a string into an ast::Literal (does not support expressions)
@@ -235,18 +213,13 @@ pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
 /// Private to this crate. Users outside Core should use `Literal`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParseError> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_primary(val)?;
-    let Some(ast) = cst.to_expr(&mut errs) else {
-        return Err(err::LiteralParseError::Parse(errs.into()));
-    };
-    if errs.is_empty() {
-        match ast.expr_kind() {
+    match cst.to_expr() {
+        Ok(ast) => match ast.expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v.clone()),
             _ => Err(err::LiteralParseError::InvalidLiteral(ast)),
-        }
-    } else {
-        Err(err::LiteralParseError::Parse(errs.into()))
+        },
+        Err(errs) => Err(err::LiteralParseError::Parse(errs)),
     }
 }
 
@@ -261,17 +234,9 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParse
 /// It does not return a string suitable for a pattern. Use the
 /// full expression parser for those.
 pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
-    let mut errs = vec![];
     // we need to add quotes for this to be a valid string literal
     let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
-    let Some(ast) = cst.to_string_literal(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_string_literal()
 }
 
 /// parse an identifier
@@ -279,16 +244,8 @@ pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
 /// Private to this crate. Users outside Core should use `Id`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_ident(id)?;
-    let Some(ast) = cst.to_valid_ident(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_valid_ident()
 }
 
 /// parse an `AnyId`
@@ -296,16 +253,8 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
 /// Private to this crate. Users outside Core should use `AnyId`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
-    let mut errs = vec![];
     let cst = text_to_cst::parse_ident(id)?;
-    let Some(ast) = cst.to_any_ident(&mut errs) else {
-        return Err(errs.into());
-    };
-    if errs.is_empty() {
-        Ok(ast)
-    } else {
-        Err(errs.into())
-    }
+    cst.to_any_ident()
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)
@@ -426,11 +375,12 @@ mod test {
 
 #[cfg(test)]
 mod eval_tests {
-    use super::err::ToASTErrorKind;
+    use test_utils::{expect_n_errors, expect_some_error_matches};
+
     use super::*;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
-    use crate::parser::err::ParseError;
+    use crate::test_utils::ExpectedErrorMessageBuilder;
 
     use std::sync::Arc;
 
@@ -438,22 +388,30 @@ mod eval_tests {
     fn entity_literals1() {
         let src = r#"Test::{ test : "Test" }"#;
         let errs = parse_euid(src).unwrap_err();
-        assert_eq!(errs.len(), 1);
-        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
-        assert!(errs
-            .iter()
-            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
+                .help("entity literals should have a form like `Namespace::User::\"alice\"`")
+                .exactly_one_underline("Test::{ test : \"Test\" }")
+                .build(),
+        );
     }
 
     #[test]
     fn entity_literals2() {
         let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
         let errs = parse_policy(None, src).unwrap_err();
-        assert_eq!(errs.len(), 1);
-        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
-        assert!(errs
-            .iter()
-            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
+                .help("entity literals should have a form like `Namespace::User::\"alice\"`")
+                .exactly_one_underline("Test::{ test : \"Test\" }")
+                .build(),
+        );
     }
 
     #[test]
@@ -705,7 +663,7 @@ mod parse_tests {
             permit(principal, action, resource) when { principal.name.like == "3" };
             "#;
         let p = parse_policyset_to_ests_and_pset(src);
-        assert_matches!(p, Err(e) => expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: `like`").exactly_one_underline("like").build()));
+        assert_matches!(p, Err(e) => expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this identifier is reserved and cannot be used: like").exactly_one_underline("like").build()));
     }
 
     #[test]

@@ -18,9 +18,8 @@
 //! call
 #![allow(clippy::module_name_repetitions)]
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
-use crate::{ValidationMode, Validator};
+use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
-use smol_str::{SmolStr, ToSmolStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -32,22 +31,31 @@ extern crate tsify;
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
-            t: Ok((policies, schema)),
+            t: Ok((policies, schema, settings)),
             warnings,
         } => {
+            // if validation is not enabled, stop here
+            if !settings.enabled {
+                return ValidationAnswer::Success {
+                    validation_errors: Vec::new(),
+                    validation_warnings: Vec::new(),
+                    other_warnings: warnings.into_iter().map(Into::into).collect(),
+                };
+            }
+            // otherwise, call `Validator::validate`
             let validator = Validator::new(schema);
             let (validation_errors, validation_warnings) = validator
-                .validate(&policies, ValidationMode::default())
+                .validate(&policies, settings.mode)
                 .into_errors_and_warnings();
             let validation_errors: Vec<ValidationError> = validation_errors
                 .map(|error| ValidationError {
-                    policy_id: error.policy_id().to_smolstr(),
+                    policy_id: error.policy_id().clone(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
             let validation_warnings: Vec<ValidationError> = validation_warnings
                 .map(|error| ValidationError {
-                    policy_id: error.policy_id().to_smolstr(),
+                    policy_id: error.policy_id().clone(),
                     error: miette::Report::new(error).into(),
                 })
                 .collect();
@@ -94,15 +102,17 @@ pub struct ValidationCall {
     #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
     pub schema: Schema,
     /// Policies to validate
-    pub policy_set: PolicySet,
+    pub policies: PolicySet,
 }
 
 impl ValidationCall {
     fn get_components(
         self,
-    ) -> WithWarnings<Result<(crate::PolicySet, crate::Schema), Vec<miette::Report>>> {
+    ) -> WithWarnings<
+        Result<(crate::PolicySet, crate::Schema, ValidationSettings), Vec<miette::Report>>,
+    > {
         let mut errs = vec![];
-        let policies = match self.policy_set.parse(None) {
+        let policies = match self.policies.parse(None) {
             Ok(policies) => policies,
             Err(e) => {
                 errs.extend(e);
@@ -118,7 +128,7 @@ impl ValidationCall {
         };
         match (errs.is_empty(), pair) {
             (true, Some((schema, warnings))) => WithWarnings {
-                t: Ok((policies, schema)),
+                t: Ok((policies, schema, self.validation_settings)),
                 warnings: warnings.map(miette::Report::new).collect(),
             },
             _ => WithWarnings {
@@ -130,31 +140,24 @@ impl ValidationCall {
 }
 
 /// Configuration for the validation call
-#[derive(Default, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-pub struct ValidationSettings {
-    /// Whether validation is enabled
-    enabled: ValidationEnabled,
-}
-
-/// String enum for validation mode
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
-pub enum ValidationEnabled {
-    /// Setting for which policies will be validated against the schema
-    #[serde(alias = "regular")]
-    On,
-    /// Setting for which no validation will be done
-    Off,
+pub struct ValidationSettings {
+    /// Whether validation is enabled. If this flag is set to `false`, then
+    /// only parsing is performed. The default value is `true`.
+    enabled: bool,
+    /// Used to control how a policy is validated. See comments on [`ValidationMode`].
+    mode: ValidationMode,
 }
 
-impl Default for ValidationEnabled {
+impl Default for ValidationSettings {
     fn default() -> Self {
-        Self::On
+        Self {
+            enabled: true,
+            mode: ValidationMode::default(),
+        }
     }
 }
 
@@ -165,7 +168,8 @@ impl Default for ValidationEnabled {
 #[serde(rename_all = "camelCase")]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
-    pub policy_id: SmolStr,
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+    pub policy_id: PolicyId,
     /// Error (or warning) itself.
     /// You can look at the `severity` field to see whether it is actually an
     /// error or a warning.
@@ -253,7 +257,7 @@ mod test {
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
             schema: Schema::Json(json!({}).into()),
-            policy_set: PolicySet::Map(HashMap::new()),
+            policies: PolicySet::Map(HashMap::new()),
         };
 
         assert_validates_without_errors(serde_json::to_value(&call).unwrap());
@@ -261,14 +265,14 @@ mod test {
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
             schema: Schema::Human(String::new()),
-            policy_set: PolicySet::Map(HashMap::new()),
+            policies: PolicySet::Map(HashMap::new()),
         };
 
         assert_validates_without_errors(serde_json::to_value(&call).unwrap());
 
         let call = json!({
             "schema": { "json": {} },
-            "policySet": {}
+            "policies": {}
         });
 
         assert_validates_without_errors(call);
@@ -320,7 +324,7 @@ mod test {
             }
           }
         }}},
-        "policySet": {
+        "policies": {
           "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
         }});
 
@@ -334,7 +338,7 @@ mod test {
                 "entityTypes": {},
                 "actions": {}
             }}},
-            "policySet": {
+            "policies": {
                 "policy0": "azfghbjknnhbud"
             }
         });
@@ -366,7 +370,7 @@ mod test {
             }
           }
         }}},
-        "policySet": {
+        "policies": {
           "policy0": "permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");",
           "policy1": "permit(principal == Photo::\"photo2.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice2\");"
         }});
@@ -420,7 +424,7 @@ mod test {
             }
           }
         }}},
-        "policySet": {
+        "policies": {
           "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
         }
         });
@@ -435,7 +439,7 @@ mod test {
                 "entityTypes": {},
                 "actions": {}
             }}},
-            "policySet": "azfghbjknnhbud"
+            "policies": "azfghbjknnhbud"
         });
 
         assert_is_failure(
@@ -465,7 +469,7 @@ mod test {
               }
             }
           }}},
-          "policySet": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
+          "policies": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
         });
 
         assert_validates_with_errors(json, 1);
@@ -478,7 +482,7 @@ mod test {
                 "entityTypes": {},
                 "actions": {}
             }}},
-            "policySet": "permit(principal, action, resource);forbid"
+            "policies": "permit(principal, action, resource);forbid"
         });
 
         assert_is_failure(
@@ -501,7 +505,7 @@ mod test {
               "foo": { "entityTypes": {}, "actions": {} },
               "foo": { "entityTypes": {}, "actions": {} }
             }},
-            "policySet": ""
+            "policies": ""
         }"#;
 
         assert_matches!(validate_json_str(json), Err(e) => {
@@ -513,7 +517,7 @@ mod test {
     fn test_validate_fails_on_duplicate_policy_id() {
         let json = r#"{
             "schema": { "json": { "": { "entityTypes": {}, "actions": {} } } },
-            "policySet": {
+            "policies": {
               "ID0": "permit(principal, action, resource);",
               "ID0": "permit(principal, action, resource);"
             }

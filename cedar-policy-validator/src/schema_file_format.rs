@@ -29,7 +29,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
-    err::schema_error::*,
+    err::{schema_errors::*, Result},
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
@@ -347,7 +347,7 @@ impl SchemaType {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: ty.prefix_common_type_references_with_namespace(ns.clone()),
+                                ty: ty.prefix_common_type_references_with_namespace(ns),
                                 required,
                             },
                         )

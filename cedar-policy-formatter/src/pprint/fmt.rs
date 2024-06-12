@@ -23,8 +23,6 @@ use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::text_to_cst::parse_policies;
 use smol_str::ToSmolStr;
 
-use crate::token::get_comment;
-
 use super::lexer::get_token_stream;
 use super::utils::remove_empty_lines;
 
@@ -102,16 +100,8 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     let ast = cst
         .to_policyset()
         .wrap_err("cannot parse input policies to ASTs")?;
-    let tokens = get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
-    let end_comment_str = ps
-        .get(
-            tokens
-                .last()
-                .ok_or(miette!("token stream is empty"))?
-                .span
-                .end..,
-        )
-        .ok_or(miette!("cannot get ending comment string"))?;
+    let (tokens, end_of_file_comment) =
+        get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
     let mut context = config::Context { config, tokens };
     let mut formatted_policies = cst
         .as_inner()
@@ -122,26 +112,11 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .collect::<Result<Vec<String>>>()?
         .join("\n\n");
     // handle comment at the end of a policyset
-    let (trailing_comment, end_comment) = match end_comment_str.split_once('\n') {
-        Some((f, r)) => (get_comment(f), get_comment(r)),
-        None => (get_comment(end_comment_str), String::new()),
-    };
-    match (trailing_comment.as_ref(), end_comment.as_ref()) {
-        ("", "") => {}
-        (_, "") => {
-            formatted_policies.push(' ');
-            formatted_policies.push_str(&trailing_comment);
-        }
-        ("", _) => {
-            formatted_policies.push('\n');
-            formatted_policies.push_str(&end_comment);
-        }
-        _ => {
-            formatted_policies.push(' ');
-            formatted_policies.push_str(&trailing_comment);
-            formatted_policies.push_str(&end_comment);
-        }
-    };
+    if !end_of_file_comment.is_empty() {
+        formatted_policies.push('\n');
+        formatted_policies.push_str(&end_of_file_comment);
+    }
+
     // add soundness check to make sure formatting doesn't alter policy ASTs
     soundness_check(&formatted_policies, &ast).wrap_err(
         "internal error: please file an issue at <https://github.com/cedar-policy/cedar/issues>",

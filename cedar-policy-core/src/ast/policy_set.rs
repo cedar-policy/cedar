@@ -459,7 +459,7 @@ impl PolicySet {
 
     /// Lookup a template by policy id
     pub fn get_template(&self, id: &PolicyID) -> Option<Arc<Template>> {
-        self.templates.get(id).map(Arc::clone)
+        self.templates.get(id).cloned()
     }
 
     /// Lookup an policy by policy id
@@ -845,7 +845,7 @@ mod test {
             None,
             Annotations::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq(EntityUID::with_eid("jane")),
+            PrincipalConstraint::is_eq(Arc::new(EntityUID::with_eid("jane"))),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
