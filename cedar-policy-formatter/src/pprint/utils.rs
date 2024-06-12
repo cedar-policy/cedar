@@ -131,10 +131,10 @@ pub fn get_comment_in_range(span: miette::SourceSpan, tokens: &mut [WrappedToken
 /// will introduce a newline bat the start of the `RcDoc`. If there is a
 /// trailing comment, then it will introduce a newline at the end.
 pub fn add_comment<'a>(d: RcDoc<'a>, comment: Comment, next_doc: RcDoc<'a>) -> RcDoc<'a> {
-    let leading_comment = comment.leading_comment;
-    let trailing_comment = comment.trailing_comment;
-    let leading_comment_doc = get_leading_comment_doc_from_str(&leading_comment);
-    let trailing_comment_doc = get_trailing_comment_doc_from_str(&trailing_comment, next_doc);
+    let leading_comment = comment.leading_comment();
+    let trailing_comment = comment.trailing_comment();
+    let leading_comment_doc = get_leading_comment_doc_from_str(leading_comment);
+    let trailing_comment_doc = get_trailing_comment_doc_from_str(trailing_comment, next_doc);
     leading_comment_doc.append(d).append(trailing_comment_doc)
 }
 
