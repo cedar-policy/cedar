@@ -14,51 +14,59 @@
  * limitations under the License.
  */
 
+use crate::token::get_comment;
+
 use super::token::{Comment, Token, WrappedToken};
 use logos::Logos;
 
-// Attach comments to tokens
-fn add_comments(token_stream: &mut [WrappedToken], input: &str) -> Option<()> {
-    let mut i = 0;
-    if token_stream.is_empty() {
-        return None;
-    }
-    let first_token = token_stream.first_mut()?;
-    let first_range = &first_token.span;
-    if first_range.start > 0 {
-        first_token.add_leading_comment(input.get(..first_range.start)?);
+/// Tokenize the input, associating with each token a leading and trailing
+/// comment if they are present. Also returns a string containing any comments
+/// that may be present at the end of input after all tokens are consumed.
+pub fn get_token_stream(input: &str) -> Option<(Vec<WrappedToken>, String)> {
+    let mut tokens = Token::lexer(input).spanned();
+
+    let Some(mut current_token) = tokens.next() else {
+        // There are no tokens in the input, so any text that might be in the
+        // input is the end-of-file comment.
+        return Some((Vec::new(), get_comment(input)));
+    };
+    // The "leading comment" will be the text which appears between a token and
+    // the prior token after a line break. Any text before the line break will
+    // be the trailing comment for the prior token. There's no prior token for
+    // the first token, so it gets all the text.
+    let mut current_leading_comment = input.get(..current_token.1.start)?;
+
+    // Loop over the remaining tokens, splitting the text between each pair of
+    // tokens in leading and trailing comments.
+    let mut wrapped_tokens = Vec::new();
+    for next_token in tokens {
+        let text_between_tokens = input.get(current_token.1.end..next_token.1.start)?;
+        let (current_trailing_comment, next_leading_comment) = text_between_tokens
+            .split_once('\n')
+            .unwrap_or((text_between_tokens, ""));
+
+        wrapped_tokens.push(WrappedToken::new(
+            current_token.0.ok()?,
+            current_token.1,
+            Comment::new(current_leading_comment, current_trailing_comment),
+        ));
+
+        current_token = next_token;
+        current_leading_comment = next_leading_comment;
     }
 
-    while i + 1 < token_stream.len() {
-        let (curr_tokens, next_tokens) = token_stream.split_at_mut(i + 1);
-        let curr_token = curr_tokens.last_mut()?;
-        let next_token = next_tokens.first_mut()?;
-        let curr_range = &curr_token.span;
-        let next_range = &next_token.span;
-        if curr_range.end == next_range.start {
-            i += 1;
-            continue;
-        }
-        let gap = input.get(curr_range.end..next_range.start)?;
-        match gap.split_once('\n') {
-            Some((f, r)) => {
-                curr_token.add_trailing_comment(f);
-                next_token.add_leading_comment(r);
-            }
-            None => {
-                curr_token.add_trailing_comment(gap);
-            }
-        }
-        i += 1;
-    }
-    Some(())
-}
+    // Get the text remaining after all tokens. Split this between the trailing
+    // comment for the last token and the end-of-file comment.
+    let text_after_last_token = input.get(current_token.1.end..)?;
+    let (current_trailing_comment, end_of_file_comment) = text_after_last_token
+        .split_once('\n')
+        .unwrap_or((text_after_last_token, ""));
 
-pub fn get_token_stream(input: &str) -> Option<Vec<WrappedToken>> {
-    let mut wrapped_tokens: Vec<WrappedToken> = Token::lexer(input)
-        .spanned()
-        .map(|(t, s)| Some(WrappedToken::new(t.ok()?, Comment::default(), s)))
-        .collect::<Option<Vec<WrappedToken>>>()?;
-    add_comments(&mut wrapped_tokens, input);
-    Some(wrapped_tokens)
+    wrapped_tokens.push(WrappedToken::new(
+        current_token.0.ok()?,
+        current_token.1,
+        Comment::new(current_leading_comment, current_trailing_comment),
+    ));
+
+    Some((wrapped_tokens, get_comment(end_of_file_comment)))
 }

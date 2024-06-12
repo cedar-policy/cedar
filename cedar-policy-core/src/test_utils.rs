@@ -38,13 +38,14 @@ pub struct ExpectedErrorMessage<'a> {
     /// the ones that are expected.
     prefix: bool,
     /// Expected text that is underlined by miette (text found at the error's
-    /// source location(s)).
+    /// source location(s)) plus (optional) help text associated with the
+    /// underline.
     /// If this is an empty vec, we expect the error to have no associated
     /// source location.
     /// If this is a vec with one or more elements, we expect the same number of
     /// miette `labels` in the same order, and the vec elements represent the
     /// expected contents of the labels.
-    underlines: Vec<&'a str>,
+    underlines: Vec<(&'a str, Option<&'a str>)>,
 }
 
 /// Builder struct for [`ExpectedErrorMessage`]
@@ -57,7 +58,7 @@ pub struct ExpectedErrorMessageBuilder<'a> {
     /// ExpectedErrorMessage::prefix
     prefix: bool,
     /// ExpectedErrorMessage::underlines
-    underlines: Vec<&'a str>,
+    underlines: Vec<(&'a str, Option<&'a str>)>,
 }
 
 impl<'a> ExpectedErrorMessageBuilder<'a> {
@@ -96,10 +97,21 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
     }
 
     /// Add expected underlined text. The error message will be expected to have
-    /// exactly one miette label, and the underlined portion should be this text.
+    /// exactly one miette label, and the underlined portion should be `snippet`.
+    /// The underlined text should have no associated label text.
     pub fn exactly_one_underline(self, snippet: &'a str) -> Self {
         Self {
-            underlines: vec![snippet],
+            underlines: vec![(snippet, None)],
+            ..self
+        }
+    }
+
+    /// Add expected underlined text. The error message will be expected to have
+    /// exactly one miette label, and the underlined portion should be `snippet`.
+    /// The label text is expected to match `label`.
+    pub fn exactly_one_underline_with_label(self, snippet: &'a str, label: &'a str) -> Self {
+        Self {
+            underlines: vec![(snippet, Some(label))],
             ..self
         }
     }
@@ -226,11 +238,20 @@ impl<'a> ExpectedErrorMessage<'a> {
                 .iter()
                 .zip(err.labels().unwrap_or_else(|| Box::new(std::iter::empty())))
             {
+                let (expected_snippet, expected_label) = expected;
                 let actual_snippet = {
                     let span = actual.inner();
-                    &src[span.offset()..span.offset() + span.len()]
+                    if span.offset() < src.len() {
+                        &src[span.offset()..span.offset() + span.len()]
+                    } else {
+                        ""
+                    }
                 };
-                if expected != &actual_snippet {
+                let actual_label = actual.label();
+                if expected_snippet != &actual_snippet {
+                    return false;
+                }
+                if expected_label != &actual_label {
                     return false;
                 }
             }
@@ -256,14 +277,25 @@ impl<'a> ExpectedErrorMessage<'a> {
                 .iter()
                 .zip(err.labels().unwrap_or_else(|| Box::new(std::iter::empty())))
             {
+                let (expected_snippet, expected_label) = expected;
                 let actual_snippet = {
                     let span = actual.inner();
-                    &src[span.offset()..span.offset() + span.len()]
+                    if span.offset() < src.len() {
+                        &src[span.offset()..span.offset() + span.len()]
+                    } else {
+                        ""
+                    }
                 };
+                let actual_label = actual.label();
                 assert_eq!(
-                    expected,
+                    expected_snippet,
                     &actual_snippet,
-                    "in the following error:\n{err:?}\n\nexpected underlined portion to be:\n  {expected}\nbut it was:\n  {actual_snippet}", // the Debug representation of miette::Report is the pretty one
+                    "in the following error:\n{err:?}\n\nexpected underlined portion to be:\n  {expected_snippet}\nbut it was:\n  {actual_snippet}", // the Debug representation of miette::Report is the pretty one
+                );
+                assert_eq!(
+                    expected_label,
+                    &actual_label,
+                    "in the following error:\n{err:?}\n\nexpected underlined help text to be:\n  {expected_label:?}\nbut it was:\n  {actual_label:?}", // the Debug representation of miette::Report is the pretty one
                 );
             }
         }
@@ -289,8 +321,12 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
             writeln!(f, "and expected no source locations / underlined segments.")?;
         } else {
             writeln!(f, "and expected the following underlined segments:")?;
-            for underline in &self.underlines {
+            for (underline, label) in &self.underlines {
                 writeln!(f, "  {underline}")?;
+                match label {
+                    Some(label) => writeln!(f, "  with label {label}")?,
+                    None => (),
+                }
             }
         }
         Ok(())

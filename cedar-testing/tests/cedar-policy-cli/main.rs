@@ -32,11 +32,9 @@ mod multi;
 
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
-use cedar_policy::PolicySet;
 use cedar_testing::integration_testing::JsonTest;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Diagnostic> {
     EntityUid::from_json(v).map(|euid| euid.to_string())
@@ -82,32 +80,6 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let schema_file = resolve_integration_test_path(&test.schema);
 
     for json_request in test.requests.into_iter() {
-        let policies_text = std::fs::read_to_string(policy_file.clone())
-            .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
-        let policies_res = PolicySet::from_str(&policies_text);
-        // If parsing fails we don't want to quit immediately. Instead we want to
-        // check that the expected decision is "Deny" and that the parse error is
-        // of the expected type (NotAFunction).
-        if let Err(parse_errs) = policies_res {
-            // We may see a `NotAFunction` parse error for programmatically generated
-            // policies, which are not guaranteed to be parsable
-            assert_eq!(
-                json_request.decision,
-                Decision::Deny,
-                "test {} failed for request \"{}\" \n Parse errors should only occur for deny",
-                jsonfile.display(),
-                &json_request.description
-            );
-            assert!(
-                parse_errs
-                    .iter()
-                    .any(|e| e.to_string().ends_with("not a function")),
-                "unexpected parse errors in test {}: {}",
-                jsonfile.display(),
-                parse_errs,
-            );
-            continue;
-        };
         let validation_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
             .arg("validate")

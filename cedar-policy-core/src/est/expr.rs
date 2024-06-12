@@ -711,7 +711,7 @@ impl Expr {
                             )
                         })?;
                         if !fn_name.is_known_extension_func_name() {
-                            return Err(FromJsonError::UnknownExtFunc(fn_name.clone()));
+                            return Err(FromJsonError::UnknownExtensionFunction(fn_name.clone()));
                         }
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
@@ -1100,8 +1100,8 @@ fn interpret_primary(
                     }
                 }
             }
-            cst::Ref::Ref { .. } => Err(node
-                .to_ast_err(ToASTErrorKind::UnsupportedEntityLiterals)
+            r @ cst::Ref::Ref { .. } => Err(node
+                .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         },
         cst::Primary::Name(node) => {
@@ -1133,10 +1133,7 @@ fn interpret_primary(
                         (_, _) => (0, 0, Arc::from("")),
                     };
                     Err(ToASTError::new(
-                        ToASTErrorKind::InvalidExpression(cst::Name {
-                            path: path.to_vec(),
-                            name: Node::with_source_loc(Some(id.clone()), node.loc.span(l..r)),
-                        }),
+                        ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
                         Loc::new(l..r, src),
                     )
                     .into())
@@ -1316,22 +1313,11 @@ impl TryFrom<&Node<Option<cst::Name>>> for Expr {
             (&[], cst::Ident::Action) => Ok(Expr::var(ast::Var::Action)),
             (&[], cst::Ident::Resource) => Ok(Expr::var(ast::Var::Resource)),
             (&[], cst::Ident::Context) => Ok(Expr::var(ast::Var::Context)),
-            (path, id) => {
-                let loc = match (path.first(), path.last()) {
-                    (Some(lnode), Some(rnode)) => {
-                        let l = lnode.loc.start();
-                        let r = rnode.loc.end() + ident_to_str_len(id);
-                        Loc::new(l..r, Arc::clone(&lnode.loc.src))
-                    }
-                    (_, _) => Loc::new(0, Arc::from("")),
-                };
-                Err(name
-                    .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
-                        path: path.to_vec(),
-                        name: Node::with_source_loc(Some(id.clone()), loc),
-                    }))
-                    .into())
-            }
+            (_, _) => Err(name
+                .to_ast_err(ToASTErrorKind::ArbitraryVariable(
+                    name_node.to_string().into(),
+                ))
+                .into()),
         }
     }
 }
@@ -1698,9 +1684,8 @@ mod test {
             assert!(e.len() == 1);
             assert_matches!(&e[0],
                 ParseError::ToAST(to_ast_error) => {
-                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
-                        println!("{e:?}");
-                        assert_eq!(e.name.loc.end(), 16);
+                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::ArbitraryVariable(s) => {
+                        assert_eq!(s, "some_long_str::else");
                     });
                 }
             );

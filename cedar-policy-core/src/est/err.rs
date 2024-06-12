@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-use std::sync::Arc;
-
 use crate::ast;
 use crate::entities::json::err::JsonDeserializationError;
-use crate::parser::err::ParseErrors;
-use crate::parser::{join_with_conjunction, unescape};
+use crate::parser::err::{parse_errors, ParseErrors};
+use crate::parser::unescape;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -47,14 +45,9 @@ pub enum FromJsonError {
     #[error("slots are not allowed for actions")]
     ActionSlot,
     /// EST contained a template slot in policy condition
-    #[error("found template slot {slot} in a `{clausetype}` clause")]
-    #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
-    SlotsInConditionClause {
-        /// Slot that was found in a when/unless clause
-        slot: ast::SlotId,
-        /// Clause type, e.g. "when" or "unless"
-        clausetype: &'static str,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SlotsInConditionClause(#[from] parse_errors::SlotsInConditionClause),
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("missing operator, found empty object")]
     MissingOperator,
@@ -63,16 +56,6 @@ pub enum FromJsonError {
     MultipleOperators {
         /// the multiple operators that were found where one was expected
         ops: Vec<SmolStr>,
-    },
-    /// At most one of the operands in `a * b * c * d * ...` can be a non-{constant int}
-    #[error(
-        "multiplication must be by a constant int: neither `{arg1}` nor `{arg2}` is a constant"
-    )]
-    MultiplicationByNonConstant {
-        /// First non-constant argument
-        arg1: ast::Expr,
-        /// Second non-constant argument
-        arg2: ast::Expr,
     },
     /// Error thrown while processing string escapes
     // show just the first error in the main error message, like in [`ParseErrors`]; see #326 and discussion on #477
@@ -83,37 +66,22 @@ pub enum FromJsonError {
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
     /// Error reported when a policy set has duplicate ids
-    #[error("Error creating policy set: {0}")]
+    #[error("error creating policy set: {0}")]
     #[diagnostic(transparent)]
     PolicySet(#[from] ast::PolicySetError),
     /// Error reported when attempting to create a template-link
-    #[error("Error linking policy set: {0}")]
+    #[error("error linking policy set: {0}")]
     #[diagnostic(transparent)]
     Linking(#[from] ast::LinkingError),
-    /// Error reported when the extension function name is unknown
-    #[error("Invalid extension function name: `{0}`")]
-    UnknownExtFunc(ast::Name),
-    /// Returned when an Entity UID used as an action does not have the type `Action`
+    /// Error reported when the extension function name is unknown. Note that
+    /// unlike the Cedar policy format, the JSON format has no way to distinguish
+    /// between function-style and method-style calls.
+    #[error("invalid extension function: `{0}`")]
+    UnknownExtensionFunction(ast::Name),
+    /// Returned when an entity uid used as an action does not have the type `Action`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidActionType(#[from] InvalidActionType),
-}
-
-/// Details about an `InvalidActionType` error.
-#[derive(Debug, Diagnostic, Error)]
-#[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
-pub struct InvalidActionType {
-    pub(crate) euids: NonEmpty<Arc<crate::ast::EntityUID>>,
-}
-
-impl std::fmt::Display for InvalidActionType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "expected that action entity uids would have the type `Action` but got "
-        )?;
-        join_with_conjunction(f, "and", self.euids.iter(), |f, e| write!(f, "`{e}`"))
-    }
+    InvalidActionType(#[from] parse_errors::InvalidActionType),
 }
 
 /// Errors while linking a policy

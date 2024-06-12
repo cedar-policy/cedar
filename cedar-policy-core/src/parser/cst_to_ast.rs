@@ -34,9 +34,7 @@
 // cloning.
 
 use super::cst;
-use super::err::{
-    self, ParseError, ParseErrors, Ref, RefCreationError, ToASTError, ToASTErrorKind,
-};
+use super::err::{self, parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
@@ -164,9 +162,7 @@ impl Node<Option<cst::Policy>> {
             Ok(Ok(p)) => Ok(p),
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
-                ToASTErrorKind::UnexpectedTemplate {
-                    slot: slot.id.into(),
-                },
+                ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
                 slot.loc.unwrap_or_else(|| self.loc.clone()),
             )
             .into()),
@@ -177,12 +173,12 @@ impl Node<Option<cst::Policy>> {
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsInConditionClause { slot, .. } => {
-                                Some(ToASTError::new(
-                                    ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
-                                    err.source_loc().clone(),
-                                ))
-                            }
+                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
+                                ToASTErrorKind::UnexpectedTemplate {
+                                    slot: inner.slot.clone(),
+                                },
+                                err.source_loc().clone(),
+                            )),
                             _ => None,
                         },
                         _ => None,
@@ -213,10 +209,10 @@ impl Node<Option<cst::Policy>> {
             let (e, is_when) = c.to_expr()?;
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
-                    ToASTErrorKind::SlotsInConditionClause {
-                        slot: slot.id.into(),
-                        clausetype: if is_when { "when" } else { "unless" },
-                    },
+                    ToASTErrorKind::slots_in_condition_clause(
+                        slot.clone(),
+                        if is_when { "when" } else { "unless" },
+                    ),
                     slot.loc.unwrap_or_else(|| c.loc.clone()),
                 )
                 .into()
@@ -257,7 +253,7 @@ impl cst::Policy {
             scope1.to_principal_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Principal),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -267,7 +263,7 @@ impl cst::Policy {
             scope2.to_action_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Action),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -276,7 +272,7 @@ impl cst::Policy {
             scope3.to_resource_constraint()
         } else {
             Err(ToASTError::new(
-                ToASTErrorKind::MissingScopeConstraint(ast::Var::Resource),
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
                 self.effect.loc.span(end_of_last_var),
             )
             .into())
@@ -288,7 +284,7 @@ impl cst::Policy {
                 if let Some(def) = extra_var.as_inner() {
                     errs.push(
                         extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeConstraints(def.clone()))
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone()))
                             .into(),
                     )
                 }
@@ -442,9 +438,7 @@ impl Node<Option<cst::Ident>> {
             cst::Ident::Action => Ok(ast::Var::Action),
             cst::Ident::Resource => Ok(ast::Var::Resource),
             ident => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidScopeConstraintVariable(
-                    ident.clone(),
-                ))
+                .to_ast_err(ToASTErrorKind::InvalidScopeVariable(ident.clone()))
                 .into()),
         }
     }
@@ -474,7 +468,7 @@ impl ast::Id {
                         .into())
                     } else {
                         Err(ToASTError::new(
-                            ToASTErrorKind::InvalidMethodName(id.to_string()),
+                            ToASTErrorKind::UnknownMethod(id.to_string()),
                             loc.clone(),
                         )
                         .into())
@@ -543,9 +537,7 @@ impl Node<Option<cst::VariableDef>> {
             let eref = rel_expr.to_ref_or_slot(var)?;
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
-                (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::InvalidIs(
-                    err::InvalidIsError::WrongOp(cst::RelOp::Eq),
-                ))),
+                (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
                     Arc::new(entity_type.to_expr_or_special()?.into_name()?),
@@ -554,7 +546,7 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::InvalidSingleEq, _) => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
-                (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op))),
+                (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Ok(PrincipalOrResourceConstraint::Is(Arc::new(
@@ -591,13 +583,11 @@ impl Node<Option<cst::VariableDef>> {
         }
 
         if vardef.entity_type.is_some() {
-            return Err(self
-                .to_ast_err(ToASTErrorKind::InvalidIs(err::InvalidIsError::ActionScope))
-                .into());
+            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
         }
 
-        let action_constraint = if let Some((op, rel_expr)) = &vardef.ineq {
-            match op {
+        if let Some((op, rel_expr)) = &vardef.ineq {
+            let action_constraint = match op {
                 cst::RelOp::In => match rel_expr.to_refs(ast::Var::Action)? {
                     OneOrMultipleRefs::Single(single_ref) => {
                         Ok(ActionConstraint::is_in([single_ref]))
@@ -611,20 +601,20 @@ impl Node<Option<cst::VariableDef>> {
                 cst::RelOp::InvalidSingleEq => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
-                op => Err(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op))),
-            }
+                op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
+            }?;
+            action_constraint
+                .contains_only_action_types()
+                .map_err(|non_action_euids| {
+                    rel_expr
+                        .to_ast_err(parse_errors::InvalidActionType {
+                            euids: non_action_euids,
+                        })
+                        .into()
+                })
         } else {
             Ok(ActionConstraint::Any)
-        }?;
-
-        action_constraint
-            .contains_only_action_types()
-            .map_err(|non_action_euids| {
-                ParseErrors::new_from_nonempty(non_action_euids.map(|euid| {
-                    self.to_ast_err(ToASTErrorKind::InvalidActionType(euid.as_ref().clone()))
-                        .into()
-                }))
-            })
+        }
     }
 }
 
@@ -795,12 +785,12 @@ impl ExprOrSpecial<'_> {
     fn into_name(self) -> Result<ast::Name> {
         match self {
             Self::StrLit { lit, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::IsInvalidName(lit.to_string()))
+                .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
             Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
             Self::Name { name, .. } => Ok(name),
             Self::Expr { ref expr, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::IsInvalidName(expr.to_string()))
+                .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
         }
     }
@@ -861,6 +851,8 @@ impl Node<Option<cst::Expr>> {
 /// Type level marker for parsing sets of entity uids or single uids
 /// This presents having either a large level of code duplication
 /// or runtime data.
+/// This marker is (currently) only used for translating entity references
+/// in the policy scope.
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
@@ -881,7 +873,10 @@ impl RefKind for SingleEntity {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            RefCreationError::one_expected(Ref::Single, Ref::Set).into(),
+            ToASTErrorKind::wrong_entity_argument_one_expected(
+                err::parse_errors::Ref::Single,
+                err::parse_errors::Ref::Set,
+            ),
             loc.clone(),
         )
         .into())
@@ -889,7 +884,10 @@ impl RefKind for SingleEntity {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            RefCreationError::one_expected(Ref::Single, Ref::Template).into(),
+            ToASTErrorKind::wrong_entity_argument_one_expected(
+                err::parse_errors::Ref::Single,
+                err::parse_errors::Ref::Template,
+            ),
             loc.clone(),
         )
         .into())
@@ -911,7 +909,11 @@ impl RefKind for EntityReference {
 
     fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            RefCreationError::two_expected(Ref::Single, Ref::Template, Ref::Set).into(),
+            ToASTErrorKind::wrong_entity_argument_two_expected(
+                err::parse_errors::Ref::Single,
+                err::parse_errors::Ref::Template,
+                err::parse_errors::Ref::Set,
+            ),
             loc.clone(),
         )
         .into())
@@ -932,7 +934,11 @@ impl RefKind for OneOrMultipleRefs {
 
     fn create_slot(loc: &Loc) -> Result<Self> {
         Err(ToASTError::new(
-            RefCreationError::two_expected(Ref::Single, Ref::Set, Ref::Template).into(),
+            ToASTErrorKind::wrong_entity_argument_two_expected(
+                err::parse_errors::Ref::Single,
+                err::parse_errors::Ref::Set,
+                err::parse_errors::Ref::Template,
+            ),
             loc.clone(),
         )
         .into())
@@ -1660,7 +1666,7 @@ impl Node<Option<cst::Primary>> {
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // ignore errors in the case where `n` isn't a var - we'll get them elsewhere
-                if let Ok(var) = n.to_var() {
+                if let Some(var) = n.maybe_to_var() {
                     Ok(ExprOrSpecial::Var {
                         var,
                         loc: self.loc.clone(),
@@ -1684,23 +1690,12 @@ impl Node<Option<cst::Primary>> {
                 })
             }
             cst::Primary::RInits(is) => {
-                let maybe_rec = ParseErrors::transpose(is.iter().map(|i| i.to_init()));
-                match maybe_rec {
-                    Ok(rec) => {
-                        let expr = construct_expr_record(rec, self.loc.clone())?;
-                        Ok(ExprOrSpecial::Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })
-                    }
-                    Err(mut errs) => {
-                        errs.push(
-                            self.to_ast_err(ToASTErrorKind::InvalidAttributesInRecordLiteral)
-                                .into(),
-                        );
-                        Err(errs)
-                    }
-                }
+                let rec = ParseErrors::transpose(is.iter().map(|i| i.to_init()))?;
+                let expr = construct_expr_record(rec, self.loc.clone())?;
+                Ok(ExprOrSpecial::Expr {
+                    expr,
+                    loc: self.loc.clone(),
+                })
             }
         }
     }
@@ -1769,37 +1764,30 @@ impl Node<Option<cst::Name>> {
         let (name, path) = flatten_tuple_2(maybe_name, maybe_path)?;
         Ok(construct_name(path, name, self.loc.clone()))
     }
-    fn to_ident(&self) -> Result<&cst::Ident> {
-        let name = self.try_as_inner()?;
 
-        match ParseErrors::transpose(name.path.iter().map(|id| id.to_valid_ident())) {
+    // Errors from this function are ignored (because they are detected elsewhere)
+    // so it's fine to return an `Option` instead of a `Result`.
+    fn maybe_to_var(&self) -> Option<ast::Var> {
+        let name = self.as_inner()?;
+
+        let ident = match ParseErrors::transpose(name.path.iter().map(|id| id.to_valid_ident())) {
             Ok(path) => {
                 if !path.is_empty() {
                     // The path should be empty for a variable
-                    Err(self.to_ast_err(ToASTErrorKind::InvalidPath).into())
+                    None
                 } else {
-                    name.name.try_as_inner().map_err(ParseErrors::singleton)
+                    name.name.as_inner()
                 }
             }
-            Err(mut errs) => {
-                // If there are any errors, that means the path was nonempty
-                // and we should report that as an error as well.
-                errs.push(self.to_ast_err(ToASTErrorKind::InvalidPath).into());
-                Err(errs)
-            }
-        }
-    }
-    fn to_var(&self) -> Result<ast::Var> {
-        let name = self.to_ident()?;
+            Err(_) => None,
+        }?;
 
-        match name {
-            cst::Ident::Principal => Ok(ast::Var::Principal),
-            cst::Ident::Action => Ok(ast::Var::Action),
-            cst::Ident::Resource => Ok(ast::Var::Resource),
-            cst::Ident::Context => Ok(ast::Var::Context),
-            n => Err(self
-                .to_ast_err(ToASTErrorKind::ArbitraryVariable(n.to_string().into()))
-                .into()),
+        match ident {
+            cst::Ident::Principal => Some(ast::Var::Principal),
+            cst::Ident::Action => Some(ast::Var::Action),
+            cst::Ident::Resource => Some(ast::Var::Resource),
+            cst::Ident::Context => Some(ast::Var::Context),
+            _ => None,
         }
     }
 }
@@ -1835,7 +1823,7 @@ impl ast::Name {
         if EXTENSION_STYLES.functions.contains(&self) {
             Ok(construct_ext_func(self, args, loc))
         } else {
-            Err(ToASTError::new(ToASTErrorKind::NotAFunction(self), loc).into())
+            Err(ToASTError::new(ToASTErrorKind::UnknownFunction(self), loc).into())
         }
     }
 }
@@ -1860,8 +1848,8 @@ impl Node<Option<cst::Ref>> {
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
                 Ok(construct_refr(p, e, self.loc.clone()))
             }
-            cst::Ref::Ref { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::UnsupportedEntityLiterals)
+            r @ cst::Ref::Ref { .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         }
     }
@@ -2140,7 +2128,6 @@ mod tests {
         test_utils::*,
     };
     use cool_asserts::assert_matches;
-    use std::str::FromStr;
 
     #[track_caller]
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
@@ -2300,34 +2287,20 @@ mod tests {
             {if false then a else b:"b"}
         "#;
         let errs = assert_parse_expr_fails(src);
-        expect_n_errors(src, &errs, 6);
+        expect_n_errors(src, &errs, 4);
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
-                .exactly_one_underline("{if true then a else b:\"b\"}")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
-                .exactly_one_underline("{if false then a else b:\"b\"}")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
-                .help("did you mean to enclose `a` in quotes to make a string?")
+            &ExpectedErrorMessageBuilder::error("invalid variable: a")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `a` in quotes to make a string?")
                 .exactly_one_underline("a")
                 .build(),
         );
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
-                .help("did you mean to enclose `b` in quotes to make a string?")
+            &ExpectedErrorMessageBuilder::error("invalid variable: b")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `b` in quotes to make a string?")
                 .exactly_one_underline("b")
                 .build(),
         );
@@ -2364,7 +2337,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `true`",
+                "this identifier is reserved and cannot be used: true",
             )
             .exactly_one_underline("true")
             .build(),
@@ -2373,7 +2346,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `false`",
+                "this identifier is reserved and cannot be used: false",
             )
             .exactly_one_underline("false")
             .build(),
@@ -2386,12 +2359,12 @@ mod tests {
             if {if: true}.if then {"if":false}["if"] else {when:true}.permit
         "#;
         let errs = assert_parse_expr_fails(src);
-        expect_n_errors(src, &errs, 3);
+        expect_n_errors(src, &errs, 2);
         expect_some_error_matches(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `if`",
+                "this identifier is reserved and cannot be used: if",
             )
             .exactly_one_underline("if: true")
             .build(),
@@ -2400,17 +2373,10 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `if`",
+                "this identifier is reserved and cannot be used: if",
             )
             .exactly_one_underline("if")
             .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
-                .exactly_one_underline("{if: true}")
-                .build(),
         );
     }
 
@@ -2420,12 +2386,12 @@ mod tests {
             if {where: true}.like || {has:false}.in then {"like":false}["in"] else {then:true}.else
         "#;
         let errs = assert_parse_expr_fails(src);
-        expect_n_errors(src, &errs, 7);
+        expect_n_errors(src, &errs, 5);
         expect_some_error_matches(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `has`",
+                "this identifier is reserved and cannot be used: has",
             )
             .exactly_one_underline("has")
             .build(),
@@ -2434,7 +2400,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `like`",
+                "this identifier is reserved and cannot be used: like",
             )
             .exactly_one_underline("like")
             .build(),
@@ -2443,7 +2409,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `in`",
+                "this identifier is reserved and cannot be used: in",
             )
             .exactly_one_underline("in")
             .build(),
@@ -2452,7 +2418,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `then`",
+                "this identifier is reserved and cannot be used: then",
             )
             .exactly_one_underline("then")
             .build(),
@@ -2461,24 +2427,10 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `else`",
+                "this identifier is reserved and cannot be used: else",
             )
             .exactly_one_underline("else")
             .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
-                .exactly_one_underline("{has:false}")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("record literal has invalid attributes")
-                .exactly_one_underline("{then:true}")
-                .build(),
         );
     }
 
@@ -2516,23 +2468,23 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
-                .help("did you mean to enclose `w` in quotes to make a string?")
+            &ExpectedErrorMessageBuilder::error("invalid variable: w")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `w` in quotes to make a string?")
                 .exactly_one_underline("w")
                 .build(),
         );
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")
-                .help("did you mean to enclose `u` in quotes to make a string?")
+            &ExpectedErrorMessageBuilder::error("invalid variable: u")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `u` in quotes to make a string?")
                 .exactly_one_underline("u")
                 .build(),
         );
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("not a valid policy condition: `advice`")
+            &ExpectedErrorMessageBuilder::error("invalid policy condition: advice")
                 .help("condition must be either `when` or `unless`")
                 .exactly_one_underline("advice")
                 .build(),
@@ -2664,26 +2616,6 @@ mod tests {
             2
         );
 
-        // can't have spaces or '+' in annotation keys
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi+mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2762,7 +2694,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "expected single entity uid or template slot, got: set of entity uids",
+                "expected single entity uid or template slot, found set of entity uids",
             )
             .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
             .build(),
@@ -2800,9 +2732,9 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error(
-                "this policy has an extra constraint in the scope: `context`",
+                "this policy has an extra element in the scope: context",
             )
-            .help("a policy must have exactly `principal`, `action`, and `resource` constraints")
+            .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
             .exactly_one_underline("context")
             .build(),
         );
@@ -2825,7 +2757,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("`contains` is a method, not a function")
-                .help("use a method-style call: `e.contains(..)`")
+                .help("use a method-style call `e.contains(..)`")
                 .exactly_one_underline("contains(principal,resource)")
                 .build(),
         );
@@ -2901,7 +2833,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid string literal: `0`")
+            &ExpectedErrorMessageBuilder::error("invalid string literal: 0")
                 .exactly_one_underline("0")
                 .build(),
         );
@@ -2917,7 +2849,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid string literal: `(-1)`")
+            &ExpectedErrorMessageBuilder::error("invalid string literal: (-1)")
                 .exactly_one_underline("-1")
                 .build(),
         );
@@ -2933,7 +2865,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid string literal: `true`")
+            &ExpectedErrorMessageBuilder::error("invalid string literal: true")
                 .exactly_one_underline("true")
                 .build(),
         );
@@ -2949,7 +2881,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid string literal: `one`")
+            &ExpectedErrorMessageBuilder::error("invalid string literal: one")
                 .exactly_one_underline("one")
                 .build(),
         );
@@ -2977,7 +2909,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("not a valid attribute name: `1`")
+            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
                 .help("attribute names can either be identifiers or string literals")
                 .exactly_one_underline("1")
                 .build(),
@@ -3156,7 +3088,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("not a valid attribute name: `1`")
+            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
                 .help("attribute names can either be identifiers or string literals")
                 .exactly_one_underline("1")
                 .build(),
@@ -3191,7 +3123,7 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid string literal: `age`")
+            &ExpectedErrorMessageBuilder::error("invalid string literal: age")
                 .exactly_one_underline("age")
                 .build(),
         );
@@ -3359,29 +3291,16 @@ mod tests {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn expect_action_error(test: &str, euid_strs: Vec<&str>, underlines: Vec<&str>) {
-        let euids = euid_strs
-            .iter()
-            .map(|euid_str| {
-                EntityUID::from_str(euid_str).expect("Test was provided with invalid euid")
-            })
-            .collect::<Vec<_>>();
+    fn expect_action_error(test: &str, msg: &str, underline: &str) {
         assert_matches!(parse_policyset(test), Err(es) => {
-            assert_eq!(es.len(), euids.len(),
-                "should have produced exactly {} parse errors, produced {}:\n{:?}",
-                euids.len(),
-                es.len(),
-                miette::Report::new(es)
+            expect_some_error_matches(
+                test,
+                &es,
+                &ExpectedErrorMessageBuilder::error(msg)
+                    .help("action entities must have type `Action`, optionally in a namespace")
+                    .exactly_one_underline(underline)
+                    .build(),
             );
-            for (euid, underline) in euids.into_iter().zip(underlines.into_iter()) {
-                expect_some_error_matches(
-                    test,
-                    &es,
-                    &ExpectedErrorMessageBuilder::error(&format!("expected an entity uid with the type `Action` but got `{euid}`")).help(
-                        "action entities must have type `Action`, optionally in a namespace",
-                    ).exactly_one_underline(underline).build(),
-                );
-            }
         });
     }
 
@@ -3403,38 +3322,38 @@ mod tests {
         .expect("Valid policy failed to parse");
         expect_action_error(
             r#"permit(principal, action == Foo::"view", resource);"#,
-            vec!["Foo::\"view\""],
-            vec!["action == Foo::\"view\""], // TODO: don't underline the `action ==` part
+            "expected an entity uid with type `Action` but got `Foo::\"view\"`",
+            "Foo::\"view\"",
         );
         expect_action_error(
             r#"permit(principal, action == Action::Foo::"view", resource);"#,
-            vec!["Action::Foo::\"view\""],
-            vec!["action == Action::Foo::\"view\""], // TODO: don't underline the `action ==` part
+            "expected an entity uid with type `Action` but got `Action::Foo::\"view\"`",
+            "Action::Foo::\"view\"",
         );
         expect_action_error(
             r#"permit(principal, action == Bar::Action::Foo::"view", resource);"#,
-            vec!["Bar::Action::Foo::\"view\""],
-            vec!["action == Bar::Action::Foo::\"view\""], // TODO: don't underline the `action ==` part
+            "expected an entity uid with type `Action` but got `Bar::Action::Foo::\"view\"`",
+            "Bar::Action::Foo::\"view\"",
         );
         expect_action_error(
             r#"permit(principal, action in Bar::Action::Foo::"view", resource);"#,
-            vec!["Bar::Action::Foo::\"view\""],
-            vec!["action in Bar::Action::Foo::\"view\""], // TODO: don't underline the `action in` part
+            "expected an entity uid with type `Action` but got `Bar::Action::Foo::\"view\"`",
+            "Bar::Action::Foo::\"view\"",
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view"], resource);"#,
-            vec!["Bar::Action::Foo::\"view\""],
-            vec!["action in [Bar::Action::Foo::\"view\"]"], // TODO: don't underline the `action in` part
+            "expected an entity uid with type `Action` but got `Bar::Action::Foo::\"view\"`",
+            "[Bar::Action::Foo::\"view\"]",
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view", Action::"check"], resource);"#,
-            vec!["Bar::Action::Foo::\"view\""],
-            vec!["action in [Bar::Action::Foo::\"view\", Action::\"check\"]"], // TODO: don't underline the `action in` part
+            "expected an entity uid with type `Action` but got `Bar::Action::Foo::\"view\"`",
+            "[Bar::Action::Foo::\"view\", Action::\"check\"]",
         );
         expect_action_error(
             r#"permit(principal, action in [Bar::Action::Foo::"view", Foo::"delete", Action::"check"], resource);"#,
-            vec!["Bar::Action::Foo::\"view\"", "Foo::\"delete\""],
-            vec!["action in [Bar::Action::Foo::\"view\", Foo::\"delete\", Action::\"check\"]"], // TODO: don't underline the `action in` part
+            "expected entity uids with type `Action` but got `Bar::Action::Foo::\"view\"` and `Foo::\"delete\"`",
+            "[Bar::Action::Foo::\"view\", Foo::\"delete\", Action::\"check\"]",
         );
     }
 
@@ -3447,7 +3366,7 @@ mod tests {
             expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error(
                 "`contains` is a method, not a function",
             ).help(
-                "use a method-style call: `e.contains(..)`",
+                "use a method-style call `e.contains(..)`",
             ).exactly_one_underline("contains(true)").build());
         });
     }
@@ -3959,17 +3878,17 @@ mod tests {
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`is` cannot appear in the scope at the same time as `==`",
+                    "`is` cannot be used together with `==`",
                 ).help(
-                    "try moving `is` into a `when` condition"
+                    "try using `_ is _ in _`"
                 ).exactly_one_underline("principal is User == User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`is` cannot appear in the scope at the same time as `==`",
+                    "`is` cannot be used together with `==`",
                 ).help(
-                    "try moving `is` into a `when` condition"
+                    "try using `_ is _ in _`"
                 ).exactly_one_underline("resource is Doc == Doc::\"a\"").build(),
             ),
             (
@@ -4158,15 +4077,15 @@ mod tests {
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `in`"
-                ).exactly_one_underline("in").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `in`")
+                    .exactly_one_underline_with_label("in", "expected `&&`, `||`, or `}`")
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `==`"
-                ).exactly_one_underline("==").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `==`")
+                    .exactly_one_underline_with_label("==", "expected `&&`, `||`, `}`, or `in`")
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
@@ -4210,7 +4129,7 @@ mod tests {
             (
                 r#"contains([], 1)"#,
                 ExpectedErrorMessageBuilder::error("`contains` is a method, not a function")
-                    .help("use a method-style call: `e.contains(..)`")
+                    .help("use a method-style call `e.contains(..)`")
                     .exactly_one_underline("contains([], 1)")
                     .build(),
             ),
@@ -4265,26 +4184,26 @@ mod tests {
             (
                 r#""1.1.1.1".ip()"#,
                 ExpectedErrorMessageBuilder::error("`ip` is a function, not a method")
-                    .help("use a function-style call: `ip(..)`")
+                    .help("use a function-style call `ip(..)`")
                     .exactly_one_underline(r#""1.1.1.1".ip()"#)
                     .build(),
             ),
             (
                 r#"greaterThan(1, 2)"#,
                 ExpectedErrorMessageBuilder::error("`greaterThan` is a method, not a function")
-                    .help("use a method-style call: `e.greaterThan(..)`")
+                    .help("use a method-style call `e.greaterThan(..)`")
                     .exactly_one_underline("greaterThan(1, 2)")
                     .build(),
             ),
             (
                 "[].bar()",
-                ExpectedErrorMessageBuilder::error("not a valid method name: `bar`")
+                ExpectedErrorMessageBuilder::error("`bar` is not a valid method")
                     .exactly_one_underline("[].bar()")
                     .build(),
             ),
             (
                 "bar([])",
-                ExpectedErrorMessageBuilder::error("`bar` is not a function")
+                ExpectedErrorMessageBuilder::error("`bar` is not a valid function")
                     .exactly_one_underline("bar([])")
                     .build(),
             ),
@@ -4298,7 +4217,7 @@ mod tests {
             (
                 "(1+1)()",
                 ExpectedErrorMessageBuilder::error(
-                    "function calls must be of the form: `<name>(arg1, arg2, ...)`",
+                    "function calls must be of the form `<name>(arg1, arg2, ...)`",
                 )
                 .exactly_one_underline("(1+1)()")
                 .build(),
@@ -4306,7 +4225,7 @@ mod tests {
             (
                 "foo.bar()",
                 ExpectedErrorMessageBuilder::error(
-                    "attempted to call `foo.bar`, but `foo` does not have any methods",
+                    "attempted to call `foo.bar(...)`, but `foo` does not have any methods",
                 )
                 .exactly_one_underline("foo.bar()")
                 .build(),
@@ -4366,31 +4285,31 @@ mod tests {
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action in ?principal, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?principal").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?principal").build(),
             ),
             (
                 r#"permit(principal, action == ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in ?resource, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, got: template slot").exactly_one_underline("?resource").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?resource").build(),
             ),
             (
                 r#"permit(principal, action in [?bar], resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, got: template slot").exactly_one_underline("?bar").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?bar").build(),
             ),
         ];
 
@@ -4409,15 +4328,36 @@ mod tests {
     fn missing_scope_constraint() {
         let p_src = "permit();";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `principal` variable in the scope").exactly_one_underline("").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `principal` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
         });
         let p_src = "permit(principal);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `action` variable in the scope").exactly_one_underline("").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `action` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
         });
         let p_src = "permit(principal, action);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("this policy is missing the `resource` variable in the scope").exactly_one_underline("").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `resource` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
         });
     }
 
@@ -4426,16 +4366,20 @@ mod tests {
         let p_src = "permit(foo, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "expected a variable that is valid in the policy scope; found: `foo`",
+                "found an invalid variable in the policy scope: foo",
                 ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ).exactly_one_underline("foo").build());
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "unexpected token `::`",
-            ).exactly_one_underline("::").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unexpected token `::`")
+                    .exactly_one_underline_with_label("::", "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`")
+                    .build()
+            );
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
@@ -4457,7 +4401,7 @@ mod tests {
         let p_src = "permit(principal, if, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "expected a variable that is valid in the policy scope; found: `if`",
+                "found an invalid variable in the policy scope: if",
                 ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ).exactly_one_underline("if").build());
@@ -4466,7 +4410,7 @@ mod tests {
         let p_src = "permit(principal, action, like);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "expected a variable that is valid in the policy scope; found: `like`",
+                "found an invalid variable in the policy scope: like",
                 ).help(
                 "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ).exactly_one_underline("like").build());
@@ -4494,25 +4438,25 @@ mod tests {
         let p_src = r#"permit(principal > User::"alice", action, resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "not a valid policy scope constraint: >",
+                "invalid operator in the policy scope: >",
                 ).help(
-                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
             ).exactly_one_underline("principal > User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "not a valid policy scope constraint: !=",
+                "invalid operator in the action scope: !=",
                 ).help(
-                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+                "action scope clauses can only use `==` or `in`"
             ).exactly_one_underline("action != Action::\"view\"").build());
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "not a valid policy scope constraint: <=",
+                "invalid operator in the policy scope: <=",
                 ).help(
-                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
             ).exactly_one_underline("resource <= Folder::\"things\"").build());
         });
         let p_src = r#"permit(principal = User::"alice", action, resource);"#;
@@ -4529,7 +4473,7 @@ mod tests {
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
 
@@ -4537,7 +4481,7 @@ mod tests {
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, got: set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
     }
 
@@ -4579,9 +4523,9 @@ mod tests {
         fn expect_arbitrary_var(name: &str) {
             assert_matches!(parse_expr(name), Err(e) => {
                 expect_err(name, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                    "arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`",
+                    &format!("invalid variable: {name}"),
                 ).help(
-                    &format!("did you mean to enclose `{name}` in quotes to make a string?"),
+                    &format!("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `{name}` in quotes to make a string?"),
                 ).exactly_one_underline(name).build());
             })
         }
@@ -4649,7 +4593,7 @@ mod tests {
         let expr = "principal has if::foo";
         assert_matches!(parse_expr(expr), Err(e) => {
             expect_err(expr, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "this identifier is reserved and cannot be used: `if`"
+                "this identifier is reserved and cannot be used: if"
             ).exactly_one_underline("if").build());
         })
     }
@@ -4660,7 +4604,7 @@ mod tests {
         fn expect_reserved_ident(name: &str, reserved: &str) {
             assert_matches!(parse_expr(name), Err(e) => {
                 expect_err(name, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                    &format!("this identifier is reserved and cannot be used: `{reserved}`"),
+                    &format!("this identifier is reserved and cannot be used: {reserved}"),
                 ).exactly_one_underline(reserved).build());
             })
         }
