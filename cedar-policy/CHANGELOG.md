@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The API around `Request::new` has changed to remove the `Option`s 
+  around the entity type arguments.
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
 - Finalized the `ffi` module which was preview-released in 3.2.0.
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
 - Removed the `error` extension function, which was previously used during partial evaluation.
 - Removed integration testing harness from the `cedar-policy` crate. It is now

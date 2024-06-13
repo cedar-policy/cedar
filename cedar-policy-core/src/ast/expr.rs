@@ -133,8 +133,8 @@ pub enum ExprKind<T = ()> {
     Is {
         /// Expression to test. Must evaluate to an Entity.
         expr: Arc<Expr<T>>,
-        /// The entity type `Name` used for the type membership test.
-        entity_type: Name,
+        /// The [`EntityType`] used for the type membership test.
+        entity_type: EntityType,
     },
     /// Set (whose elements may be arbitrary expressions)
     //
@@ -481,7 +481,7 @@ impl Expr {
     }
 
     /// Create an `is` expression.
-    pub fn is_entity_type(expr: Expr, entity_type: Name) -> Self {
+    pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
     }
 
@@ -1090,7 +1090,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
-    pub fn is_entity_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+    pub fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,

@@ -167,9 +167,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Combine into request
     let request = Request::new(
-        Some(principal.clone()),
-        Some(action.clone()),
-        Some(resource.clone()),
+        principal.clone(),
+        action.clone(),
+        resource.clone(),
         context,
         None,
     )
@@ -184,9 +184,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Same request with empty context
     let request2 = Request::new(
-        Some(principal),
-        Some(action.clone()),
-        Some(resource.clone()),
+        principal.clone(),
+        action.clone(),
+        resource.clone(),
         Context::empty(),
         None,
     )
@@ -198,15 +198,15 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Response::new(Decision::Allow, [alice_view_id].into(), Vec::new())
     );
 
-    // request with Account::"jane" and an unspecified action
+    // request with Account::"jane" and a default entity
     let principal = EntityUid::from_type_name_and_id(
         EntityTypeName::from_str("Account").unwrap(),
         EntityId::from_str("jane").unwrap(),
     );
     let request3 = Request::new(
-        Some(principal.clone()),
-        None,
-        Some(resource.clone()),
+        principal.clone(),
+        r#"__cedar::"Default""#.parse().unwrap(),
+        resource.clone(),
         Context::empty(),
         None,
     )
@@ -219,11 +219,11 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Decision::Allow
     );
 
-    // Requesting with an unspecified principal or resource will return Deny (but not fail)
+    // Requesting with a default principal or resource will return Deny (but not fail)
     let request4 = Request::new(
-        None,
-        Some(action.clone()),
-        Some(resource),
+        r#"__cedar::"Default""#.parse().unwrap(),
+        action.clone(),
+        resource,
         Context::empty(),
         None,
     )
@@ -233,8 +233,15 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
             .decision(),
         Decision::Deny
     );
-    let request5 =
-        Request::new(Some(principal), Some(action), None, Context::empty(), None).unwrap();
+    let request5 = Request::new(
+        principal,
+        action,
+        r#"__cedar::"Default""#.parse().unwrap(),
+        Context::empty(),
+        None,
+    )
+    .unwrap();
+
     assert_eq!(
         auth.is_authorized(&request5, &policies, &entities)
             .decision(),
@@ -268,14 +275,7 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
     );
 
     // Combine into request
-    let request = Request::new(
-        Some(principal),
-        Some(action),
-        Some(resource),
-        Context::empty(),
-        None,
-    )
-    .unwrap();
+    let request = Request::new(principal, action, resource, Context::empty(), None).unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -315,14 +315,7 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
     );
 
     // Combine into request
-    let request = Request::new(
-        Some(principal),
-        Some(action),
-        Some(resource),
-        Context::empty(),
-        None,
-    )
-    .unwrap();
+    let request = Request::new(principal, action, resource, Context::empty(), None).unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -373,8 +366,7 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
     .unwrap();
 
     // Combine into request
-    let request =
-        Request::new(Some(principal), Some(action), Some(resource), context, None).unwrap();
+    let request = Request::new(principal, action, resource, context, None).unwrap();
 
     //try an evaluation
     let result = eval_expression(

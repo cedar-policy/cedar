@@ -199,7 +199,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            Name::from_normalized_str(&e.entity_type)?,
+            Name::from_normalized_str(&e.entity_type)?.into(),
             Eid::new(e.id),
             None,
         ))

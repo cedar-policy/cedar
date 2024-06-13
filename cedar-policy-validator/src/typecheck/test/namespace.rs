@@ -540,9 +540,16 @@ fn namespaced_entity_is_wrong_type_when() {
 fn multi_namespace_action_eq() {
     let (schema, _) = SchemaFragment::from_str_natural(
         r#"
-            action "Action" appliesTo { context: {} };
-            namespace NS1 { action "Action" appliesTo { context: {} }; }
-            namespace NS2 { action "Action" appliesTo { context: {} }; }
+            entity E;
+            action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
+            namespace NS1 {
+                entity E;
+                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+            }
+            namespace NS2 {
+                entity E;
+                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+            }
         "#,
     )
     .unwrap();
@@ -583,11 +590,13 @@ fn multi_namespace_action_eq() {
 fn multi_namespace_action_in() {
     let (schema, _) = SchemaFragment::from_str_natural(
         r#"
+            entity E;
             namespace NS1 { action "Group"; }
             namespace NS2 { action "Group" in [NS1::Action::"Group"]; }
             namespace NS3 {
                 action "Group" in [NS2::Action::"Group"];
-                action "Action" in [Action::"Group"] appliesTo { context: {} };
+                entity E;
+                action "Action" in [Action::"Group"] appliesTo { context: {}, principal: [E], resource: [E] };
             }
             namespace NS4 { action "Group"; }
         "#,

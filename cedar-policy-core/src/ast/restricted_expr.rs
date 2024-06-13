@@ -625,7 +625,7 @@ pub enum RestrictedExpressionError {
     InvalidRestrictedExpression(#[from] restricted_expr_errors::InvalidRestrictedExpressionError),
 }
 
-/// Error subtypes for [`RestrictedExprError`]
+/// Error subtypes for [`RestrictedExpressionError`]
 pub mod restricted_expr_errors {
     use super::Expr;
     use miette::Diagnostic;
