@@ -648,8 +648,10 @@ impl Entities {
         self.0.write_to_json(f)
     }
 
+    #[doc = include_str!("../experimental_warning.md")]
     /// Visualize an `Entities` object in the graphviz `dot`
-    /// format.
+    /// format. Entity visualization is best-effort and not well tested.
+    /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> std::result::Result<String, std::fmt::Error> {
         self.0.to_dot_str()
     }

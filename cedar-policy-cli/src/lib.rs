@@ -100,6 +100,7 @@ pub enum Commands {
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Visualize a set of JSON entities to the graphviz format.
+    /// Warning: Entity visualization is best-effort and not well tested.
     Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
