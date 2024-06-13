@@ -79,6 +79,10 @@ harness = false
 name = "entity_attr_errors"
 harness = false
 
+[[bench]]
+name = "extension_fn_validation"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]

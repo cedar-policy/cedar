@@ -47,17 +47,24 @@ pub fn get_comment(text: &str) -> String {
 // Represent Cedar comments
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Comment {
-    pub leading_comment: String,
-    pub trailing_comment: String,
+    leading_comment: String,
+    trailing_comment: String,
 }
 
 impl Comment {
-    pub fn add_leading_comment(&mut self, comment: &str) {
-        self.leading_comment.push_str(&get_comment(comment));
+    pub fn new(leading_comment: &str, trailing_comment: &str) -> Self {
+        Self {
+            leading_comment: get_comment(leading_comment),
+            trailing_comment: get_comment(trailing_comment),
+        }
     }
 
-    pub fn add_trailing_comment(&mut self, comment: &str) {
-        self.trailing_comment.push_str(&get_comment(comment));
+    pub fn leading_comment(&self) -> &str {
+        &self.leading_comment
+    }
+
+    pub fn trailing_comment(&self) -> &str {
+        &self.trailing_comment
     }
 }
 
@@ -296,20 +303,12 @@ pub struct WrappedToken {
 }
 
 impl WrappedToken {
-    pub fn new(token: Token, comment: Comment, span: Span) -> Self {
+    pub fn new(token: Token, span: Span, comment: Comment) -> Self {
         Self {
             token,
             comment,
             span,
         }
-    }
-
-    pub fn add_leading_comment(&mut self, comment: &str) {
-        self.comment.add_leading_comment(comment);
-    }
-
-    pub fn add_trailing_comment(&mut self, comment: &str) {
-        self.comment.add_trailing_comment(comment);
     }
 
     fn clear_leading_comment(&mut self) {

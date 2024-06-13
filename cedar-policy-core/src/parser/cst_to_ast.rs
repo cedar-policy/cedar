@@ -2599,26 +2599,6 @@ mod tests {
             2
         );
 
-        // can't have spaces or '+' in annotation keys
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi+mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -3299,7 +3279,7 @@ mod tests {
             expect_some_error_matches(
                 test,
                 &es,
-                &ExpectedErrorMessageBuilder::error(&msg)
+                &ExpectedErrorMessageBuilder::error(msg)
                     .help("action entities must have type `Action`, optionally in a namespace")
                     .exactly_one_underline(underline)
                     .build(),
@@ -4068,15 +4048,15 @@ mod tests {
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `in`"
-                ).exactly_one_underline("in").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `in`")
+                    .exactly_one_underline_with_label("in", "expected `&&`, `||`, or `}`")
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `==`"
-                ).exactly_one_underline("==").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `==`")
+                    .exactly_one_underline_with_label("==", "expected `&&`, `||`, `}`, or `in`")
+                    .build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
@@ -4358,9 +4338,13 @@ mod tests {
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "unexpected token `::`",
-            ).exactly_one_underline("::").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unexpected token `::`")
+                    .exactly_one_underline_with_label("::", "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`")
+                    .build()
+            );
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {

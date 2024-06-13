@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional.
+- Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
+  can be common type names; updated the error message when common type names
+  conflict with built-in primitive type names (#974, partially resolving #973)
 
 ### Removed
 
