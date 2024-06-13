@@ -188,14 +188,30 @@ impl Display for ActionType {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-pub enum ToHumanSchemaStrError {
-    #[error("There exist type name collisions: {:?}", .0)]
-    NameCollisions(NonEmpty<SmolStr>),
+pub enum ToHumanSchemaSyntaxError {
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NameCollisions(#[from] NameCollisionsError),
+}
+
+/// Duplicate names were found in the schema
+#[derive(Debug, Error, Diagnostic)]
+#[error("There are name collisions: [{}]", .names.iter().join(", "))]
+pub struct NameCollisionsError {
+    /// Names that had collisions
+    names: NonEmpty<SmolStr>,
+}
+
+impl NameCollisionsError {
+    /// Get the names that had collisions
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.names.iter().map(smol_str::SmolStr::as_str)
+    }
 }
 
 pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
-) -> Result<String, ToHumanSchemaStrError> {
+) -> Result<String, ToHumanSchemaSyntaxError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
         let entity_types: HashSet<SmolStr> = ns
@@ -218,11 +234,11 @@ pub fn json_schema_to_custom_schema_str(
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }
-    if let Some((head, tail)) = name_collisions.split_first() {
-        return Err(ToHumanSchemaStrError::NameCollisions(NonEmpty {
-            head: head.clone(),
-            tail: tail.to_vec(),
-        }));
+    if let Some(non_empty_collisions) = NonEmpty::from_vec(name_collisions) {
+        return Err(NameCollisionsError {
+            names: non_empty_collisions,
+        }
+        .into());
     }
     Ok(json_schema.to_string())
 }

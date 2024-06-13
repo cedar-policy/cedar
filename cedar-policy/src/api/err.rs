@@ -31,6 +31,7 @@ pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
+use to_human_syntax_errors::NameCollisionsError;
 
 /// Errors that can occur during authorization
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
@@ -127,40 +128,34 @@ pub enum ToHumanSyntaxError {
 
 /// Error subtypes for [`ToHumanSyntaxError`]
 pub mod to_human_syntax_errors {
-    use itertools::Itertools;
     use miette::Diagnostic;
-    use nonempty::NonEmpty;
-    use smol_str::SmolStr;
     use thiserror::Error;
 
     /// Duplicate names were found in the schema
     #[derive(Debug, Error, Diagnostic)]
-    #[error("There are name collisions: [{}]", .names.iter().join(", "))]
-    pub struct NameCollisionsError {
-        /// Names that had collisions
-        names: NonEmpty<SmolStr>,
-    }
+    #[repr(transparent)]
+    #[error(transparent)]
+    pub struct NameCollisionsError(
+        pub(super) cedar_policy_validator::human_schema::fmt::NameCollisionsError,
+    );
 
     impl NameCollisionsError {
-        /// Construct a new [`NameCollisionsError`]
-        pub(crate) fn new(names: NonEmpty<SmolStr>) -> Self {
-            Self { names }
-        }
-
         /// Get the names that had collisions
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            self.names.iter().map(smol_str::SmolStr::as_str)
+            self.0.names()
         }
     }
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
-    fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
+impl From<cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError>
+    for ToHumanSyntaxError
+{
+    fn from(value: cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError) -> Self {
         match value {
-            cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
-                collisions,
-            ) => Self::NameCollisions(to_human_syntax_errors::NameCollisionsError::new(collisions)),
+            cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError::NameCollisions(
+                name_collision_err,
+            ) => NameCollisionsError(name_collision_err).into(),
         }
     }
 }

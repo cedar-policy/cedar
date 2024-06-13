@@ -666,9 +666,10 @@ impl ValidatorNamespaceDef {
                 let defined_type_name =
                     type_name.prefix_namespace_if_unqualified(default_namespace);
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-                    typ_defs.get(&defined_type_name).cloned().ok_or(
-                        UndeclaredCommonTypesError(HashSet::from([defined_type_name])).into(),
-                    )
+                    typ_defs
+                        .get(&defined_type_name)
+                        .cloned()
+                        .ok_or(UndeclaredCommonTypesError(defined_type_name).into())
                 }))
             }
         }

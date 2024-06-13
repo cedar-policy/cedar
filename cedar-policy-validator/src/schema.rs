@@ -20,7 +20,7 @@
 //! `member_of` relation from the schema is reversed and the transitive closure is
 //! computed to obtain a `descendants` relation.
 
-use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Name},
@@ -401,7 +401,7 @@ impl ValidatorSchema {
         // any undeclared entity types which appeared in a `memberOf` list.
         let mut undeclared_e = undeclared_parent_entities
             .into_iter()
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         // Looking at entity types, we need to check entity references in
         // attribute types. We already know that all elements of the
         // `descendants` list were declared because the list is a result of
@@ -421,7 +421,7 @@ impl ValidatorSchema {
         let undeclared_a = undeclared_parent_actions
             .into_iter()
             .map(|n| n.to_smolstr())
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         // For actions, we check entity references in the context attribute
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
@@ -476,7 +476,7 @@ impl ValidatorSchema {
     fn check_undeclared_in_type(
         ty: &Type,
         entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_types: &mut HashSet<Name>,
+        undeclared_types: &mut BTreeSet<Name>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
@@ -796,7 +796,7 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaType::TypeDef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(
-                    UndeclaredCommonTypesError(HashSet::from_iter(std::iter::once(type_name))),
+                    UndeclaredCommonTypesError(type_name),
                 ))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
@@ -1014,15 +1014,17 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
+        let schema_file: NamespaceDefinition =
+            serde_json::from_value(src.clone()).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(_) => panic!("from_schema_file should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
-                assert_eq!(v.len(), 3)
-            }
-            _ => panic!("Unexpected error from from_schema_file"),
-        }
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity types: Grop, Phoot, and Usr"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
     }
 
     #[test]
@@ -1037,15 +1039,16 @@ mod test {
             },
             "actions": {}
         }});
-        let schema_file: SchemaFragment = serde_json::from_value(src).expect("Parse Error");
+        let schema_file: SchemaFragment = serde_json::from_value(src.clone()).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(_) => panic!("try_into should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
-                assert_eq!(v, HashSet::from(["Bar::Group".parse().unwrap()]))
-            }
-            _ => panic!("Unexpected error from try_into"),
-        }
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: Bar::Group"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
     }
 
     #[test]
@@ -1062,18 +1065,16 @@ mod test {
                 }
             }
         }});
-        let schema_file: SchemaFragment = serde_json::from_value(src).expect("Parse Error");
+        let schema_file: SchemaFragment = serde_json::from_value(src.clone()).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(_) => panic!("try_into should have failed"),
-            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
-                assert_eq!(
-                    v,
-                    HashSet::from(["Bar::Photo".parse().unwrap(), "Bar::User".parse().unwrap()])
-                )
-            }
-            _ => panic!("Unexpected error from try_into"),
-        }
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity types: Bar::Photo and Bar::User"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
     }
 
     // Undefined action "photo_actions"
@@ -1102,15 +1103,17 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
+        let schema_file: NamespaceDefinition =
+            serde_json::from_value(src.clone()).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(_) => panic!("from_schema_file should have failed"),
-            Err(SchemaError::UndeclaredActions(UndeclaredActionsError(v))) => {
-                assert_eq!(v.len(), 1)
-            }
-            _ => panic!("Unexpected error from from_schema_file"),
-        }
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared action: Action::"photo_action""#)
+                    .help("any actions appearing in `memberOf` need to be declared in `actions`")
+                    .build());
+        });
     }
 
     // Trivial cycle in action hierarchy
@@ -1249,32 +1252,32 @@ mod test {
 
     #[test]
     fn entity_attribute_entity_type_with_namespace() {
-        let schema_json: SchemaFragment = serde_json::from_str(
-            r#"
-            {"A::B": {
-                "entityTypes": {
-                    "Foo": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "name": { "type": "Entity", "name": "C::D::Foo" }
-                            }
+        let src = json!(
+        {"A::B": {
+            "entityTypes": {
+                "Foo": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "name": { "type": "Entity", "name": "C::D::Foo" }
                         }
                     }
-                },
-                "actions": {}
-              }}
-            "#,
-        )
-        .expect("Expected valid schema");
+                }
+            },
+            "actions": {}
+          }});
+        let schema_json: SchemaFragment =
+            serde_json::from_value(src.clone()).expect("Expected valid schema");
 
         let schema: Result<ValidatorSchema> = schema_json.try_into();
-        match schema {
-            Err(SchemaError::UndeclaredEntityTypes(UndeclaredEntityTypesError(v))) => {
-                assert_eq!(v, HashSet::from(["C::D::Foo".parse().unwrap()]))
-            }
-            _ => panic!("Schema construction should have failed due to undeclared entity type."),
-        }
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: C::D::Foo"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
     }
 
     #[test]
@@ -2200,9 +2203,15 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(types))) =>
-            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Demo::id"#)
+                    .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                    .build());
+        });
     }
 
     #[test]
@@ -2234,9 +2243,15 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(types))) =>
-            assert_eq!(types, HashSet::from(["Demo::id".parse().unwrap()])));
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Demo::id"#)
+                    .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                    .build());
+        });
     }
 
     #[test]

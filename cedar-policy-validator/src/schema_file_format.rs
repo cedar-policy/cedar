@@ -31,7 +31,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::{
     err::{schema_errors::*, Result},
     human_schema::{
-        self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
+        self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
     HumanSchemaError, HumanSyntaxParseError,
 };
@@ -132,8 +132,8 @@ impl SchemaFragment {
     }
 
     /// Pretty print this [`SchemaFragment`]
-    pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaStrError> {
-        let src = human_schema::json_schema_to_custom_schema_str(self)?;
+    pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaSyntaxError> {
+        let src = human_schema::fmt::json_schema_to_custom_schema_str(self)?;
         Ok(src)
     }
 }
@@ -846,10 +846,13 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::extensions::Extensions;
+    use cedar_policy_core::{
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
     use cool_asserts::assert_matches;
 
-    use crate::{SchemaError, ValidatorSchema};
+    use crate::ValidatorSchema;
 
     use super::*;
 
@@ -1116,8 +1119,15 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(ns))) if ns.contains(&"Entity".parse().unwrap()));
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Entity"#)
+                    .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                    .build());
+        });
     }
 
     #[test]
