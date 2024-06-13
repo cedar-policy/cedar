@@ -953,7 +953,6 @@ impl PartialResponse {
         &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
         auth: &Authorizer,
-        r: Request,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
@@ -966,7 +965,7 @@ impl PartialResponse {
                     .map(|v| (name, v))
             })
             .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
-        let r = self.0.reauthorize(&mapping, &auth.0, r.0, &es.0)?;
+        let r = self.0.reauthorize(&mapping, &auth.0, &es.0)?;
         Ok(Self(r))
     }
 }
