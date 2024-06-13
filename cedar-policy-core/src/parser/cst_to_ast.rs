@@ -588,12 +588,25 @@ impl Node<Option<cst::VariableDef>> {
 
         if let Some((op, rel_expr)) = &vardef.ineq {
             let action_constraint = match op {
-                cst::RelOp::In => match rel_expr.to_refs(ast::Var::Action)? {
-                    OneOrMultipleRefs::Single(single_ref) => {
-                        Ok(ActionConstraint::is_in([single_ref]))
+                cst::RelOp::In => {
+                    // special check for the syntax `_ in _ is _`
+                    match rel_expr.to_expr() {
+                        Ok(expr) => {
+                            if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                                return Err(rel_expr
+                                    .to_ast_err(ToASTErrorKind::IsInActionScope)
+                                    .into());
+                            }
+                        }
+                        Err(_) => (), // ignore
                     }
-                    OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
-                },
+                    match rel_expr.to_refs(ast::Var::Action)? {
+                        OneOrMultipleRefs::Single(single_ref) => {
+                            Ok(ActionConstraint::is_in([single_ref]))
+                        }
+                        OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
+                    }
+                }
                 cst::RelOp::Eq => {
                     let single_ref = rel_expr.to_ref(ast::Var::Action)?;
                     Ok(ActionConstraint::is_eq(single_ref))
@@ -1087,19 +1100,12 @@ impl Node<Option<cst::Relation>> {
                 let second = rest.next();
                 match second {
                     None => Ok(first),
-                    Some((&op, second)) => {
-                        let first = first.into_expr()?;
-                        // special check for the syntax `_ in _ is _`
-                        if op == cst::RelOp::In
-                            && matches!(second.expr_kind(), ast::ExprKind::Is { .. })
-                        {
-                            return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
-                        }
+                    Some((&op, second)) => first.into_expr().and_then(|first| {
                         Ok(ExprOrSpecial::Expr {
                             expr: construct_expr_rel(first, op, second, self.loc.clone())?,
                             loc: self.loc.clone(),
                         })
-                    }
+                    }),
                 }
             }
             cst::Relation::Has { target, field } => {
@@ -3857,7 +3863,7 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("invalid syntax `_ in _ is _`")
+                ExpectedErrorMessageBuilder::error("when `is` and `in` are used together, `is` must come first")
                     .help("try `_ is _ in _`")
                     .exactly_one_underline(r#"principal in Group::"friends" is User"#)
                     .build(),
@@ -3865,14 +3871,15 @@ mod tests {
             (
                 r#"permit(principal, action in Group::"action_group" is Action, resource);"#,
                 ExpectedErrorMessageBuilder::error("`is` cannot appear in the action scope")
+                    .help("try moving `action is ..` into a `when` condition")
                     .exactly_one_underline(r#"Group::"action_group" is Action"#)
                     .build(),
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                ExpectedErrorMessageBuilder::error("invalid syntax `_ in _ is _`")
+                ExpectedErrorMessageBuilder::error("when `is` and `in` are used together, `is` must come first")
                     .help("try `_ is _ in _`")
-                    .exactly_one_underline(r#"resource in Group::"folder" is File"#)
+                    .exactly_one_underline(r#"resource in Folder::"folder" is File"#)
                     .build(),
             ),
             (
@@ -4088,10 +4095,11 @@ mod tests {
                     .build(),
             ),
             (
+                // `_ in _ is _` in the policy condition is an error in the text->CST parser 
                 r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `is`"
-                ).exactly_one_underline(r#"is"#).build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `is`")
+                    .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
+                    .build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {

@@ -372,8 +372,8 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
-    /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _`
-    #[error("invalid syntax `_ in _ is _`")]
+    /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _` in the policy scope
+    #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
 }
