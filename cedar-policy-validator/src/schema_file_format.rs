@@ -846,10 +846,13 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::extensions::Extensions;
+    use cedar_policy_core::{
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
     use cool_asserts::assert_matches;
 
-    use crate::{SchemaError, ValidatorSchema};
+    use crate::ValidatorSchema;
 
     use super::*;
 
@@ -1116,8 +1119,15 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(ns))) if ns.contains(&"Entity".parse().unwrap()));
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Entity"#)
+                    .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                    .build());
+        });
     }
 
     #[test]

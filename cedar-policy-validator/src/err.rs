@@ -146,9 +146,8 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
-    /// This error occurs in either of the following cases (see discussion on #477):
-    ///     - undeclared common type(s) appearing in entity or context attributes
-    ///     - common type(s) (declared or not) appearing in declarations of other common types
+    /// This error when undeclared common type appear in entity or context
+    /// attributes.
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredCommonTypes(#[from] schema_errors::UndeclaredCommonTypesError),
@@ -235,10 +234,11 @@ pub type Result<T> = std::result::Result<T, SchemaError>;
 
 /// Error subtypes for [`SchemaError`]
 pub mod schema_errors {
-    use std::{collections::HashSet, fmt::Display};
+    use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
         ast::{EntityAttrEvaluationError, EntityUID, Id, Name},
+        parser::join_with_conjunction,
         transitive_closure,
     };
     use itertools::Itertools;
@@ -285,11 +285,21 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("undeclared entity type(s): {0:?}")]
     #[diagnostic(help(
         "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
     ))]
-    pub struct UndeclaredEntityTypesError(pub(crate) HashSet<Name>);
+    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<Name>);
+
+    impl Display for UndeclaredEntityTypesError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.0.len() == 1 {
+                write!(f, "undeclared entity type: ")?;
+            } else {
+                write!(f, "undeclared entity types: ")?;
+            }
+            join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
+        }
+    }
 
     /// Undeclared actions error
     //
@@ -297,9 +307,19 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("undeclared action(s): {0:?}")]
     #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
-    pub struct UndeclaredActionsError(pub(crate) HashSet<SmolStr>);
+    pub struct UndeclaredActionsError(pub(crate) BTreeSet<SmolStr>);
+
+    impl Display for UndeclaredActionsError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.0.len() == 1 {
+                write!(f, "undeclared action: ")?;
+            } else {
+                write!(f, "undeclared actions: ")?;
+            }
+            join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
+        }
+    }
 
     /// Undeclared common types error
     //
@@ -307,9 +327,9 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("undeclared common type(s), or common type(s) used in the declaration of another common type: {0:?}")]
-    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`, and currently, common types may not reference other common types"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) HashSet<Name>);
+    #[error("undeclared common type: {0}")]
+    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
+    pub struct UndeclaredCommonTypesError(pub(crate) Name);
 
     /// Duplicate entity type error
     //
