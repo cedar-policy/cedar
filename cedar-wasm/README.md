@@ -10,7 +10,7 @@ Loading is much more complicated. It depends on your environment. We offer three
 
 * es modules (default). It loads wasm in a way that will be bundled into a single file if you use dynamic imports, or embedded into your main bundle if you use regular imports.
 * commonjs (for node). It loads wasm using node's `fs` module, synchronously. Not really designed for bundling or shipping to the browser.
-* web: more customizable. This one is for when you need to load the wasm
+* web: more customizable. This one is for when you need to load the wasm in some totally custom way. More details in the "alternate loading strategies" section.
 
 These sub-packages are named `@cedar-policy/cedar-wasm`, `@cedar-policy/cedar-wasm/nodejs`, and `@cedar-policy/cedar-wasm/web`, respectively.
 
