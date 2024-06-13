@@ -499,6 +499,19 @@ impl<'de> Visitor<'de> for SchemaTypeVisitor {
     }
 }
 
+// PANIC SAFETY `Set`, `Record`, `Entity`, and `Extension` are valid `Name`s
+#[allow(clippy::expect_used)]
+pub(crate) mod static_names {
+    use cedar_policy_core::ast::Name;
+
+    lazy_static::lazy_static! {
+        pub(crate) static ref SET_NAME : Name = Name::parse_unqualified_name("Set").expect("valid identifier");
+        pub(crate) static ref RECORD_NAME : Name = Name::parse_unqualified_name("Record").expect("valid identifier");
+        pub(crate) static ref ENTITY_NAME : Name = Name::parse_unqualified_name("Entity").expect("valid identifier");
+        pub(crate) static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("Extension").expect("valid identifier");
+    }
+}
+
 impl SchemaTypeVisitor {
     /// Construct a schema type given the name of the type and its fields.
     /// Fields which were not present are `None`. It is an error for a field
@@ -514,8 +527,10 @@ impl SchemaTypeVisitor {
     where
         M: MapAccess<'de>,
     {
+        use static_names::*;
         use TypeFields::*;
-        let present_fields = [
+        // Fields that remain to be parsed
+        let mut remaining_fields = [
             (Type, type_name.is_some()),
             (Element, element.is_some()),
             (Attributes, attributes.is_some()),
@@ -526,119 +541,141 @@ impl SchemaTypeVisitor {
         .filter(|(_, present)| *present)
         .map(|(field, _)| field)
         .collect::<HashSet<_>>();
-        // Used to generate the appropriate serde error if a field is present
-        // when it is not expected.
-        let error_if_fields = |fs: &[TypeFields],
-                               expected: &'static [&'static str]|
-         -> std::result::Result<(), M::Error> {
-            for f in fs {
-                if present_fields.contains(f) {
-                    return Err(serde::de::Error::unknown_field(f.as_str(), expected));
-                }
-            }
-            Ok(())
-        };
-        let error_if_any_fields = || -> std::result::Result<(), M::Error> {
-            error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
-        };
 
-        match type_name.transpose()?.as_ref().map(|s| s.as_str()) {
-            Some("String") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::String))
-            }
-            Some("Long") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::Long))
-            }
-            Some("Boolean") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
-            }
-            Some("Set") => {
-                error_if_fields(
-                    &[Attributes, AdditionalAttributes, Name],
-                    &[type_field_name!(Element)],
-                )?;
+        match type_name.transpose()?.as_ref() {
+            Some(s) => {
+                // We've concluded that type exists
+                remaining_fields.remove(&Type);
+                // Used to generate the appropriate serde error if a field is present
+                // when it is not expected.
+                let error_if_fields = |fs: &[TypeFields],
+                                       expected: &'static [&'static str]|
+                 -> std::result::Result<(), M::Error> {
+                    for f in fs {
+                        if remaining_fields.contains(f) {
+                            return Err(serde::de::Error::unknown_field(f.as_str(), expected));
+                        }
+                    }
+                    Ok(())
+                };
+                let error_if_any_fields = || -> std::result::Result<(), M::Error> {
+                    error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
+                };
+                match s.as_str() {
+                    "String" => {
+                        error_if_any_fields()?;
+                        Ok(SchemaType::Type(SchemaTypeVariant::String))
+                    }
+                    "Long" => {
+                        error_if_any_fields()?;
+                        Ok(SchemaType::Type(SchemaTypeVariant::Long))
+                    }
+                    "Boolean" => {
+                        error_if_any_fields()?;
+                        Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
+                    }
+                    "Set" => {
+                        if remaining_fields.is_empty() {
+                            Ok(SchemaType::TypeDef {
+                                type_name: SET_NAME.clone(),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Attributes, AdditionalAttributes, Name],
+                                &[type_field_name!(Element)],
+                            )?;
 
-                if let Some(element) = element {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Set {
-                        element: Box::new(element?),
-                    }))
-                } else {
-                    Err(serde::de::Error::missing_field(Element.as_str()))
-                }
-            }
-            Some("Record") => {
-                error_if_fields(
-                    &[Element, Name],
-                    &[
-                        type_field_name!(Attributes),
-                        type_field_name!(AdditionalAttributes),
-                    ],
-                )?;
+                            Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                                // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them, ensuring `element` exists
+                                #[allow(clippy::unwrap_used)]
+                                element: Box::new(element.unwrap()?),
+                            }))
+                        }
+                    }
+                    "Record" => {
+                        if remaining_fields.is_empty() {
+                            Ok(SchemaType::TypeDef {
+                                type_name: RECORD_NAME.clone(),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Element, Name],
+                                &[
+                                    type_field_name!(Attributes),
+                                    type_field_name!(AdditionalAttributes),
+                                ],
+                            )?;
 
-                if let Some(attributes) = attributes {
-                    let additional_attributes =
-                        additional_attributes.unwrap_or(Ok(partial_schema_default()));
-                    Ok(SchemaType::Type(SchemaTypeVariant::Record {
-                        attributes: attributes?.0,
-                        additional_attributes: additional_attributes?,
-                    }))
-                } else {
-                    Err(serde::de::Error::missing_field(Attributes.as_str()))
-                }
-            }
-            Some("Entity") => {
-                error_if_fields(
-                    &[Element, Attributes, AdditionalAttributes],
-                    &[type_field_name!(Name)],
-                )?;
+                            if let Some(attributes) = attributes {
+                                let additional_attributes =
+                                    additional_attributes.unwrap_or(Ok(partial_schema_default()));
+                                Ok(SchemaType::Type(SchemaTypeVariant::Record {
+                                    attributes: attributes?.0,
+                                    additional_attributes: additional_attributes?,
+                                }))
+                            } else {
+                                Err(serde::de::Error::missing_field(Attributes.as_str()))
+                            }
+                        }
+                    }
+                    "Entity" => {
+                        if remaining_fields.is_empty() {
+                            Ok(SchemaType::TypeDef {
+                                type_name: ENTITY_NAME.clone(),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            )?;
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
+                            #[allow(clippy::unwrap_used)]
+                            let name = name.unwrap()?;
+                            Ok(SchemaType::Type(SchemaTypeVariant::Entity {
+                                name: cedar_policy_core::ast::Name::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity type `{name}`: {err}"
+                                        ))
+                                    })?,
+                            }))
+                        }
+                    }
+                    "Extension" => {
+                        if remaining_fields.is_empty() {
+                            Ok(SchemaType::TypeDef {
+                                type_name: EXTENSION_NAME.clone(),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            )?;
 
-                if let Some(name) = name {
-                    let name = name?;
-                    Ok(SchemaType::Type(SchemaTypeVariant::Entity {
-                        name: cedar_policy_core::ast::Name::from_normalized_str(&name).map_err(
-                            |err| {
-                                serde::de::Error::custom(format!(
-                                    "invalid entity type `{name}`: {err}"
-                                ))
-                            },
-                        )?,
-                    }))
-                } else {
-                    Err(serde::de::Error::missing_field(Name.as_str()))
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
+                            #[allow(clippy::unwrap_used)]
+                            let name = name.unwrap()?;
+                            Ok(SchemaType::Type(SchemaTypeVariant::Extension {
+                                name: Id::from_normalized_str(&name).map_err(|err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid extension type `{name}`: {err}"
+                                    ))
+                                })?,
+                            }))
+                        }
+                    }
+                    type_name => {
+                        error_if_any_fields()?;
+                        Ok(SchemaType::TypeDef {
+                            type_name: cedar_policy_core::ast::Name::from_normalized_str(type_name)
+                                .map_err(|err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid common type `{type_name}`: {err}"
+                                    ))
+                                })?,
+                        })
+                    }
                 }
-            }
-            Some("Extension") => {
-                error_if_fields(
-                    &[Element, Attributes, AdditionalAttributes],
-                    &[type_field_name!(Name)],
-                )?;
-
-                if let Some(name) = name {
-                    let name = name?;
-                    Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                        name: Id::from_normalized_str(&name).map_err(|err| {
-                            serde::de::Error::custom(format!(
-                                "invalid extension type `{name}`: {err}"
-                            ))
-                        })?,
-                    }))
-                } else {
-                    Err(serde::de::Error::missing_field(Name.as_str()))
-                }
-            }
-            Some(type_name) => {
-                error_if_any_fields()?;
-                Ok(SchemaType::TypeDef {
-                    type_name: cedar_policy_core::ast::Name::from_normalized_str(type_name)
-                        .map_err(|err| {
-                            serde::de::Error::custom(format!(
-                                "invalid common type `{type_name}`: {err}"
-                            ))
-                        })?,
-                })
             }
             None => Err(serde::de::Error::missing_field(Type.as_str())),
         }
@@ -681,22 +718,8 @@ fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
 
-// The possible tags for a SchemaType as written in a schema JSON document. Used
-// to forbid declaring a custom typedef with the same name as a builtin type.
-// This must be kept up to date with the variants for `SchemaTypeVariant` and
-// their actual serialization by serde. There is crate that looks like it could
-// do this automatically, but it returns an empty slice for the variants names
-// of `SchemaTypeVariant`.
-// https://docs.rs/serde-aux/latest/serde_aux/serde_introspection/fn.serde_introspect.html
-pub(crate) static SCHEMA_TYPE_VARIANT_TAGS: &[&str] = &[
-    "String",
-    "Long",
-    "Boolean",
-    "Set",
-    "Record",
-    "Entity",
-    "Extension",
-];
+// We forbid declaring a custom typedef with the same name as a builtin type.
+pub(crate) static PRIMITIVE_TYPES: &[&str] = &["String", "Long", "Boolean"];
 
 impl SchemaType {
     /// Is this `SchemaType` an extension type, or does it contain one
@@ -823,6 +846,11 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
+    use cedar_policy_core::extensions::Extensions;
+    use cool_asserts::assert_matches;
+
+    use crate::{SchemaError, ValidatorSchema};
+
     use super::*;
 
     #[test]
@@ -1069,26 +1097,27 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "missing field `name`")]
     fn schema_file_with_missing_field() {
         let src = serde_json::json!(
         {
-            "entityTypes": {
-                "User": {
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "favorite": {
-                                "type": "Entity",
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "favorite": {
+                                    "type": "Entity",
+                                }
                             }
                         }
                     }
-                }
-            },
-            "actions": {}
+                },
+                "actions": {}
+            }
         });
-        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(UndeclaredCommonTypesError(ns))) if ns.contains(&"Entity".parse().unwrap()));
     }
 
     #[test]

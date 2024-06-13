@@ -209,6 +209,10 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
+    /// Common type names conflict with primitive types.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CommonTypeNameConflict(#[from] schema_errors::CommonTypeNameConflictError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -234,7 +238,7 @@ pub mod schema_errors {
     use std::{collections::HashSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityUID, Name},
+        ast::{EntityAttrEvaluationError, EntityUID, Id, Name},
         transitive_closure,
     };
     use itertools::Itertools;
@@ -521,4 +525,14 @@ pub mod schema_errors {
             })
         }
     }
+
+    /// This error is thrown when a common type name conflicts with a primitive
+    /// type
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Error, Debug, Diagnostic)]
+    #[error("Common type name `{0}` conflicts with primitive type")]
+    pub struct CommonTypeNameConflictError(pub(crate) Id);
 }
