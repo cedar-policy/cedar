@@ -6,6 +6,33 @@ An implementation of various cedar functions to enable developers to write types
 
 Installing is simple, just run `npm i @cedar-policy/cedar-wasm --save` or install with whatever your favorite package manager is.
 
+Loading is much more complicated. It depends on your environment. We offer three subpackages:
+
+* es modules (default). It loads wasm in a way that will be bundled into a single file if you use dynamic imports, or embedded into your main bundle if you use regular imports.
+* commonjs (for node). It loads wasm using node's `fs` module, synchronously. Not really designed for bundling or shipping to the browser.
+* web: more customizable. This one is for when you need to load the wasm
+
+These sub-packages are named `@cedar-policy/cedar-wasm`, `@cedar-policy/cedar-wasm/nodejs`, and `@cedar-policy/cedar-wasm/web`, respectively.
+
+## Loading in bare nodeJs without a bundler
+
+Node uses CommonJs so you have to import with require, or with dynamic `import()`. 
+
+Importing the CJS export:
+
+```
+const cedar = require('@cedar-policy/cedar-wasm/nodejs');
+console.log(cedar.getCedarVersion());
+```
+
+Importing the esm version using esm async import:
+
+```
+import('@cedar-policy/cedar-wasm')
+  .then(cedar => console.log(cedar.getCedarVersion()));
+```
+
+
 ## Loading in webpack 5:
 
 Minimal package.json for webpack including dev server:
@@ -32,7 +59,8 @@ Minimal package.json for webpack including dev server:
     "typescript": "^5.4.5",
     "webpack": "^5.91.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^5.0.4"
+    "webpack-dev-server": "^5.0.4",
+    "html-webpack-plugin": "^5.6.0"
   }
 }
 ```
@@ -57,6 +85,7 @@ Configure webpack.config.js:
 
 ```
 const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = { 
   mode: 'development', // change this to suit you
@@ -79,7 +108,8 @@ module.exports = {
   },  
   experiments: {
     asyncWebAssembly: true, // enables wasm support in webpack
-  },  
+  },
+  plugins: [new HtmlWebpackPlugin()],
   devServer: {
     static: {
       directory: path.join(__dirname, 'dist'),
