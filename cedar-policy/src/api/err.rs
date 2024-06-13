@@ -135,7 +135,9 @@ pub mod to_human_syntax_errors {
     #[derive(Debug, Error, Diagnostic)]
     #[repr(transparent)]
     #[error(transparent)]
-    pub struct NameCollisionsError(pub(super) cedar_policy_validator::human_schema::fmt::NameCollisionsError);
+    pub struct NameCollisionsError(
+        pub(super) cedar_policy_validator::human_schema::fmt::NameCollisionsError,
+    );
 
     impl NameCollisionsError {
         /// Get the names that had collisions
@@ -146,10 +148,14 @@ pub mod to_human_syntax_errors {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError> for ToHumanSyntaxError {
+impl From<cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError>
+    for ToHumanSyntaxError
+{
     fn from(value: cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError) -> Self {
         match value {
-            cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError::NameCollisions(name_collision_err) => NameCollisionsError(name_collision_err).into(),
+            cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError::NameCollisions(
+                name_collision_err,
+            ) => NameCollisionsError(name_collision_err).into(),
         }
     }
 }
