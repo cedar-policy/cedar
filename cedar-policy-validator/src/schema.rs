@@ -2378,7 +2378,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
 
         // We report `ReservedNamespaceError` instead of missing definitions
         // because `__cedar` is not applicable like the human-readable schema

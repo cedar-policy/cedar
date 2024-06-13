@@ -181,12 +181,12 @@ impl Name {
     }
 
     /// Test if a `Name` is reserved
-    /// i.e., it starts with an `Id` being `__cedar`
+    /// i.e., any of its components matches `__cedar`
     pub fn is_reserved(&self) -> bool {
-        match self.path.first() {
-            Some(id) => id.is_reserved(),
-            None => self.id.is_reserved(),
-        }
+        self.path
+            .iter()
+            .chain(std::iter::once(&self.id))
+            .any(|id| id.is_reserved())
     }
 }
 
@@ -425,7 +425,7 @@ mod test {
             assert!(Name::from_normalized_str(n).unwrap().is_reserved());
         }
 
-        for n in ["__cedarr", "A::__cedar", "A::__cedar::B"] {
+        for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
             assert!(!Name::from_normalized_str(n).unwrap().is_reserved());
         }
     }
