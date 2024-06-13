@@ -593,7 +593,7 @@ impl Node<Option<cst::VariableDef>> {
                     match rel_expr.to_expr() {
                         Ok(expr) => {
                             if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
-                                return Err(rel_expr
+                                return Err(self
                                     .to_ast_err(ToASTErrorKind::IsInActionScope)
                                     .into());
                             }
@@ -3872,7 +3872,7 @@ mod tests {
                 r#"permit(principal, action in Group::"action_group" is Action, resource);"#,
                 ExpectedErrorMessageBuilder::error("`is` cannot appear in the action scope")
                     .help("try moving `action is ..` into a `when` condition")
-                    .exactly_one_underline(r#"Group::"action_group" is Action"#)
+                    .exactly_one_underline(r#"action in Group::"action_group" is Action"#)
                     .build(),
             ),
             (
