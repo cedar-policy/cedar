@@ -31,7 +31,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::{
     err::{schema_errors::*, Result},
     human_schema::{
-        self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
+        self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
     HumanSchemaError, HumanSyntaxParseError,
 };
@@ -132,8 +132,8 @@ impl SchemaFragment {
     }
 
     /// Pretty print this [`SchemaFragment`]
-    pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaStrError> {
-        let src = human_schema::json_schema_to_custom_schema_str(self)?;
+    pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaSyntaxError> {
+        let src = human_schema::fmt::json_schema_to_custom_schema_str(self)?;
         Ok(src)
     }
 }
