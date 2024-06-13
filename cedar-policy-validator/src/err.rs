@@ -146,7 +146,7 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
-    /// This error when undeclared common type appear in entity or context
+    /// This error occurs when an undeclared common type appears in entity or context
     /// attributes.
     #[error(transparent)]
     #[diagnostic(transparent)]
