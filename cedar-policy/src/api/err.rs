@@ -749,11 +749,17 @@ impl ParseErrors {
 }
 
 /// Errors that can occur when parsing policies or expressions.
+/// Marked as `non_exhaustive` to support adding additional error information
+/// in the future without a major version bump.
 #[derive(Debug, Diagnostic, Error, RefCast)]
 #[repr(transparent)]
 #[error(transparent)]
 #[diagnostic(transparent)]
-pub struct ParseError(#[from] cedar_policy_core::parser::err::ParseError);
+#[non_exhaustive]
+pub struct ParseError {
+    #[from]
+    inner: cedar_policy_core::parser::err::ParseError,
+}
 
 /// Errors that can happen when getting the JSON representation of a policy
 #[derive(Debug, Diagnostic, Error)]
