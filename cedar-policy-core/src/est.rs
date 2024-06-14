@@ -325,6 +325,7 @@ mod test {
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
     /// This roundtrip should be lossless for all policies.
+    #[track_caller]
     fn est_roundtrip(est: Policy) -> Policy {
         let json = serde_json::to_value(est).expect("failed to serialize to JSON");
         serde_json::from_value(json.clone()).unwrap_or_else(|e| {
@@ -337,6 +338,7 @@ mod test {
 
     /// helper function to take EST-->text-->CST-->EST, which directly tests the Display impl for EST.
     /// This roundtrip should be lossless for all policies.
+    #[track_caller]
     fn text_roundtrip(est: &Policy) -> Policy {
         let text = est.to_string();
         let cst = parser::text_to_cst::parse_policy(&text)
@@ -348,6 +350,7 @@ mod test {
 
     /// helper function to take EST-->AST-->EST for inline policies.
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
+    #[track_caller]
     fn ast_roundtrip(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_policy(None)
@@ -357,6 +360,7 @@ mod test {
 
     /// helper function to take EST-->AST-->EST for templates.
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
+    #[track_caller]
     fn ast_roundtrip_template(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_template(None)
@@ -366,6 +370,7 @@ mod test {
 
     /// helper function to take EST-->AST-->text-->CST-->EST for inline policies.
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
+    #[track_caller]
     fn circular_roundtrip(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_policy(None)
@@ -380,6 +385,7 @@ mod test {
 
     /// helper function to take EST-->AST-->text-->CST-->EST for templates.
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
+    #[track_caller]
     fn circular_roundtrip_template(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_template(None)
