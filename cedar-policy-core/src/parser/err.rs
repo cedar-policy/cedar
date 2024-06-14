@@ -375,6 +375,10 @@ pub enum ToASTErrorKind {
     /// Returned when an entity type starts with `__cedar`
     #[error("Entity type `{0}` uses reserved namespace that starts with `__cedar`")]
     ReservedNamespace(ast::Name),
+    /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _` in the policy scope
+    #[error("when `is` and `in` are used together, `is` must come first")]
+    #[diagnostic(help("try `_ is _ in _`"))]
+    InvertedIsIn,
 }
 
 impl ToASTErrorKind {

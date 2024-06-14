@@ -315,13 +315,23 @@ pub(crate) mod test_utils {
 }
 
 // PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, clippy::indexing_slicing)]
 #[cfg(test)]
-mod test {
+/// Tests for the top-level parsing APIs
+mod tests {
+
     use super::*;
-    use crate::ast::{test_generators::*, Template};
+
+    use crate::ast::test_generators::*;
+    use crate::ast::{Eid, Literal, Template, Value};
+    use crate::evaluator as eval;
+    use crate::extensions::Extensions;
+    use crate::parser::err::*;
+    use crate::parser::test_utils::*;
+    use crate::test_utils::*;
     use cool_asserts::assert_matches;
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     #[test]
     fn test_template_parsing() {
@@ -354,8 +364,7 @@ mod test {
 
     #[test]
     fn test_error_out() {
-        assert_matches!(parse_policyset(
-            r#"
+        let src = r#"
             permit(principal:p,action:a,resource:r)
             when{w or if c but not z} // expr error
             unless{u if c else d or f} // expr error
@@ -368,28 +377,40 @@ mod test {
             forbid(principal, action, resource)
             when   { "private" in resource.tags }
             unless { resource in principal.account };
-        "#,
-        ), Err(e) => assert!(e.len() >= 3, "expected at least 3 errors, but actual errors were:\n{:?}", miette::Report::new(e)) );
+        "#;
+        let errs = parse_policyset(src).expect_err("expected parsing to fail");
+        // Lots of errors! All of them are "unrecognized token" errors from the text->CST parser
+        expect_n_errors(src, &errs, 16);
+        assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
+        let unrecognized_tokens = vec![
+            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"), 
+            ("if", "expected `(`"), 
+            ("c", "expected `(`"), 
+            ("but", "expected `(`"), 
+            ("not", "expected `(`"), 
+            ("z", "expected `(`"), 
+            ("}", "expected `(`"), 
+            ("{", "expected `(`"), 
+            ("else", "expected `(`"), 
+            ("d", "expected `(`"), 
+            ("f", "expected `(`"),
+        ];
+        for (token, label) in unrecognized_tokens {
+            expect_some_error_matches(
+                src,
+                &errs,
+                &ExpectedErrorMessageBuilder::error(&format!("unexpected token `{token}`"))
+                    .exactly_one_underline_with_label(token, label)
+                    .build(),
+            );
+        }
     }
-}
-
-#[cfg(test)]
-mod eval_tests {
-    use test_utils::{expect_n_errors, expect_some_error_matches};
-
-    use super::*;
-    use crate::evaluator as eval;
-    use crate::extensions::Extensions;
-    use crate::test_utils::ExpectedErrorMessageBuilder;
-
-    use std::sync::Arc;
 
     #[test]
     fn entity_literals1() {
         let src = r#"Test::{ test : "Test" }"#;
         let errs = parse_euid(src).unwrap_err();
-        expect_n_errors(src, &errs, 1);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
@@ -403,8 +424,7 @@ mod eval_tests {
     fn entity_literals2() {
         let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
         let errs = parse_policy(None, src).unwrap_err();
-        expect_n_errors(src, &errs, 1);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("invalid entity literal: Test::{test: \"Test\"}")
@@ -434,25 +454,25 @@ mod eval_tests {
         let src = "false";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..5, Arc::from(src))));
 
         let src = "true && true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..12, Arc::from(src))));
 
         let src = "!true || false && !true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..23, Arc::from(src))));
 
         let src = "!!!!true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..8, Arc::from(src))));
 
         let src = r#"
@@ -463,7 +483,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(600));
+        assert_eq!(val, Value::from(600));
         assert_eq!(val.source_loc(), Some(&Loc::new(9..81, Arc::from(src))));
     }
 
@@ -485,7 +505,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..80, Arc::from(src))));
         // because "10..80" is hard to read, we also assert that the correct portion of `src` is indicated
         assert_eq!(
@@ -504,7 +524,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..76, Arc::from(src))));
         assert_eq!(
             val.source_loc().unwrap().snippet(),
@@ -522,7 +542,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..77, Arc::from(src))));
         assert_eq!(
             val.source_loc().unwrap().snippet(),
@@ -540,7 +560,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..82, Arc::from(src))));
         assert_eq!(
             val.source_loc().unwrap().snippet(),
@@ -568,7 +588,7 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(14..28, Arc::from(src))));
         // because "14..28" is hard to read, we also assert that the correct portion of `src` is indicated
         assert_eq!(val.source_loc().unwrap().snippet(), Some("3 < 2 || 2 > 3"));
@@ -580,25 +600,13 @@ mod eval_tests {
         "#;
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
-        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(14..30, Arc::from(src))));
         assert_eq!(
             val.source_loc().unwrap().snippet(),
             Some("7 <= 7 && 4 != 5")
         );
     }
-}
-
-#[cfg(test)]
-// PANIC SAFETY tests
-#[allow(clippy::indexing_slicing)]
-mod parse_tests {
-    use super::test_utils::*;
-    use super::*;
-    use crate::test_utils::*;
-    use cool_asserts::assert_matches;
-    use itertools::Itertools;
-    use miette::Diagnostic;
 
     #[test]
     fn parse_exists() {
@@ -649,12 +657,20 @@ mod parse_tests {
     fn test_parse_string() {
         // test idempotence
         assert_eq!(
-            ast::Eid::new(parse_internal_string(r"a\nblock\nid").expect("should parse")).escaped(),
+            Eid::new(parse_internal_string(r"a\nblock\nid").expect("should parse")).escaped(),
             r"a\nblock\nid",
         );
         parse_internal_string(r#"oh, no, a '! "#).expect("single quote should be fine");
-        parse_internal_string(r#"oh, no, a "! "#).expect_err("double quote not allowed");
         parse_internal_string(r#"oh, no, a \"! and a \'! "#).expect("escaped quotes should parse");
+        let src = r#"oh, no, a "! "#;
+        let errs = parse_internal_string(src).expect_err("unescaped double quote not allowed");
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid token")
+                .exactly_one_underline("")
+                .build(),
+        );
     }
 
     #[test]
@@ -685,24 +701,26 @@ mod parse_tests {
         .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
 
         let src = r#"
@@ -722,24 +740,26 @@ mod parse_tests {
         .exactly_one_underline("?principal")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_when_clause);
+            expect_exactly_one_error(src, &e, &slot_in_when_clause);
         });
 
         let src = r#"
@@ -752,22 +772,22 @@ mod parse_tests {
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
 
         let src = r#"
@@ -788,24 +808,26 @@ mod parse_tests {
         .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
 
         let src = r#"
@@ -826,24 +848,26 @@ mod parse_tests {
         .exactly_one_underline("?principal")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &slot_in_unless_clause);
+            expect_exactly_one_error(src, &e, &slot_in_unless_clause);
         });
 
         let src = r#"
@@ -856,22 +880,22 @@ mod parse_tests {
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_some_error_matches(src, &e, &error);
+            expect_exactly_one_error(src, &e, &error);
         });
 
         let src = r#"
@@ -899,28 +923,34 @@ mod parse_tests {
         .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_n_errors(src, &e, 4);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
-            expect_some_error_matches(src, &e, &unexpected_template);
+            expect_some_error_matches(src, &e, &unexpected_template); // 2 copies of this error
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 4);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
-            expect_some_error_matches(src, &e, &unexpected_template);
+            expect_some_error_matches(src, &e, &unexpected_template); // 2 copies of this error
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            expect_n_errors(src, &e, 2);
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
@@ -971,7 +1001,7 @@ mod parse_tests {
             permit(principal, action, resource);
         "#;
         assert_matches!(parse_policy(None, src), Err(e) => {
-            assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
+            expect_n_errors(src, &e, 3); // two errors for @foo and one for @bar
             expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("abc")"#).build());
             expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @foo").exactly_one_underline(r#"@foo("def")"#).build());
             expect_some_error_matches(src, &e, &ExpectedErrorMessageBuilder::error("duplicate annotation: @bar").exactly_one_underline(r#"@bar("123")"#).build());
@@ -981,23 +1011,23 @@ mod parse_tests {
     #[test]
     fn unexpected_token_errors() {
         #[track_caller]
-        fn assert_labeled_span(policy: &str, label: impl Into<String>) {
-            assert_matches!(parse_policy(None, policy), Err(e) => {
-                let actual_label = e.labels().and_then(|l| {
-                    l.exactly_one()
-                        .ok()
-                        .expect("Assumed that there would be exactly one label if labels are present")
-                        .label()
-                        .map(|l| l.to_string())
-                });
-                assert_eq!(Some(label.into()), actual_label, "Did not see expected labeled span.");
+        fn assert_labeled_span(src: &str, msg: &str, underline: &str, label: &str) {
+            assert_matches!(parse_policy(None, src), Err(e) => {
+                expect_exactly_one_error(
+                    src,
+                    &e,
+                    &ExpectedErrorMessageBuilder::error(msg)
+                        .exactly_one_underline_with_label(underline, label)
+                        .build());
             });
         }
 
         // Don't list out all the special case identifiers
-        assert_labeled_span("@", "expected identifier");
+        assert_labeled_span("@", "unexpected end of input", "", "expected identifier");
         assert_labeled_span(
             "permit(principal, action, resource) when { principal.",
+            "unexpected end of input",
+            "",
             "expected identifier",
         );
 
@@ -1005,24 +1035,58 @@ mod parse_tests {
         // identifier tokens, so this is an improvement.
         assert_labeled_span(
             "permit(principal, action, resource)",
+            "unexpected end of input",
+            "",
             "expected `;` or identifier",
         );
         // AST actually requires `permit` or `forbid`, but grammar looks for any
         // identifier.
-        assert_labeled_span("@if(\"a\")", "expected `@` or identifier");
+        assert_labeled_span(
+            "@if(\"a\")",
+            "unexpected end of input",
+            "",
+            "expected `@` or identifier",
+        );
         // AST actually requires `principal` (`action`, `resource`, resp.). In
         // the `principal` case we also claim to expect `)` because an empty scope
         // initially parses to a CST. The trailing comma rules this out in the others.
-        assert_labeled_span("permit(", "expected `)` or identifier");
-        assert_labeled_span("permit(,,);", "expected `)` or identifier");
-        assert_labeled_span("permit(principal,", "expected identifier");
-        assert_labeled_span("permit(principal,action,", "expected identifier");
+        assert_labeled_span(
+            "permit(",
+            "unexpected end of input",
+            "",
+            "expected `)` or identifier",
+        );
+        assert_labeled_span(
+            "permit(,,);",
+            "unexpected token `,`",
+            ",",
+            "expected `)` or identifier",
+        );
+        assert_labeled_span(
+            "permit(principal,",
+            "unexpected end of input",
+            "",
+            "expected identifier",
+        );
+        assert_labeled_span(
+            "permit(principal,action,",
+            "unexpected end of input",
+            "",
+            "expected identifier",
+        );
         // Nothing will actually convert to an AST here.
-        assert_labeled_span("permit(principal,action,resource,", "expected identifier");
+        assert_labeled_span(
+            "permit(principal,action,resource,",
+            "unexpected end of input",
+            "",
+            "expected identifier",
+        );
         // We still list out `if` as an expected token because it doesn't get
         // parsed as an ident in this position.
         assert_labeled_span(
             "permit(principal, action, resource) when {",
+            "unexpected end of input",
+            "", 
             "expected `!`, `(`, `-`, `[`, `{`, `}`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
         );
         // The right operand of an `is` gets parsed as any `Expr`, so we will
@@ -1031,6 +1095,8 @@ mod parse_tests {
         // `principal is User::"alice"`, but it doesn't work in our favor here.
         assert_labeled_span(
             "permit(principal, action, resource) when { principal is",
+            "unexpected end of input",
+            "", 
             "expected `!`, `(`, `-`, `[`, `{`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
         );
 
@@ -1039,6 +1105,8 @@ mod parse_tests {
         // and so we can't have an entity reference `true::"eid"`
         assert_labeled_span(
             "permit(principal, action, resource) when { if true",
+            "unexpected end of input",
+            "", 
             "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, `like`, or `then`",
         )
     }
@@ -1053,7 +1121,7 @@ mod parse_tests {
         // `🐈` is represented by '\u{1F408}'
         let test_valid = |s: &str| {
             let r = parse_literal(&format!("\"{}\"", s.escape_default()));
-            assert_eq!(r, Ok(ast::Literal::String(s.into())));
+            assert_eq!(r, Ok(Literal::String(s.into())));
         };
         test_valid("\t");
         test_valid("\0");
@@ -1063,19 +1131,28 @@ mod parse_tests {
         test_valid("abc\tde\\fg");
         test_valid("aaa\u{1F408}bcd👍👍👍");
         // test string with invalid escapes
-        let test_invalid = |s: &str, en: usize| {
-            let r = parse_literal(&format!("\"{}\"", s));
-            assert_matches!(r, Err(err::LiteralParseError::Parse(errs)) => {
-                assert_eq!(errs.len(), en);
-            });
+        let test_invalid = |s: &str, bad_escapes: Vec<&str>| {
+            let src: &str = &format!("\"{}\"", s);
+            assert_matches!(parse_literal(src), Err(LiteralParseError::Parse(e)) => {
+                expect_n_errors(src, &e, bad_escapes.len());
+                bad_escapes.iter().for_each(|esc|
+                    expect_some_error_matches(
+                        src,
+                        &e,
+                        &ExpectedErrorMessageBuilder::error(&format!("the input `{esc}` is not a valid escape"))
+                            .exactly_one_underline(src)
+                            .build()
+                    )
+                );
+            })
         };
         // invalid escape `\a`
-        test_invalid("\\a", 1);
+        test_invalid("\\a", vec!["\\a"]);
         // invalid escape `\b`
-        test_invalid("\\b", 1);
+        test_invalid("\\b", vec!["\\b"]);
         // invalid escape `\p`
-        test_invalid("\\\\aa\\p", 1);
+        test_invalid("\\\\aa\\p", vec!["\\p"]);
         // invalid escape `\a` and empty unicode escape
-        test_invalid(r"\aaa\u{}", 2);
+        test_invalid(r"\aaa\u{}", vec!["\\a", "\\u{}"]);
     }
 }

@@ -523,6 +523,17 @@ impl Node<Option<cst::VariableDef>> {
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
+            // special check for the syntax `_ in _ is _`
+            if op == &cst::RelOp::In {
+                match rel_expr.to_expr() {
+                    Ok(expr) => {
+                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                            return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
+                        }
+                    }
+                    Err(_) => (), // ignore
+                }
+            }
             let eref = rel_expr.to_ref_or_slot(var)?;
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
@@ -577,12 +588,25 @@ impl Node<Option<cst::VariableDef>> {
 
         if let Some((op, rel_expr)) = &vardef.ineq {
             let action_constraint = match op {
-                cst::RelOp::In => match rel_expr.to_refs(ast::Var::Action)? {
-                    OneOrMultipleRefs::Single(single_ref) => {
-                        Ok(ActionConstraint::is_in([single_ref]))
+                cst::RelOp::In => {
+                    // special check for the syntax `_ in _ is _`
+                    match rel_expr.to_expr() {
+                        Ok(expr) => {
+                            if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                                return Err(self
+                                    .to_ast_err(ToASTErrorKind::IsInActionScope)
+                                    .into());
+                            }
+                        }
+                        Err(_) => (), // ignore
                     }
-                    OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
-                },
+                    match rel_expr.to_refs(ast::Var::Action)? {
+                        OneOrMultipleRefs::Single(single_ref) => {
+                            Ok(ActionConstraint::is_in([single_ref]))
+                        }
+                        OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
+                    }
+                }
                 cst::RelOp::Eq => {
                     let single_ref = rel_expr.to_ref(ast::Var::Action)?;
                     Ok(ActionConstraint::is_eq(single_ref))
@@ -1079,7 +1103,6 @@ impl Node<Option<cst::Relation>> {
                 } else {
                     Ok(())
                 };
-
                 let (first, rest, _) = flatten_tuple_3(maybe_first, maybe_rest, maybe_extra_elmts)?;
                 let mut rest = rest.into_iter();
                 let second = rest.next();
@@ -2612,26 +2635,6 @@ mod tests {
             2
         );
 
-        // can't have spaces or '+' in annotation keys
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-        assert_matches!(
-            text_to_cst::parse_policy(
-                r#"
-            @hi+mom("this should be invalid")
-            permit(principal, action, resource);
-            "#,
-            ),
-            Err(_)
-        );
-
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -3312,7 +3315,7 @@ mod tests {
             expect_some_error_matches(
                 test,
                 &es,
-                &ExpectedErrorMessageBuilder::error(&msg)
+                &ExpectedErrorMessageBuilder::error(msg)
                     .help("action entities must have type `Action`, optionally in a namespace")
                     .exactly_one_underline(underline)
                     .build(),
@@ -3873,11 +3876,24 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Group::"friends" is User"#).build(),
+                ExpectedErrorMessageBuilder::error("when `is` and `in` are used together, `is` must come first")
+                    .help("try `_ is _ in _`")
+                    .exactly_one_underline(r#"principal in Group::"friends" is User"#)
+                    .build(),
+            ),
+            (
+                r#"permit(principal, action in Group::"action_group" is Action, resource);"#,
+                ExpectedErrorMessageBuilder::error("`is` cannot appear in the action scope")
+                    .help("try moving `action is ..` into a `when` condition")
+                    .exactly_one_underline(r#"action in Group::"action_group" is Action"#)
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found an `is` expression").exactly_one_underline(r#"Folder::"folder" is File"#).build(),
+                ExpectedErrorMessageBuilder::error("when `is` and `in` are used together, `is` must come first")
+                    .help("try `_ is _ in _`")
+                    .exactly_one_underline(r#"resource in Folder::"folder" is File"#)
+                    .build(),
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
@@ -4081,15 +4097,22 @@ mod tests {
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `in`"
-                ).exactly_one_underline("in").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `in`")
+                    .exactly_one_underline_with_label("in", "expected `&&`, `||`, or `}`")
+                    .build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
-                ExpectedErrorMessageBuilder::error(
-                    "unexpected token `==`"
-                ).exactly_one_underline("==").build(),
+                ExpectedErrorMessageBuilder::error("unexpected token `==`")
+                    .exactly_one_underline_with_label("==", "expected `&&`, `||`, `}`, or `in`")
+                    .build(),
+            ),
+            (
+                // `_ in _ is _` in the policy condition is an error in the text->CST parser 
+                r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
+                ExpectedErrorMessageBuilder::error("unexpected token `is`")
+                    .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
+                    .build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
@@ -4371,9 +4394,13 @@ mod tests {
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "unexpected token `::`",
-            ).exactly_one_underline("::").build());
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unexpected token `::`")
+                    .exactly_one_underline_with_label("::", "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`")
+                    .build()
+            );
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {

@@ -38,7 +38,7 @@ use crate::{
     schema_file_format,
     types::{AttributeType, Attributes, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
-    SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
+    SchemaTypeVariant, TypeOfAttribute, PRIMITIVE_TYPES,
 };
 use crate::{fuzzy_match::fuzzy_search, types::OpenTag};
 
@@ -236,10 +236,8 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    fn is_builtin_type_name(name: &str) -> bool {
-        SCHEMA_TYPE_VARIANT_TAGS
-            .iter()
-            .any(|type_name| &name == type_name)
+    fn is_primitive_type_name(name: &str) -> bool {
+        PRIMITIVE_TYPES.iter().any(|type_name| &name == type_name)
     }
 
     fn build_type_defs(
@@ -248,10 +246,10 @@ impl ValidatorNamespaceDef {
     ) -> Result<TypeDefs> {
         let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
-            if Self::is_builtin_type_name(id.as_ref()) {
-                return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                    Name::unqualified_name(id),
-                )));
+            if Self::is_primitive_type_name(id.as_ref()) {
+                return Err(SchemaError::CommonTypeNameConflict(
+                    CommonTypeNameConflictError(id),
+                ));
             }
             let name = Name::from(id.clone()).prefix_namespace_if_unqualified(schema_namespace);
             if name.is_reserved() {
@@ -702,9 +700,10 @@ impl ValidatorNamespaceDef {
                     return Err(ReservedNamespaceError(defined_type_name).into());
                 }
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-                    typ_defs.get(&defined_type_name).cloned().ok_or(
-                        UndeclaredCommonTypesError(HashSet::from([defined_type_name])).into(),
-                    )
+                    typ_defs
+                        .get(&defined_type_name)
+                        .cloned()
+                        .ok_or(UndeclaredCommonTypesError(defined_type_name).into())
                 }))
             }
         }

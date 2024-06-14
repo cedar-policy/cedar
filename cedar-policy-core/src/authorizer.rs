@@ -460,12 +460,12 @@ mod test {
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("test".into(), Value::from(false))].into_iter().collect();
-        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
         drop(r2);
 
         let map = [("test".into(), Value::from(true))].into_iter().collect();
-        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
         let r = a.is_authorized_core(q, &pset, &es);
@@ -572,11 +572,11 @@ mod test {
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("a".into(), Value::from(false))].into_iter().collect();
-        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
         let map = [("a".into(), Value::from(true))].into_iter().collect();
-        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
 
         pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
