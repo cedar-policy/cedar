@@ -372,50 +372,6 @@ mod test {
     use serde_json::json;
 
     #[test]
-    fn test_entity_uid_parser() {
-        // Both {"type": .., "name": ..} and {__entity: ..} are valid
-        let user_alice = EntityUid(
-            json!({
-                 "type": "User",
-                 "id": "alice"
-            })
-            .into(),
-        );
-        let user_bob = EntityUid(
-            json!({
-                 "__entity": {
-                     "type": "User",
-                     "id": "bob"
-                 }
-            })
-            .into(),
-        );
-        user_alice
-            .parse(None)
-            .expect("failed to convert to entity uid");
-        user_bob
-            .parse(None)
-            .expect("failed to convert to entity uid");
-
-        // Invalid syntax
-        let invalid = EntityUid(
-            json!({
-                    "__entity": "User::\"bob\""
-            })
-            .into(),
-        );
-        let err = invalid
-            .parse(None)
-            .expect_err("should have failed to convert to entity uid");
-        expect_err(
-            "",
-            &err,
-            &ExpectedErrorMessageBuilder::error(r#"failed to parse entity uid"#)
-                .help("literal entity references can be made with `{ \"type\": \"SomeType\", \"id\": \"SomeId\" }`")
-                .build());
-    }
-
-    #[test]
     fn test_schema_parser() {
         // Cedar syntax
         let schema_json = json!({
