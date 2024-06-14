@@ -148,7 +148,9 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_type_str).map(Self::new)
+        ast::Name::from_normalized_str(namespace_type_str)
+            .map(Self::new)
+            .map_err(Into::into)
     }
 }
 
@@ -279,7 +281,9 @@ impl FromStr for EntityUid {
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
         // INVARIANT there is no way to write down the unspecified entity
-        ast::EntityUID::from_normalized_str(uid_str).map(Self::new)
+        ast::EntityUID::from_normalized_str(uid_str)
+            .map(Self::new)
+            .map_err(Into::into)
     }
 }
 
