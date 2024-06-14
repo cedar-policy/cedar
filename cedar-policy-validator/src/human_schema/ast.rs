@@ -135,7 +135,9 @@ impl PathInternal {
     /// with `__cedar`
     fn is_reserved(&self) -> bool {
         // `0` is the position of the most significant namespace
-        self.iter().next().unwrap().as_ref() == CEDAR_NAMESPACE
+        // PANIC SAFETY: `self.iter()` returns at least one element
+        #[allow(clippy::unwrap_used)]
+        return self.iter().next().unwrap().as_ref() == CEDAR_NAMESPACE;
     }
 
     /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
