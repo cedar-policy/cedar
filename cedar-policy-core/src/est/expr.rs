@@ -16,6 +16,7 @@
 
 use super::FromJsonError;
 use crate::ast::InputInteger;
+use crate::entities::json::err::ReservedNamespace;
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -656,6 +657,14 @@ impl Expr {
             }) => ast::Name::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
+                    if entity_type_name.is_reserved() {
+                        return Err(FromJsonError::JsonDeserializationError(
+                            ReservedNamespace {
+                                name: entity_type_name,
+                            }
+                            .into(),
+                        ));
+                    }
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
                     let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {

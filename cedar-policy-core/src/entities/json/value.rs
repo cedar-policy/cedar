@@ -15,12 +15,11 @@
  */
 
 use super::{
-    err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
+    err::{
+        JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError,
+        ReservedNamespace,
+    },
     SchemaType,
-};
-use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
-    RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
@@ -29,6 +28,13 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
+use crate::{
+    ast::{
+        BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
+        RestrictedExpr, Unknown, Value, ValueKind,
+    },
+    entities::EntityType,
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -251,11 +257,18 @@ impl CedarValueJson {
                 }
             })?),
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
-                EntityUID::try_from(entity.clone()).map_err(|errs| {
-                    let err_msg = serde_json::to_string_pretty(&entity)
-                        .unwrap_or_else(|_| format!("{:?}", &entity));
-                    JsonDeserializationError::parse_escape(EscapeKind::Entity, err_msg, errs)
-                })?,
+                EntityUID::try_from(entity.clone())
+                    .map_err(|errs| {
+                        let err_msg = serde_json::to_string_pretty(&entity)
+                            .unwrap_or_else(|_| format!("{:?}", &entity));
+                        JsonDeserializationError::parse_escape(EscapeKind::Entity, err_msg, errs)
+                    })
+                    .and_then(|id| match id.entity_type() {
+                        EntityType::Specified(n) if n.is_reserved() => {
+                            Err(ReservedNamespace { name: n.clone() }.into())
+                        }
+                        _ => Ok(id),
+                    })?,
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
             Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
@@ -795,6 +808,12 @@ impl<C: DeserializationContext> EntityUidJson<C> {
                 Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
             }
         }
+        .and_then(|id| match id.entity_type() {
+            EntityType::Specified(n) if n.is_reserved() => {
+                Err(ReservedNamespace { name: n.clone() }.into())
+            }
+            _ => Ok(id),
+        })
     }
 }
 

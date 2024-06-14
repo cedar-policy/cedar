@@ -3960,6 +3960,159 @@ mod test {
             );
         }
     }
+
+    mod reserved_names {
+        use cool_asserts::assert_matches;
+
+        use crate::{
+            entities::json::err::{JsonDeserializationError, ReservedNamespace},
+            est::FromJsonError,
+        };
+
+        use super::Policy;
+        #[test]
+        fn entity_type() {
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "__cedar",
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ {
+                        "kind": "when",
+                        "body": {
+                            "is": {
+                                "left": { "Var": "principal" },
+                                "entity_type": "__cedar",
+                            }
+                        }
+                    } ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+        }
+        #[test]
+        fn entities() {
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        "Var": "principal"
+                                    },
+                                    "right": {
+                                        "Value": {
+                                            "__entity": { "type": "__cedar", "id": "" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "__cedar", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "==",
+                        "entity": { "type": "__cedar", "id": "12UA45" }
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "__cedar::Action", "id": "12UA45" }
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar::Action".parse().unwrap());
+        }
+    }
 }
 
 #[cfg(test)]

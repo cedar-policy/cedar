@@ -157,6 +157,10 @@ pub enum JsonDeserializationError {
     /// Raised when the input JSON contains a `null`
     #[error("{0}, found a `null`; JSON `null`s are not allowed in Cedar")]
     Null(Box<JsonDeserializationErrorContext>),
+    /// Returned when a name contains `__cedar`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedNamespace(#[from] ReservedNamespace),
 }
 
 impl JsonDeserializationError {
@@ -441,6 +445,13 @@ impl From<serde_json::Error> for JsonSerializationError {
     fn from(value: serde_json::Error) -> Self {
         Self::Serde(JsonError(value))
     }
+}
+
+/// Error throws when a name containing `__cedar` is encountered
+#[derive(Debug, Diagnostic, Error)]
+#[error("Use reserved namespace: `{name}`")]
+pub struct ReservedNamespace {
+    pub(crate) name: Name,
 }
 
 /// Errors thrown during serialization to JSON
