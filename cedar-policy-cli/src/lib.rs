@@ -678,7 +678,8 @@ pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
             }
         },
         Err(e) => {
-            eprintln!("{}", e);
+            let report = miette::Report::new(e);
+            eprintln!("{report:?}");
             CedarExitCode::Failure
         }
     }
