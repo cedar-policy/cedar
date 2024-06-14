@@ -152,6 +152,93 @@ impl From<miette::Report> for DetailedError {
     }
 }
 
+/// Wrapper around a JSON value describing an entity uid in either explicit or
+/// implicit `__entity` form. Expects the same format as [`crate::EntityUid::from_json`].
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[repr(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct EntityUid(
+    #[cfg_attr(feature = "wasm", tsify(type = "EntityUidJson"))] JsonValueWithNoDuplicateKeys,
+);
+
+impl EntityUid {
+    /// Parses the given [`EntityUid`] into a [`crate::EntityUid`].
+    /// `category` is an optional note on the type of entity uid being parsed
+    /// for better error messages.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if the input JSON cannot be deserialized as a
+    /// [`crate::EntityUid`].
+    pub fn parse(self, category: Option<&str>) -> Result<crate::EntityUid, miette::Report> {
+        crate::EntityUid::from_json(self.0.into())
+            .wrap_err_with(|| format!("failed to parse {}", category.unwrap_or("entity uid")))
+    }
+}
+
+/// Wrapper around a JSON value describing a context. Expects the same format
+/// as [`crate::Context::from_json_value`].
+/// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
+#[derive(Debug, Serialize, Deserialize)]
+#[repr(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct Context(
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    JsonValueWithNoDuplicateKeys,
+);
+
+impl Context {
+    /// Parses the given [`Context`] into a [`crate::Context`]
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if the input JSON cannot be deserialized as a
+    /// [`crate::Context`].
+    pub fn parse(
+        self,
+        schema_ref: Option<&crate::Schema>,
+        action_ref: Option<&crate::EntityUid>,
+    ) -> Result<crate::Context, miette::Report> {
+        crate::Context::from_json_value(
+            self.0.into(),
+            match (schema_ref, action_ref) {
+                (Some(s), Some(a)) => Some((s, a)),
+                _ => None,
+            },
+        )
+        .map_err(Into::into)
+    }
+}
+
+/// Wrapper around a JSON value describing a set of entities. Expects the same
+/// format as [`crate::Entities::from_json_value`].
+/// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
+#[derive(Debug, Serialize, Deserialize)]
+#[repr(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct Entities(
+    #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
+    pub(super)  JsonValueWithNoDuplicateKeys,
+);
+
+impl Entities {
+    /// Parses the given [`Entities`] into a [`crate::Entities`]
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if the input JSON cannot be deserialized as a
+    /// [`crate::Entities`].
+    pub fn parse(
+        self,
+        opt_schema: Option<&crate::Schema>,
+    ) -> Result<crate::Entities, miette::Report> {
+        crate::Entities::from_json_value(self.0.into(), opt_schema).map_err(Into::into)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 #[serde(
@@ -234,7 +321,7 @@ impl PolicySet {
     }
 }
 
-/// Represents a schema in either schema format
+/// Represents a schema in either the Cedar or JSON schema format
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -274,4 +361,123 @@ impl Schema {
 pub(super) struct WithWarnings<T> {
     pub t: T,
     pub warnings: Vec<miette::Report>,
+}
+
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cedar_policy_core::test_utils::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_entity_uid_parser() {
+        // Both {"type": .., "name": ..} and {__entity: ..} are valid
+        let user_alice = EntityUid(
+            json!({
+                 "type": "User",
+                 "id": "alice"
+            })
+            .into(),
+        );
+        let user_bob = EntityUid(
+            json!({
+                 "__entity": {
+                     "type": "User",
+                     "id": "bob"
+                 }
+            })
+            .into(),
+        );
+        user_alice
+            .parse(None)
+            .expect("failed to convert to entity uid");
+        user_bob
+            .parse(None)
+            .expect("failed to convert to entity uid");
+
+        // Invalid syntax
+        let invalid = EntityUid(
+            json!({
+                    "__entity": "User::\"bob\""
+            })
+            .into(),
+        );
+        let err = invalid
+            .parse(None)
+            .expect_err("should have failed to convert to entity uid");
+        expect_err(
+            "",
+            &err,
+            &ExpectedErrorMessageBuilder::error(r#"failed to parse entity uid"#)
+                .help("literal entity references can be made with `{ \"type\": \"SomeType\", \"id\": \"SomeId\" }`")
+                .build());
+    }
+
+    #[test]
+    fn test_schema_parser() {
+        // Cedar syntax
+        let schema_json = json!({
+            "human": "entity User = { name: String};\nentity Photo;\naction viewPhoto appliesTo { principal: User, resource: Photo };"
+        });
+        let schema: Schema =
+            serde_json::from_value(schema_json).expect("failed to parse from JSON");
+        let _ = schema.parse().expect("failed to convert to schema");
+
+        // JSON syntax
+        let schema_json = json!({
+            "json": {
+                "": {
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "name": {
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        "Photo": {}
+                    },
+                    "actions": {
+                        "viewPhoto": {
+                            "appliesTo": {
+                                "principalTypes": [ "User" ],
+                                "resourceTypes": [ "Photo" ]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let schema: Schema =
+            serde_json::from_value(schema_json).expect("failed to parse from JSON");
+        let _ = schema.parse().expect("failed to convert to schema");
+
+        // Invalid syntax (this is actually a policy)
+        let schema_json = json!({
+            "human": "permit(principal == User::\"alice\", action, resource);"
+        });
+        let schema: Schema =
+            serde_json::from_value(schema_json).expect("failed to parse from JSON");
+        let err = schema
+            .parse()
+            .map(|(s, _)| s)
+            .expect_err("should have failed to convert to schema");
+        expect_err(
+            "permit(principal == User::\"alice\", action, resource);",
+            &err,
+            &ExpectedErrorMessageBuilder::error(
+                r#"error parsing schema: unexpected token `permit`"#,
+            )
+            .exactly_one_underline_with_label(
+                "permit",
+                "expected `action`, `entity`, `namespace`, or `type`",
+            )
+            .build(),
+        );
+    }
 }
