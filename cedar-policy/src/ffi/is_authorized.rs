@@ -915,7 +915,7 @@ mod test {
         );
         let rslice = RecvdSlice {
             policies: PolicySet::Map(HashMap::new()),
-            entities: Entities(entities.into()),
+            entities: entities.into(),
             templates: None,
             template_instantiations: None,
         };

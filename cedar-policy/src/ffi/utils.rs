@@ -177,6 +177,13 @@ impl EntityUid {
     }
 }
 
+#[doc(hidden)]
+impl From<serde_json::Value> for EntityUid {
+    fn from(json: serde_json::Value) -> Self {
+        Self(json.into())
+    }
+}
+
 /// Wrapper around a JSON value describing a context. Expects the same format
 /// as [`crate::Context::from_json_value`].
 /// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
@@ -212,6 +219,13 @@ impl Context {
     }
 }
 
+#[doc(hidden)]
+impl From<serde_json::Value> for Context {
+    fn from(json: serde_json::Value) -> Self {
+        Self(json.into())
+    }
+}
+
 /// Wrapper around a JSON value describing a set of entities. Expects the same
 /// format as [`crate::Entities::from_json_value`].
 /// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
@@ -220,8 +234,7 @@ impl Context {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Entities(
-    #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
-    pub(super)  JsonValueWithNoDuplicateKeys,
+    #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))] JsonValueWithNoDuplicateKeys,
 );
 
 impl Entities {
@@ -236,6 +249,13 @@ impl Entities {
         opt_schema: Option<&crate::Schema>,
     ) -> Result<crate::Entities, miette::Report> {
         crate::Entities::from_json_value(self.0.into(), opt_schema).map_err(Into::into)
+    }
+}
+
+#[doc(hidden)]
+impl From<serde_json::Value> for Entities {
+    fn from(json: serde_json::Value) -> Self {
+        Self(json.into())
     }
 }
 
@@ -413,7 +433,7 @@ mod test {
             serde_json::from_value(schema_json).expect("failed to parse from JSON");
         let _ = schema.parse().expect("failed to convert to schema");
 
-        // Invalid syntax (this is actually a policy)
+        // Invalid syntax (the value is a policy)
         let schema_json = json!({
             "human": "permit(principal == User::\"alice\", action, resource);"
         });
