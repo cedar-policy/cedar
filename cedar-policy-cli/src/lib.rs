@@ -95,10 +95,30 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Translate natural policy syntax to JSON (except comments)
+    TranslatePolicy(TranslatePolicyArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
     New(NewArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct TranslatePolicyArgs {
+    /// The direction of translation,
+    #[arg(long)]
+    pub direction: PolicyTranslationDirection,
+    /// Filename to read the policies from.
+    /// If not provided, will default to reading stdin.
+    #[arg(short = 'p', long = "policies", value_name = "FILE")]
+    pub input_file: Option<String>,
+}
+
+/// The direction of translation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum PolicyTranslationDirection {
+    /// Human policy syntax -> JSON
+    HumanToJson,
 }
 
 #[derive(Args, Debug)]
@@ -676,6 +696,32 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
             CedarExitCode::Failure
         }
         _ => CedarExitCode::Success,
+    }
+}
+
+fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+    let output = policy_set.to_json()?.to_string();
+    Ok(output)
+}
+
+fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
+    let translate = match args.direction {
+        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+    };
+    read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
+}
+
+pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
+    match translate_policy_inner(args) {
+        Ok(sf) => {
+            println!("{sf}");
+            CedarExitCode::Success
+        }
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
     }
 }
 
