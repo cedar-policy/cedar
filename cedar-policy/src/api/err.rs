@@ -17,7 +17,10 @@
 //! This module defines the publicly exported error types.
 
 use crate::{EntityUid, PolicyId};
-pub use cedar_policy_core::ast::{restricted_expr_errors, RestrictedExpressionError};
+pub use cedar_policy_core::ast::{
+    expression_construction_errors, restricted_expr_errors, ExpressionConstructionError,
+    RestrictedExpressionError,
+};
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
@@ -247,6 +250,42 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
             err: err.err,
         }
     }
+}
+
+/// Errors while trying to create a `Context`
+#[derive(Debug, Diagnostic, Error)]
+pub enum ContextCreationError {
+    /// Tried to create a `Context` out of something other than a record
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotARecord(context_creation_errors::NotARecord),
+    /// Error evaluating the expression given for the `Context`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// Error constructing the expression given for the `Context`.
+    /// Only returned by `Context::from_pairs()`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpressionConstruction(#[from] ExpressionConstructionError),
+}
+
+#[doc(hidden)]
+impl From<ast::ContextCreationError> for ContextCreationError {
+    fn from(e: ast::ContextCreationError) -> Self {
+        match e {
+            ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
+            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e.into()),
+            ast::ContextCreationError::ExpressionConstruction(ece) => {
+                Self::ExpressionConstruction(ece)
+            }
+        }
+    }
+}
+
+/// Error subtypes for [`ContextCreationError`]
+mod context_creation_errors {
+    pub use cedar_policy_core::ast::context_creation_errors::NotARecord;
 }
 
 /// Error subtypes for [`ValidationError`].

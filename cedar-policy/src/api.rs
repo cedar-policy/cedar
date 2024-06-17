@@ -33,7 +33,6 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{ContextCreationError, ExprConstructionError, Integer}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est;
@@ -2854,7 +2853,7 @@ impl Expression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: Integer) -> Self {
+    pub fn new_long(value: ast::Integer) -> Self {
         Self(ast::Expr::val(value))
     }
 
@@ -2863,7 +2862,7 @@ impl Expression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))
@@ -2946,7 +2945,7 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: Integer) -> Self {
+    pub fn new_long(value: ast::Integer) -> Self {
         Self(ast::RestrictedExpr::val(value))
     }
 
@@ -2960,7 +2959,7 @@ impl RestrictedExpression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))
@@ -3508,7 +3507,7 @@ pub enum EvalResult {
     /// Boolean value
     Bool(bool),
     /// Signed integer value
-    Long(Integer),
+    Long(ast::Integer),
     /// String value
     String(String),
     /// Entity Uid
