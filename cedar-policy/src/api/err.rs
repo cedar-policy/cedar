@@ -19,7 +19,7 @@
 use crate::{EntityUid, PolicyId};
 pub use cedar_policy_core::ast::{
     expression_construction_errors, restricted_expr_errors, ExpressionConstructionError,
-    RestrictedExpressionError, RestrictedExpressionParseError,
+    RestrictedExpressionError,
 };
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
@@ -902,6 +902,36 @@ pub mod context_json_errors {
         /// Get the [`EntityUid`] of the action which doesn't exist
         pub fn action(&self) -> &EntityUid {
             &self.action
+        }
+    }
+}
+
+/// Error type for parsing a `RestrictedExpression`
+#[derive(Debug, Diagnostic, Error)]
+pub enum RestrictedExpressionParseError {
+    /// Failed to parse the expression
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse(#[from] ParseErrors),
+    /// Parsed successfully as an expression, but failed to construct a
+    /// restricted expression, for the reason indicated in the underlying error
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::ast::RestrictedExpressionParseError>
+    for RestrictedExpressionParseError
+{
+    fn from(e: cedar_policy_core::ast::RestrictedExpressionParseError) -> Self {
+        match e {
+            cedar_policy_core::ast::RestrictedExpressionParseError::Parse(e) => {
+                Self::Parse(e.into())
+            }
+            cedar_policy_core::ast::RestrictedExpressionParseError::InvalidRestrictedExpression(
+                e,
+            ) => e.into(),
         }
     }
 }

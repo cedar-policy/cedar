@@ -3025,7 +3025,9 @@ impl FromStr for RestrictedExpression {
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        ast::RestrictedExpr::from_str(expression).map(RestrictedExpression)
+        ast::RestrictedExpr::from_str(expression)
+            .map(RestrictedExpression)
+            .map_err(Into::into)
     }
 }
 
