@@ -39,11 +39,12 @@ use crate::{
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// A SchemaFragment describe the types for a given instance of Cedar.
-/// SchemaFragments are composed of Entity Types and Action Types. The
-/// schema fragment is split into multiple namespace definitions, eac including
-/// a namespace name which is applied to all entity types (and the implicit
-/// `Action` entity type for all actions) in the schema.
+/// A `SchemaFragment` is split into multiple namespace definitions, and is just
+/// a map from namespace name to namespace definition (i.e., definitions of
+/// common types, entity types, and actions in that namespace).
+/// The namespace name is implicitly applied to all definitions in the
+/// corresponding `NamespaceDefinition`.
+/// See [`NamespaceDefinition`].
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -139,9 +140,11 @@ impl SchemaFragment {
 }
 
 /// A single namespace definition from a SchemaFragment.
+/// This is composed of common types, entity types, and action definitions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[doc(hidden)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -149,9 +152,7 @@ pub struct NamespaceDefinition {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    #[serde(rename = "commonTypes")]
     pub common_types: HashMap<Id, SchemaType>,
-    #[serde(rename = "entityTypes")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<Id, EntityType>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
