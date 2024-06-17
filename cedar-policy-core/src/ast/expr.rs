@@ -424,7 +424,7 @@ impl Expr {
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         ExprBuilder::new().record(pairs)
     }
 
@@ -995,15 +995,17 @@ impl<T> ExprBuilder<T> {
     pub fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
-    ) -> Result<Expr<T>, ExprConstructionError> {
+    ) -> Result<Expr<T>, ExpressionConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(expr_construction_errors::DuplicateKeyInRecordLiteralError {
-                        key: oentry.key().clone(),
-                    }
-                    .into());
+                    return Err(
+                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                            key: oentry.key().clone(),
+                        }
+                        .into(),
+                    );
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1152,15 +1154,17 @@ impl<T: Clone> ExprBuilder<T> {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum ExprConstructionError {
+pub enum ExpressionConstructionError {
     /// The same key occurred two or more times in a single record literal
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateKeyInRecordLiteral(#[from] expr_construction_errors::DuplicateKeyInRecordLiteralError),
+    DuplicateKeyInRecordLiteral(
+        #[from] expression_construction_errors::DuplicateKeyInRecordLiteralError,
+    ),
 }
 
-/// Error subtypes for [`ExprConstructionError`]
-pub mod expr_construction_errors {
+/// Error subtypes for [`ExpressionConstructionError`]
+pub mod expression_construction_errors {
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;

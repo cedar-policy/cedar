@@ -19,8 +19,8 @@ use super::{
     SchemaType,
 };
 use crate::ast::{
-    expr_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError,
-    ExprKind, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
+    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
@@ -246,8 +246,8 @@ impl CedarValueJson {
                     .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
             )
             .map_err(|e| match e {
-                ExprConstructionError::DuplicateKeyInRecordLiteral(
-                    expr_construction_errors::DuplicateKeyInRecordLiteralError { key },
+                ExpressionConstructionError::DuplicateKeyInRecordLiteral(
+                    expression_construction_errors::DuplicateKeyInRecordLiteralError { key },
                 ) => JsonDeserializationError::duplicate_key_in_record_literal(ctx(), key),
             })?),
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
@@ -559,8 +559,10 @@ impl<'e> ValueParser<'e> {
                     // duplicate keys; they're both maps), but we can still throw
                     // the error properly in the case that it somehow happens
                     RestrictedExpr::record(rexpr_pairs).map_err(|e| match e {
-                        ExprConstructionError::DuplicateKeyInRecordLiteral(
-                            expr_construction_errors::DuplicateKeyInRecordLiteralError { key },
+                        ExpressionConstructionError::DuplicateKeyInRecordLiteral(
+                            expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                                key,
+                            },
                         ) => JsonDeserializationError::duplicate_key_in_record_literal(ctx2(), key),
                     })
                 }

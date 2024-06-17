@@ -27,7 +27,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, PartialValue,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
     PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
@@ -377,7 +377,7 @@ pub enum ContextCreationError {
     /// Only returned by `Context::from_pairs()`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExprConstruction(#[from] ExprConstructionError),
+    ExpressionConstruction(#[from] ExpressionConstructionError),
 }
 
 impl ContextCreationError {

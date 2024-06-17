@@ -2862,7 +2862,7 @@ impl Expression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))
@@ -2959,7 +2959,7 @@ impl RestrictedExpression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))

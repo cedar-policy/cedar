@@ -15,8 +15,8 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue, Unknown, Value,
-    ValueKind,
+    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
+    Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -120,7 +120,7 @@ impl RestrictedExpr {
     /// Throws an error if any key occurs two or more times.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         // Record expressions are valid restricted-exprs if their elements are;
         // and we know the elements are because we require `RestrictedExpr`s in
         // the parameter
@@ -686,7 +686,7 @@ pub enum RestrictedExpressionParseError {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ast::expr_construction_errors;
+    use crate::ast::expression_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
     use crate::parser::Loc;
     use std::str::FromStr;
@@ -701,8 +701,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val("hello"),),
             ]),
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
             )
         );
 
@@ -713,8 +715,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(101),),
             ]),
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
             )
         );
 
@@ -725,8 +729,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
             ]),
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
             )
         );
 
@@ -740,8 +746,10 @@ mod test {
                 ("eggs".into(), RestrictedExpr::val("spam"),),
             ]),
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
             )
         );
 
@@ -751,8 +759,8 @@ mod test {
             RestrictedExpr::from_str(str),
             Err(RestrictedExpressionParseError::Parse(
                 ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
-                    ToASTErrorKind::ExprConstructionError(
-                        expr_construction_errors::DuplicateKeyInRecordLiteralError {
+                    ToASTErrorKind::ExpressionConstructionError(
+                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
                             key: "foo".into()
                         }
                         .into()

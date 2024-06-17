@@ -1957,8 +1957,10 @@ pub mod test {
                 ("foo".into(), Expr::val("hi")),
             ]),
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
             )
         );
         // entity_with_attrs.address.street
@@ -5593,8 +5595,10 @@ pub mod test {
         assert_eq!(
             e,
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "a".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "a".into()
+                }
+                .into()
             )
         );
 
@@ -5605,8 +5609,10 @@ pub mod test {
         assert_eq!(
             e,
             Err(
-                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "a".into() }
-                    .into()
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "a".into()
+                }
+                .into()
             )
         );
 

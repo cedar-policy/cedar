@@ -18,7 +18,7 @@
 
 use crate::{EntityUid, PolicyId};
 pub use cedar_policy_core::ast::{
-    expr_construction_errors, restricted_expr_errors, ExprConstructionError,
+    expression_construction_errors, restricted_expr_errors, ExpressionConstructionError,
     RestrictedExpressionError, RestrictedExpressionParseError,
 };
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
@@ -267,7 +267,7 @@ pub enum ContextCreationError {
     /// Only returned by `Context::from_pairs()`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExprConstruction(#[from] ExprConstructionError),
+    ExpressionConstruction(#[from] ExpressionConstructionError),
 }
 
 #[doc(hidden)]
@@ -276,7 +276,9 @@ impl From<ast::ContextCreationError> for ContextCreationError {
         match e {
             ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
             ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e.into()),
-            ast::ContextCreationError::ExprConstruction(ece) => Self::ExprConstruction(ece),
+            ast::ContextCreationError::ExpressionConstruction(ece) => {
+                Self::ExpressionConstruction(ece)
+            }
         }
     }
 }
