@@ -504,7 +504,6 @@ mod scope_constraints_tests {
 /// Tests in this module are adapted from Core's `policy_set.rs` tests
 mod policy_set_tests {
     use super::*;
-    use ast::LinkingError;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -569,7 +568,7 @@ mod policy_set_tests {
 
         assert_matches!(
             r,
-            Err(PolicySetError::Linking(LinkingError::PolicyIdConflict { id })) =>{
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::PolicyIdConflict { id } })) =>{
                 assert_eq!(id, ast::PolicyID::from_string("id"));
             }
         );
@@ -1334,9 +1333,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy3").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for template; link
@@ -1346,9 +1345,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy0").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for static; link
@@ -1364,9 +1363,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy1").unwrap(),
                 env,
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
     }
 }
@@ -4556,7 +4555,7 @@ mod policy_set_est_tests {
         let template1 = PolicyId::new("non_existent").into();
         assert_matches!(
             err,
-            PolicySetError::Linking(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::NoSuchTemplate { id }}) if id == template1
         );
     }
 
@@ -4631,10 +4630,10 @@ mod policy_set_est_tests {
         let just_principal = vec![SlotId::principal().into()];
         assert_matches!(
             err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
+            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::ArityError {
                 unbound_values,
                 extra_values
-            }) if extra_values.is_empty() && unbound_values == just_principal
+            }}) if extra_values.is_empty() && unbound_values == just_principal
         );
     }
 
@@ -4712,10 +4711,10 @@ mod policy_set_est_tests {
         let just_resource = vec![SlotId::resource().into()];
         assert_matches!(
             err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
+            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::ArityError {
                 unbound_values,
                 extra_values
-            }) if unbound_values.is_empty() && extra_values == just_resource
+            }}) if unbound_values.is_empty() && extra_values == just_resource
         );
     }
 

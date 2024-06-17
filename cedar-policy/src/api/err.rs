@@ -531,6 +531,7 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
 pub mod policy_set_errors {
     use super::Error;
     use crate::PolicyId;
+    use cedar_policy_core::ast;
     use miette::Diagnostic;
 
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -546,6 +547,15 @@ pub mod policy_set_errors {
         pub fn duplicate_id(&self) -> &PolicyId {
             &self.id
         }
+    }
+
+    /// Error when linking a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to link template: {inner}")]
+    pub struct LinkingError {
+        #[from]
+        #[diagnostic(transparent)]
+        pub(crate) inner: ast::LinkingError,
     }
 
     /// Expected a static policy, but a template-linked policy was provided
@@ -694,9 +704,9 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
-    #[error("unable to link template: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
+    Linking(#[from] policy_set_errors::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -753,6 +763,13 @@ impl From<ast::PolicySetError> for PolicySetError {
                 })
             }
         }
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::LinkingError> for PolicySetError {
+    fn from(e: ast::LinkingError) -> Self {
+        Self::Linking(e.into())
     }
 }
 
