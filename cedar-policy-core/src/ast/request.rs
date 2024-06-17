@@ -366,8 +366,9 @@ impl std::fmt::Display for Context {
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextCreationError {
     /// Tried to create a `Context` out of something other than a record
-    #[error("expression is not a record: `{}`", .0.expr)]
-    NotARecord(NotARecord),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotARecord(#[from] context_creation_errors::NotARecord),
     /// Error evaluating the expression given for the `Context`
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -381,17 +382,45 @@ pub enum ContextCreationError {
 
 impl ContextCreationError {
     pub(crate) fn not_a_record(expr: RestrictedExpr) -> Self {
-        Self::NotARecord(NotARecord {
+        Self::NotARecord(context_creation_errors::NotARecord {
             expr: Box::new(expr),
         })
     }
 }
 
-/// Error type for an expression that is not a record
-#[derive(Debug)]
-pub struct NotARecord {
-    /// Expression which is not a record
-    expr: Box<RestrictedExpr>,
+/// Error subtypes for [`ContextCreationError`]
+pub mod context_creation_errors {
+    use super::RestrictedExpr;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Error type for an expression that needed to be a record, but is not
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    #[error("expression is not a record: {expr}")]
+    pub struct NotARecord {
+        /// Expression which is not a record
+        pub(super) expr: Box<RestrictedExpr>,
+    }
+
+    // custom impl of `Diagnostic`: take source location from the `expr` field
+    impl Diagnostic for NotARecord {
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            self.expr.source_loc().map(|loc| {
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
+                    as Box<dyn Iterator<Item = _>>
+            })
+        }
+
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.expr
+                .source_loc()
+                .map(|loc| &loc.src as &dyn miette::SourceCode)
+        }
+    }
 }
 
 /// Trait for schemas capable of validating `Request`s

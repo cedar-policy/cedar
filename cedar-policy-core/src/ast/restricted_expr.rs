@@ -686,7 +686,7 @@ pub enum RestrictedExpressionParseError {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ast::ExprConstructionError;
+    use crate::ast::expr_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
     use crate::parser::Loc;
     use std::str::FromStr;
@@ -700,7 +700,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val("hello"),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
+                    .into()
+            )
         );
 
         // duplicate key is an error when mapped to different values of same type
@@ -709,7 +712,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(101),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
+                    .into()
+            )
         );
 
         // duplicate key is an error when mapped to the same value multiple times
@@ -718,7 +724,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(37),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
+                    .into()
+            )
         );
 
         // duplicate key is an error even when other keys appear in between
@@ -730,7 +739,10 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("eggs".into(), RestrictedExpr::val("spam"),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expr_construction_errors::DuplicateKeyInRecordLiteralError { key: "foo".into() }
+                    .into()
+            )
         );
 
         // duplicate key is also an error when parsing from string
@@ -740,7 +752,10 @@ mod test {
             Err(RestrictedExpressionParseError::Parse(
                 ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                     ToASTErrorKind::ExprConstructionError(
-                        ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
+                        expr_construction_errors::DuplicateKeyInRecordLiteralError {
+                            key: "foo".into()
+                        }
+                        .into()
                     ),
                     Loc::new(0..32, Arc::from(str))
                 )))

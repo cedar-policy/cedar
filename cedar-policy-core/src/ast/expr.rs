@@ -1000,9 +1000,10 @@ impl<T> ExprBuilder<T> {
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                    return Err(expr_construction_errors::DuplicateKeyInRecordLiteralError {
                         key: oentry.key().clone(),
-                    });
+                    }
+                    .into());
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1145,15 +1146,43 @@ impl<T: Clone> ExprBuilder<T> {
     }
 }
 
-/// Errors when constructing an `Expr`
+/// Errors when constructing an expression
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum ExprConstructionError {
     /// The same key occurred two or more times in a single record literal
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateKeyInRecordLiteral(#[from] expr_construction_errors::DuplicateKeyInRecordLiteralError),
+}
+
+/// Error subtypes for [`ExprConstructionError`]
+pub mod expr_construction_errors {
+    use miette::Diagnostic;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// The same key occurred two or more times in a single record literal
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
     #[error("duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
+    pub struct DuplicateKeyInRecordLiteralError {
         /// The key which occurred two or more times in the record literal
-        key: SmolStr,
-    },
+        pub(crate) key: SmolStr,
+    }
+
+    impl DuplicateKeyInRecordLiteralError {
+        /// Get the key which occurred two or more times in the record literal
+        pub fn key(&self) -> &str {
+            &self.key
+        }
+    }
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
