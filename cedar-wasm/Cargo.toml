@@ -35,5 +35,5 @@ cool_asserts = "2.0"
 [build-dependencies]
 cargo-lock = "9.0.0"
 # Lock `url` (dependencies of cargo-lock) to 2.5.0 until we know if Unicode 3.0 license is ok.
-url = "=2.5.0"
+url = "=2.5.1"
 itertools = "0.13.0"
