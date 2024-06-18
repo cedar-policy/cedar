@@ -205,7 +205,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     );
     let request3 = Request::new(
         principal.clone(),
-        r#"__cedar::"Default""#.parse().unwrap(),
+        r#"Ghost::"ghost""#.parse().unwrap(),
         resource.clone(),
         Context::empty(),
         None,
@@ -221,7 +221,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Requesting with a default principal or resource will return Deny (but not fail)
     let request4 = Request::new(
-        r#"__cedar::"Default""#.parse().unwrap(),
+        r#"Ghost::"ghost""#.parse().unwrap(),
         action.clone(),
         resource,
         Context::empty(),
@@ -236,7 +236,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     let request5 = Request::new(
         principal,
         action,
-        r#"__cedar::"Default""#.parse().unwrap(),
+        r#"Ghost::"ghost""#.parse().unwrap(),
         Context::empty(),
         None,
     )
