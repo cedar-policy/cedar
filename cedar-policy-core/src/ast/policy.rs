@@ -1765,15 +1765,14 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 
 /// the Effect of a policy
 #[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Effect {
     /// this is a Permit policy
-    #[serde(rename = "permit")]
     Permit,
     /// this is a Forbid policy
-    #[serde(rename = "forbid")]
     Forbid,
 }
 
