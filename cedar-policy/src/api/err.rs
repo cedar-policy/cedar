@@ -702,15 +702,6 @@ pub mod policy_set_errors {
         }
     }
 
-    /// Error when converting a policy from JSON format
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("error deserializing a policy/template from JSON: {inner}")]
-    #[diagnostic(transparent)]
-    pub struct FromJsonError {
-        #[from]
-        pub(crate) inner: cedar_policy_core::est::FromJsonError,
-    }
-
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
     #[error("error serializing/deserializing policy set to/from JSON: {inner}")]
@@ -765,12 +756,12 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkLinkNotLink(#[from] policy_set_errors::UnlinkLinkNotLinkError),
-    /// Error when converting from JSON format
+    /// Error when converting a policy/template from JSON format
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FromJson(#[from] policy_set_errors::FromJsonError),
-    /// Error when converting to JSON format
-    #[error("Error serializing a policy to JSON: {0}")]
+    FromJson(#[from] PolicyFromJsonError),
+    /// Error when converting a policy/template to JSON format
+    #[error("Error serializing a policy/template to JSON: {0}")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
@@ -902,7 +893,16 @@ pub mod policy_to_json_errors {
     }
 }
 
-/// Error type for parsing a [`crate::Context`] from JSON
+/// Error when converting a policy or template from JSON format
+#[derive(Debug, Diagnostic, Error)]
+#[error("error deserializing a policy/template from JSON: {inner}")]
+#[diagnostic(transparent)]
+pub struct PolicyFromJsonError {
+    #[from]
+    pub(crate) inner: cedar_policy_core::est::FromJsonError,
+}
+
+/// Error type for parsing `Context` from JSON
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a [`crate::Context`]
