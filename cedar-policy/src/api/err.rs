@@ -34,7 +34,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use to_human_syntax_errors::NameCollisionsError;
 
-/// Errors related to [`Entities`]
+/// Errors related to [`crate::Entities`]
 pub mod entities_errors {
     pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
 }
@@ -874,14 +874,14 @@ pub mod policy_to_json_errors {
     }
 }
 
-/// Error type for parsing a [`Context`] from JSON
+/// Error type for parsing a [`crate::Context`] from JSON
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
-    /// Error deserializing the JSON into a [`Context`]
+    /// Error deserializing the JSON into a [`crate::Context`]
     #[error(transparent)]
     #[diagnostic(transparent)]
     JsonDeserialization(#[from] entities_json_errors::JsonDeserializationError),
-    /// Error constructing the [`Context`] itself
+    /// Error constructing the [`crate::Context`] itself
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContextCreation(#[from] ContextCreationError),
