@@ -72,14 +72,13 @@ pub struct Policy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "kind", content = "body")]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Clause {
     /// A `when` clause
-    #[serde(rename = "when")]
     When(Expr),
     /// An `unless` clause
-    #[serde(rename = "unless")]
     Unless(Expr),
 }
 

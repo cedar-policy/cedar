@@ -177,12 +177,12 @@ impl NamespaceDefinition {
 /// can/should be included on entities of each type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[serde(rename = "memberOfTypes")]
     pub member_of_types: Vec<Name>,
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
@@ -222,6 +222,7 @@ impl Default for AttributesOrContext {
 /// kinds of entities it can be used on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionType {
@@ -233,11 +234,9 @@ pub struct ActionType {
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "memberOf")]
     pub member_of: Option<Vec<ActionEntityUID>>,
 }
 
@@ -251,16 +250,15 @@ pub struct ActionType {
 /// applies to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "resourceTypes")]
     pub resource_types: Option<Vec<Name>>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "principalTypes")]
     pub principal_types: Option<Vec<Name>>,
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
@@ -269,6 +267,7 @@ pub struct ApplySpec {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID {
