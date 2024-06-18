@@ -76,6 +76,23 @@ pub enum FromJsonError {
     InvalidActionType(#[from] parse_errors::InvalidActionType),
 }
 
+/// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST
+#[derive(Debug, Diagnostic, Error)]
+pub enum PolicySetFromJsonError {
+    /// Error reported when a policy set has duplicate ids
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] ast::PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Linking(#[from] ast::LinkingError),
+    /// Error reported when converting an EST policy or template to an AST
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FromJsonError(#[from] FromJsonError),
+}
+
 /// Errors while linking a policy
 #[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum LinkingError {

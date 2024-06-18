@@ -1645,56 +1645,66 @@ impl FromStr for PolicySet {
 
 impl PolicySet {
     /// Build the policy set AST from the EST
-    fn from_est(est: est::PolicySet) -> Result<Self, PolicySetError> {
-        let mut pset = Self::default();
-
-        for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId::new(id)), policy)
-                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
-            pset.add_template(template)?;
-        }
-
-        for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId::new(id)), policy)
-                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
-            pset.add(p)?;
-        }
-
-        for Link {
-            id,
-            template,
-            slots,
-        } in est.links
-        {
-            let slots = slots
-                .into_iter()
-                .map(|(key, value)| (key.into(), EntityUid::new(value)))
-                .collect();
-            pset.link(PolicyId::new(template), PolicyId::new(id), slots)?;
-        }
-
-        Ok(pset)
+    fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
+        let ast: ast::PolicySet = est.clone().try_into()?;
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let policies = ast
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::Est(est.get_policy(p.id()).expect(
+                            "internal invariant violation: policy id exists in asts but not ests",
+                        )),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.templates()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let templates = ast
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::Est(est.get_template(t.id()).expect(
+                            "internal invariant violation: template id exists in asts but not ests",
+                        )),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
+        Ok(Self {
+            ast,
+            policies,
+            templates,
+        })
     }
 
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_str(src.as_ref())
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON value
     pub fn from_json_value(src: serde_json::Value) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_value(src)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON reader
     pub fn from_json_file(r: impl std::io::Read) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_reader(r)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Serialize the [`PolicySet`] as a JSON value

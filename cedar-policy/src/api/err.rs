@@ -789,6 +789,17 @@ impl From<ast::UnexpectedSlotError> for PolicySetError {
     }
 }
 
+#[doc(hidden)]
+impl From<est::PolicySetFromJsonError> for PolicySetError {
+    fn from(e: est::PolicySetFromJsonError) -> Self {
+        match e {
+            est::PolicySetFromJsonError::PolicySet(e) => e.into(),
+            est::PolicySetFromJsonError::Linking(e) => e.into(),
+            est::PolicySetFromJsonError::FromJsonError(e) => Self::FromJson(e.into()),
+        }
+    }
+}
+
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// expression.
 /// By default, the `Diagnostic` and `Error` implementations will only print the
