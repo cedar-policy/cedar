@@ -32,10 +32,9 @@ pub struct ExpectedErrorMessage<'a> {
     error: &'a str,
     /// Expected contents of `help()`, or `None` if no help, or expected prefix of `help()` if `prefix` is `true`
     help: Option<&'a str>,
-    /// If `true`, then `error` and `help` are interpreted as expected prefixes
-    /// of the error and help messages, and [`expect_err()`] will allow the
-    /// actual error message and help text to have additional characters after
-    /// the ones that are expected.
+    /// If `true`, then `error`, `help`, and `source` are interpreted as expected
+    /// prefixes of the relevant messages, and [`expect_err()`] will allow the
+    /// actual messages to have additional characters after the ones that are expected.
     prefix: bool,
     /// Expected text that is underlined by miette (text found at the error's
     /// source location(s)) plus (optional) help text associated with the
@@ -46,6 +45,8 @@ pub struct ExpectedErrorMessage<'a> {
     /// miette `labels` in the same order, and the vec elements represent the
     /// expected contents of the labels.
     underlines: Vec<(&'a str, Option<&'a str>)>,
+    /// A message describing the cause of this error
+    source: Option<&'a str>,
 }
 
 /// Builder struct for [`ExpectedErrorMessage`]
@@ -59,6 +60,8 @@ pub struct ExpectedErrorMessageBuilder<'a> {
     prefix: bool,
     /// ExpectedErrorMessage::underlines
     underlines: Vec<(&'a str, Option<&'a str>)>,
+    /// ExpectedErrorMessage::source
+    source: Option<&'a str>,
 }
 
 impl<'a> ExpectedErrorMessageBuilder<'a> {
@@ -70,6 +73,7 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
             help: None,
             prefix: false,
             underlines: vec![],
+            source: None,
         }
     }
 
@@ -84,6 +88,7 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
             help: None,
             prefix: true,
             underlines: vec![],
+            source: None,
         }
     }
 
@@ -116,6 +121,16 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
         }
     }
 
+    /// Add expected underlined text. The error message will be expected to have
+    /// exactly one miette label, and the underlined portion should be `snippet`.
+    /// The label text is expected to match `label`.
+    pub fn source(self, msg: &'a str) -> Self {
+        Self {
+            source: Some(msg),
+            ..self
+        }
+    }
+
     /// Build the [`ExpectedErrorMessage`]
     pub fn build(self) -> ExpectedErrorMessage<'a> {
         ExpectedErrorMessage {
@@ -123,6 +138,7 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
             help: self.help,
             prefix: self.prefix,
             underlines: self.underlines,
+            source: self.source,
         }
     }
 }
@@ -136,7 +152,10 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// It can be omitted only in the case where we expect no underlines.
     /// Panics if this invariant is violated.
     pub fn matches(&self, src: Option<&'a str>, error: &impl miette::Diagnostic) -> bool {
-        self.matches_error(error) && self.matches_help(error) && self.matches_underlines(src, error)
+        self.matches_error(error)
+            && self.matches_help(error)
+            && self.matches_source(error)
+            && self.matches_underlines(src, error)
     }
 
     /// Internal helper: whether the main error message matches
@@ -184,37 +203,71 @@ impl<'a> ExpectedErrorMessage<'a> {
         }
     }
 
-    /// Internal helper: assert the help message matches
-    #[track_caller]
-    fn expect_help_matches(&self, src: impl Into<OriginalInput<'a>>, error: &miette::Report) {
-        let h_string = error.help().map(|h| h.to_string());
+    /// Internal helper: whether the source message matches
+    fn matches_source(&self, error: &impl miette::Diagnostic) -> bool {
+        let s_string = error.source().map(|s| s.to_string());
         if self.prefix {
-            match (h_string.as_deref(), &self.help) {
+            match (s_string.as_deref(), self.source) {
+                (Some(actual), Some(expected)) => actual.starts_with(expected),
+                (None, None) => true,
+                _ => false,
+            }
+        } else {
+            s_string.as_deref() == self.source
+        }
+    }
+
+    /// Internal helper used to check help or source messages
+    #[track_caller]
+    fn expect_help_or_source_matches(
+        &self,
+        src: impl Into<OriginalInput<'a>>,
+        error: &miette::Report,
+        h_or_s: &str,
+        actual: Option<&str>,
+        expected: Option<&str>,
+    ) {
+        if self.prefix {
+            match (actual, expected) {
                 (Some(actual), Some(expected)) => {
                     assert!(
                         actual.starts_with(expected),
-                        "for the following input:\n{}\nfor the following error:\n{error:?}\n\nactual help did not start with the expected prefix\n  actual help: {actual}\n  expected help: {expected}", // the Debug representation of miette::Report is the pretty one
+                        "for the following input:\n{}\nfor the following error:\n{error:?}\n\nactual {h_or_s} did not start with the expected prefix\n  actual {h_or_s}: {actual}\n  expected {h_or_s}: {expected}", // the Debug representation of miette::Report is the pretty one
                         src.into(),
                     )
                 }
                 (None, None) => (),
                 (Some(actual), None) => panic!(
-                    "for the following input:\n{}\nfor the following error:\n{error:?}\n\ndid not expect a help message, but found one: {actual}", // the Debug representation of miette::Report is the pretty one
+                    "for the following input:\n{}\nfor the following error:\n{error:?}\n\ndid not expect a {h_or_s} message, but found one: {actual}", // the Debug representation of miette::Report is the pretty one
                     src.into(),
                 ),
                 (None, Some(expected)) => panic!(
-                    "for the following input:\n{}\nfor the following error:\n{error:?}\n\ndid not find a help message, but expected one: {expected}", // the Debug representation of miette::Report is the pretty one
+                    "for the following input:\n{}\nfor the following error:\n{error:?}\n\ndid not find a {h_or_s} message, but expected one: {expected}", // the Debug representation of miette::Report is the pretty one
                     src.into(),
                 ),
             }
         } else {
             assert_eq!(
-                h_string.as_deref(),
-                self.help,
-                "for the following input:\n{}\nfor the following error:\n{error:?}\n\nactual help did not match expected", // assert_eq! will print the actual and expected messages
+                actual,
+                expected,
+                "for the following input:\n{}\nfor the following error:\n{error:?}\n\nactual {h_or_s} did not match expected", // assert_eq! will print the actual and expected messages
                 src.into(),
             );
         }
+    }
+
+    /// Internal helper: assert the help message matches
+    #[track_caller]
+    fn expect_help_matches(&self, src: impl Into<OriginalInput<'a>>, error: &miette::Report) {
+        let h_string = error.help().map(|h| h.to_string());
+        self.expect_help_or_source_matches(src, error, "help", h_string.as_deref(), self.help);
+    }
+
+    /// Internal helper: assert the source message matches
+    #[track_caller]
+    fn expect_source_matches(&self, src: impl Into<OriginalInput<'a>>, error: &miette::Report) {
+        let s_string = error.source().map(|s| s.to_string());
+        self.expect_help_or_source_matches(src, error, "source", s_string.as_deref(), self.source);
     }
 
     /// Internal helper: whether the underlines match
@@ -378,6 +431,7 @@ pub fn expect_err<'a>(
 ) {
     msg.expect_error_matches(src, err);
     msg.expect_help_matches(src, err);
+    msg.expect_source_matches(src, err);
     if msg.underlines.is_empty() {
         msg.expect_underlines_match(None, err);
     } else {

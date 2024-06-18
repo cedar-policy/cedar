@@ -668,7 +668,7 @@ pub mod policy_set_errors {
 
     /// Error when converting a policy from JSON format
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error deserializing a policy/template from JSON: {inner}")]
+    #[error("error deserializing a policy/template from JSON")]
     #[diagnostic(transparent)]
     pub struct FromJsonError {
         #[from]
@@ -677,7 +677,7 @@ pub mod policy_set_errors {
 
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error serializing / deserializing PolicySet to / from JSON: {inner})")]
+    #[error("error serializing/deserializing policy set to/from JSON")]
     pub struct JsonPolicySetError {
         #[from]
         pub(crate) inner: serde_json::Error,
@@ -694,7 +694,7 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
-    #[error("unable to link template: {0}")]
+    #[error("unable to link template")]
     #[diagnostic(transparent)]
     Linking(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
@@ -734,7 +734,7 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     FromJson(#[from] policy_set_errors::FromJsonError),
     /// Error when converting to JSON format
-    #[error("Error serializing a policy to JSON: {0}")]
+    #[error("error serializing a policy to JSON")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)

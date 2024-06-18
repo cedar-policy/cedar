@@ -72,7 +72,7 @@ pub enum JsonDeserializationError {
     #[diagnostic(transparent)]
     ExpectedExtnValue(ExpectedExtnValue),
     /// Errors creating the request context from JSON
-    #[error("while parsing context, {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
     ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent

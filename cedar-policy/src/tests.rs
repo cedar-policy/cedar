@@ -1423,10 +1423,10 @@ mod schema_tests {
     #[test]
     fn invalid_schema() {
         assert_matches!(
-            Schema::from_json_value(json!(
+            Schema::from_json_str(
                 // Written as a string because duplicate entity types are detected
                 // by the serde-json string parser.
-                r#""{"": {
+                r#"{"": {
                 "entityTypes": {
                     "Photo": {
                         "memberOfTypes": [ "Album" ],
@@ -1474,8 +1474,14 @@ mod schema_tests {
                     }
                 }
             }}"#
-            )),
-            Err(crate::SchemaError::JsonDeserialization(_))
+            ),
+            Err(e) =>
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("failed to parse schema in JSON format: invalid entry: found duplicate key at line 39 column 17")
+                        .build(),
+                )
         );
     }
 }
@@ -1675,7 +1681,13 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
-                expect_err("", &Report::new(e), &ExpectedErrorMessageBuilder::error(r#"entity does not conform to the schema: `Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#).build());
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#)
+                        .build()
+                );
             }
         }
 
@@ -1734,9 +1746,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#)
+                        .build()
                 );
             }
         }
@@ -1798,9 +1813,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous attribute"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#)
+                        .build()
                 );
             }
         }
@@ -1809,9 +1827,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to unexpected entity type"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#)
+                        .build()
                 );
             }
         }
@@ -2031,9 +2052,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was: `{err}`"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .build()
         );
 
         // another simple type mismatch with expected type
@@ -2064,10 +2088,13 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#)
+                .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+                .build()
         );
 
         // type mismatch where we expect a set and get just a single element
@@ -2095,9 +2122,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .build()
         );
 
         // type mismatch where we just get the wrong entity type
@@ -2128,9 +2158,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .build()
         );
 
         // type mismatch where we're expecting an extension type and get a
@@ -2162,9 +2195,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .build()
         );
 
         // missing a record attribute entirely
@@ -2194,9 +2230,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#)
+                .build()
         );
 
         // record attribute has the wrong type
@@ -2227,9 +2266,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .build()
         );
 
         let entity = json!(
@@ -2495,9 +2537,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was: `{err}`"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .build()
         );
 
         // another simple type mismatch with expected type
@@ -2530,10 +2575,13 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#)
+                .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+                .build()
         );
 
         // type mismatch where we expect a set and get just a single element
@@ -2563,9 +2611,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .build()
         );
 
         // type mismatch where we just get the wrong entity type
@@ -2598,9 +2649,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .build()
         );
 
         // type mismatch where we're expecting an extension type and get a
@@ -2634,9 +2688,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .build()
         );
 
         // missing a record attribute entirely
@@ -2668,9 +2725,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#)
+                .build()
         );
 
         // record attribute has the wrong type
@@ -2703,9 +2763,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .build()
         );
 
         let entitiesjson = json!(
@@ -2824,9 +2887,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                .build()
         );
     }
 
@@ -3530,7 +3596,14 @@ fn partial_schema_unsupported() {
     use serde_json::json;
     assert_matches!(
         Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})),
-        Err(e) if e.to_string().contains("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+        Err(e) =>
+            expect_err(
+                "",
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+                    .build(),
+            )
     );
 }
 
@@ -4228,7 +4301,6 @@ mod into_iter_entities {
 }
 
 mod policy_set_est_tests {
-    use cool_asserts::assert_matches;
     use itertools::{Either, Itertools};
 
     use super::*;
@@ -4553,10 +4625,12 @@ mod policy_set_est_tests {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existent").into();
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("failed to find a template with id `non_existent`")
+                .build(),
         );
     }
 
@@ -4628,13 +4702,61 @@ mod policy_set_est_tests {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_principal = vec![SlotId::principal().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if extra_values.is_empty() && unbound_values == just_principal
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("the following slots were not provided as arguments: ?principal")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_dup_links() {
+        let value = serde_json::json!({
+            "static_policies" : [],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            },
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).err().unwrap();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("template-linked policy id `link` conflicts with an existing policy id")
+                .build(),
         );
     }
 
@@ -4709,13 +4831,12 @@ mod policy_set_est_tests {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_resource = vec![SlotId::resource().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if unbound_values.is_empty() && extra_values == just_resource
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("the following slots were provided as arguments, but did not exist in the template: ?resource")
+                .build(),
         );
     }
 
@@ -4789,8 +4910,16 @@ mod policy_set_est_tests {
             }
         ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("found duplicate key"));
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "error serializing/deserializing policy set to/from JSON",
+            )
+            .source("invalid entry: found duplicate key at line 65 column 17")
+            .build(),
+        );
     }
 
     #[test]
@@ -4862,7 +4991,15 @@ mod policy_set_est_tests {
             }
         ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("while parsing a template link, expected a literal entity reference"));
+        let err = PolicySet::from_json_str(value).err().unwrap();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "error serializing/deserializing policy set to/from JSON",
+            )
+            .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 64 column 17"#)
+            .build(),
+        );
     }
 }

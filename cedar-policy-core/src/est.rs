@@ -319,7 +319,7 @@ impl std::fmt::Display for Clause {
 mod test {
     use super::*;
     use crate::parser::{self, parse_policy_or_template_to_est};
-    use crate::test_utils::ExpectedErrorMessageBuilder;
+    use crate::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -3183,9 +3183,15 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(FromJsonError::TemplateToPolicy(
-                ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s.id, ast::SlotId::principal())
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"tried to convert JSON representing a template to a static policy"#)
+                        .source("found slot `?principal` where slots are not allowed")
+                        .build()
+                );
+            }
         );
     }
 
@@ -3808,7 +3814,15 @@ mod test {
                 serde_json::from_value::<Policy>(bad)
                     .unwrap()
                     .try_into_ast_policy(None),
-                Err(FromJsonError::InvalidEntityType(_)),
+                Err(e) => {
+                    expect_err(
+                        "!",
+                        &miette::Report::new(e),
+                        &ExpectedErrorMessageBuilder::error(r#"invalid entity type: unexpected token `!`"#)
+                            .exactly_one_underline_with_label("!", "expected identifier")
+                            .build()
+                    );
+                }
             );
 
             let bad = json!(

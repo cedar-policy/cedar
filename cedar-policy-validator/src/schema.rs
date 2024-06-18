@@ -1382,16 +1382,13 @@ mod test {
             Extensions::all_available(),
         );
         match schema {
-            Err(SchemaError::UnsupportedFeature(UnsupportedFeatureError(
-                UnsupportedFeature::ActionAttributes(actions),
-            ))) => {
-                assert_eq!(
-                    actions.into_iter().collect::<HashSet<_>>(),
-                    HashSet::from([
-                        "view_photo".to_string(),
-                        "edit_photo".to_string(),
-                        "delete_photo".to_string(),
-                    ])
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                        .source(r#"action declared with attributes: [delete_photo, edit_photo, view_photo]"#)
+                        .build()
                 )
             }
             _ => panic!("Did not see expected error."),
