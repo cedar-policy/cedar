@@ -1,0 +1,6 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/comment_only.cedar
+---
+// Comments in an empty file are a valid policy set.

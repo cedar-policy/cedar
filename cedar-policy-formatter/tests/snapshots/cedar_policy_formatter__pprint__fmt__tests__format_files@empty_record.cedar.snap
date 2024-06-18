@@ -1,0 +1,16 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/empty_record.cedar
+---
+forbid (principal, action, resource)
+when { principal.tags == {} };
+
+forbid (principal, action, resource)
+when
+{
+  principal.tags == { // This
+  // is
+  // empty
+  }
+};
