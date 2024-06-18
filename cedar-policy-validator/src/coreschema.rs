@@ -15,7 +15,8 @@
  */
 
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
+use cedar_policy_core::entities::json::GetSchemaTypeError;
+use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -306,11 +307,10 @@ pub enum RequestValidationError {
         /// Action which it is not valid for
         action: Arc<ast::EntityUID>,
     },
-    /// Error computing the type of the `Context`.
-    /// Currently the only possible error is due to an extension function lookup failure.
-    #[error("invalid context: {0}")]
-    #[diagnostic(transparent)]
-    TypeOfContext(ExtensionFunctionLookupError),
+    /// Error computing the type of the `Context`; see the contained error type
+    /// for details about the kinds of errors that can occur
+    #[error("context is not valid: {0}")]
+    TypeOfContext(GetSchemaTypeError),
 }
 
 /// Struct which carries enough information that it can impl Core's
