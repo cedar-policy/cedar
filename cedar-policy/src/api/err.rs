@@ -275,7 +275,7 @@ impl From<ast::ContextCreationError> for ContextCreationError {
     fn from(e: ast::ContextCreationError) -> Self {
         match e {
             ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
-            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e.into()),
+            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e),
             ast::ContextCreationError::ExpressionConstruction(ece) => {
                 Self::ExpressionConstruction(ece)
             }
