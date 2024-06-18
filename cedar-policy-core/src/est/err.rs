@@ -65,14 +65,6 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
-    /// Error reported when a policy set has duplicate ids
-    #[error("error creating policy set: {0}")]
-    #[diagnostic(transparent)]
-    PolicySet(#[from] ast::PolicySetError),
-    /// Error reported when attempting to create a template-link
-    #[error("error linking policy set: {0}")]
-    #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
     /// Error reported when the extension function name is unknown. Note that
     /// unlike the Cedar policy format, the JSON format has no way to distinguish
     /// between function-style and method-style calls.

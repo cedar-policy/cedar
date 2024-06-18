@@ -53,62 +53,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
 
-/// Extended functionality for `Entities` struct
-pub mod entities {
-
-    /// `IntoIter` iterator for `Entities`
-    #[derive(Debug)]
-    pub struct IntoIter {
-        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
-    }
-
-    impl Iterator for IntoIter {
-        type Item = super::Entity;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            self.inner.next().map(super::Entity)
-        }
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            self.inner.size_hint()
-        }
-    }
-
-    /// Errors around entities
-    pub mod err {
-        pub use cedar_policy_core::entities::err::{
-            Duplicate, EntitiesError, TransitiveClosureError,
-        };
-    }
-
-    /// Entity JSON format
-    pub mod json {
-        /// Errors related to serializing/deserializing entities
-        pub mod err {
-            pub use cedar_policy_core::entities::json::err::{
-                ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
-                ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
-                ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
-                JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr,
-                ParseEscape, ReservedKey, Residual, TypeMismatch, TypeMismatchError,
-                UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
-                UnknownInImplicitConstructorArg,
-            };
-        }
-    }
-
-    /// Schema conformance checking for entities
-    pub mod conformance {
-        /// Errors around conformance
-        pub mod err {
-            pub use cedar_policy_core::entities::conformance::err::{
-                ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
-                HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
-                UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
-            };
-        }
-    }
-}
-
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
@@ -351,7 +295,7 @@ impl std::fmt::Display for Entity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-use entities::err::EntitiesError;
+use entities_errors::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
@@ -710,6 +654,25 @@ impl Entities {
     /// `from_json_file`.
     pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
+    }
+}
+
+// Utilities for defining `IntoIterator` over `Entities`
+mod entities {
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = super::Entity;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(super::Entity)
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
     }
 }
 
@@ -2259,7 +2222,7 @@ impl Template {
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 
@@ -2650,7 +2613,7 @@ impl Policy {
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))?;
         Self::from_est(id, est)
     }
 

@@ -34,6 +34,32 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use to_human_syntax_errors::NameCollisionsError;
 
+/// Errors related to [`Entities`]
+pub mod entities_errors {
+    pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
+}
+
+/// Errors related to serializing/deserializing entities or contexts to/from JSON
+pub mod entities_json_errors {
+    pub use cedar_policy_core::entities::json::err::{
+        ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
+        ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
+        ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, TypeMismatchError, UnexpectedRecordAttr,
+        UnexpectedRestrictedExprKind, UnknownInImplicitConstructorArg,
+    };
+}
+
+/// Errors related to schema conformance checking for entities
+pub mod conformance_errors {
+    pub use cedar_policy_core::entities::conformance::err::{
+        ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
+        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
+        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+    };
+}
+
 /// Errors that can occur during authorization
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
 pub enum AuthorizationError {
@@ -53,7 +79,7 @@ pub mod authorization_errors {
 
     /// An error occurred when evaluating a policy
     #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
-    #[error("while evaluating policy `{id}`: {error}")]
+    #[error("error while evaluating policy `{id}`: {error}")]
     pub struct PolicyEvaluationError {
         /// Id of the policy with an error
         id: ast::PolicyID,
@@ -275,7 +301,7 @@ impl From<ast::ContextCreationError> for ContextCreationError {
     fn from(e: ast::ContextCreationError) -> Self {
         match e {
             ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
-            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e.into()),
+            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e),
             ast::ContextCreationError::ExpressionConstruction(ece) => {
                 Self::ExpressionConstruction(ece)
             }
@@ -668,7 +694,7 @@ pub mod policy_set_errors {
 
     /// Error when converting a policy from JSON format
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error deserializing a policy/template from JSON: {inner}")]
+    #[error("error deserializing a policy/template from JSON: {inner}")]
     #[diagnostic(transparent)]
     pub struct FromJsonError {
         #[from]
@@ -677,7 +703,7 @@ pub mod policy_set_errors {
 
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error serializing / deserializing PolicySet to / from JSON: {inner})")]
+    #[error("error serializing/deserializing policy set to/from JSON: {inner}")]
     pub struct JsonPolicySetError {
         #[from]
         pub(crate) inner: serde_json::Error,
@@ -848,13 +874,17 @@ pub mod policy_to_json_errors {
     }
 }
 
-/// Error type for parsing `Context` from JSON
+/// Error type for parsing a [`Context`] from JSON
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
-    /// Error deserializing the JSON into a Context
+    /// Error deserializing the JSON into a [`Context`]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] context_json_errors::ContextJsonDeserializationError),
+    JsonDeserialization(#[from] entities_json_errors::JsonDeserializationError),
+    /// Error constructing the [`Context`] itself
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextCreation(#[from] ContextCreationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -870,8 +900,11 @@ impl ContextJsonError {
 
 #[doc(hidden)]
 impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
-    fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
-        context_json_errors::ContextJsonDeserializationError::from(error).into()
+    fn from(e: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
+        match e {
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::JsonDeserialization(e) => Self::JsonDeserialization(e),
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::ContextCreation(e) => Self::ContextCreation(e.into())
+        }
     }
 }
 
@@ -880,15 +913,6 @@ pub mod context_json_errors {
     use super::EntityUid;
     use miette::Diagnostic;
     use thiserror::Error;
-
-    /// Error deserializing the JSON into a Context
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct ContextJsonDeserializationError {
-        #[diagnostic(transparent)]
-        #[from]
-        error: cedar_policy_core::entities::json::ContextJsonDeserializationError,
-    }
 
     /// The supplied action doesn't exist in the supplied schema
     #[derive(Debug, Diagnostic, Error)]

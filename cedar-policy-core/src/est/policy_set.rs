@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-use super::FromJsonError;
 use super::Policy;
-use crate::ast;
 use crate::ast::EntityUID;
 use crate::ast::{PolicyID, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
@@ -27,6 +25,7 @@ use std::collections::HashMap;
 
 /// An EST set of policies
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PolicySet {
     /// The set of templates in a policy set
     pub templates: Vec<PolicyEntry>,
@@ -64,35 +63,6 @@ struct TemplateLinkContext;
 impl crate::entities::json::DeserializationContext for TemplateLinkContext {
     fn static_context() -> Option<JsonDeserializationErrorContext> {
         Some(JsonDeserializationErrorContext::TemplateLink)
-    }
-}
-
-impl TryFrom<PolicySet> for ast::PolicySet {
-    type Error = FromJsonError;
-
-    fn try_from(value: PolicySet) -> Result<Self, Self::Error> {
-        let mut ast_pset = ast::PolicySet::default();
-
-        for PolicyEntry { id, policy } in value.templates {
-            let ast = policy.try_into_ast_template(Some(id))?;
-            ast_pset.add_template(ast)?;
-        }
-
-        for PolicyEntry { id, policy } in value.static_policies {
-            let ast = policy.try_into_ast_policy(Some(id))?;
-            ast_pset.add(ast)?;
-        }
-
-        for Link {
-            id,
-            template,
-            slots: env,
-        } in value.links
-        {
-            ast_pset.link(template, id, env)?;
-        }
-
-        Ok(ast_pset)
     }
 }
 
