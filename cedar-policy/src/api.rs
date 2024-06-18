@@ -657,8 +657,10 @@ impl Entities {
     }
 }
 
-// Utilities for defining `IntoIterator` over `Entities`
-mod entities {
+/// Utilities for defining `IntoIterator` over `Entities`
+pub mod entities {
+
+    /// `IntoIter` iterator for `Entities`
     #[derive(Debug)]
     pub struct IntoIter {
         pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
