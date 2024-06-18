@@ -531,6 +531,7 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
 pub mod policy_set_errors {
     use super::Error;
     use crate::PolicyId;
+    use cedar_policy_core::ast;
     use miette::Diagnostic;
 
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -546,6 +547,15 @@ pub mod policy_set_errors {
         pub fn duplicate_id(&self) -> &PolicyId {
             &self.id
         }
+    }
+
+    /// Error when linking a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to link template")]
+    pub struct LinkingError {
+        #[from]
+        #[diagnostic(transparent)]
+        pub(crate) inner: ast::LinkingError,
     }
 
     /// Expected a static policy, but a template-linked policy was provided
@@ -666,15 +676,6 @@ pub mod policy_set_errors {
         }
     }
 
-    /// Error when converting a policy from JSON format
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("error deserializing a policy/template from JSON")]
-    #[diagnostic(transparent)]
-    pub struct FromJsonError {
-        #[from]
-        pub(crate) inner: cedar_policy_core::est::FromJsonError,
-    }
-
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
     #[error("error serializing/deserializing policy set to/from JSON")]
@@ -694,9 +695,9 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
-    #[error("unable to link template")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
+    Linking(#[from] policy_set_errors::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -729,12 +730,12 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkLinkNotLink(#[from] policy_set_errors::UnlinkLinkNotLinkError),
-    /// Error when converting from JSON format
+    /// Error when converting a policy/template from JSON format
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FromJson(#[from] policy_set_errors::FromJsonError),
-    /// Error when converting to JSON format
-    #[error("error serializing a policy to JSON")]
+    FromJson(#[from] PolicyFromJsonError),
+    /// Error when converting a policy/template to JSON format
+    #[error("Error serializing a policy/template to JSON")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
@@ -753,6 +754,13 @@ impl From<ast::PolicySetError> for PolicySetError {
                 })
             }
         }
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::LinkingError> for PolicySetError {
+    fn from(e: ast::LinkingError) -> Self {
+        Self::Linking(e.into())
     }
 }
 
@@ -846,6 +854,15 @@ pub mod policy_to_json_errors {
         #[from]
         err: serde_json::Error,
     }
+}
+
+/// Error when converting a policy or template from JSON format
+#[derive(Debug, Diagnostic, Error)]
+#[error("error deserializing a policy/template from JSON")]
+#[diagnostic(transparent)]
+pub struct PolicyFromJsonError {
+    #[from]
+    pub(crate) inner: cedar_policy_core::est::FromJsonError,
 }
 
 /// Error type for parsing `Context` from JSON

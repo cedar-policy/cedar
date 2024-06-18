@@ -112,14 +112,13 @@ impl ValidatorSchemaFragment {
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ValidatorSchema {
     /// Map from entity type names to the ValidatorEntityType object.
-    #[serde(rename = "entityTypes")]
     #[serde_as(as = "Vec<(_, _)>")]
     entity_types: HashMap<Name, ValidatorEntityType>,
 
     /// Map from action id names to the ValidatorActionId object.
-    #[serde(rename = "actionIds")]
     #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 }

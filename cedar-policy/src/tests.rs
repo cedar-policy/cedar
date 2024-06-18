@@ -504,7 +504,6 @@ mod scope_constraints_tests {
 /// Tests in this module are adapted from Core's `policy_set.rs` tests
 mod policy_set_tests {
     use super::*;
-    use ast::LinkingError;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -569,7 +568,7 @@ mod policy_set_tests {
 
         assert_matches!(
             r,
-            Err(PolicySetError::Linking(LinkingError::PolicyIdConflict { id })) =>{
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::PolicyIdConflict { id } })) =>{
                 assert_eq!(id, ast::PolicyID::from_string("id"));
             }
         );
@@ -1334,9 +1333,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy3").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for template; link
@@ -1346,9 +1345,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy0").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for static; link
@@ -1364,9 +1363,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy1").unwrap(),
                 env,
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
     }
 }
@@ -3966,9 +3965,9 @@ mod issue_604 {
 }
 
 mod issue_606 {
-    use cedar_policy_core::est::FromJsonError;
-
+    use super::{expect_err, ExpectedErrorMessageBuilder};
     use crate::{PolicyId, Template};
+    use cool_asserts::assert_matches;
 
     #[test]
     fn est_template() {
@@ -3992,11 +3991,16 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid), est_json);
-        assert!(matches!(
-            template,
-            Err(FromJsonError::SlotsInConditionClause(_))
-        ));
+        assert_matches!(Template::from_json(Some(tid), est_json.clone()), Err(e) => {
+            expect_err(
+                &est_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                    .source("found template slot ?principal in a `when` clause")
+                    .help("slots are currently unsupported in `when` clauses")
+                    .build(),
+            );
+        });
     }
 }
 
