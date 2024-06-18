@@ -162,6 +162,7 @@ impl JsonRecord {
 
 /// Structure expected by the `__entity` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct TypeAndId {
@@ -207,6 +208,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
 /// Structure expected by the `__extn` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct FnAndArg {

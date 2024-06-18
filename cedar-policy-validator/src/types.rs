@@ -1406,14 +1406,13 @@ impl EntityRecordKind {
 
 /// Contains the type of a record attribute and if the attribute is required.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
-    #[serde(rename = "attrType")]
     pub attr_type: Type,
 
     /// True when the attribute must be present. False if it is optional, and so
     /// may not be present in a record or entity.
-    #[serde(rename = "isRequired")]
     pub is_required: bool,
 }
 

@@ -1411,21 +1411,18 @@ impl<T> Expr<T> {
 
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Var {
     /// the Principal of the given request
-    #[serde(rename = "principal")]
     Principal,
     /// the Action of the given request
-    #[serde(rename = "action")]
     Action,
     /// the Resource of the given request
-    #[serde(rename = "resource")]
     Resource,
     /// the Context of the given request
-    #[serde(rename = "context")]
     Context,
 }
 
