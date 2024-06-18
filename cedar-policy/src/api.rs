@@ -1684,14 +1684,12 @@ impl PolicySet {
         let mut pset = Self::default();
 
         for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId::new(id)), policy)
-                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
+            let template = Template::from_est(Some(PolicyId::new(id)), policy)?;
             pset.add_template(template)?;
         }
 
         for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId::new(id)), policy)
-                .map_err(|e| policy_set_errors::FromJsonError { inner: e })?;
+            let p = Policy::from_est(Some(PolicyId::new(id)), policy)?;
             pset.add(p)?;
         }
 
@@ -2257,16 +2255,14 @@ impl Template {
     pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
+    ) -> Result<Self, PolicyFromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))
+            .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
     }
 
-    fn from_est(
-        id: Option<PolicyId>,
-        est: est::Policy,
-    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
+    fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
             ast: est.clone().try_into_ast_template(id.map(PolicyId::into))?,
             lossless: LosslessPolicy::Est(est),
@@ -2648,16 +2644,14 @@ impl Policy {
     pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
+    ) -> Result<Self, PolicyFromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))?;
+            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))
+            .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
     }
 
-    fn from_est(
-        id: Option<PolicyId>,
-        est: est::Policy,
-    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
+    fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
             ast: est.clone().try_into_ast_policy(id.map(PolicyId::into))?,
             lossless: LosslessPolicy::Est(est),

@@ -3892,9 +3892,9 @@ mod issue_604 {
 }
 
 mod issue_606 {
-    use cedar_policy_core::est::FromJsonError;
-
+    use super::{expect_err, ExpectedErrorMessageBuilder};
     use crate::{PolicyId, Template};
+    use cool_asserts::assert_matches;
 
     #[test]
     fn est_template() {
@@ -3918,11 +3918,15 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid), est_json);
-        assert!(matches!(
-            template,
-            Err(FromJsonError::SlotsInConditionClause(_))
-        ));
+        assert_matches!(Template::from_json(Some(tid), est_json.clone()), Err(e) => {
+            expect_err(
+                &est_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON: found template slot ?principal in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .build(),
+            );
+        });
     }
 }
 
