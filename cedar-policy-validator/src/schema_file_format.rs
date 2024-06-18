@@ -172,6 +172,7 @@ impl NamespaceDefinition {
     }
 }
 
+/// Represents the full definition of an entity type in the schema.
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
 /// can/should be included on entities of each type.
@@ -181,14 +182,19 @@ impl NamespaceDefinition {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType {
+    /// Entities of this [`EntityType`] are allowed to be members of entities of
+    /// these types.
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub member_of_types: Vec<Name>,
+    /// Description of the attributes for entities of this [`EntityType`].
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext,
 }
 
+/// Declaration of entity attributes, or of an action context.
+/// These share a JSON format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -200,10 +206,12 @@ pub struct AttributesOrContext(
 );
 
 impl AttributesOrContext {
+    /// Convert the `AttributesOrContext` into its `SchemaType`.
     pub fn into_inner(self) -> SchemaType {
         self.0
     }
 
+    /// Is this `AttributesOrContext` an empty record?
     pub fn is_empty_record(&self) -> bool {
         self.0.is_empty_record()
     }
@@ -218,8 +226,9 @@ impl Default for AttributesOrContext {
     }
 }
 
-/// An action type describes a specific action entity.  It also describes what
-/// kinds of entities it can be used on.
+/// An [`ActionType`] describes a specific action entity.
+/// It also describes what principals/resources/contexts are valid for the
+/// action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -232,9 +241,11 @@ pub struct ActionType {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
+    /// Describes what principals/resources/contexts are valid for this action.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub applies_to: Option<ApplySpec>,
+    /// Which actions are parents of this action.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub member_of: Option<Vec<ActionEntityUID>>,
@@ -254,25 +265,33 @@ pub struct ActionType {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec {
+    /// Resource types that are valid for the action
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_types: Option<Vec<Name>>,
+    /// Principal types that are valid for the action
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principal_types: Option<Vec<Name>>,
+    /// Context type that this action expects
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext,
 }
 
+/// Represents the EntityUID of an action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID {
+    /// Represents the `Eid` of the action
     pub id: SmolStr,
 
+    /// Represents the type of the action.
+    /// `None` is shorthand for `Action`.
+    /// If this is `Some`, the last component of the `Name` should be `Action`.
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -280,6 +299,7 @@ pub struct ActionEntityUID {
 }
 
 impl ActionEntityUID {
+    /// Given an `id`, get the `ActionEntityUID` representing `Action::<id>`.
     pub fn default_type(id: SmolStr) -> Self {
         Self { id, ty: None }
     }
@@ -307,8 +327,11 @@ impl std::fmt::Display for ActionEntityUID {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaType {
+    /// One of the standard types exposed to users
     Type(SchemaTypeVariant),
+    /// A common type ("typedef")
     TypeDef {
+        /// Name of the common type
         #[serde(rename = "type")]
         type_name: Name,
     },
@@ -688,27 +711,41 @@ impl From<SchemaTypeVariant> for SchemaType {
     }
 }
 
+/// The variants of `SchemaType` that are exposed to users, i.e., legal to write
+/// in schemas. Does not include common types, which are handled separately.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaTypeVariant {
+    /// String
     String,
+    /// Long
     Long,
+    /// Boolean
     Boolean,
+    /// Set
     Set {
+        /// Element type
         element: Box<SchemaType>,
     },
+    /// Record
     Record {
+        /// Attribute names and types for the record
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
+        /// Whether "additional attributes" are possible on this record
         #[serde(rename = "additionalAttributes")]
         #[serde(skip_serializing_if = "is_partial_schema_default")]
         additional_attributes: bool,
     },
+    /// Entity
     Entity {
+        /// Name of the entity type
         name: Name,
     },
+    /// Extension types
     Extension {
+        /// Name of the extension type
         name: Id,
     },
 }
@@ -821,8 +858,10 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeOfAttribute {
+    /// Underlying type of the attribute
     #[serde(flatten)]
     pub ty: SchemaType,
+    /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
     #[serde(skip_serializing_if = "is_record_attribute_required_default")]
     pub required: bool,

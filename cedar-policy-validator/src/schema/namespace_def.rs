@@ -64,80 +64,131 @@ pub(crate) fn is_action_entity_type(ty: &Name) -> bool {
 
 /// A single namespace definition from the schema json or human syntax,
 /// processed into a form which is closer to that used by the validator.
+///
 /// The processing includes detection of some errors, for example, parse errors
 /// in entity/common type names or entity/common types which are declared
 /// multiple times.
+///
 /// This does not detect references to undeclared entity/common types because
 /// any entity/common type may be declared in a different fragment that will
 /// only be known about when building the complete `ValidatorSchema`.
+///
+/// In this representation, entity/common type names are fully
+/// qualified/disambiguated. This means that implicit namespace prepending no
+/// longer applies: `Foo` refers specifically to the entity/common type `Foo`
+/// in the empty namespace, not `Foo` in the current namespace, wherever `Foo`
+/// appears (in common type definitions, entity attribute definitions, or
+/// as a key in the `type_defs` / `entity_types` maps).
 #[derive(Debug)]
 pub struct ValidatorNamespaceDef {
     /// The name of the namespace this is a definition of, or `None` if this is
     /// a definition for the empty namespace.
+    ///
+    /// This is informational only; it does not change the semantics of any
+    /// definition in `type_defs`, `entity_types`, or `actions`. All
+    /// entity/common type names in `type_defs`, `entity_types`, and `actions`
+    /// are already fully qualified/disambiguated at all appearances.
+    /// This `namespace` field is used only in tests and by the `cedar_policy`
+    /// function `SchemaFragment::namespaces()`.
     namespace: Option<Name>,
-    /// Preprocessed common type definitions which can be used to define entity
-    /// type attributes and action contexts.
+    /// Common type definitions, which can be used to define entity
+    /// type attributes, action contexts, and other common types.
     pub(super) type_defs: TypeDefs,
-    /// The preprocessed entity type declarations from the schema fragment.
+    /// Entity type declarations.
     pub(super) entity_types: EntityTypesDef,
-    /// The preprocessed action declarations from the schema fragment.
+    /// Action declarations.
     pub(super) actions: ActionsDef,
 }
 
-/// Holds a map from `Name`s of common type definitions to their corresponding
-/// `SchemaType`. Note that the schema type should have all common type
-/// references fully qualified.
+/// Holds a map from (fully qualified) `Name`s of common type definitions to
+/// their corresponding `SchemaType`. The common type `Name`s (keys in the map)
+/// are fully qualified, and inside the `SchemaType`s (values in the map), all
+/// entity/common type references are also fully qualified.
 #[derive(Debug)]
 pub struct TypeDefs {
     pub(super) type_defs: HashMap<Name, SchemaType>,
 }
 
-/// Entity type declarations held in a `ValidatorNamespaceDef`. Entity type
-/// parents and attributes may reference undeclared entity/common types.
+/// Holds a map from (fully qualified) `Name`s of entity type definitions to
+/// their corresponding `EntityTypeFragment`. The entity type `Name`s (keys in
+/// the map) are fully qualified, and inside the `EntityTypeFragment`s (values
+/// in the map), all entity/common type references are also fully qualified.
+///
+/// However, inside the `EntityTypeFragment`s, entity type parents and
+/// attributes may reference undeclared (but fully qualified) entity/common
+/// types.
+///
+/// All entity type `Name` keys in this map are declared in this schema
+/// fragment.
 #[derive(Debug)]
 pub struct EntityTypesDef {
     pub(super) entity_types: HashMap<Name, EntityTypeFragment>,
 }
 
-/// Defines an EntityType where we have not resolved typedefs occurring in the
-/// attributes or verified that the parent entity types and entity/common types
-/// occurring in attributes are defined.
+/// Holds the attributes and parents information for an entity type definition.
+///
+/// In this representation, references to common types may not yet have been
+/// fully resolved/inlined. But, all entity/common type references are fully
+/// qualified. Both `parents` and `attributes` may reference undeclared (but
+/// fully qualified) entity/common types.
 #[derive(Debug)]
 pub struct EntityTypeFragment {
-    /// The attributes record type for this entity type.  The type is wrapped in
+    /// The attributes record type for this entity type. The type is wrapped in
     /// a `WithUnresolvedTypeDefs` because it may refer to common types which
-    /// are not defined in this schema fragment. All entity type `Name` keys in
-    /// this map are declared in this schema fragment.
+    /// have not yet been resolved/inlined (e.g., because they are not defined
+    /// in this schema fragment).
     pub(super) attributes: WithUnresolvedTypeDefs<Type>,
-    /// The direct parent entity types for this entity type come from the
-    /// `memberOfTypes` list. These types might be declared in a different
-    /// namespace, so we will check if they are declared in any fragment when
-    /// constructing a `ValidatorSchema`.
+    /// Direct parent entity types for this entity type.
+    /// These are fully qualified `Name`s, but may be entity types declared in a
+    /// different namespace or schema fragment.
+    /// We will check for undeclared parent types when combining fragments into
+    /// a `ValidatorSchema`.
     pub(super) parents: HashSet<Name>,
 }
 
-/// Action declarations held in a `ValidatorNamespaceDef`. Entity types
-/// referenced here do not need to be declared in the schema.
+/// Holds a map from (fully qualified) `EntityUID`s of action definitions
+/// to their corresponding `ActionFragment`. The action `EntityUID`s (keys in the map)
+/// are fully qualified, and inside the `ActionFragment`s (values in the map),
+/// all entity/common type references (including references to other actions)
+/// are also fully qualified.
+///
+/// However, the `ActionFragment`s may reference undeclared (but fully
+/// qualified) entity/common types and actions.
 #[derive(Debug)]
 pub struct ActionsDef {
     pub(super) actions: HashMap<EntityUID, ActionFragment>,
 }
 
+/// Holds the information about an action that comprises an action definition.
+///
+/// In this representation, references to common types may not yet have been
+/// fully resolved/inlined. But, all entity/common type references (including
+/// references to other actions) are fully qualified. This `ActionFragment` may
+/// reference undeclared (but fully qualified) entity/common types and actions.
 #[derive(Debug)]
 pub struct ActionFragment {
     /// The type of the context record for this action. The type is wrapped in
     /// a `WithUnresolvedTypeDefs` because it may refer to common types which
-    /// are not defined in this schema fragment.
+    /// have not yet been resolved/inlined (e.g., because they are not defined
+    /// in this schema fragment).
     pub(super) context: WithUnresolvedTypeDefs<Type>,
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec,
     /// The direct parent action entities for this action.
+    /// These are fully qualified `EntityUID`s, but may be actions declared in a
+    /// different namespace or schema fragment, and thus not declared yet.
+    /// We will check for undeclared parents when combining fragments into a
+    /// `ValidatorSchema`.
     pub(super) parents: HashSet<EntityUID>,
     /// The types for the attributes defined for this actions entity.
+    /// Although these are not literally wrapped in `WithUnresolvedTypeDefs`,
+    /// they are in spirit: they may refer to common types which have not yet
+    /// been resolved/inlined (e.g., because they are not defined in this schema
+    /// fragment).
     pub(super) attribute_types: Attributes,
     /// The values for the attributes defined for this actions entity, stored
-    /// separately so that we can later extract use these values to construct
-    /// the actual `Entity` objects defined by the schema.
+    /// separately so that we can later extract these values to construct the
+    /// actual `Entity` objects defined by the schema.
     pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
@@ -676,6 +727,7 @@ impl ValidatorNamespaceDef {
     }
 
     /// Access the `Name` for the namespace of this definition.
+    /// `None` indicates this definition is for the empty namespace.
     pub fn namespace(&self) -> &Option<Name> {
         &self.namespace
     }

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! The Cedar human/natural syntax for schemas
+
 mod ast;
 mod err;
 pub mod fmt;

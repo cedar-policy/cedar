@@ -50,12 +50,14 @@ pub enum Type {
     /// Bottom type. Sub-type of all types.
     Never,
 
-    /// The singleton boolean types: true and false.
+    /// Singleton boolean type true
     True,
+    /// Singleton boolean type false
     False,
 
     /// Primitive types: bool, long, and string.
     Primitive {
+        /// Which primitive type: bool, long, or string
         #[serde(rename = "primitiveType")]
         primitive_type: Primitive,
     },
@@ -71,11 +73,12 @@ pub enum Type {
         element_type: Option<Box<Type>>,
     },
 
-    /// Record and entity types.
+    /// Record and entity types
     EntityOrRecord(EntityRecordKind),
 
-    // Extension types, like "ipaddr".
+    /// Extension types
     ExtensionType {
+        /// Name of the extension type
         name: Name,
     },
 }
@@ -960,6 +963,7 @@ impl EntityLUB {
 /// identifier, a flag indicating weather it is required, and a type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct Attributes {
+    /// Attributes map
     pub attrs: BTreeMap<SmolStr, AttributeType>,
 }
 
@@ -1111,11 +1115,11 @@ impl IntoIterator for Attributes {
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
 pub enum OpenTag {
-    // The attributes are open. A value of this type may have attributes other
-    // than those listed.
+    /// The attributes are open. A value of this type may have attributes other
+    /// than those listed.
     OpenAttributes,
-    // The attributes are closed. The attributes for a value of this type must
-    // exactly match the attributes listed in the type.
+    /// The attributes are closed. The attributes for a value of this type must
+    /// exactly match the attributes listed in the type.
     ClosedAttributes,
 }
 
@@ -1154,9 +1158,13 @@ pub enum EntityRecordKind {
     /// the schema, based on the elements of the EntityLUB.
     Entity(EntityLUB),
 
-    ///We special case action entities. They store their attributes directly rather than
-    ///Names
-    ActionEntity { name: Name, attrs: Attributes },
+    /// We special case action entities, which store their attributes directly, like `Record`s do
+    ActionEntity {
+        /// Type name of the action entity
+        name: Name,
+        /// Attributes of the action entity
+        attrs: Attributes,
+    },
 }
 
 impl EntityRecordKind {
@@ -1203,6 +1211,8 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get the type of the given attribute in this entity or record, or `None`
+    /// if it doesn't exist (or not known to exist)
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
@@ -1214,6 +1224,7 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get all the attribute names for this entity or record
     pub fn all_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {

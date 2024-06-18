@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Convert a schema into the JSON format
+
 use std::collections::HashMap;
 
 use cedar_policy_core::{

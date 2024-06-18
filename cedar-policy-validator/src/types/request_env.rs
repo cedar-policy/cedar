@@ -20,18 +20,26 @@ use crate::ValidatorSchema;
 
 use super::Type;
 
+/// Represents a request type environment. In principle, this contains full
+/// types for the four variables (principal, action, resource, context).
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestEnv<'a> {
     /// Contains the four variables bound in the type environment. These together
     /// represent the full type of (principal, action, resource, context)
     /// authorization request.
     DeclaredAction {
+        /// Principal type
         principal: &'a EntityType,
+        /// Action
         action: &'a EntityUID,
+        /// Resource type
         resource: &'a EntityType,
+        /// Context type
         context: &'a Type,
 
+        /// Binding for the ?principal slot, if any
         principal_slot: Option<EntityType>,
+        /// Binding for the ?resource slot, if any
         resource_slot: Option<EntityType>,
     },
     /// Only in partial schema validation, the action might not have been
@@ -41,6 +49,8 @@ pub enum RequestEnv<'a> {
 }
 
 impl<'a> RequestEnv<'a> {
+    /// The principal type for this request environment, as an [`EntityType`].
+    /// `None` indicates we don't know (only possible in partial schema validation).
     pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
         match self {
             RequestEnv::UndeclaredAction => None,
@@ -48,6 +58,7 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// [`Type`] of the `principal` for this request environment
     pub fn principal_type(&self) -> Type {
         match self.principal_entity_type() {
             Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
@@ -55,6 +66,8 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// The action for this request environment, as an [`EntityUID`].
+    /// `None` indicates we don't know (only possible in partial schema validation).
     pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
         match self {
             RequestEnv::UndeclaredAction => None,
@@ -62,6 +75,7 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// [`Type`] of the `action` for this request environment
     pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
         match self.action_entity_uid() {
             Some(action) => Type::euid_literal(action.clone(), schema),
@@ -69,6 +83,8 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// The resource type for this request environment, as an [`EntityType`].
+    /// `None` indicates we don't know (only possible in partial schema validation).
     pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
         match self {
             RequestEnv::UndeclaredAction => None,
@@ -76,6 +92,7 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// [`Type`] of the `resource` for this request environment
     pub fn resource_type(&self) -> Type {
         match self.resource_entity_type() {
             Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
@@ -83,6 +100,7 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// [`Type`] of the `context` for this request environment
     pub fn context_type(&self) -> Type {
         match self {
             RequestEnv::UndeclaredAction => Type::any_record(),
@@ -90,6 +108,9 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// Type of the ?principal slot for this request environment, as an [`EntityType`].
+    /// `None` may indicate we don't know (in partial schema validation) or that
+    /// this slot doesn't exist.
     pub fn principal_slot(&self) -> &Option<EntityType> {
         match self {
             RequestEnv::UndeclaredAction => &None,
@@ -97,6 +118,9 @@ impl<'a> RequestEnv<'a> {
         }
     }
 
+    /// Type of the ?resource slot for this request environment, as an [`EntityType`].
+    /// `None` may indicate we don't know (in partial schema validation) or that
+    /// this slot doesn't exist.
     pub fn resource_slot(&self) -> &Option<EntityType> {
         match self {
             RequestEnv::UndeclaredAction => &None,

@@ -52,17 +52,22 @@ pub use namespace_def::ValidatorNamespaceDef;
 #[cfg(test)]
 pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
 
-// We do not have a formal model for action attributes, so we disable them by default.
-#[derive(Eq, PartialEq, Copy, Clone, Default)]
+/// Configurable validator behaviors regarding actions
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
 pub enum ActionBehavior {
     /// Action entities cannot have attributes. Attempting to declare attributes
     /// will result in a error when constructing the schema.
+    ///
+    /// Since we do not have a formal model for action attributes, this behavior
+    /// (disabling/prohibiting them) is the default.
     #[default]
     ProhibitAttributes,
     /// Action entities may have attributes.
     PermitAttributes,
 }
 
+/// A `ValidatorSchemaFragment` consists of any number (even 0) of
+/// `ValidatorNamespaceDef`s.
 #[derive(Debug)]
 pub struct ValidatorSchemaFragment(Vec<ValidatorNamespaceDef>);
 
@@ -79,10 +84,12 @@ impl TryInto<ValidatorSchemaFragment> for SchemaFragment {
 }
 
 impl ValidatorSchemaFragment {
+    /// Construct a [`ValidatorSchemaFragment`] from multiple [`ValidatorNamespaceDef`]s
     pub fn from_namespaces(namespaces: impl IntoIterator<Item = ValidatorNamespaceDef>) -> Self {
         Self(namespaces.into_iter().collect())
     }
 
+    /// Construct a [`ValidatorSchemaFragment`] from a [`SchemaFragment`]
     pub fn from_schema_fragment(
         fragment: SchemaFragment,
         action_behavior: ActionBehavior,
@@ -105,20 +112,25 @@ impl ValidatorSchemaFragment {
     }
 
     /// Access the `Name`s for the namespaces in this fragment.
+    /// `None` indicates the empty namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = &Option<Name>> {
         self.0.iter().map(|d| d.namespace())
     }
 }
 
+/// Internal representation of the schema for use by the validator.
+///
+/// In this representation, all common types are fully expanded, and all entity
+/// type names are fully disambiguated (fully qualified).
 #[serde_as]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidatorSchema {
-    /// Map from entity type names to the ValidatorEntityType object.
+    /// Map from entity type names to the [`ValidatorEntityType`] object.
     #[serde_as(as = "Vec<(_, _)>")]
     entity_types: HashMap<Name, ValidatorEntityType>,
 
-    /// Map from action id names to the ValidatorActionId object.
+    /// Map from action id names to the [`ValidatorActionId`] object.
     #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 }
@@ -153,7 +165,8 @@ impl TryFrom<SchemaFragment> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
-    // Create a ValidatorSchema without any entity types or actions ids.
+    /// Create a [`ValidatorSchema`] without any definitions (of entity types,
+    /// common types, or actions).
     pub fn empty() -> ValidatorSchema {
         Self {
             entity_types: HashMap::new(),
@@ -161,7 +174,7 @@ impl ValidatorSchema {
         }
     }
 
-    /// Construct a `ValidatorSchema` from a JSON value in the appropriate
+    /// Construct a [`ValidatorSchema`] from a JSON value in the appropriate
     /// shape.
     pub fn from_json_value(json: serde_json::Value, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -171,7 +184,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` from a string containing JSON in the
+    /// Construct a [`ValidatorSchema`] from a string containing JSON in the
     /// appropriate shape.
     pub fn from_json_str(json: &str, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -181,7 +194,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` directly from a file containing JSON
+    /// Construct a [`ValidatorSchema`] directly from a file containing JSON
     /// in the appropriate shape.
     pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -191,7 +204,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` directly from a file containing Cedar
+    /// Construct a [`ValidatorSchema`] directly from a file containing Cedar
     /// "natural" schema syntax.
     pub fn from_file_natural(
         r: impl std::io::Read,
@@ -204,7 +217,7 @@ impl ValidatorSchema {
         Ok(schema_and_warnings)
     }
 
-    /// Constructor a `ValidatorSchema` from a string containing Cedar "natural"
+    /// Construct a [`ValidatorSchema`] from a string containing Cedar "natural"
     /// schema syntax.
     pub fn from_str_natural(
         src: &str,
@@ -217,7 +230,7 @@ impl ValidatorSchema {
         Ok(schema_and_warnings)
     }
 
-    /// Helper function to construct a `ValidatorSchema` from a single `SchemaFragment`
+    /// Helper function to construct a [`ValidatorSchema`] from a single [`SchemaFragment`].
     pub(crate) fn from_schema_frag(
         schema_file: SchemaFragment,
         action_behavior: ActionBehavior,
@@ -233,7 +246,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a new `ValidatorSchema` from some number of schema fragments.
+    /// Construct a [`ValidatorSchema`] from some number of [`ValidatorSchemaFragment`]s.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment>,
         extensions: Extensions<'_>,
@@ -430,7 +443,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.clone());
                         }
                     }
@@ -441,7 +454,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.clone());
                         }
                     }

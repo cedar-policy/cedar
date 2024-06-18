@@ -481,9 +481,11 @@ pub mod schema_warnings {
 // when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
 pub enum SchemaWarning {
+    /// Warning when a declaration shadows a builtin type
     #[error(transparent)]
     #[diagnostic(transparent)]
     ShadowsBuiltin(#[from] schema_warnings::ShadowsBuiltinWarning),
+    /// Warning when a declaration shadows an entity type
     #[error(transparent)]
     #[diagnostic(transparent)]
     ShadowsEntity(#[from] schema_warnings::ShadowsEntityWarning),

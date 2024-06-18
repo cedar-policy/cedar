@@ -66,7 +66,9 @@ macro_rules! impl_diagnostic_from_on_expr_field {
 // #[error(error_in_policy!("unrecognized entity type `{actual_entity_type}`"))]
 #[error("for policy `{policy_id}`, unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// The entity type seen in the policy.
     pub actual_entity_type: String,
@@ -90,7 +92,9 @@ impl Diagnostic for UnrecognizedEntityType {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("for policy `{policy_id}`, unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Action Id seen in the policy.
     pub actual_action_id: String,
@@ -114,9 +118,13 @@ impl Diagnostic for UnrecognizedActionId {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("for policy `{policy_id}`, unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// `true` if changing `==` to `in` wouuld fix the principal clause
     pub would_in_fix_principal: bool,
+    /// `true` if changing `==` to `in` wouuld fix the resource clause
     pub would_in_fix_resource: bool,
 }
 
@@ -143,7 +151,9 @@ impl Diagnostic for InvalidActionApplication {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("for policy `{policy_id}`, unspecified entity with id `{}`", .entity_id.escaped())]
 pub struct UnspecifiedEntity {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// EID of the unspecified entity
     pub entity_id: Eid,
@@ -166,10 +176,15 @@ impl Diagnostic for UnspecifiedEntity {
     },
     .actual)]
 pub struct UnexpectedType {
+    /// [`Expr`] which had the unexpected type
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Type(s) which were expected
     pub expected: BTreeSet<Type>,
+    /// Type which was encountered
     pub actual: Type,
+    /// Optional help for resolving the error
     pub help: Option<UnexpectedTypeHelp>,
 }
 
@@ -204,26 +219,36 @@ impl Diagnostic for UnexpectedType {
     }
 }
 
+/// Help for resolving a type error
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum UnexpectedTypeHelp {
+    /// Try using `like`
     #[error("try using `like` to examine the contents of a string")]
     TryUsingLike,
+    /// Try using `contains`, `containsAny`, or `containsAll`
     #[error(
         "try using `contains`, `containsAny`, or `containsAll` to examine the contents of a set"
     )]
     TryUsingContains,
+    /// Try using `contains`
     #[error("try using `contains` to test if a single element is in a set")]
     TryUsingSingleContains,
+    /// Try using `has`
     #[error("try using `has` to test for an attribute")]
     TryUsingHas,
+    /// Try using `is`
     #[error("try using `is` to test for an entity type")]
     TryUsingIs,
+    /// Try using `in`
     #[error("try using `in` for entity hierarchy membership")]
     TryUsingIn,
+    /// Cedar doesn't support type tests
     #[error("Cedar only supports run time type tests for entities")]
     TypeTestNotSupported,
+    /// Cedar doesn't support string concatenation
     #[error("Cedar does not support string concatenation")]
     ConcatenationNotSupported,
+    /// Cedar doesn't support set union, intersection, or difference
     #[error("Cedar does not support computing the union, intersection, or difference of sets")]
     SetOperationsNotSupported,
 }
@@ -231,10 +256,15 @@ pub enum UnexpectedTypeHelp {
 /// Structure containing details about an incompatible type error.
 #[derive(Error, Debug, Clone, Eq)]
 pub struct IncompatibleTypes {
+    /// [`Expr`] that had the incompatible type
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Types which are incompatible
     pub types: BTreeSet<Type>,
+    /// Hint for resolving the error
     pub hint: LubHelp,
+    /// `LubContext` for the error
     pub context: LubContext,
 }
 
@@ -274,30 +304,42 @@ impl Display for IncompatibleTypes {
     }
 }
 
+/// Hints for resolving an incompatible-types error
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum LubHelp {
+    /// Attribute qualifier problems
     #[error("Corresponding attributes of compatible record types must have the same optionality, either both being required or both being optional")]
     AttributeQualifier,
+    /// Width subtyping
     #[error("Compatible record types must have exactly the same attributes")]
     RecordWidth,
+    /// Entities are nominally typed
     #[error("Different entity types are never compatible even when their attributes would be compatible")]
     EntityType,
+    /// Entity and record types are never compatible
     #[error("Entity and record types are never compatible even when their attributes would be compatible")]
     EntityRecord,
+    /// Catchall
     #[error("Types must be exactly equal to be compatible")]
     None,
 }
 
+/// Text describing where the incompatible-types error was found
 #[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum LubContext {
+    /// In the elements of a set
     #[error("elements of a set")]
     Set,
+    /// In the branches of a conditional
     #[error("both branches of a conditional")]
     Conditional,
+    /// In the operands to `==`
     #[error("both operands to a `==` expression")]
     Equality,
+    /// In the operands of `contains`
     #[error("elements of the first operand and the second operand to a `contains` expression")]
     Contains,
+    /// In the operand of `containsAny` or `containsAll`
     #[error("elements of both set operands to a `containsAll` or `containsAny` expression")]
     ContainsAnyAll,
 }
@@ -306,9 +348,13 @@ pub enum LubContext {
 #[derive(Debug, Clone, Eq, Error)]
 #[error("for policy `{policy_id}`, attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
+    /// [`Expr`] that was missing an attribute
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// More details about the missing-attribute error
     pub attribute_access: AttributeAccess,
+    /// Optional suggestion for resolving the error
     pub suggestion: Option<String>,
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
@@ -349,8 +395,11 @@ impl Diagnostic for UnsafeAttributeAccess {
 #[derive(Error, Debug, Clone, Eq)]
 #[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
 pub struct UnsafeOptionalAttributeAccess {
+    /// [`Expr`] that contains unsafe optional attribute access
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// More details about the attribute-access error
     pub attribute_access: AttributeAccess,
 }
 
@@ -382,8 +431,11 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, undefined extension function: {name}")]
 pub struct UndefinedFunction {
+    /// [`Expr`] that contains a call to an undefined function
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Name of the undefined function
     pub name: String,
 }
 
@@ -408,8 +460,11 @@ impl Diagnostic for UndefinedFunction {
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, extension function defined multiple times: {name}")]
 pub struct MultiplyDefinedFunction {
+    /// [`Expr`] containing a call to a multiply defined function
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Name of the multiply defined function
     pub name: String,
 }
 
@@ -434,9 +489,13 @@ impl Diagnostic for MultiplyDefinedFunction {
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
+    /// [`Expr`] containing a call with the wrong number of arguments
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Expected number of arguments
     pub expected: usize,
+    /// Actual number of arguments
     pub actual: usize,
 }
 
@@ -464,9 +523,13 @@ impl Diagnostic for WrongNumberArguments {
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, wrong call style in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongCallStyle {
+    /// [`Expr`] containing a call in the wrong style
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Expected call style
     pub expected: CallStyle,
+    /// Actual call style
     pub actual: CallStyle,
 }
 
@@ -494,8 +557,11 @@ impl Diagnostic for WrongCallStyle {
 #[derive(Debug, Clone, Eq, Error)]
 #[error("for policy `{policy_id}`, error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidation {
+    /// [`Expr`] containing the problematic function argument
     pub on_expr: Expr,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// Error message
     pub msg: String,
 }
 
@@ -521,9 +587,13 @@ impl Diagnostic for FunctionArgumentValidation {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
+    /// LHS (descendant) of the hierarchy relationship
     pub in_lhs: Option<Name>,
+    /// RHS (ancestor) of the hierarchy relationship
     pub in_rhs: Option<Name>,
 }
 
@@ -540,10 +610,13 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
+/// The policy uses an empty set literal in a way that is forbidden
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, empty set literals are forbidden in policies")]
 pub struct EmptySetForbidden {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
 
@@ -551,10 +624,14 @@ impl Diagnostic for EmptySetForbidden {
     impl_diagnostic_from_source_loc_field!();
 }
 
+/// The policy passes a non-literal to an extension constructor, which is
+/// forbidden in strict validation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, extension constructors may not be called with non-literal expressions")]
 pub struct NonLitExtConstructor {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
 

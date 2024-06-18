@@ -25,6 +25,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// Struct which carries enough information that it can (efficiently) impl Core's `Schema`
+#[derive(Debug)]
 pub struct CoreSchema<'a> {
     /// Contains all the information
     schema: &'a ValidatorSchema,
@@ -37,6 +38,7 @@ pub struct CoreSchema<'a> {
 }
 
 impl<'a> CoreSchema<'a> {
+    /// Create a new `CoreSchema` for the given `ValidatorSchema`
     pub fn new(schema: &'a ValidatorSchema) -> Self {
         Self {
             actions: schema
@@ -261,6 +263,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     }
 }
 
+/// Error when the request does not conform to the schema.
 #[derive(Debug, Diagnostic, Error)]
 pub enum RequestValidationError {
     /// Request action is not declared in the schema
@@ -316,6 +319,7 @@ pub enum RequestValidationError {
 
 /// Struct which carries enough information that it can impl Core's
 /// `ContextSchema`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContextSchema(
     // INVARIANT: The `Type` stored in this struct must be representable as a
     // `SchemaType` to avoid panicking in `context_type`.
