@@ -1962,22 +1962,22 @@ impl PolicySet {
         // trying to link a static policy, which we want to error on here.
         let Some(template) = self.templates.get(&template_id) else {
             return Err(if self.policies.contains_key(&template_id) {
-                PolicySetError::ExpectedTemplate(policy_set_errors::ExpectedTemplate::new())
+                policy_set_errors::ExpectedTemplate::new().into()
             } else {
-                PolicySetError::Linking(ast::LinkingError::NoSuchTemplate {
-                    id: template_id.into(),
-                })
+                policy_set_errors::LinkingError {
+                    inner: ast::LinkingError::NoSuchTemplate {
+                        id: template_id.into(),
+                    },
+                }
+                .into()
             });
         };
 
-        let linked_ast = self
-            .ast
-            .link(
-                template_id.into(),
-                new_id.clone().into(),
-                unwrapped_vals.clone(),
-            )
-            .map_err(PolicySetError::Linking)?;
+        let linked_ast = self.ast.link(
+            template_id.into(),
+            new_id.clone().into(),
+            unwrapped_vals.clone(),
+        )?;
 
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
         #[allow(clippy::expect_used)]
