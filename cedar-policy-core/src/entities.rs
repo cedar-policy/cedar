@@ -1823,7 +1823,7 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_str(json), Err(e) => {
-            // TODO: put the line-column information in `Diagnostic::labels()` instead of printing it in the error message
+            // TODO(#599): put the line-column information in `Diagnostic::labels()` instead of printing it in the error message
             expect_err(
                 json,
                 &miette::Report::new(e),

@@ -121,9 +121,8 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
         }
     }
 
-    /// Add expected underlined text. The error message will be expected to have
-    /// exactly one miette label, and the underlined portion should be `snippet`.
-    /// The label text is expected to match `label`.
+    /// Add expected contents of `source()`, or expected prefix of `source()` if
+    /// this builder was originally constructed with `error_starts_with()`
     pub fn source(self, msg: &'a str) -> Self {
         Self {
             source: Some(msg),
