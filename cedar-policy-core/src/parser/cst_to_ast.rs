@@ -4471,6 +4471,22 @@ mod tests {
                 "try using '==' instead",
             ).exactly_one_underline("principal = User::\"alice\"").build());
         });
+        let p_src = r#"permit(principal, action = Action::"act", resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("action = Action::\"act\"").build());
+        });
+        let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("resource = Photo::\"photo\"").build());
+        });
     }
 
     #[test]
@@ -4498,6 +4514,10 @@ mod tests {
         let src = "7 % 3";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("remainder/modulo is not supported").exactly_one_underline("7 % 3").build());
+        });
+        let src = "7 = 3";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar").exactly_one_underline("7 = 3").help("try using '==' instead").build());
         });
     }
 
@@ -4619,39 +4639,6 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
-    }
-
-    #[test]
-    fn invalid_single_eq() {
-        let p_src = r#"permit(principal, action, resource) when { 7 = 3 };"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar")
-                    .exactly_one_underline("7 = 3")
-                    .help("try using '==' instead")
-                    .build()
-            );
-        });
-
-        let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar")
-                    .exactly_one_underline(r#"resource = Photo::"photo""#)
-                    .help("try using '==' instead")
-                    .build()
-            );
-        });
-
-        let p_src = r#"permit(principal, action = Action::"act", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &miette::Report::new(e),
-             &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar")
-                .exactly_one_underline(r#"action = Action::"act""#)
-                .help("try using '==' instead")
-                .build()
-            );
-        });
     }
 
     #[test]
