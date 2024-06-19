@@ -5014,9 +5014,9 @@ mod authorization_error_tests {
     fn test_policy_evaluation_error() {
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Principal", "p")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "r")),
+            EntityUid::from_strs("Principal", "p"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "r"),
             Context::empty(),
             None,
         )
@@ -5102,9 +5102,9 @@ mod request_validation_tests {
     fn undeclared_action() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Principal", "principal")),
-            Some(EntityUid::from_strs("Action", "undeclared")),
-            Some(EntityUid::from_strs("Resource", "resource")),
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "undeclared"),
+            EntityUid::from_strs("Resource", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5123,9 +5123,9 @@ mod request_validation_tests {
     fn undeclared_principal_type() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Undeclared", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Resource", "resource")),
+            EntityUid::from_strs("Undeclared", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5144,9 +5144,9 @@ mod request_validation_tests {
     fn undeclared_resource_type() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Principal", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Undeclared", "resource")),
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Undeclared", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5165,9 +5165,9 @@ mod request_validation_tests {
     fn invalid_principal_type() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Resource", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Resource", "resource")),
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5186,9 +5186,9 @@ mod request_validation_tests {
     fn invalid_resource_type() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Principal", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Principal", "resource")),
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Principal", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5207,9 +5207,9 @@ mod request_validation_tests {
     fn invalid_context() {
         let schema = schema();
         let err = Request::new(
-            Some(EntityUid::from_strs("Principal", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Resource", "resource")),
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
             Context::empty(),
             Some(&schema),
         )
@@ -5224,9 +5224,9 @@ mod request_validation_tests {
         );
 
         let err = Request::new(
-            Some(EntityUid::from_strs("Principal", "principal")),
-            Some(EntityUid::from_strs("Action", "action")),
-            Some(EntityUid::from_strs("Resource", "resource")),
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
             Context::from_json_value(json!({"foo": 123}), None)
                 .expect("context creation should have succeeded"),
             Some(&schema),
