@@ -21,17 +21,17 @@ use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::R
 use cedar_policy_core::ast::Id;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
-use crate::human_schema::ast::{ 
-    Path, 
-    EntityDecl, 
-    Declaration, 
-    Namespace, 
-    Schema as ASchema, 
-    Type as SType, 
-    AttrDecl, 
-    ActionDecl, 
-    PR, 
-    AppDecl, 
+use crate::human_schema::ast::{
+    Path,
+    EntityDecl,
+    Declaration,
+    Namespace,
+    Schema as ASchema,
+    Type as SType,
+    AttrDecl,
+    ActionDecl,
+    PR,
+    AppDecl,
     TypeDecl,
     PrimitiveType,
     QualName,
@@ -127,21 +127,21 @@ TypeDecl: Node<Declaration> = {
 //          | 'context' ':' (Path | RecType) [',' | ',' AppDecls]
 AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
-        =>? 
+        =>?
                 NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
                     error: Node::with_source_loc(UserError::EmptyList, Loc::new(l..r, Arc::clone(src)))})
-                    .map(|ets| 
+                    .map(|ets|
                         Node::with_source_loc(
                             nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))],
                             Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> "," <r:@R> <mut ds: AppDecls>
-        =>? 
+        =>?
                 NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
                     error: Node::with_source_loc(UserError::EmptyList, Loc::new(l..r, Arc::clone(src)))})
-                    .map(|ets| 
+                    .map(|ets|
                         {
                             let (mut ds, _) = ds.into_inner();
-                            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))); 
+                            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src))));
                             Node::with_source_loc(ds, Loc::new(l..r, Arc::clone(src)))
                         }),
     <l:@L> CONTEXT ":" <p:Path> ","? <r:@R>
@@ -151,20 +151,20 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> CONTEXT ":" <p:Path> "," <r:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src)))); 
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src))));
             Node::with_source_loc(
                 ds,
                 Loc::new(l..r, Arc::clone(src)))
         },
     <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" ","? <r:@R>
-        =>  
+        =>
             Node::with_source_loc(
                 nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src)))],
                 Loc::new(l..r, Arc::clone(src))),
     <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" "," <r:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src)))); 
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src))));
             Node::with_source_loc(
                 ds,
                 Loc::new(l..r, Arc::clone(src)))
@@ -220,13 +220,13 @@ Ident: Node<Id> = {
         => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ATTRIBUTES <r:@R>
         => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> BOOL <r:@R> 
+    <l:@L> BOOL <r:@R>
         => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> LONG <r:@R> 
+    <l:@L> LONG <r:@R>
         => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> STRING <r:@R> 
+    <l:@L> STRING <r:@R>
         => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> TYPE <r:@R> 
+    <l:@L> TYPE <r:@R>
         => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
         =>? Err(ParseError::User {
@@ -280,11 +280,12 @@ Idents: Vec<Node<Id>> = {
 }
 
 // Names := Name {',' Name}
-Names: Vec<Node<SmolStr>> = {
-    <n:Name> => vec![n],
+Names: NonEmpty<Node<SmolStr>> = {
+    <n:Name> => NonEmpty::new(n),
     <mut ns:(<Name> ",")+> <n:Name> => {
-        ns.push(n);
-        ns
+        let mut all = NonEmpty::new(n);
+        all.append(&mut ns);
+        all
     },
 }
 

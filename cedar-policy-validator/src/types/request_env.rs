@@ -61,7 +61,7 @@ impl<'a> RequestEnv<'a> {
     /// [`Type`] of the `principal` for this request environment
     pub fn principal_type(&self) -> Type {
         match self.principal_entity_type() {
-            Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
+            Some(principal) => Type::named_entity_reference(principal.clone()),
             None => Type::any_entity_reference(),
         }
     }
@@ -95,7 +95,7 @@ impl<'a> RequestEnv<'a> {
     /// [`Type`] of the `resource` for this request environment
     pub fn resource_type(&self) -> Type {
         match self.resource_entity_type() {
-            Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
+            Some(resource) => Type::named_entity_reference(resource.clone()),
             None => Type::any_entity_reference(),
         }
     }

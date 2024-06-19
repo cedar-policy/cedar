@@ -15,6 +15,7 @@
  */
 
 use super::FromJsonError;
+use crate::ast;
 use crate::ast::InputInteger;
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
@@ -26,7 +27,6 @@ use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
 use crate::parser::util::flatten_tuple_2;
 use crate::parser::{Loc, Node};
-use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -653,7 +653,7 @@ impl Expr {
                 left,
                 entity_type,
                 in_expr,
-            }) => ast::Name::from_normalized_str(entity_type.as_str())
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
@@ -1077,7 +1077,7 @@ fn interpret_primary(
                 path,
                 eid: eid_node,
             } => {
-                let maybe_name = path.to_name();
+                let maybe_name = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid_node.as_valid_string();
 
                 let (name, eid) = flatten_tuple_2(maybe_name, maybe_eid)?;

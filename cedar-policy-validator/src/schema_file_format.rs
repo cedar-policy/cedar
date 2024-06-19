@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{self, Id, Name},
     entities::CedarValueJson,
     FromNormalizedStr,
 };
@@ -186,7 +186,7 @@ pub struct EntityType {
     /// these types.
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub member_of_types: Vec<Name>,
+    pub member_of_types: Vec<cedar_policy_core::ast::EntityType>,
     /// Description of the attributes for entities of this [`EntityType`].
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
@@ -267,12 +267,10 @@ pub struct ActionType {
 pub struct ApplySpec {
     /// Resource types that are valid for the action
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_types: Option<Vec<Name>>,
+    pub resource_types: Vec<ast::EntityType>,
     /// Principal types that are valid for the action
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub principal_types: Option<Vec<Name>>,
+    pub principal_types: Vec<ast::EntityType>,
     /// Context type that this action expects
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
@@ -660,7 +658,8 @@ impl SchemaTypeVisitor {
                                         serde::de::Error::custom(format!(
                                             "invalid entity type `{name}`: {err}"
                                         ))
-                                    })?,
+                                    })?
+                                    .into(),
                             }))
                         }
                     }
@@ -741,7 +740,7 @@ pub enum SchemaTypeVariant {
     /// Entity
     Entity {
         /// Name of the entity type
-        name: Name,
+        name: ast::EntityType,
     },
     /// Extension types
     Extension {
@@ -821,7 +820,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
             }
             6 => {
                 let name: Name = u.arbitrary()?;
-                SchemaTypeVariant::Entity { name }
+                SchemaTypeVariant::Entity { name: name.into() }
             }
             7 => SchemaTypeVariant::Extension {
                 // PANIC SAFETY: `ipaddr` is a valid `Id`
@@ -942,8 +941,8 @@ mod test {
         "#;
         let at: ActionType = serde_json::from_str(src).expect("Parse Error");
         let spec = ApplySpec {
-            resource_types: Some(vec!["Album".parse().unwrap()]),
-            principal_types: Some(vec!["User".parse().unwrap()]),
+            resource_types: vec!["Album".parse().unwrap()],
+            principal_types: vec!["User".parse().unwrap()],
             context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));
@@ -1630,8 +1629,8 @@ mod test_json_roundtrip {
                     ActionType {
                         attributes: None,
                         applies_to: Some(ApplySpec {
-                            resource_types: Some(vec!["a".parse().unwrap()]),
-                            principal_types: Some(vec!["a".parse().unwrap()]),
+                            resource_types: vec!["a".parse().unwrap()],
+                            principal_types: vec!["a".parse().unwrap()],
                             context: AttributesOrContext(SchemaType::Type(
                                 SchemaTypeVariant::Record {
                                     attributes: BTreeMap::new(),
@@ -1679,8 +1678,8 @@ mod test_json_roundtrip {
                         ActionType {
                             attributes: None,
                             applies_to: Some(ApplySpec {
-                                resource_types: Some(vec!["foo::a".parse().unwrap()]),
-                                principal_types: Some(vec!["foo::a".parse().unwrap()]),
+                                resource_types: vec!["foo::a".parse().unwrap()],
+                                principal_types: vec!["foo::a".parse().unwrap()],
                                 context: AttributesOrContext(SchemaType::Type(
                                     SchemaTypeVariant::Record {
                                         attributes: BTreeMap::new(),

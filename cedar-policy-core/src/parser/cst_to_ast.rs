@@ -247,7 +247,7 @@ impl cst::Policy {
         // this position to indicate where to fill in vars if we're missing one.
         let mut end_of_last_var = self.effect.loc.end();
 
-        let mut vars = self.variables.iter().peekable();
+        let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
             scope1.to_principal_constraint()
@@ -277,22 +277,18 @@ impl cst::Policy {
             )
             .into())
         };
-        let maybe_extra_vars = if vars.peek().is_some() {
+
+        let maybe_extra_vars = if let Some(errs) = ParseErrors::from_iter(
             // Add each of the extra constraints to the error list
-            let mut errs: Vec<ParseError> = vec![];
-            for extra_var in vars {
-                if let Some(def) = extra_var.as_inner() {
-                    errs.push(
-                        extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone()))
-                            .into(),
-                    )
-                }
-            }
-            match ParseErrors::from_iter(errs) {
-                None => Ok(()),
-                Some(errs) => Err(errs),
-            }
+            vars.map(|extra_var| {
+                extra_var
+                    .try_as_inner()
+                    .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
+                    .unwrap_or_else(|e| e)
+                    .into()
+            }),
+        ) {
+            Err(errs)
         } else {
             Ok(())
         };
@@ -540,7 +536,7 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    Arc::new(entity_type.to_expr_or_special()?.into_name()?),
+                    Arc::new(entity_type.to_expr_or_special()?.into_entity_type()?),
                     eref,
                 )),
                 (cst::RelOp::InvalidSingleEq, _) => {
@@ -550,7 +546,7 @@ impl Node<Option<cst::VariableDef>> {
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Ok(PrincipalOrResourceConstraint::Is(Arc::new(
-                entity_type.to_expr_or_special()?.into_name()?,
+                entity_type.to_expr_or_special()?.into_entity_type()?,
             )))
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
@@ -793,6 +789,10 @@ impl ExprOrSpecial<'_> {
                 .to_ast_err(ToASTErrorKind::InvalidString(expr.to_string()))
                 .into()),
         }
+    }
+
+    fn into_entity_type(self) -> Result<ast::EntityType> {
+        self.into_name().map(ast::EntityType::from)
     }
 
     fn into_name(self) -> Result<ast::Name> {
@@ -1132,7 +1132,7 @@ impl Node<Option<cst::Relation>> {
                 in_entity,
             } => {
                 let maybe_target = target.to_expr();
-                let maybe_entity_type = entity_type.to_expr_or_special()?.into_name();
+                let maybe_entity_type = entity_type.to_expr_or_special()?.into_entity_type();
                 let (t, n) = flatten_tuple_2(maybe_target, maybe_entity_type)?;
                 match in_entity {
                     Some(in_entity) => {
@@ -1841,7 +1841,7 @@ impl Node<Option<cst::Ref>> {
 
         match refr {
             cst::Ref::Uid { path, eid } => {
-                let maybe_path = path.to_name();
+                let maybe_path = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid.as_valid_string().and_then(|s| {
                     to_unescaped_string(s).map_err(|escape_errs| {
                         ParseErrors::new_from_nonempty(
@@ -1962,7 +1962,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
         loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
+fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
     ast::EntityUID::from_components(p, eid, Some(loc))
 }
@@ -2074,7 +2074,7 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
 }
-fn construct_expr_is(e: ast::Expr, n: ast::Name, loc: Loc) -> ast::Expr {
+fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new()
         .with_source_loc(loc)
         .is_entity_type(e, n)
@@ -4095,7 +4095,7 @@ mod tests {
                     .build(),
             ),
             (
-                // `_ in _ is _` in the policy condition is an error in the text->CST parser 
+                // `_ in _ is _` in the policy condition is an error in the text->CST parser
                 r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
                 ExpectedErrorMessageBuilder::error("unexpected token `is`")
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
@@ -4475,6 +4475,22 @@ mod tests {
                 "try using '==' instead",
             ).exactly_one_underline("principal = User::\"alice\"").build());
         });
+        let p_src = r#"permit(principal, action = Action::"act", resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("action = Action::\"act\"").build());
+        });
+        let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("resource = Photo::\"photo\"").build());
+        });
     }
 
     #[test]
@@ -4502,6 +4518,10 @@ mod tests {
         let src = "7 % 3";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("remainder/modulo is not supported").exactly_one_underline("7 % 3").build());
+        });
+        let src = "7 = 3";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar").exactly_one_underline("7 = 3").help("try using '==' instead").build());
         });
     }
 
@@ -4623,5 +4643,35 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
+    }
+
+    #[test]
+    fn arbitrary_name_attr_access() {
+        let src = "foo.attr";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error( &format!("invalid member access `foo.attr`, `foo` has no fields or methods"),)
+                    .exactly_one_underline("foo.attr")
+                    .build()
+            );
+        });
+
+        let src = r#"foo["attr"]"#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error( &format!(r#"invalid indexing expression `foo["attr"]`, `foo` has no fields"#),)
+                    .exactly_one_underline(r#"foo["attr"]"#)
+                    .build()
+            );
+        });
+
+        let src = r#"foo["\n"]"#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error( &format!(r#"invalid indexing expression `foo["\n"]`, `foo` has no fields"#),)
+                    .exactly_one_underline(r#"foo["\n"]"#)
+                    .build()
+            );
+        });
     }
 }

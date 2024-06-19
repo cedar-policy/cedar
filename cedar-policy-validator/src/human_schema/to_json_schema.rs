@@ -41,8 +41,8 @@ use super::{
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
-/// Convert a custom schema AST into the JSON representation
-/// This will let you subsequently decode that into the Validator AST for Schemas (`[ValidatorSchema]`)
+/// Convert a schema AST into the JSON representation.
+/// This will let you subsequently decode that into the Validator AST for Schemas (`[ValidatorSchema]`).
 /// On success, this function returns a tuple containing:
 ///     * The SchemaFragment
 ///     * A vector of name collisions, that are essentially warnings
@@ -50,9 +50,9 @@ pub fn custom_schema_to_json_schema(
     schema: Schema,
 ) -> Result<(SchemaFragment, impl Iterator<Item = SchemaWarning>), ToJsonSchemaErrors> {
     // First pass, figure out what each name is bound to
-
     let (qualified_namespaces, unqualified_namespace) =
         split_unqualified_namespace(schema.into_iter().map(|n| n.node));
+    // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
@@ -82,11 +82,16 @@ pub fn custom_type_to_json_type(ty: Node<Type>) -> Result<SchemaType, ToJsonSche
     context.convert_type(ty)
 }
 
+// Split namespaces into two groups: named namespaces and the implicit unqualified namespace
+// The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
     namespaces: impl IntoIterator<Item = Namespace>,
 ) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
+    // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
         namespaces.into_iter().partition(|n| n.name.is_some());
+
+    // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
     for mut unqualified_namespace in unqualified.into_iter() {
         unqualified_decls.append(&mut unqualified_namespace.decls);
@@ -201,13 +206,14 @@ impl<'a> ConversionContext<'a> {
             parents,
             app_decls,
         } = a;
+        let info = (&names.first().node, &names.first().loc);
         // Create the internal type from the 'applies_to' clause and 'member_of'
         let applies_to = app_decls
-            .map(|decls| self.convert_app_decls(decls))
+            .map(|decls| self.convert_app_decls(info, decls))
             .transpose()?
             .unwrap_or_else(|| ApplySpec {
-                resource_types: Some(vec![]),
-                principal_types: Some(vec![]),
+                resource_types: vec![],
+                principal_types: vec![],
                 context: AttributesOrContext::default(),
             });
         let member_of = parents.map(|parents| self.convert_parents(parents));
@@ -235,6 +241,7 @@ impl<'a> ConversionContext<'a> {
     // Convert the applies to decls
     fn convert_app_decls(
         &self,
+        action_info: (&SmolStr, &Loc),
         decls: Node<NonEmpty<Node<AppDecl>>>,
     ) -> Result<ApplySpec, ToJsonSchemaErrors> {
         // Split AppDecl's into context/principal/resource decls
@@ -276,7 +283,7 @@ impl<'a> ConversionContext<'a> {
                     loc,
                 } => match principal_types {
                     Some(existing_tys) => {
-                        return Err(ToJsonSchemaError::DuplicatePR {
+                        return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
                             kind: PR::Principal,
                             loc1: existing_tys.loc,
                             loc2: loc,
@@ -302,7 +309,7 @@ impl<'a> ConversionContext<'a> {
                     loc,
                 } => match resource_types {
                     Some(existing_tys) => {
-                        return Err(ToJsonSchemaError::DuplicatePR {
+                        return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
                             kind: PR::Resource,
                             loc1: existing_tys.loc,
                             loc2: loc,
@@ -319,8 +326,20 @@ impl<'a> ConversionContext<'a> {
             }
         }
         Ok(ApplySpec {
-            resource_types: resource_types.map(|tys| tys.node),
-            principal_types: principal_types.map(|tys| tys.node),
+            resource_types: resource_types
+                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+                .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
+                    kind: PR::Resource,
+                    name: action_info.0.clone(),
+                    loc: action_info.1.clone(),
+                })?,
+            principal_types: principal_types
+                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+                .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
+                    kind: PR::Principal,
+                    name: action_info.0.clone(),
+                    loc: action_info.1.clone(),
+                })?,
             context: context.map(|c| c.node).unwrap_or_default(),
         })
     }
@@ -336,7 +355,10 @@ impl<'a> ConversionContext<'a> {
             attrs,
         } = e;
         // First build up the defined entity type
-        let member_of_types = member_of_types.into_iter().map(|p| p.into()).collect();
+        let member_of_types = member_of_types
+            .into_iter()
+            .map(|p| Name::from(p).into())
+            .collect();
         let shape = self.convert_attr_decls(attrs)?;
         let etype = EntityType {
             member_of_types,
@@ -455,7 +477,9 @@ impl<'a> ConversionContext<'a> {
         if namespace_to_search.common_types.contains_key(&base) {
             Ok(SchemaType::TypeDef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
-            Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
+            Ok(SchemaType::Type(SchemaTypeVariant::Entity {
+                name: name.into(),
+            }))
         } else if is_unqualified_or_cedar {
             search_cedar_namespace(base, loc)
         } else {
@@ -471,7 +495,7 @@ impl<'a> ConversionContext<'a> {
         loc: Loc,
         name: &Option<Name>,
     ) -> Result<&NamespaceRecord, ToJsonSchemaError> {
-        if &name.as_ref().map_or(SmolStr::default(), |n| n.to_smolstr()) == CEDAR_NAMESPACE {
+        if name.as_ref().map_or(SmolStr::default(), |n| n.to_smolstr()) == CEDAR_NAMESPACE {
             Ok(&self.cedar_namespace)
         } else {
             self.names.get(name).ok_or_else(|| {

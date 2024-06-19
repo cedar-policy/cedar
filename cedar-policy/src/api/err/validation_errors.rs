@@ -59,7 +59,6 @@ macro_rules! wrap_core_error {
 wrap_core_error!(UnrecognizedEntityType);
 wrap_core_error!(UnrecognizedActionId);
 wrap_core_error!(InvalidActionApplication);
-wrap_core_error!(UnspecifiedEntity);
 wrap_core_error!(UnexpectedType);
 wrap_core_error!(IncompatibleTypes);
 wrap_core_error!(UnsafeAttributeAccess);

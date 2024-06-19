@@ -244,18 +244,6 @@ permit(principal ==  A :: B
             .expect("failed to roundtrip");
         assert_eq!(reparsed.id().as_ref(), r"b'ob");
     }
-
-    #[test]
-    fn accessing_unspecified_entity_returns_none() {
-        let c = Context::empty();
-        let request = Request::new(None, None, None, c, None).unwrap();
-        let p = request.principal();
-        let a = request.action();
-        let r = request.resource();
-        assert_matches!(p, None);
-        assert_matches!(a, None);
-        assert_matches!(r, None);
-    }
 }
 
 mod scope_constraints_tests {
@@ -659,9 +647,9 @@ mod policy_set_tests {
     fn policyset_remove() {
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -916,7 +904,7 @@ mod policy_set_tests {
             ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
                 ast::Type::Entity {
-                    ty: ast::EntityType::Specified("test_entity_type".parse().unwrap()),
+                    ty: "test_entity_type".parse().unwrap(),
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
@@ -950,9 +938,9 @@ mod policy_set_tests {
 
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -3702,7 +3690,8 @@ mod error_source_tests {
             "true && ([2, 3, 4] in [4, 5, 6])",
             "ip(3)",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let expr = Expression::from_str(src).unwrap();
@@ -3719,7 +3708,8 @@ mod error_source_tests {
             "permit ( principal, action, resource ) when { true && ([2, 3, 4] in [4, 5, 6]) };",
             "permit ( principal, action, resource ) when { ip(3) };",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
@@ -3931,7 +3921,7 @@ mod issue_606 {
 }
 
 mod issue_619 {
-    use crate::{eval_expression, Context, Entities, EvalResult, Policy, Request};
+    use crate::{eval_expression, Context, Entities, EntityUid, EvalResult, Policy, Request};
     use cool_asserts::assert_matches;
 
     /// The first issue reported in issue 619.
@@ -3950,9 +3940,17 @@ mod issue_619 {
     /// Another issue from a comment: Ensure the correct error semantics of these expressions
     #[test]
     fn mult_overflows() {
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
         let eval = |expr: &str| {
             eval_expression(
-                &Request::new(None, None, None, Context::empty(), None).unwrap(),
+                &Request::new(
+                    euid.clone(),
+                    euid.clone(),
+                    euid.clone(),
+                    Context::empty(),
+                    None,
+                )
+                .unwrap(),
                 &Entities::empty(),
                 &expr.parse().unwrap(),
             )
@@ -4131,7 +4129,8 @@ mod decimal_ip_constructors {
     }
 
     fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
-        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let r = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let e = Entities::empty();
         eval_expression(&r, &e, expr)
     }
@@ -4231,7 +4230,6 @@ mod into_iter_entities {
 }
 
 mod policy_set_est_tests {
-    use cool_asserts::assert_matches;
     use itertools::{Either, Itertools};
 
     use super::*;
@@ -4336,7 +4334,7 @@ mod policy_set_est_tests {
     fn test_est_policyset_decoding_empty() {
         let empty = serde_json::json!({
             "templates" : [],
-            "static_policies" : [],
+            "staticPolicies" : [],
             "links" : []
         });
         let empty = PolicySet::from_json_value(empty).unwrap();
@@ -4346,7 +4344,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_single() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4398,7 +4396,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4489,7 +4487,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_link_name() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4555,18 +4553,21 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existent").into();
-        assert_matches!(
-            err,
-            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::NoSuchTemplate { id }}) if id == template1
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "unable to link template: failed to find a template with id `non_existent`",
+            )
+            .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_empty_env() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4630,21 +4631,67 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_principal = vec![SlotId::principal().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }}) if extra_values.is_empty() && unbound_values == just_principal
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template: the following slots were not provided as arguments: ?principal")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_dup_links() {
+        let value = serde_json::json!({
+            "staticPolicies" : [],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "all"
+                  },
+                  "resource" : {
+                      "op" : "all",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            },
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template: template-linked policy id `link` conflicts with an existing policy id")
+                .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_extra_vals() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4711,21 +4758,19 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_resource = vec![SlotId::resource().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }}) if unbound_values.is_empty() && extra_values == just_resource
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template: the following slots were provided as arguments, but did not exist in the template: ?resource")
+                .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_vals() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4792,14 +4837,21 @@ mod policy_set_est_tests {
             }
         ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("found duplicate key"));
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "error serializing/deserializing policy set to/from JSON: invalid entry: found duplicate key at line 65 column 17"
+            )
+            .build(),
+        );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_euid() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4865,7 +4917,394 @@ mod policy_set_est_tests {
             }
         ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("while parsing a template link, expected a literal entity reference"));
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                    r#"error serializing/deserializing policy set to/from JSON: while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 64 column 17"#
+                )
+                .build(),
+        );
+    }
+}
+
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
+mod authorization_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_evaluation_error() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Principal", "p")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "r")),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+
+        let e = r#"[
+            {
+                "uid": {"type":"Principal","id":"p"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"r"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(
+            Some("id0".into()),
+            "permit(principal,action,resource) when {principal.foo == 1};",
+        )
+        .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+        assert_eq!(response.diagnostics().reason().count(), 0);
+        let errs = response.diagnostics().errors().collect::<Vec<_>>();
+        assert_eq!(errs.len(), 1);
+        expect_err(
+            "",
+            &Report::new(errs[0].clone()),
+            &ExpectedErrorMessageBuilder::error(r#"error while evaluating policy `id0`: `Principal::"p"` does not have the attribute `foo`"#)
+                .build(),
+        );
+    }
+}
+
+mod request_validation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Principal": {},
+                    "Resource": {},
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "principalTypes": ["Principal"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn undeclared_action() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "undeclared")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"request's action `Action::"undeclared"` is not declared in the schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Undeclared", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "principal type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Undeclared", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "resource type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Resource", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Principal", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `Principal` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_context() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::from_json_value(json!({"foo": 123}), None)
+                .expect("context creation should have succeeded"),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+}
+
+mod context_creation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "action": {
+                            "appliesTo": {
+                                "context": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": { "type": "String" },
+                                        "bar": { "type": "Extension", "name": "decimal", "required": false }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ))
+            .unwrap()
+    }
+
+    #[test]
+    fn schema_based_parsing() {
+        let schema = schema();
+
+        // ok
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": { "__extn": { "fn": "decimal", "arg": "1.23" } }}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok - and 1.23 is parsed as a decimal instead of a string
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok (despite the fact that "foo" has the incorrect type) - the schema for
+        // `Context::from_json_value` is used for schema-based parsing, not validation
+        Context::from_json_value(
+            json!({"foo": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // error - missing a required attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"xxx": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, expected the record to have an attribute `foo`, but it does not",
+            )
+            .build(),
+        );
+
+        // error - including an undefined attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"foo": "some string", "xxx": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, record attribute `xxx` should not exist according to the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn missing_action() {
+        let schema = schema();
+        let err = Context::from_json_value(
+            json!({"foo": "some string"}),
+            Some((&schema, &EntityUid::from_strs("Action", "foo"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"action `Action::"foo"` does not exist in the supplied schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn context_creation_errors() {
+        let err = Context::from_json_value(json!("not_a_record"), None).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(r#"expression is not a record: "not_a_record""#)
+                .build(),
+        );
+
+        let err = Context::from_json_value(
+            json!({"foo": { "__extn": { "fn": "ip", "arg": "not_an_ip_address" }}}),
+            None,
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error while evaluating `ipaddr` extension function: invalid IP address: not_an_ip_address")
+                .build(),
+        );
+
+        let pairs = vec![
+            (
+                String::from("key1"),
+                RestrictedExpression::new_string("foo".into()),
+            ),
+            (String::from("key1"), RestrictedExpression::new_bool(true)),
+        ];
+        let err = Context::from_pairs(pairs).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("duplicate key `key1` in record literal").build(),
+        );
     }
 }

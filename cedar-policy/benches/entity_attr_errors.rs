@@ -1,5 +1,10 @@
+// PANIC SAFETY: testing code
+#![allow(clippy::unwrap_used)]
+// PANIC SAFETY: testing code
+#![allow(clippy::indexing_slicing)]
+
 use cedar_policy::{
-    Authorizer, Context, Entities, Entity, PolicySet, Request, RestrictedExpression,
+    Authorizer, Context, Entities, Entity, EntityUid, PolicySet, Request, RestrictedExpression,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::iter::once;
@@ -50,7 +55,15 @@ pub fn large_context_record(c: &mut Criterion) {
     let small_entity =
         Entity::new(r#"Foo::"bar""#.parse().unwrap(), small_attr, HashSet::new()).unwrap();
 
-    let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+    let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+    let req = Request::new(
+        euid.clone(),
+        euid.clone(),
+        euid.clone(),
+        Context::empty(),
+        None,
+    )
+    .unwrap();
     let large_entities = Entities::from_entities(once(large_entity), None).unwrap();
     let small_entities = Entities::from_entities(once(small_entity), None).unwrap();
     let auth = Authorizer::new();

@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::parser::Loc;
 use cedar_policy_core::{
-    ast::{EntityType, EntityUID, Expr},
+    ast::{EntityUID, Expr},
     parser::parse_policy_template,
 };
 
@@ -143,9 +143,9 @@ where
     f(
         simple_schema_file(),
         RequestEnv::DeclaredAction {
-            principal: &EntityType::Specified("User".parse().unwrap()),
+            principal: &"User".parse().unwrap(),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-            resource: &EntityType::Specified("Photo".parse().unwrap()),
+            resource: &"Photo".parse().unwrap(),
             context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
@@ -704,7 +704,9 @@ fn true_false_set() {
 #[test]
 fn qualified_record_attr() {
     let (schema, _) = SchemaFragment::from_str_natural(
-        r#"action A appliesTo { context: {num_of_things?: Long } };"#,
+        r#"
+        entity Foo;
+        action A appliesTo { context: {num_of_things?: Long }, principal : [Foo], resource : [Foo] };"#,
     )
     .unwrap();
     let p = parse_policy_template(

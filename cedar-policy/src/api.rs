@@ -53,64 +53,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
 
-/// Extended functionality for `Entities` struct
-pub mod entities {
-
-    /// `IntoIter` iterator for `Entities`
-    #[derive(Debug)]
-    pub struct IntoIter {
-        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
-    }
-
-    impl Iterator for IntoIter {
-        type Item = super::Entity;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            self.inner.next().map(super::Entity)
-        }
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            self.inner.size_hint()
-        }
-    }
-
-    /// Errors around entities
-    pub mod err {
-        pub use cedar_policy_core::entities::err::{
-            Duplicate, EntitiesError, TransitiveClosureError,
-        };
-    }
-
-    /// Entity JSON format
-    pub mod json {
-        /// Errors related to serializing/deserializing entities
-        pub mod err {
-            pub use cedar_policy_core::entities::json::err::{
-                ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
-                ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
-                ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
-                JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr,
-                ParseEscape, ReservedKey, Residual, TypeMismatch, TypeMismatchError,
-                UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
-                UnknownInImplicitConstructorArg,
-            };
-        }
-    }
-
-    /// Schema conformance checking for entities
-    pub mod conformance {
-        /// Errors around conformance
-        pub mod err {
-            pub use cedar_policy_core::entities::conformance::err::{
-                ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
-                HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
-                UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
-            };
-        }
-    }
-}
-
 /// Entity datatype
-// INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 pub struct Entity(ast::Entity);
@@ -197,7 +140,6 @@ impl Entity {
     /// assert_eq!(alice.uid(), euid);
     /// ```
     pub fn uid(&self) -> EntityUid {
-        // INVARIANT: By invariant on self and `EntityUid`: Our Uid can't be unspecified
         EntityUid::new(self.0.uid().clone())
     }
 
@@ -351,7 +293,7 @@ impl std::fmt::Display for Entity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-use entities::err::EntitiesError;
+use entities_errors::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
@@ -697,7 +639,6 @@ impl Entities {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(e),
         }?;
-        // Invariant: No way to write down the unspecified EntityUid, so no way to have ancestors that are unspecified
         Some(entity.ancestors().map(EntityUid::ref_cast))
     }
 
@@ -710,6 +651,27 @@ impl Entities {
     /// `from_json_file`.
     pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
+    }
+}
+
+/// Utilities for defining `IntoIterator` over `Entities`
+pub mod entities {
+
+    /// `IntoIter` iterator for `Entities`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = super::Entity;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(super::Entity)
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
     }
 }
 
@@ -760,7 +722,7 @@ impl Authorizer {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -814,7 +776,7 @@ impl Authorizer {
     ///
     /// let c = Context::empty();
     ///
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
+    /// let request: Request = Request::new(p, a, r, c, None).unwrap();
     ///
     /// // create a policy
     /// let s = r#"
@@ -1020,7 +982,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -1080,7 +1042,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -1680,54 +1642,66 @@ impl FromStr for PolicySet {
 
 impl PolicySet {
     /// Build the policy set AST from the EST
-    fn from_est(est: est::PolicySet) -> Result<Self, PolicySetError> {
-        let mut pset = Self::default();
-
-        for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId::new(id)), policy)?;
-            pset.add_template(template)?;
-        }
-
-        for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId::new(id)), policy)?;
-            pset.add(p)?;
-        }
-
-        for Link {
-            id,
-            template,
-            slots,
-        } in est.links
-        {
-            let slots = slots
-                .into_iter()
-                .map(|(key, value)| (key.into(), EntityUid::new(value)))
-                .collect();
-            pset.link(PolicyId::new(template), PolicyId::new(id), slots)?;
-        }
-
-        Ok(pset)
+    fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
+        let ast: ast::PolicySet = est.clone().try_into()?;
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let policies = ast
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::Est(est.get_policy(p.id()).expect(
+                            "internal invariant violation: policy id exists in asts but not ests",
+                        )),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.templates()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let templates = ast
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::Est(est.get_template(t.id()).expect(
+                            "internal invariant violation: template id exists in asts but not ests",
+                        )),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
+        Ok(Self {
+            ast,
+            policies,
+            templates,
+        })
     }
 
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_str(src.as_ref())
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON value
     pub fn from_json_value(src: serde_json::Value) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_value(src)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON reader
     pub fn from_json_file(r: impl std::io::Read) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_reader(r)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
@@ -2257,7 +2231,7 @@ impl Template {
         json: serde_json::Value,
     ) -> Result<Self, PolicyFromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
     }
@@ -2503,7 +2477,6 @@ impl Policy {
     /// Get the scope constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistant with the other constraints
-        // INVARIANT: all of the EntityUids come from a policy, which must have Concrete EntityUids
         match self.ast.template().action_constraint() {
             ast::ActionConstraint::Any => ActionConstraint::Any,
             ast::ActionConstraint::In(ids) => ActionConstraint::In(
@@ -2551,7 +2524,6 @@ impl Policy {
         slot: ast::SlotId,
     ) -> &'a EntityUid {
         match r {
-            // INVARIANT: this comes from policy source, so must be concrete
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
             // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
             #[allow(clippy::unwrap_used)]
@@ -2646,7 +2618,7 @@ impl Policy {
         json: serde_json::Value,
     ) -> Result<Self, PolicyFromJsonError> {
         let est: est::Policy = serde_json::from_value(json)
-            .map_err(|e| entities::json::err::JsonDeserializationError::Serde(e.into()))
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
     }
@@ -3066,21 +3038,10 @@ impl<S> RequestBuilder<S> {
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
     /// string (via the `FromStr` implementation for `EntityUid`).
-    ///
-    /// Here, passing `None` for `principal` indicates that `principal` does
-    /// not contribute to authorization decisions (e.g., because it is not
-    /// used in your policies).
-    /// This is different than Unknown for partial-evaluation purposes.
     #[must_use]
-    pub fn principal(self, principal: Option<EntityUid>) -> Self {
+    pub fn principal(self, principal: EntityUid) -> Self {
         Self {
-            principal: match principal {
-                Some(p) => ast::EntityUIDEntry::concrete(p.into(), None),
-                None => ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
-                    None,
-                ),
-            },
+            principal: ast::EntityUIDEntry::known(principal.into(), None),
             ..self
         }
     }
@@ -3089,21 +3050,10 @@ impl<S> RequestBuilder<S> {
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
     /// string (via the `FromStr` implementation for `EntityUid`).
-    ///
-    /// Here, passing `None` for `action` indicates that `action` does
-    /// not contribute to authorization decisions (e.g., because it is not
-    /// used in your policies).
-    /// This is different than Unknown for partial-evaluation purposes.
     #[must_use]
-    pub fn action(self, action: Option<EntityUid>) -> Self {
+    pub fn action(self, action: EntityUid) -> Self {
         Self {
-            action: match action {
-                Some(a) => ast::EntityUIDEntry::concrete(a.into(), None),
-                None => ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
-                    None,
-                ),
-            },
+            action: ast::EntityUIDEntry::known(action.into(), None),
             ..self
         }
     }
@@ -3112,21 +3062,10 @@ impl<S> RequestBuilder<S> {
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
     /// string (via the `FromStr` implementation for `EntityUid`).
-    ///
-    /// Here, passing `None` for `resource` indicates that `resource` does
-    /// not contribute to authorization decisions (e.g., because it is not
-    /// used in your policies).
-    /// This is different than Unknown for partial-evaluation purposes.
     #[must_use]
-    pub fn resource(self, resource: Option<EntityUid>) -> Self {
+    pub fn resource(self, resource: EntityUid) -> Self {
         Self {
-            resource: match resource {
-                Some(r) => ast::EntityUIDEntry::concrete(r.into(), None),
-                None => ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
-                    None,
-                ),
-            },
+            resource: ast::EntityUIDEntry::known(resource.into(), None),
             ..self
         }
     }
@@ -3214,28 +3153,16 @@ impl Request {
     /// If `schema` is present, this constructor will validate that the
     /// `Request` complies with the given `schema`.
     pub fn new(
-        principal: Option<EntityUid>,
-        action: Option<EntityUid>,
-        resource: Option<EntityUid>,
+        principal: EntityUid,
+        action: EntityUid,
+        resource: EntityUid,
         context: Context,
         schema: Option<&Schema>,
     ) -> Result<Self, RequestValidationError> {
-        let p = principal.map_or_else(
-            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
-            EntityUid::into,
-        );
-        let a = action.map_or_else(
-            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
-            EntityUid::into,
-        );
-        let r = resource.map_or_else(
-            || ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
-            EntityUid::into,
-        );
         Ok(Self(ast::Request::new(
-            (p, None),
-            (a, None),
-            (r, None),
+            (principal.into(), None),
+            (action.into(), None),
+            (resource.into(), None),
             context.0,
             schema.map(|schema| &schema.0),
             Extensions::all_available(),
@@ -3243,43 +3170,28 @@ impl Request {
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
-                // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                ast::EntityType::Unspecified => None,
-            },
+            ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
             ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
     /// Get the action component of the request. Returns `None` if the action is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
-                // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                ast::EntityType::Unspecified => None,
-            },
+            ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
             ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
     /// Get the resource component of the request. Returns `None` if the resource is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
-                // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                ast::EntityType::Unspecified => None,
-            },
+            ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
             ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
@@ -3314,7 +3226,7 @@ impl Context {
     /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
     /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
     /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, context, None).unwrap();
     /// ```
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
@@ -3352,7 +3264,7 @@ impl Context {
     /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
     /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
     /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, context, None).unwrap();
     /// ```
     pub fn from_json_str(
         json: &str,
@@ -3416,7 +3328,7 @@ impl Context {
     /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
     /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
     /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
-    /// # let request: Request = Request::new(Some(p), Some(action), Some(r), context, Some(&schema)).unwrap();
+    /// # let request: Request = Request::new(p, action, r, context, Some(&schema)).unwrap();
     /// ```
     pub fn from_json_value(
         json: serde_json::Value,
@@ -3462,7 +3374,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
+    /// # let request: Request = Request::new(p, a, r, context, None).unwrap();
     /// ```
     pub fn from_json_file(
         json: impl std::io::Read,
