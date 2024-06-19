@@ -1019,20 +1019,48 @@ pub enum RequestValidationError {
 impl From<cedar_policy_validator::RequestValidationError> for RequestValidationError {
     fn from(e: cedar_policy_validator::RequestValidationError) -> Self {
         match e {
-            cedar_policy_validator::RequestValidationError::UndeclaredAction { action } =>
-                Self::UndeclaredAction(request_validation_errors::UndeclaredActionError { action: Arc::unwrap_or_clone(action).into() }),
-            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType { principal_ty } =>
-                Self::UndeclaredPrincipalType(request_validation_errors::UndeclaredPrincipalTypeError { principal_ty: principal_ty.into() }),
-            cedar_policy_validator::RequestValidationError::UndeclaredResourceType { resource_ty } =>
-                Self::UndeclaredResourceType(request_validation_errors::UndeclaredResourceTypeError { resource_ty: resource_ty.into() }),
-            cedar_policy_validator::RequestValidationError::InvalidPrincipalType { principal_ty, action } =>
-                Self::InvalidPrincipalType(request_validation_errors::InvalidPrincipalTypeError { principal_ty: principal_ty.into(), action: Arc::unwrap_or_clone(action).into() }),
-            cedar_policy_validator::RequestValidationError::InvalidResourceType { resource_ty, action } =>
-                Self::InvalidResourceType(request_validation_errors::InvalidResourceTypeError { resource_ty: resource_ty.into(), action: Arc::unwrap_or_clone(action).into() }),
-            cedar_policy_validator::RequestValidationError::InvalidContext { context, action } =>
-                Self::InvalidContext(request_validation_errors::InvalidContextError { context: context.into(), action: Arc::unwrap_or_clone(action).into() })
-            cedar_policy_validator::RequestValidationError::TypeOfContext(inner) =>
-                Self::TypeOfContext(request_validation_errors::TypeOfContextError { inner }),
+            cedar_policy_validator::RequestValidationError::UndeclaredAction { action } => {
+                Self::UndeclaredAction(request_validation_errors::UndeclaredActionError {
+                    action: Arc::unwrap_or_clone(action).into(),
+                })
+            }
+            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType {
+                principal_ty,
+            } => Self::UndeclaredPrincipalType(
+                request_validation_errors::UndeclaredPrincipalTypeError {
+                    principal_ty: principal_ty.into(),
+                },
+            ),
+            cedar_policy_validator::RequestValidationError::UndeclaredResourceType {
+                resource_ty,
+            } => Self::UndeclaredResourceType(
+                request_validation_errors::UndeclaredResourceTypeError {
+                    resource_ty: resource_ty.into(),
+                },
+            ),
+            cedar_policy_validator::RequestValidationError::InvalidPrincipalType {
+                principal_ty,
+                action,
+            } => Self::InvalidPrincipalType(request_validation_errors::InvalidPrincipalTypeError {
+                principal_ty: principal_ty.into(),
+                action: Arc::unwrap_or_clone(action).into(),
+            }),
+            cedar_policy_validator::RequestValidationError::InvalidResourceType {
+                resource_ty,
+                action,
+            } => Self::InvalidResourceType(request_validation_errors::InvalidResourceTypeError {
+                resource_ty: resource_ty.into(),
+                action: Arc::unwrap_or_clone(action).into(),
+            }),
+            cedar_policy_validator::RequestValidationError::InvalidContext { context, action } => {
+                Self::InvalidContext(request_validation_errors::InvalidContextError {
+                    context: context.into(),
+                    action: Arc::unwrap_or_clone(action).into(),
+                })
+            }
+            cedar_policy_validator::RequestValidationError::TypeOfContext(inner) => {
+                Self::TypeOfContext(request_validation_errors::TypeOfContextError { inner })
+            }
         }
     }
 }
