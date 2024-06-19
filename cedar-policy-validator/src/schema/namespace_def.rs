@@ -181,10 +181,7 @@ pub struct ActionFragment {
     /// `ValidatorSchema`.
     pub(super) parents: HashSet<EntityUID>,
     /// The types for the attributes defined for this actions entity.
-    /// Although these are not literally wrapped in `WithUnresolvedTypeDefs`,
-    /// they are in spirit: they may refer to common types which have not yet
-    /// been resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
+    /// Here, common types have been fully resolved/inlined.
     pub(super) attribute_types: Attributes,
     /// The values for the attributes defined for this actions entity, stored
     /// separately so that we can later extract these values to construct the
