@@ -237,7 +237,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityUID, Id, Name},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -276,7 +276,7 @@ pub mod schema_errors {
     #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
     #[diagnostic(transparent)]
     pub struct EntityTypeTransitiveClosureError(
-        #[from] pub(crate) Box<transitive_closure::TcError<Name>>,
+        #[from] pub(crate) Box<transitive_closure::TcError<EntityType>>,
     );
 
     /// Undeclared entity types error
@@ -288,7 +288,7 @@ pub mod schema_errors {
     #[diagnostic(help(
         "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
     ))]
-    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<Name>);
+    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<EntityType>);
 
     impl Display for UndeclaredEntityTypesError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -338,7 +338,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate entity type `{0}`")]
-    pub struct DuplicateEntityTypeError(pub(crate) Name);
+    pub struct DuplicateEntityTypeError(pub(crate) EntityType);
 
     /// Duplicate action error
     //
@@ -452,7 +452,7 @@ pub mod schema_errors {
     #[derive(Debug)]
     pub(crate) enum ContextOrShape {
         ActionContext(EntityUID),
-        EntityTypeShape(Name),
+        EntityTypeShape(EntityType),
     }
 
     impl std::fmt::Display for ContextOrShape {

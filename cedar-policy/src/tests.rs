@@ -244,18 +244,6 @@ permit(principal ==  A :: B
             .expect("failed to roundtrip");
         assert_eq!(reparsed.id().as_ref(), r"b'ob");
     }
-
-    #[test]
-    fn accessing_unspecified_entity_returns_none() {
-        let c = Context::empty();
-        let request = Request::new(None, None, None, c, None).unwrap();
-        let p = request.principal();
-        let a = request.action();
-        let r = request.resource();
-        assert_matches!(p, None);
-        assert_matches!(a, None);
-        assert_matches!(r, None);
-    }
 }
 
 mod scope_constraints_tests {
@@ -659,9 +647,9 @@ mod policy_set_tests {
     fn policyset_remove() {
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -916,7 +904,7 @@ mod policy_set_tests {
             ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
                 ast::Type::Entity {
-                    ty: ast::EntityType::Specified("test_entity_type".parse().unwrap()),
+                    ty: "test_entity_type".parse().unwrap(),
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
@@ -950,9 +938,9 @@ mod policy_set_tests {
 
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -3702,7 +3690,8 @@ mod error_source_tests {
             "true && ([2, 3, 4] in [4, 5, 6])",
             "ip(3)",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let expr = Expression::from_str(src).unwrap();
@@ -3719,7 +3708,8 @@ mod error_source_tests {
             "permit ( principal, action, resource ) when { true && ([2, 3, 4] in [4, 5, 6]) };",
             "permit ( principal, action, resource ) when { ip(3) };",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
@@ -3931,7 +3921,7 @@ mod issue_606 {
 }
 
 mod issue_619 {
-    use crate::{eval_expression, Context, Entities, EvalResult, Policy, Request};
+    use crate::{eval_expression, Context, Entities, EntityUid, EvalResult, Policy, Request};
     use cool_asserts::assert_matches;
 
     /// The first issue reported in issue 619.
@@ -3950,9 +3940,17 @@ mod issue_619 {
     /// Another issue from a comment: Ensure the correct error semantics of these expressions
     #[test]
     fn mult_overflows() {
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
         let eval = |expr: &str| {
             eval_expression(
-                &Request::new(None, None, None, Context::empty(), None).unwrap(),
+                &Request::new(
+                    euid.clone(),
+                    euid.clone(),
+                    euid.clone(),
+                    Context::empty(),
+                    None,
+                )
+                .unwrap(),
                 &Entities::empty(),
                 &expr.parse().unwrap(),
             )
@@ -4131,7 +4129,8 @@ mod decimal_ip_constructors {
     }
 
     fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
-        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let r = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let e = Entities::empty();
         eval_expression(&r, &e, expr)
     }

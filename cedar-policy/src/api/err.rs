@@ -337,11 +337,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -404,7 +399,6 @@ impl ValidationError {
             Self::UnrecognizedEntityType(e) => e.policy_id(),
             Self::UnrecognizedActionId(e) => e.policy_id(),
             Self::InvalidActionApplication(e) => e.policy_id(),
-            Self::UnspecifiedEntity(e) => e.policy_id(),
             Self::UnexpectedType(e) => e.policy_id(),
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
@@ -433,9 +427,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InvalidActionApplication(e) => {
                 Self::InvalidActionApplication(e.into())
-            }
-            cedar_policy_validator::ValidationError::UnspecifiedEntity(e) => {
-                Self::UnspecifiedEntity(e.into())
             }
             cedar_policy_validator::ValidationError::UnexpectedType(e) => {
                 Self::UnexpectedType(e.into())

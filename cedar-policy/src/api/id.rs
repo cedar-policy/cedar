@@ -95,7 +95,7 @@ impl AsRef<str> for EntityId {
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityTypeName(ast::Name);
+pub struct EntityTypeName(ast::EntityType);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.basename().as_ref()
+        self.0.name().basename().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -120,7 +120,7 @@ impl EntityTypeName {
     /// assert_eq!(components.next(), None);
     /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.namespace_components().map(AsRef::as_ref)
+        self.0.name().namespace_components().map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
@@ -132,12 +132,12 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.namespace()
+        self.0.name().namespace()
     }
 
     /// Construct an [`EntityTypeName`] from the internal type.
     /// This function is only intended to be used internally.
-    pub(crate) fn new(ty: ast::Name) -> Self {
+    pub(crate) fn new(ty: ast::EntityType) -> Self {
         Self(ty)
     }
 }
@@ -149,7 +149,7 @@ impl FromStr for EntityTypeName {
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
         ast::Name::from_normalized_str(namespace_type_str)
-            .map(Self::new)
+            .map(|name| Self(ast::EntityType::from(name)))
             .map_err(Into::into)
     }
 }
@@ -183,12 +183,7 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn type_name(&self) -> &EntityTypeName {
-        // PANIC SAFETY by invariant on struct
-        #[allow(clippy::panic)]
-        match self.0.entity_type() {
-            ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
-            ast::EntityType::Specified(name) => EntityTypeName::ref_cast(name),
-        }
+        EntityTypeName::ref_cast(self.0.entity_type())
     }
 
     /// Returns the id portion of the Euid
@@ -231,7 +226,6 @@ impl EntityUid {
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, JsonDeserializationError>(Self::new(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
@@ -280,7 +274,6 @@ impl FromStr for EntityUid {
     /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        // INVARIANT there is no way to write down the unspecified entity
         ast::EntityUID::from_normalized_str(uid_str)
             .map(Self::new)
             .map_err(Into::into)

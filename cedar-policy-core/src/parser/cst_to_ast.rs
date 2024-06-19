@@ -536,7 +536,7 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    Arc::new(entity_type.to_expr_or_special()?.into_name()?),
+                    Arc::new(entity_type.to_expr_or_special()?.into_entity_type()?),
                     eref,
                 )),
                 (cst::RelOp::InvalidSingleEq, _) => {
@@ -546,7 +546,7 @@ impl Node<Option<cst::VariableDef>> {
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Ok(PrincipalOrResourceConstraint::Is(Arc::new(
-                entity_type.to_expr_or_special()?.into_name()?,
+                entity_type.to_expr_or_special()?.into_entity_type()?,
             )))
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
@@ -789,6 +789,10 @@ impl ExprOrSpecial<'_> {
                 .to_ast_err(ToASTErrorKind::InvalidString(expr.to_string()))
                 .into()),
         }
+    }
+
+    fn into_entity_type(self) -> Result<ast::EntityType> {
+        self.into_name().map(ast::EntityType::from)
     }
 
     fn into_name(self) -> Result<ast::Name> {
@@ -1128,7 +1132,7 @@ impl Node<Option<cst::Relation>> {
                 in_entity,
             } => {
                 let maybe_target = target.to_expr();
-                let maybe_entity_type = entity_type.to_expr_or_special()?.into_name();
+                let maybe_entity_type = entity_type.to_expr_or_special()?.into_entity_type();
                 let (t, n) = flatten_tuple_2(maybe_target, maybe_entity_type)?;
                 match in_entity {
                     Some(in_entity) => {
@@ -1837,7 +1841,7 @@ impl Node<Option<cst::Ref>> {
 
         match refr {
             cst::Ref::Uid { path, eid } => {
-                let maybe_path = path.to_name();
+                let maybe_path = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid.as_valid_string().and_then(|s| {
                     to_unescaped_string(s).map_err(|escape_errs| {
                         ParseErrors::new_from_nonempty(
@@ -1958,7 +1962,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
         loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
+fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
     ast::EntityUID::from_components(p, eid, Some(loc))
 }
@@ -2070,7 +2074,7 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
 }
-fn construct_expr_is(e: ast::Expr, n: ast::Name, loc: Loc) -> ast::Expr {
+fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new()
         .with_source_loc(loc)
         .is_entity_type(e, n)
@@ -4091,7 +4095,7 @@ mod tests {
                     .build(),
             ),
             (
-                // `_ in _ is _` in the policy condition is an error in the text->CST parser 
+                // `_ in _ is _` in the policy condition is an error in the text->CST parser
                 r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
                 ExpectedErrorMessageBuilder::error("unexpected token `is`")
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")

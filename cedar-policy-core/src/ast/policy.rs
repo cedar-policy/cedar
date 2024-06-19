@@ -1234,21 +1234,21 @@ impl PrincipalConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1341,21 +1341,21 @@ impl ResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1479,9 +1479,9 @@ pub enum PrincipalOrResourceConstraint {
     /// Equality constraint
     Eq(EntityReference),
     /// Type constraint,
-    Is(Arc<Name>),
+    Is(Arc<EntityType>),
     /// Type constraint with a hierarchy constraint
-    IsIn(Arc<Name>, EntityReference),
+    IsIn(Arc<EntityType>, EntityReference),
 }
 
 impl PrincipalOrResourceConstraint {
@@ -1511,17 +1511,17 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
     }
 
     /// Type constraint with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::euid(in_entity))
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type)
     }
 
@@ -1583,15 +1583,10 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Get an iterator over all of the entity type names in this constraint.
-    /// The Unspecified entity type does not have a `Name`, so it is excluded
-    /// from this iter.
-    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ EntityType> {
         self.get_euid()
             .into_iter()
-            .filter_map(|euid| match euid.entity_type() {
-                EntityType::Specified(name) => Some(name),
-                EntityType::Unspecified => None,
-            })
+            .map(|euid| euid.entity_type())
             .chain(match self {
                 PrincipalOrResourceConstraint::Is(entity_type)
                 | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type.as_ref()),
@@ -1672,14 +1667,8 @@ impl ActionConstraint {
     }
 
     /// Get an iterator over all of the entity types in this constraint.
-    /// The Unspecified entity type does not have a `Name`, so it is excluded
-    /// from this iter.
-    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
-        self.iter_euids()
-            .filter_map(|euid| match euid.entity_type() {
-                EntityType::Specified(name) => Some(name),
-                EntityType::Unspecified => None,
-            })
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ EntityType> {
+        self.iter_euids().map(|euid| euid.entity_type())
     }
 
     /// Check that all of the EUIDs in an action constraint have the type
@@ -2157,7 +2146,7 @@ mod test {
     #[test]
     fn test_iter_once() {
         let id = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid"),
             None,
         );
@@ -2169,12 +2158,12 @@ mod test {
     #[test]
     fn test_iter_mult() {
         let id1 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid1"),
             None,
         );
         let id2 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid2"),
             None,
         );

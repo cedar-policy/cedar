@@ -234,10 +234,7 @@ impl std::fmt::Display for SchemaType {
                     Ok(())
                 }
             }
-            Self::Entity { ty } => match ty {
-                EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Specified(name) => write!(f, "`{}`", name),
-            },
+            Self::Entity { ty } => write!(f, "`{ty}`"),
             Self::Extension { name } => write!(f, "{}", name),
         }
     }
