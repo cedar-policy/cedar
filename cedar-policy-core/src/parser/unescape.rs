@@ -178,6 +178,8 @@ mod test {
         assert_eq!(errs.len(), 2);
     }
 
+    // PANIC SAFETY: testing
+    #[allow(clippy::indexing_slicing)]
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes

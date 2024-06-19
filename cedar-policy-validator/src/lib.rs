@@ -231,8 +231,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: None,
-                        principal_types: None,
+                        principal_types: vec!["foo_type".parse().unwrap()],
+                        resource_types: vec!["bar_type".parse().unwrap()],
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,

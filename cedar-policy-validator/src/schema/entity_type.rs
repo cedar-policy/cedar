@@ -20,10 +20,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use cedar_policy_core::{
-    ast::{EntityType, Name},
-    transitive_closure::TCNode,
-};
+use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
 use crate::types::{AttributeType, Attributes, OpenTag};
 
@@ -33,13 +30,13 @@ use crate::types::{AttributeType, Attributes, OpenTag};
 #[derive(Clone, Debug, Serialize)]
 pub struct ValidatorEntityType {
     /// The name of the entity type.
-    pub(crate) name: Name,
+    pub(crate) name: EntityType,
 
     /// The set of entity types that can be members of this entity type. When
     /// this structure is initially constructed, the field will contain direct
     /// children, but it will be updated to contain the closure of all
     /// descendants before it is used in any validation.
-    pub descendants: HashSet<Name>,
+    pub descendants: HashSet<EntityType>,
 
     /// The attributes associated with this entity. Keys are the attribute
     /// identifiers while the values are the type of the attribute.
@@ -65,32 +62,26 @@ impl ValidatorEntityType {
     }
 
     /// Return `true` if this entity type has an `EntityType` declared as a
-    /// possible descendant in the schema. This takes an `EntityType` rather
-    /// than a `Name`, It's not possible to declare the unspecified entity type
-    /// is a descendant of an entity type in the schema, so we can return false
-    /// in the unspecified case.
+    /// possible descendant in the schema.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
-        match ety {
-            EntityType::Specified(ety) => self.descendants.contains(ety),
-            EntityType::Unspecified => false,
-        }
+        self.descendants.contains(ety)
     }
 }
 
-impl TCNode<Name> for ValidatorEntityType {
-    fn get_key(&self) -> Name {
+impl TCNode<EntityType> for ValidatorEntityType {
+    fn get_key(&self) -> EntityType {
         self.name.clone()
     }
 
-    fn add_edge_to(&mut self, k: Name) {
+    fn add_edge_to(&mut self, k: EntityType) {
         self.descendants.insert(k);
     }
 
-    fn out_edges(&self) -> Box<dyn Iterator<Item = &Name> + '_> {
+    fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityType> + '_> {
         Box::new(self.descendants.iter())
     }
 
-    fn has_edge_to(&self, e: &Name) -> bool {
+    fn has_edge_to(&self, e: &EntityType) -> bool {
         self.descendants.contains(e)
     }
 }

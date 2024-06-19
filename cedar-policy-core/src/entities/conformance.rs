@@ -19,8 +19,7 @@ use super::{
     GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Entity, EntityType, PartialValue, PartialValueToRestrictedExprError,
-    RestrictedExpr,
+    BorrowedRestrictedExpr, Entity, PartialValue, PartialValueToRestrictedExprError, RestrictedExpr,
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
@@ -63,13 +62,10 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             }
         } else {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
-                let suggested_types = match etype {
-                    EntityType::Specified(name) => self
-                        .schema
-                        .entity_types_with_basename(name.basename())
-                        .collect(),
-                    EntityType::Unspecified => vec![],
-                };
+                let suggested_types = self
+                    .schema
+                    .entity_types_with_basename(etype.name().basename())
+                    .collect();
                 UnexpectedEntityTypeError {
                     uid: uid.clone(),
                     suggested_types,

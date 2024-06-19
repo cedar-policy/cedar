@@ -15,10 +15,10 @@
  */
 
 use super::{FromJsonError, LinkingError};
+use crate::ast;
 use crate::entities::json::err::ReservedNamespace;
 use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
 use crate::parser::err::parse_errors;
-use crate::{ast, FromNormalizedStr};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -566,12 +566,15 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => ast::Name::from_normalized_str(entity_type.as_str())
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
-                    if entity_type.is_reserved() {
+                    if entity_type.name().is_reserved() {
                         return Err(Self::Error::JsonDeserializationError(
-                            ReservedNamespace { name: entity_type }.into(),
+                            ReservedNamespace {
+                                name: entity_type.name().clone(),
+                            }
+                            .into(),
                         ));
                     }
                     Ok(match in_entity {
@@ -636,7 +639,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => ast::Name::from_normalized_str(entity_type.as_str())
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
                     Ok(match in_entity {

@@ -218,35 +218,17 @@ impl RequestArgs {
                 let qjson: RequestJSON = serde_json::from_str(&jsonstring)
                     .into_diagnostic()
                     .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?;
-                let principal = qjson
-                    .principal
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse principal in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let action = qjson
-                    .action
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse action in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let resource = qjson
-                    .resource
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse resource in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let context = Context::from_json_value(
-                    qjson.context,
-                    schema.and_then(|s| Some((s, action.as_ref()?))),
-                )
-                .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
+                let principal = qjson.principal.parse().wrap_err_with(|| {
+                    format!("failed to parse principal in {jsonfile} as entity Uid")
+                })?;
+                let action = qjson.action.parse().wrap_err_with(|| {
+                    format!("failed to parse action in {jsonfile} as entity Uid")
+                })?;
+                let resource = qjson.resource.parse().wrap_err_with(|| {
+                    format!("failed to parse resource in {jsonfile} as entity Uid")
+                })?;
+                let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))
+                    .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Request::new(
                     principal,
                     action,
@@ -299,18 +281,23 @@ impl RequestArgs {
                         })?,
                     },
                 };
-                Request::new(
-                    principal,
-                    action,
-                    resource,
-                    context,
-                    if self.request_validation {
-                        schema
-                    } else {
-                        None
-                    },
-                )
-                .map_err(|e| miette!("{e}"))
+                match (principal, action, resource) {
+                    (Some(principal), Some(action), Some(resource)) => Request::new(
+                        principal,
+                        action,
+                        resource,
+                        context,
+                        if self.request_validation {
+                            schema
+                        } else {
+                            None
+                        },
+                    )
+                    .map_err(|e| miette!("{e}")),
+                    _ => Err(miette!(
+                        "All three (`principal`, `action`, `resource`) variables must be specified"
+                    )),
+                }
             }
         }
     }
@@ -460,13 +447,13 @@ impl FromStr for Arguments {
 struct RequestJSON {
     /// Principal for the request
     #[serde(default)]
-    principal: Option<String>,
+    principal: String,
     /// Action for the request
     #[serde(default)]
-    action: Option<String>,
+    action: String,
     /// Resource for the request
     #[serde(default)]
-    resource: Option<String>,
+    resource: String,
     /// Context for the request
     context: serde_json::Value,
 }

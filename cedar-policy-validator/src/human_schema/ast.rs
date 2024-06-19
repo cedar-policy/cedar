@@ -318,9 +318,9 @@ pub enum AppDecl {
 /// An action declaration
 #[derive(Debug, Clone)]
 pub struct ActionDecl {
-    /// The names this declaration is bindings
-    /// More than one name can be bound if they have the same definition, for convenience
-    pub names: Vec<Node<SmolStr>>,
+    /// The names this declaration is binding.
+    /// More than one name can be bound if they have the same definition, for convenience.
+    pub names: NonEmpty<Node<SmolStr>>,
     /// The parents of this action
     pub parents: Option<NonEmpty<Node<QualName>>>,
     /// The constraining clauses in this declarations
@@ -329,7 +329,7 @@ pub struct ActionDecl {
 
 impl Decl for ActionDecl {
     fn names(&self) -> Vec<Node<SmolStr>> {
-        self.names.clone()
+        self.names.iter().cloned().collect()
     }
 }
 

@@ -1,8 +1,12 @@
+// PANIC SAFETY: testing code
+#![allow(clippy::unwrap_used)]
+use cedar_policy::EntityUid;
 use cedar_policy::{Authorizer, Context, Entities, PolicySet, Request, RestrictedExpression};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::str::FromStr;
 
 const LARGE_SIZE: usize = 100_000;
+
 pub fn large_context_record(c: &mut Criterion) {
     let large_context = Context::from_pairs(
         (1..=LARGE_SIZE)
@@ -17,8 +21,23 @@ pub fn large_context_record(c: &mut Criterion) {
     ])
     .unwrap();
 
-    let large_req = Request::new(None, None, None, large_context, None).unwrap();
-    let small_req = Request::new(None, None, None, small_context, None).unwrap();
+    let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+    let large_req = Request::new(
+        euid.clone(),
+        euid.clone(),
+        euid.clone(),
+        large_context,
+        None,
+    )
+    .unwrap();
+    let small_req = Request::new(
+        euid.clone(),
+        euid.clone(),
+        euid.clone(),
+        small_context,
+        None,
+    )
+    .unwrap();
     let entities = Entities::empty();
     let auth = Authorizer::new();
 

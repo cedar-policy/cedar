@@ -584,11 +584,9 @@ impl<'e> Evaluator<'e> {
             ExprKind::Is { expr, entity_type } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
-                    PartialValue::Value(v) => Ok(match v.get_as_entity()?.entity_type() {
-                        EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
-                        EntityType::Unspecified => false,
+                    PartialValue::Value(v) => {
+                        Ok((v.get_as_entity()?.entity_type() == entity_type).into())
                     }
-                    .into()),
                     PartialValue::Residual(r) => {
                         Ok(Expr::is_entity_type(r, entity_type.clone()).into())
                     }
@@ -758,16 +756,10 @@ impl<'e> Evaluator<'e> {
                 value: ValueKind::Lit(Literal::EntityUID(uid)),
                 loc,
             }) => match self.entities.entity(uid.as_ref()) {
-                Dereference::NoSuchEntity => Err(match *uid.entity_type() {
-                    EntityType::Unspecified => EvaluationError::unspecified_entity_access(
-                        attr.clone(),
-                        source_loc.cloned(),
-                    ),
-                    EntityType::Specified(_) => {
-                        // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
-                        EvaluationError::entity_does_not_exist(uid.clone(), loc)
-                    }
-                }),
+                Dereference::NoSuchEntity => {
+                    // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
+                    Err(EvaluationError::entity_does_not_exist(uid.clone(), loc))
+                }
                 Dereference::Residual(r) => {
                     Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                 }
@@ -1248,18 +1240,6 @@ pub mod test {
                 loc: None,
             }),
         );
-        // unspecified entities should not result in an error.
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::val(EntityUID::unspecified_from_eid(Eid::new(
-                "foo"
-            )))),
-            Ok(Value {
-                value: ValueKind::Lit(Literal::EntityUID(Arc::new(
-                    EntityUID::unspecified_from_eid(Eid::new("foo"))
-                ))),
-                loc: None,
-            }),
-        );
     }
 
     #[test]
@@ -1363,25 +1343,6 @@ pub mod test {
             )),
             Err(EvaluationError::entity_does_not_exist(
                 Arc::new(EntityUID::with_eid("doesnotexist")),
-                None
-            ))
-        );
-        // has_attr on an unspecified entity
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::has_attr(
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-                "foo".into()
-            )),
-            Ok(Value::from(false))
-        );
-        // get_attr on an unspecified entity
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::get_attr(
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-                "bar".into()
-            )),
-            Err(EvaluationError::unspecified_entity_access(
-                "bar".into(),
                 None
             ))
         );
@@ -1956,7 +1917,12 @@ pub mod test {
                 ("bar".into(), Expr::val(4)),
                 ("foo".into(), Expr::val("hi")),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
+            )
         );
         // entity_with_attrs.address.street
         assert_eq!(
@@ -3260,14 +3226,6 @@ pub mod test {
             )),
             Ok(Value::from(true))
         );
-        // A in A, where A is unspecified
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_in(
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-            )),
-            Ok(Value::from(true))
-        );
         // A in B, where actually B in A
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
@@ -3297,22 +3255,6 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::is_in(
                 Expr::val(EntityUID::with_eid("parent")),
                 Expr::val(EntityUID::with_eid("doesnotexist"))
-            )),
-            Ok(Value::from(false))
-        );
-        // A in B, where A is unspecified but B exists
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_in(
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-                Expr::val(EntityUID::with_eid("parent"))
-            )),
-            Ok(Value::from(false))
-        );
-        // A in B, where A exists but B is unspecified
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_in(
-                Expr::val(EntityUID::with_eid("parent")),
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo")))
             )),
             Ok(Value::from(false))
         );
@@ -3848,13 +3790,6 @@ pub mod test {
             eval.interpret_inline_policy(
                 &parse_expr(r#"N::S::User::"alice" is User"#).expect("parsing error")
             ),
-            Ok(Value::from(false))
-        );
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_entity_type(
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("thing"))),
-                "User".parse().unwrap()
-            )),
             Ok(Value::from(false))
         );
         assert_matches!(
@@ -5589,7 +5524,12 @@ pub mod test {
         ]);
         assert_eq!(
             e,
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "a".into()
+                }
+                .into()
+            )
         );
 
         let e = Expr::record([
@@ -5598,7 +5538,12 @@ pub mod test {
         ]);
         assert_eq!(
             e,
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "a".into()
+                }
+                .into()
+            )
         );
 
         let e = Expr::record([

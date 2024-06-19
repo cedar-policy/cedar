@@ -45,10 +45,6 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
 /// Errors that can occur when parsing Cedar policies or expressions.
-//
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
 #[derive(Clone, Debug, Diagnostic, Error, PartialEq, Eq)]
 pub enum ParseError {
     /// Error from the text -> CST parser
@@ -283,10 +279,10 @@ pub enum ToASTErrorKind {
     /// Returned when a policy uses the remainder/modulo operator (`%`), which is not supported
     #[error("remainder/modulo is not supported")]
     UnsupportedModulo,
-    /// Any `ExprConstructionError` can also happen while converting CST to AST
+    /// Any `ExpressionConstructionError` can also happen while converting CST to AST
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExprConstructionError(#[from] ast::ExprConstructionError),
+    ExpressionConstructionError(#[from] ast::ExpressionConstructionError),
     /// Returned when a policy contains an integer literal that is out of range
     #[error("integer literal `{0}` is too large")]
     #[diagnostic(help("maximum allowed integer literal is `{}`", ast::InputInteger::MAX))]
@@ -321,7 +317,7 @@ pub enum ToASTErrorKind {
     #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
     InvalidAccess(ast::Name, SmolStr),
     /// Returned when a policy attempts to index on a fields of a value with no fields
-    #[error("invalid indexing expression `{0}[{1}]`, `{0}` has no fields")]
+    #[error("invalid indexing expression `{0}[\"{}\"]`, `{0}` has no fields", .1.escape_debug())]
     InvalidIndex(ast::Name, SmolStr),
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
@@ -703,10 +699,6 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
 
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// template.
-//
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseErrors(NonEmpty<ParseError>);
 
@@ -718,10 +710,10 @@ impl ParseErrors {
 
     /// Construct a new `ParseErrors` with at least one element
     pub(crate) fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
-        let mut nv = NonEmpty::singleton(first);
-        let mut v = rest.into_iter().collect::<Vec<_>>();
-        nv.append(&mut v);
-        Self(nv)
+        Self(NonEmpty {
+            head: first,
+            tail: rest.into_iter().collect::<Vec<_>>(),
+        })
     }
 
     /// Construct a new `ParseErrors` from another `NonEmpty` type
@@ -730,8 +722,7 @@ impl ParseErrors {
     }
 
     pub(crate) fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
-        let v = i.into_iter().collect::<Vec<_>>();
-        Some(Self(NonEmpty::from_vec(v)?))
+        NonEmpty::collect(i).map(Self::new_from_nonempty)
     }
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning

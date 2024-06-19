@@ -47,10 +47,7 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-pub(crate) use namespace_def::is_action_entity_type;
 pub use namespace_def::ValidatorNamespaceDef;
-#[cfg(test)]
-pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
 
 // We do not have a formal model for action attributes, so we disable them by default.
 #[derive(Eq, PartialEq, Copy, Clone, Default)]
@@ -112,14 +109,13 @@ impl ValidatorSchemaFragment {
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ValidatorSchema {
     /// Map from entity type names to the ValidatorEntityType object.
-    #[serde(rename = "entityTypes")]
     #[serde_as(as = "Vec<(_, _)>")]
-    entity_types: HashMap<Name, ValidatorEntityType>,
+    entity_types: HashMap<EntityType, ValidatorEntityType>,
 
     /// Map from action id names to the ValidatorActionId object.
-    #[serde(rename = "actionIds")]
     #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 }
@@ -240,7 +236,7 @@ impl ValidatorSchema {
         extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         let mut type_defs = HashMap::new();
-        let mut entity_type_fragments = HashMap::new();
+        let mut entity_type_fragments: HashMap<EntityType, _> = HashMap::new();
         let mut action_fragments = HashMap::new();
 
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
@@ -390,8 +386,8 @@ impl ValidatorSchema {
     /// function assumes that all entity types are fully qualified. This is
     /// handled by the `SchemaFragment` constructor.
     fn check_for_undeclared(
-        entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_parent_entities: impl IntoIterator<Item = Name>,
+        entity_types: &HashMap<EntityType, ValidatorEntityType>,
+        undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
     ) -> Result<()> {
@@ -401,7 +397,7 @@ impl ValidatorSchema {
         // any undeclared entity types which appeared in a `memberOf` list.
         let mut undeclared_e = undeclared_parent_entities
             .into_iter()
-            .collect::<BTreeSet<_>>();
+            .collect::<BTreeSet<EntityType>>();
         // Looking at entity types, we need to check entity references in
         // attribute types. We already know that all elements of the
         // `descendants` list were declared because the list is a result of
@@ -429,24 +425,14 @@ impl ValidatorSchema {
             Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
 
             for p_entity in action.applies_to.applicable_principal_types() {
-                match p_entity {
-                    EntityType::Specified(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
-                            undeclared_e.insert(p_entity.clone());
-                        }
-                    }
-                    EntityType::Unspecified => (),
+                if !entity_types.contains_key(p_entity) {
+                    undeclared_e.insert(p_entity.clone());
                 }
             }
 
             for r_entity in action.applies_to.applicable_resource_types() {
-                match r_entity {
-                    EntityType::Specified(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
-                            undeclared_e.insert(r_entity.clone());
-                        }
-                    }
-                    EntityType::Unspecified => (),
+                if !entity_types.contains_key(r_entity) {
+                    undeclared_e.insert(r_entity.clone());
                 }
             }
         }
@@ -475,8 +461,8 @@ impl ValidatorSchema {
     // `undeclared_types` set.
     fn check_undeclared_in_type(
         ty: &Type,
-        entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_types: &mut BTreeSet<Name>,
+        entity_types: &HashMap<EntityType, ValidatorEntityType>,
+        undeclared_types: &mut BTreeSet<EntityType>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
@@ -511,7 +497,10 @@ impl ValidatorSchema {
     }
 
     /// Lookup the ValidatorEntityType object in the schema with the given name.
-    pub fn get_entity_type<'a>(&'a self, entity_type_id: &Name) -> Option<&'a ValidatorEntityType> {
+    pub fn get_entity_type<'a>(
+        &'a self,
+        entity_type_id: &EntityType,
+    ) -> Option<&'a ValidatorEntityType> {
         self.entity_types.get(entity_type_id)
     }
 
@@ -521,19 +510,13 @@ impl ValidatorSchema {
     }
 
     /// Return true when the entity_type_id corresponds to a valid entity type.
-    pub(crate) fn is_known_entity_type(&self, entity_type: &Name) -> bool {
-        is_action_entity_type(entity_type) || self.entity_types.contains_key(entity_type)
+    pub(crate) fn is_known_entity_type(&self, entity_type: &EntityType) -> bool {
+        entity_type.is_action() || self.entity_types.contains_key(entity_type)
     }
 
-    /// Return true when `euid` has an entity type declared by the schema. We
-    /// treat an Unspecified as "known" because it is always possible to declare
-    /// an action using an unspecified principal/resource type without first
-    /// declaring unspecified as an entity type in the entity types list.
+    /// Return true when `euid` has an entity type declared by the schema.
     pub(crate) fn euid_has_known_entity_type(&self, euid: &EntityUID) -> bool {
-        match euid.entity_type() {
-            EntityType::Specified(ety) => self.is_known_entity_type(ety),
-            EntityType::Unspecified => true,
-        }
+        self.is_known_entity_type(euid.entity_type())
     }
 
     /// An iterator over the action ids in the schema.
@@ -542,12 +525,12 @@ impl ValidatorSchema {
     }
 
     /// An iterator over the entity type names in the schema.
-    pub(crate) fn known_entity_types(&self) -> impl Iterator<Item = &Name> {
+    pub(crate) fn known_entity_types(&self) -> impl Iterator<Item = &EntityType> {
         self.entity_types.keys()
     }
 
     /// An iterator matching the entity Types to their Validator Types
-    pub fn entity_types(&self) -> impl Iterator<Item = (&Name, &ValidatorEntityType)> {
+    pub fn entity_types(&self) -> impl Iterator<Item = (&EntityType, &ValidatorEntityType)> {
         self.entity_types.iter()
     }
 
@@ -556,18 +539,13 @@ impl ValidatorSchema {
     /// includes all entity types that are descendants of the type of `entity`
     /// according  to the schema, and the type of `entity` itself because
     /// `entity in entity` evaluates to `true`.
-    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Vec<&Name> {
-        match entity.entity_type() {
-            EntityType::Specified(ety) => {
-                let mut descendants = self
-                    .get_entity_type(ety)
-                    .map(|v_ety| v_ety.descendants.iter().collect::<Vec<_>>())
-                    .unwrap_or_default();
-                descendants.push(ety);
-                descendants
-            }
-            EntityType::Unspecified => Vec::new(),
-        }
+    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Vec<&EntityType> {
+        let mut descendants = self
+            .get_entity_type(entity.entity_type())
+            .map(|v_ety| v_ety.descendants.iter().collect::<Vec<_>>())
+            .unwrap_or_default();
+        descendants.push(entity.entity_type());
+        descendants
     }
 
     /// Get all entity types in the schema where an `{entity0} in {euids}` can
@@ -576,7 +554,7 @@ impl ValidatorSchema {
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &Name> {
+    ) -> impl Iterator<Item = &EntityType> {
         euids.into_iter().flat_map(|e| self.get_entity_types_in(e))
     }
 
@@ -1230,11 +1208,11 @@ mod test {
             .applies_to;
         assert_eq!(
             apply_spec.applicable_principal_types().collect::<Vec<_>>(),
-            vec![&EntityType::Specified(user_entity_type.clone())]
+            vec![user_entity_type]
         );
         assert_eq!(
             apply_spec.applicable_resource_types().collect::<Vec<_>>(),
-            vec![&EntityType::Specified(photo_entity_type.clone())]
+            vec![photo_entity_type]
         );
     }
 
@@ -1305,7 +1283,7 @@ mod test {
             .try_into()
             .expect("Expected schema to construct without error.");
 
-        let foo_name: Name = "A::B::Foo".parse().expect("Expected entity type name");
+        let foo_name: EntityType = "A::B::Foo".parse().expect("Expected entity type name");
         let foo_type = schema
             .entity_types
             .get(&foo_name)
@@ -1672,13 +1650,13 @@ mod test {
             baz.applies_to
                 .applicable_principal_types()
                 .collect::<HashSet<_>>(),
-            HashSet::from([&EntityType::Specified("Fiz::Buz".parse().unwrap())])
+            HashSet::from([&("Fiz::Buz".parse().unwrap())])
         );
         assert_eq!(
             baz.applies_to
                 .applicable_resource_types()
                 .collect::<HashSet<_>>(),
-            HashSet::from([&EntityType::Specified("Fiz::Baz".parse().unwrap())])
+            HashSet::from([&("Fiz::Baz".parse().unwrap())])
         );
     }
 

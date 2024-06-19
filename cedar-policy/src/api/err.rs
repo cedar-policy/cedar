@@ -18,20 +18,47 @@
 
 use crate::{EntityUid, PolicyId};
 pub use cedar_policy_core::ast::{
-    restricted_expr_errors, RestrictedExpressionError, RestrictedExpressionParseError,
+    expression_construction_errors, restricted_expr_errors, ExpressionConstructionError,
+    RestrictedExpressionError,
 };
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
-pub use cedar_policy_core::parser::err::{ParseError, ParseErrors};
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::human_schema::{schema_warnings, SchemaWarning};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
+use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 use to_human_syntax_errors::NameCollisionsError;
+
+/// Errors related to [`crate::Entities`]
+pub mod entities_errors {
+    pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
+}
+
+/// Errors related to serializing/deserializing entities or contexts to/from JSON
+pub mod entities_json_errors {
+    pub use cedar_policy_core::entities::json::err::{
+        ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
+        ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
+        ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, TypeMismatchError, UnexpectedRecordAttr,
+        UnexpectedRestrictedExprKind, UnknownInImplicitConstructorArg,
+    };
+}
+
+/// Errors related to schema conformance checking for entities
+pub mod conformance_errors {
+    pub use cedar_policy_core::entities::conformance::err::{
+        ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
+        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
+        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+    };
+}
 
 /// Errors that can occur during authorization
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
@@ -52,7 +79,7 @@ pub mod authorization_errors {
 
     /// An error occurred when evaluating a policy
     #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
-    #[error("while evaluating policy `{id}`: {error}")]
+    #[error("error while evaluating policy `{id}`: {error}")]
     pub struct PolicyEvaluationError {
         /// Id of the policy with an error
         id: ast::PolicyID,
@@ -251,6 +278,42 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     }
 }
 
+/// Errors while trying to create a `Context`
+#[derive(Debug, Diagnostic, Error)]
+pub enum ContextCreationError {
+    /// Tried to create a `Context` out of something other than a record
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotARecord(context_creation_errors::NotARecord),
+    /// Error evaluating the expression given for the `Context`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// Error constructing the expression given for the `Context`.
+    /// Only returned by `Context::from_pairs()`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpressionConstruction(#[from] ExpressionConstructionError),
+}
+
+#[doc(hidden)]
+impl From<ast::ContextCreationError> for ContextCreationError {
+    fn from(e: ast::ContextCreationError) -> Self {
+        match e {
+            ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
+            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e),
+            ast::ContextCreationError::ExpressionConstruction(ece) => {
+                Self::ExpressionConstruction(ece)
+            }
+        }
+    }
+}
+
+/// Error subtypes for [`ContextCreationError`]
+mod context_creation_errors {
+    pub use cedar_policy_core::ast::context_creation_errors::NotARecord;
+}
+
 /// Error subtypes for [`ValidationError`].
 /// Errors are primarily documented on their variants in [`ValidationError`].
 pub mod validation_errors;
@@ -274,11 +337,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -341,7 +399,6 @@ impl ValidationError {
             Self::UnrecognizedEntityType(e) => e.policy_id(),
             Self::UnrecognizedActionId(e) => e.policy_id(),
             Self::InvalidActionApplication(e) => e.policy_id(),
-            Self::UnspecifiedEntity(e) => e.policy_id(),
             Self::UnexpectedType(e) => e.policy_id(),
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
@@ -370,9 +427,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InvalidActionApplication(e) => {
                 Self::InvalidActionApplication(e.into())
-            }
-            cedar_policy_validator::ValidationError::UnspecifiedEntity(e) => {
-                Self::UnspecifiedEntity(e.into())
             }
             cedar_policy_validator::ValidationError::UnexpectedType(e) => {
                 Self::UnexpectedType(e.into())
@@ -494,6 +548,7 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
 pub mod policy_set_errors {
     use super::Error;
     use crate::PolicyId;
+    use cedar_policy_core::ast;
     use miette::Diagnostic;
 
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -509,6 +564,15 @@ pub mod policy_set_errors {
         pub fn duplicate_id(&self) -> &PolicyId {
             &self.id
         }
+    }
+
+    /// Error when linking a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to link template: {inner}")]
+    pub struct LinkingError {
+        #[from]
+        #[diagnostic(transparent)]
+        pub(crate) inner: ast::LinkingError,
     }
 
     /// Expected a static policy, but a template-linked policy was provided
@@ -629,18 +693,9 @@ pub mod policy_set_errors {
         }
     }
 
-    /// Error when converting a policy from JSON format
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("Error deserializing a policy/template from JSON: {inner}")]
-    #[diagnostic(transparent)]
-    pub struct FromJsonError {
-        #[from]
-        pub(crate) inner: cedar_policy_core::est::FromJsonError,
-    }
-
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error serializing / deserializing PolicySet to / from JSON: {inner})")]
+    #[error("error serializing/deserializing policy set to/from JSON: {inner}")]
     pub struct JsonPolicySetError {
         #[from]
         pub(crate) inner: serde_json::Error,
@@ -657,9 +712,9 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
-    #[error("unable to link template: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
+    Linking(#[from] policy_set_errors::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -692,12 +747,12 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkLinkNotLink(#[from] policy_set_errors::UnlinkLinkNotLinkError),
-    /// Error when converting from JSON format
+    /// Error when converting a policy/template from JSON format
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FromJson(#[from] policy_set_errors::FromJsonError),
-    /// Error when converting to JSON format
-    #[error("Error serializing a policy to JSON: {0}")]
+    FromJson(#[from] PolicyFromJsonError),
+    /// Error when converting a policy/template to JSON format
+    #[error("Error serializing a policy/template to JSON: {0}")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
@@ -720,10 +775,58 @@ impl From<ast::PolicySetError> for PolicySetError {
 }
 
 #[doc(hidden)]
+impl From<ast::LinkingError> for PolicySetError {
+    fn from(e: ast::LinkingError) -> Self {
+        Self::Linking(e.into())
+    }
+}
+
+#[doc(hidden)]
 impl From<ast::UnexpectedSlotError> for PolicySetError {
     fn from(_: ast::UnexpectedSlotError) -> Self {
         Self::ExpectedStatic(policy_set_errors::ExpectedStatic::new())
     }
+}
+
+#[doc(hidden)]
+impl From<est::PolicySetFromJsonError> for PolicySetError {
+    fn from(e: est::PolicySetFromJsonError) -> Self {
+        match e {
+            est::PolicySetFromJsonError::PolicySet(e) => e.into(),
+            est::PolicySetFromJsonError::Linking(e) => e.into(),
+            est::PolicySetFromJsonError::FromJsonError(e) => Self::FromJson(e.into()),
+        }
+    }
+}
+
+/// Represents one or more [`ParseError`]s encountered when parsing a policy or
+/// expression.
+/// By default, the `Diagnostic` and `Error` implementations will only print the
+/// first error. If you want to see all errors, use `.iter()` or `.into_iter()`.
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct ParseErrors(#[from] cedar_policy_core::parser::err::ParseErrors);
+
+impl ParseErrors {
+    /// Get every [`ParseError`] associated with this [`ParseErrors`] object.
+    /// The returned iterator is guaranteed to be nonempty.
+    pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
+        self.0.iter().map(ParseError::ref_cast)
+    }
+}
+
+/// Errors that can occur when parsing policies or expressions.
+/// Marked as `non_exhaustive` to support adding additional error information
+/// in the future without a major version bump.
+#[derive(Debug, Diagnostic, Error, RefCast)]
+#[repr(transparent)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+#[non_exhaustive]
+pub struct ParseError {
+    #[from]
+    inner: cedar_policy_core::parser::err::ParseError,
 }
 
 /// Errors that can happen when getting the JSON representation of a policy
@@ -781,13 +884,26 @@ pub mod policy_to_json_errors {
     }
 }
 
+/// Error when converting a policy or template from JSON format
+#[derive(Debug, Diagnostic, Error)]
+#[error("error deserializing a policy/template from JSON: {inner}")]
+#[diagnostic(transparent)]
+pub struct PolicyFromJsonError {
+    #[from]
+    pub(crate) inner: cedar_policy_core::est::FromJsonError,
+}
+
 /// Error type for parsing `Context` from JSON
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
-    /// Error deserializing the JSON into a Context
+    /// Error deserializing the JSON into a [`crate::Context`]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] context_json_errors::ContextJsonDeserializationError),
+    JsonDeserialization(#[from] entities_json_errors::JsonDeserializationError),
+    /// Error constructing the [`crate::Context`] itself
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextCreation(#[from] ContextCreationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -803,8 +919,11 @@ impl ContextJsonError {
 
 #[doc(hidden)]
 impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
-    fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
-        context_json_errors::ContextJsonDeserializationError::from(error).into()
+    fn from(e: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
+        match e {
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::JsonDeserialization(e) => Self::JsonDeserialization(e),
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::ContextCreation(e) => Self::ContextCreation(e.into())
+        }
     }
 }
 
@@ -813,15 +932,6 @@ pub mod context_json_errors {
     use super::EntityUid;
     use miette::Diagnostic;
     use thiserror::Error;
-
-    /// Error deserializing the JSON into a Context
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct ContextJsonDeserializationError {
-        #[diagnostic(transparent)]
-        #[from]
-        error: cedar_policy_core::entities::json::ContextJsonDeserializationError,
-    }
 
     /// The supplied action doesn't exist in the supplied schema
     #[derive(Debug, Diagnostic, Error)]
@@ -835,6 +945,36 @@ pub mod context_json_errors {
         /// Get the [`EntityUid`] of the action which doesn't exist
         pub fn action(&self) -> &EntityUid {
             &self.action
+        }
+    }
+}
+
+/// Error type for parsing a `RestrictedExpression`
+#[derive(Debug, Diagnostic, Error)]
+pub enum RestrictedExpressionParseError {
+    /// Failed to parse the expression
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse(#[from] ParseErrors),
+    /// Parsed successfully as an expression, but failed to construct a
+    /// restricted expression, for the reason indicated in the underlying error
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::ast::RestrictedExpressionParseError>
+    for RestrictedExpressionParseError
+{
+    fn from(e: cedar_policy_core::ast::RestrictedExpressionParseError) -> Self {
+        match e {
+            cedar_policy_core::ast::RestrictedExpressionParseError::Parse(e) => {
+                Self::Parse(e.into())
+            }
+            cedar_policy_core::ast::RestrictedExpressionParseError::InvalidRestrictedExpression(
+                e,
+            ) => e.into(),
         }
     }
 }
