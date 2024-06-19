@@ -92,8 +92,8 @@ pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
 /// [`PartialAuthorizationAnswer`] types
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
-    match call.parse_partial() {
+pub fn is_authorized_partial(call: PartialAuthorizationCall) -> PartialAuthorizationAnswer {
+    match call.parse() {
         WithWarnings {
             t: Ok((request, policies, entities)),
             warnings,
@@ -462,10 +462,42 @@ pub enum PartialAuthorizationAnswer {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationCall {
     /// The principal taking action
-    principal: Option<EntityUid>,
+    principal: EntityUid,
     /// The action the principal is taking
-    action: Option<EntityUid>,
+    action: EntityUid,
     /// The resource being acted on by the principal
+    resource: EntityUid,
+    /// The context details specific to the request
+    context: Context,
+    /// Optional schema.
+    /// If present, this will inform the parsing: for instance, it will allow
+    /// `__entity` and `__extn` escapes to be implicit, and it will error if
+    /// attributes have the wrong types (e.g., string instead of integer).
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "Schema"))]
+    schema: Option<Schema>,
+    /// If this is `true` and a schema is provided, perform request validation.
+    /// If this is `false`, the schema will only be used for schema-based
+    /// parsing of `context`, and not for request validation.
+    /// If a schema is not provided, this option has no effect.
+    #[serde(default = "constant_true")]
+    validate_request: bool,
+    /// The slice containing entities and policies
+    slice: RecvdSlice,
+}
+
+/// Struct containing the input data for partial authorization
+#[cfg(feature = "partial-eval")]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct PartialAuthorizationCall {
+    /// The principal taking action. If this field is empty, then the principal is unknown.
+    principal: Option<EntityUid>,
+    /// The action the principal is taking. If this field is empty, then the action is unknown.
+    action: Option<EntityUid>,
+    /// The resource being acted on by the principal. If this field is empty, then the resource is unknown.
     resource: Option<EntityUid>,
     /// The context details specific to the request
     context: Context,
@@ -518,18 +550,12 @@ impl AuthorizationCall {
             .map_err(|e| errs.push(e));
         let maybe_principal = self
             .principal
-            .map(|uid| uid.parse(Some("principal")))
-            .transpose()
+            .parse(Some("principal"))
             .map_err(|e| errs.push(e));
-        let maybe_action = self
-            .action
-            .map(|uid| uid.parse(Some("action")))
-            .transpose()
-            .map_err(|e| errs.push(e));
+        let maybe_action = self.action.parse(Some("action")).map_err(|e| errs.push(e));
         let maybe_resource = self
             .resource
-            .map(|uid| uid.parse(Some("resource")))
-            .transpose()
+            .parse(Some("resource"))
             .map_err(|e| errs.push(e));
 
         let (Ok(schema), Ok(principal), Ok(action), Ok(resource)) =
@@ -539,7 +565,7 @@ impl AuthorizationCall {
             return build_error(errs, warnings);
         };
 
-        let context = match self.context.parse(schema.as_ref(), action.as_ref()) {
+        let context = match self.context.parse(schema.as_ref(), Some(&action)) {
             Ok(context) => context,
             Err(e) => {
                 return build_error(vec![e], warnings);
@@ -570,11 +596,11 @@ impl AuthorizationCall {
             warnings: warnings.into_iter().map(Into::into).collect(),
         }
     }
+}
 
-    #[cfg(feature = "partial-eval")]
-    /// Similar to [`AuthorizationCall::parse`], except a `None` value for the
-    /// principal, action, or resource indicates _unknown_ instead of _unspecified_.
-    fn parse_partial(
+#[cfg(feature = "partial-eval")]
+impl PartialAuthorizationCall {
+    fn parse(
         self,
     ) -> WithWarnings<Result<(Request, crate::PolicySet, crate::Entities), Vec<miette::Report>>>
     {
@@ -620,35 +646,33 @@ impl AuthorizationCall {
             }
         };
 
-        let mut b = Request::builder();
-        if principal.is_some() {
-            b = b.principal(principal);
-        }
-        if action.is_some() {
-            b = b.action(action);
-        }
-        if resource.is_some() {
-            b = b.resource(resource);
-        }
-        b = b.context(context);
-        let request = if self.validate_request {
-            match schema.as_ref() {
-                Some(schema_ref) => match b.schema(schema_ref).build() {
-                    Ok(req) => req,
-                    Err(e) => {
-                        return build_error(vec![e.into()], warnings);
-                    }
-                },
-                None => b.build(),
-            }
-        } else {
-            b.build()
-        };
         let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
             Ok((policies, entities)) => (policies, entities),
             Err(errs) => {
                 return build_error(errs, warnings);
             }
+        };
+
+        let mut b = Request::builder();
+        if let Some(p) = principal {
+            b = b.principal(p);
+        }
+        if let Some(a) = action {
+            b = b.action(a);
+        }
+        if let Some(r) = resource {
+            b = b.resource(r);
+        }
+        b = b.context(context);
+
+        let request = match schema {
+            Some(schema) if self.validate_request => match b.schema(&schema).build() {
+                Ok(request) => request,
+                Err(e) => {
+                    return build_error(vec![e.into()], warnings);
+                }
+            },
+            _ => b.build(),
         };
 
         WithWarnings {
@@ -993,7 +1017,8 @@ mod test {
             }
         });
 
-        assert_is_not_authorized_json(call);
+        let msg = "failed to parse principal";
+        assert_is_authorized_json_is_failure(call, msg);
     }
 
     #[test]

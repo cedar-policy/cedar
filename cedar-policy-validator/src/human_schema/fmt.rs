@@ -130,21 +130,17 @@ impl Display for ActionType {
         }
         if let Some(spec) = &self.applies_to {
             match (
-                spec.principal_types
-                    .as_ref()
-                    .map(|refs| non_empty_slice(refs.as_slice())),
-                spec.resource_types
-                    .as_ref()
-                    .map(|refs| non_empty_slice(refs.as_slice())),
+                non_empty_slice(spec.principal_types.as_slice()),
+                non_empty_slice(spec.resource_types.as_slice()),
             ) {
                 // One of the lists is empty
                 // This can only be represented by the empty action
                 // This implies an action group
-                (Some(None), _) | (_, Some(None)) => {
+                (None, _) | (_, None) => {
                     write!(f, "")?;
                 }
-                // Both list are present and non empty
-                (Some(Some(ps)), Some(Some(rs))) => {
+                // Both list are non empty
+                (Some(ps), Some(rs)) => {
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n  principal: ")?;
                     fmt_vec(f, ps)?;
@@ -153,36 +149,9 @@ impl Display for ActionType {
                     write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
-                // Only principals are present, resource is unspecified
-                (Some(Some(ps)), None) => {
-                    write!(f, " appliesTo {{")?;
-                    write!(f, "\n  principal: ")?;
-                    fmt_vec(f, ps)?;
-                    write!(f, ",\n  context: {}", &spec.context.0)?;
-                    write!(f, "\n}}")?;
-                }
-                // Only resources is present, principal is unspecified
-                (None, Some(Some(rs))) => {
-                    write!(f, " appliesTo {{")?;
-                    write!(f, "\n  resource: ")?;
-                    fmt_vec(f, rs)?;
-                    write!(f, ",\n  context: {}", &spec.context.0)?;
-                    write!(f, "\n}}")?;
-                }
-                // Neither are present, both principal and resource are unspecified
-                (None, None) => {
-                    write!(f, " appliesTo {{")?;
-                    write!(f, "\n  context: {}", &spec.context.0)?;
-                    write!(f, "\n}}")?;
-                }
             }
-        } else {
-            // No `appliesTo` key: both principal and resource must be unspecified entities
-            write!(f, " appliesTo {{")?;
-            // context is an empty record
-            write!(f, "\n  context: {{}}")?;
-            write!(f, "\n}}")?;
         }
+        // No `appliesTo` key: action does not apply to anything
         Ok(())
     }
 }

@@ -53,10 +53,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     type ActionEntityIterator = Vec<Arc<ast::Entity>>;
 
     fn entity_type(&self, entity_type: &ast::EntityType) -> Option<EntityTypeDescription> {
-        match entity_type {
-            ast::EntityType::Unspecified => None, // Unspecified entities cannot be declared in the schema and should not appear in JSON data
-            ast::EntityType::Specified(name) => EntityTypeDescription::new(self.schema, name),
-        }
+        EntityTypeDescription::new(self.schema, entity_type)
     }
 
     fn action(&self, action: &ast::EntityUID) -> Option<Arc<ast::Entity>> {
@@ -67,13 +64,17 @@ impl<'a> entities::Schema for CoreSchema<'a> {
         &'b self,
         basename: &'b ast::Id,
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
-        Box::new(self.schema.entity_types().filter_map(move |(name, _)| {
-            if name.basename() == basename {
-                Some(ast::EntityType::Specified(name.clone()))
-            } else {
-                None
-            }
-        }))
+        Box::new(
+            self.schema
+                .entity_types()
+                .filter_map(move |(entity_type, _)| {
+                    if entity_type.name().basename() == basename {
+                        Some(entity_type.clone())
+                    } else {
+                        None
+                    }
+                }),
+        )
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
@@ -96,15 +97,15 @@ pub struct EntityTypeDescription {
 impl EntityTypeDescription {
     /// Create a description of the given type in the given schema.
     /// Returns `None` if the given type is not in the given schema.
-    pub fn new(schema: &ValidatorSchema, type_name: &ast::Name) -> Option<Self> {
+    pub fn new(schema: &ValidatorSchema, type_name: &ast::EntityType) -> Option<Self> {
         Some(Self {
-            core_type: ast::EntityType::Specified(type_name.clone()),
+            core_type: type_name.clone(),
             validator_type: schema.get_entity_type(type_name).cloned()?,
             allowed_parent_types: {
                 let mut set = HashSet::new();
                 for (possible_parent_typename, possible_parent_et) in schema.entity_types() {
                     if possible_parent_et.descendants.contains(type_name) {
-                        set.insert(ast::EntityType::Specified(possible_parent_typename.clone()));
+                        set.insert(possible_parent_typename.clone());
                     }
                 }
                 Arc::new(set)
@@ -161,33 +162,22 @@ impl ast::RequestSchema for ValidatorSchema {
     ) -> std::result::Result<(), Self::Error> {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
-        // the schema, or unspecified.
-        // we can do this check even if action is unknown.
+        // the schema, we can do this check even if action is unknown.
         if let EntityUIDEntry::Known {
             euid: principal, ..
         } = request.principal()
         {
-            match principal.entity_type() {
-                ast::EntityType::Specified(name) => {
-                    if self.get_entity_type(name).is_none() {
-                        return Err(RequestValidationError::UndeclaredPrincipalType {
-                            principal_ty: principal.entity_type().clone(),
-                        });
-                    }
-                }
-                ast::EntityType::Unspecified => {} // unspecified principal is allowed, unless we find it is not allowed for this action, which we will check below
+            if self.get_entity_type(principal.entity_type()).is_none() {
+                return Err(RequestValidationError::UndeclaredPrincipalType {
+                    principal_ty: principal.entity_type().clone(),
+                });
             }
         }
         if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-            match resource.entity_type() {
-                ast::EntityType::Specified(name) => {
-                    if self.get_entity_type(name).is_none() {
-                        return Err(RequestValidationError::UndeclaredResourceType {
-                            resource_ty: resource.entity_type().clone(),
-                        });
-                    }
-                }
-                ast::EntityType::Unspecified => {} // unspecified resource is allowed, unless we find it is not allowed for this action, which we will check below
+            if self.get_entity_type(resource.entity_type()).is_none() {
+                return Err(RequestValidationError::UndeclaredResourceType {
+                    resource_ty: resource.entity_type().clone(),
+                });
             }
         }
 
@@ -462,11 +452,11 @@ mod test {
         assert_matches!(
             ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
                 ),
@@ -483,12 +473,12 @@ mod test {
     fn success_action_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
                 ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
                 ),
@@ -505,11 +495,11 @@ mod test {
     fn success_resource_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
@@ -527,15 +517,15 @@ mod test {
     fn success_context_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
                 ),
@@ -570,12 +560,12 @@ mod test {
     fn success_unknown_action_but_invalid_types() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                     None,
                 ),
                 ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::concrete(
+                ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
                     None,
                 ),
@@ -605,24 +595,6 @@ mod test {
         );
     }
 
-    /// request action unspecified (and not declared in the schema)
-    #[test]
-    fn action_unspecified() {
-        assert_matches!(
-            ast::Request::new(
-                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
-                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
-                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                ast::Context::empty(),
-                Some(&schema()),
-                Extensions::all_available(),
-            ),
-            Err(RequestValidationError::UndeclaredAction { action }) => {
-                assert_eq!(&*action, &ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")));
-            }
-        );
-    }
-
     /// request principal type not declared in the schema (action concrete)
     #[test]
     fn principal_type_not_declared() {
@@ -636,43 +608,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
-                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
-            }
-        );
-    }
-
-    /// request principal type not declared in the schema (action unspecified)
-    #[test]
-    fn principal_type_not_declared_action_unspecified() {
-        assert_matches!(
-            ast::Request::new(
-                (ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(), None),
-                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
-                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                ast::Context::empty(),
-                Some(&schema()),
-                Extensions::all_available(),
-            ),
-            Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
-                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
-            }
-        );
-    }
-
-    /// request principal type unspecified (and not declared in the schema)
-    #[test]
-    fn principal_unspecified() {
-        assert_matches!(
-            ast::Request::new(
-                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")), None),
-                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
-                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                ast::Context::empty(),
-                Some(&schema()),
-                Extensions::all_available(),
-            ),
-            Err(RequestValidationError::InvalidPrincipalType { principal_ty, .. }) => {
-                assert_eq!(principal_ty, ast::EntityType::Unspecified);
+                assert_eq!(principal_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -690,43 +626,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
-                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
-            }
-        );
-    }
-
-    /// request resource type not declared in the schema (action unspecified)
-    #[test]
-    fn resource_type_not_declared_action_unspecified() {
-        assert_matches!(
-            ast::Request::new(
-                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
-                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
-                (ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(), None),
-                ast::Context::empty(),
-                Some(&schema()),
-                Extensions::all_available(),
-            ),
-            Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
-                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
-            }
-        );
-    }
-
-    /// request resource type unspecified (and not declared in the schema)
-    #[test]
-    fn resource_unspecified() {
-        assert_matches!(
-            ast::Request::new(
-                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
-                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
-                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")), None),
-                ast::Context::empty(),
-                Some(&schema()),
-                Extensions::all_available(),
-            ),
-            Err(RequestValidationError::InvalidResourceType { resource_ty, .. }) => {
-                assert_eq!(resource_ty, ast::EntityType::Unspecified);
+                assert_eq!(resource_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -744,7 +644,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidPrincipalType { principal_ty, action }) => {
-                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Album").unwrap()));
+                assert_eq!(principal_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Album").unwrap()));
                 assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
             }
         );
@@ -763,7 +663,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidResourceType { resource_ty, action }) => {
-                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Group").unwrap()));
+                assert_eq!(resource_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Group").unwrap()));
                 assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
             }
         );

@@ -28,14 +28,9 @@ pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> 
 }
 
 /// Returns an iterator over all entity type names in the expression.
-/// The Unspecified entity type does not have a `Name`, so it is excluded
-/// from this iter.
-pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Name> {
+pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &EntityType> {
     expr.subexpressions().filter_map(|e| match e.expr_kind() {
-        ExprKind::Lit(Literal::EntityUID(uid)) => match uid.entity_type() {
-            EntityType::Specified(entity_type) => Some(entity_type),
-            EntityType::Unspecified => None,
-        },
+        ExprKind::Lit(Literal::EntityUID(uid)) => Some(uid.entity_type()),
         ExprKind::Is { entity_type, .. } => Some(entity_type),
         _ => None,
     })
@@ -65,9 +60,7 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
 
 /// Returns an iterator over all entity type names in the policy. This iterates
 /// over the policy scope condition in addition to the body.
-/// The Unspecified entity type does not have a `Name`, so it is excluded
-/// from this iter.
-pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &Name> {
+pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &EntityType> {
     template
         .principal_constraint()
         .as_inner()
@@ -146,10 +139,7 @@ fn text_in_entity_type<'a>(
     loc: Option<&'a Loc>,
     ty: &'a EntityType,
 ) -> impl IntoIterator<Item = TextKind<'a>> {
-    match ty {
-        EntityType::Specified(ty) => text_in_name(loc, ty).collect::<Vec<_>>(),
-        EntityType::Unspecified => vec![],
-    }
+    text_in_name(loc, ty.name()).collect::<Vec<_>>()
 }
 
 fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item = TextKind<'a>> {

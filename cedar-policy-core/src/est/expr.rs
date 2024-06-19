@@ -15,6 +15,7 @@
  */
 
 use super::FromJsonError;
+use crate::ast;
 use crate::ast::InputInteger;
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
@@ -26,7 +27,6 @@ use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
 use crate::parser::util::flatten_tuple_2;
 use crate::parser::{Loc, Node};
-use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -653,7 +653,7 @@ impl Expr {
                 left,
                 entity_type,
                 in_expr,
-            }) => ast::Name::from_normalized_str(entity_type.as_str())
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
@@ -1077,7 +1077,7 @@ fn interpret_primary(
                 path,
                 eid: eid_node,
             } => {
-                let maybe_name = path.to_name();
+                let maybe_name = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid_node.as_valid_string();
 
                 let (name, eid) = flatten_tuple_2(maybe_name, maybe_eid)?;
@@ -1433,7 +1433,10 @@ impl std::fmt::Display for ExprNoExt {
             ExprNoExt::Var(v) => write!(f, "{v}"),
             ExprNoExt::Slot(id) => write!(f, "{id}"),
             ExprNoExt::Unknown { name } => write!(f, "unknown(\"{}\")", name.escape_debug()),
-            ExprNoExt::Not { arg } => write!(f, "!{}", maybe_with_parens(arg)),
+            ExprNoExt::Not { arg } => {
+                write!(f, "!")?;
+                maybe_with_parens(f, arg)
+            }
             ExprNoExt::Neg { arg } => {
                 // Always add parentheses instead of calling
                 // `maybe_with_parens`.
@@ -1442,104 +1445,91 @@ impl std::fmt::Display for ExprNoExt {
                 // printed form, thus preserving the round-tripping property.
                 write!(f, "-({arg})")
             }
-            ExprNoExt::Eq { left, right } => write!(
-                f,
-                "{} == {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::NotEq { left, right } => write!(
-                f,
-                "{} != {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::In { left, right } => write!(
-                f,
-                "{} in {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Less { left, right } => write!(
-                f,
-                "{} < {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::LessEq { left, right } => write!(
-                f,
-                "{} <= {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Greater { left, right } => write!(
-                f,
-                "{} > {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::GreaterEq { left, right } => write!(
-                f,
-                "{} >= {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::And { left, right } => write!(
-                f,
-                "{} && {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Or { left, right } => write!(
-                f,
-                "{} || {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Add { left, right } => write!(
-                f,
-                "{} + {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Sub { left, right } => write!(
-                f,
-                "{} - {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprNoExt::Mul { left, right } => write!(
-                f,
-                "{} * {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
+            ExprNoExt::Eq { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " == ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::NotEq { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " != ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::In { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " in ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Less { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " < ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::LessEq { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " <= ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Greater { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " > ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::GreaterEq { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " >= ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::And { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " && ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Or { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " || ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Add { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " + ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Sub { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " - ")?;
+                maybe_with_parens(f, right)
+            }
+            ExprNoExt::Mul { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " * ")?;
+                maybe_with_parens(f, right)
+            }
             ExprNoExt::Contains { left, right } => {
-                write!(f, "{}.contains({right})", maybe_with_parens(left))
+                maybe_with_parens(f, left)?;
+                write!(f, ".contains({right})")
             }
             ExprNoExt::ContainsAll { left, right } => {
-                write!(f, "{}.containsAll({right})", maybe_with_parens(left))
+                maybe_with_parens(f, left)?;
+                write!(f, ".containsAll({right})")
             }
             ExprNoExt::ContainsAny { left, right } => {
-                write!(f, "{}.containsAny({right})", maybe_with_parens(left))
+                maybe_with_parens(f, left)?;
+                write!(f, ".containsAny({right})")
             }
-            ExprNoExt::GetAttr { left, attr } => write!(
-                f,
-                "{}[\"{}\"]",
-                maybe_with_parens(left),
-                attr.escape_debug()
-            ),
-            ExprNoExt::HasAttr { left, attr } => write!(
-                f,
-                "{} has \"{}\"",
-                maybe_with_parens(left),
-                attr.escape_debug()
-            ),
+            ExprNoExt::GetAttr { left, attr } => {
+                maybe_with_parens(f, left)?;
+                write!(f, "[\"{}\"]", attr.escape_debug())
+            }
+            ExprNoExt::HasAttr { left, attr } => {
+                maybe_with_parens(f, left)?;
+                write!(f, " has \"{}\"", attr.escape_debug())
+            }
             ExprNoExt::Like { left, pattern } => {
+                maybe_with_parens(f, left)?;
                 write!(
                     f,
-                    "{} like \"{}\"",
-                    maybe_with_parens(left),
+                    " like \"{}\"",
                     crate::ast::Pattern::from(pattern.clone())
                 )
             }
@@ -1548,9 +1538,13 @@ impl std::fmt::Display for ExprNoExt {
                 entity_type,
                 in_expr,
             } => {
-                write!(f, "{} is {}", maybe_with_parens(left), entity_type)?;
+                maybe_with_parens(f, left)?;
+                write!(f, " is {entity_type}")?;
                 match in_expr {
-                    Some(in_expr) => write!(f, " in {}", maybe_with_parens(in_expr)),
+                    Some(in_expr) => {
+                        write!(f, " in ")?;
+                        maybe_with_parens(f, in_expr)
+                    }
                     None => Ok(()),
                 }
             }
@@ -1558,13 +1552,14 @@ impl std::fmt::Display for ExprNoExt {
                 cond_expr,
                 then_expr,
                 else_expr,
-            } => write!(
-                f,
-                "if {} then {} else {}",
-                maybe_with_parens(cond_expr),
-                maybe_with_parens(then_expr),
-                maybe_with_parens(else_expr)
-            ),
+            } => {
+                write!(f, "if ")?;
+                maybe_with_parens(f, cond_expr)?;
+                write!(f, " then ")?;
+                maybe_with_parens(f, then_expr)?;
+                write!(f, " else ")?;
+                maybe_with_parens(f, else_expr)
+            }
             ExprNoExt::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
             ExprNoExt::Record(m) => write!(
                 f,
@@ -1594,13 +1589,8 @@ impl std::fmt::Display for ExtFuncCall {
         });
         match (style, args.iter().next()) {
             (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
-                write!(
-                    f,
-                    "{}.{}({})",
-                    maybe_with_parens(receiver),
-                    fn_name,
-                    args.iter().skip(1).join(", ")
-                )
+                maybe_with_parens(f, receiver)?;
+                write!(f, ".{}({})", fn_name, args.iter().skip(1).join(", "))
             }
             (_, _) => {
                 write!(f, "{}({})", fn_name, args.iter().join(", "))
@@ -1614,45 +1604,42 @@ impl std::fmt::Display for ExtFuncCall {
 /// E.g., won't add parens for constants or `principal` etc, but will for things
 /// like `(2 < 5)`.
 /// When in doubt, add the parens.
-fn maybe_with_parens(expr: &Expr) -> String {
+fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::Result {
     match expr {
-        Expr::ExprNoExt(ExprNoExt::Value(_)) => expr.to_string(),
-        Expr::ExprNoExt(ExprNoExt::Var(_)) => expr.to_string(),
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) => expr.to_string(),
-        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => expr.to_string(),
-        Expr::ExprNoExt(ExprNoExt::Not { .. }) => {
-            // we want parens here because things like parse((!x).y)
-            // would be printed into !x.y which has a different meaning
-            format!("({expr})")
-        }
-        Expr::ExprNoExt(ExprNoExt::Neg { .. }) => {
-            // we want parens here because things like parse((-x).y)
-            // would be printed into -x.y which has a different meaning
-            format!("({expr})")
-        }
-        Expr::ExprNoExt(ExprNoExt::Eq { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::NotEq { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::In { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Less { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::LessEq { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Greater { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::GreaterEq { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::And { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Or { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Add { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Sub { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Mul { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Contains { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Like { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Is { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::If { .. }) => format!("({expr})"),
-        Expr::ExprNoExt(ExprNoExt::Set(_)) => expr.to_string(),
-        Expr::ExprNoExt(ExprNoExt::Record(_)) => expr.to_string(),
-        Expr::ExtFuncCall { .. } => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Set(_)) |
+        Expr::ExprNoExt(ExprNoExt::Record(_)) |
+        Expr::ExprNoExt(ExprNoExt::Value(_)) |
+        Expr::ExprNoExt(ExprNoExt::Var(_)) |
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) |
+        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => write!(f, "{expr}"),
+
+        // we want parens here because things like parse((!x).y)
+        // would be printed into !x.y which has a different meaning
+        Expr::ExprNoExt(ExprNoExt::Not { .. }) |
+        // we want parens here because things like parse((-x).y)
+        // would be printed into -x.y which has a different meaning
+        Expr::ExprNoExt(ExprNoExt::Neg { .. })  |
+        Expr::ExprNoExt(ExprNoExt::Eq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::NotEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::In { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Less { .. }) |
+        Expr::ExprNoExt(ExprNoExt::LessEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Greater { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GreaterEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::And { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Or { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Add { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Sub { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Mul { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Like { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Is { .. }) |
+        Expr::ExprNoExt(ExprNoExt::If { .. }) |
+        Expr::ExtFuncCall { .. } => write!(f, "({expr})"),
     }
 }
 

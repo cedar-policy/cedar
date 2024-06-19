@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{self, Id, Name},
     entities::CedarValueJson,
     FromNormalizedStr,
 };
@@ -39,11 +39,12 @@ use crate::{
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// A SchemaFragment describe the types for a given instance of Cedar.
-/// SchemaFragments are composed of Entity Types and Action Types. The
-/// schema fragment is split into multiple namespace definitions, eac including
-/// a namespace name which is applied to all entity types (and the implicit
-/// `Action` entity type for all actions) in the schema.
+/// A `SchemaFragment` is split into multiple namespace definitions, and is just
+/// a map from namespace name to namespace definition (i.e., definitions of
+/// common types, entity types, and actions in that namespace).
+/// The namespace name is implicitly applied to all definitions in the
+/// corresponding `NamespaceDefinition`.
+/// See [`NamespaceDefinition`].
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -139,9 +140,11 @@ impl SchemaFragment {
 }
 
 /// A single namespace definition from a SchemaFragment.
+/// This is composed of common types, entity types, and action definitions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[doc(hidden)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -149,9 +152,7 @@ pub struct NamespaceDefinition {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    #[serde(rename = "commonTypes")]
     pub common_types: HashMap<Id, SchemaType>,
-    #[serde(rename = "entityTypes")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<Id, EntityType>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
@@ -176,13 +177,13 @@ impl NamespaceDefinition {
 /// can/should be included on entities of each type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[serde(rename = "memberOfTypes")]
-    pub member_of_types: Vec<Name>,
+    pub member_of_types: Vec<cedar_policy_core::ast::EntityType>,
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext,
@@ -221,6 +222,7 @@ impl Default for AttributesOrContext {
 /// kinds of entities it can be used on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionType {
@@ -232,11 +234,9 @@ pub struct ActionType {
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "memberOf")]
     pub member_of: Option<Vec<ActionEntityUID>>,
 }
 
@@ -250,17 +250,14 @@ pub struct ActionType {
 /// applies to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec {
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "resourceTypes")]
-    pub resource_types: Option<Vec<Name>>,
+    pub resource_types: Vec<ast::EntityType>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "principalTypes")]
-    pub principal_types: Option<Vec<Name>>,
+    pub principal_types: Vec<ast::EntityType>,
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext,
@@ -268,6 +265,7 @@ pub struct ApplySpec {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID {
@@ -637,7 +635,8 @@ impl SchemaTypeVisitor {
                                         serde::de::Error::custom(format!(
                                             "invalid entity type `{name}`: {err}"
                                         ))
-                                    })?,
+                                    })?
+                                    .into(),
                             }))
                         }
                     }
@@ -706,7 +705,7 @@ pub enum SchemaTypeVariant {
         additional_attributes: bool,
     },
     Entity {
-        name: Name,
+        name: ast::EntityType,
     },
     Extension {
         name: Id,
@@ -784,7 +783,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
             }
             6 => {
                 let name: Name = u.arbitrary()?;
-                SchemaTypeVariant::Entity { name }
+                SchemaTypeVariant::Entity { name: name.into() }
             }
             7 => SchemaTypeVariant::Extension {
                 // PANIC SAFETY: `ipaddr` is a valid `Id`
@@ -903,8 +902,8 @@ mod test {
         "#;
         let at: ActionType = serde_json::from_str(src).expect("Parse Error");
         let spec = ApplySpec {
-            resource_types: Some(vec!["Album".parse().unwrap()]),
-            principal_types: Some(vec!["User".parse().unwrap()]),
+            resource_types: vec!["Album".parse().unwrap()],
+            principal_types: vec!["User".parse().unwrap()],
             context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));
@@ -1591,8 +1590,8 @@ mod test_json_roundtrip {
                     ActionType {
                         attributes: None,
                         applies_to: Some(ApplySpec {
-                            resource_types: Some(vec!["a".parse().unwrap()]),
-                            principal_types: Some(vec!["a".parse().unwrap()]),
+                            resource_types: vec!["a".parse().unwrap()],
+                            principal_types: vec!["a".parse().unwrap()],
                             context: AttributesOrContext(SchemaType::Type(
                                 SchemaTypeVariant::Record {
                                     attributes: BTreeMap::new(),
@@ -1640,8 +1639,8 @@ mod test_json_roundtrip {
                         ActionType {
                             attributes: None,
                             applies_to: Some(ApplySpec {
-                                resource_types: Some(vec!["foo::a".parse().unwrap()]),
-                                principal_types: Some(vec!["foo::a".parse().unwrap()]),
+                                resource_types: vec!["foo::a".parse().unwrap()],
+                                principal_types: vec!["foo::a".parse().unwrap()],
                                 context: AttributesOrContext(SchemaType::Type(
                                     SchemaTypeVariant::Record {
                                         attributes: BTreeMap::new(),

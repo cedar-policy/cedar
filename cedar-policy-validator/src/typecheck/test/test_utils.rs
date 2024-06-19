@@ -21,11 +21,10 @@
 use cool_asserts::assert_matches;
 use std::{collections::HashSet, sync::Arc};
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, PolicyID, Template};
+use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
 
 use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
-    schema::ACTION_ENTITY_TYPE,
     types::{EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
     NamespaceDefinition, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
@@ -72,18 +71,14 @@ impl Typechecker<'_> {
         // Using bogus entity type names here for testing. They'll be treated as
         // having empty attribute records, so tests will behave as expected.
         let request_env = RequestEnv::DeclaredAction {
-            principal: &EntityType::Specified(
-                "Principal"
-                    .parse()
-                    .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
-            ),
+            principal: &"Principal"
+                .parse()
+                .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
             action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE, "action")
                 .expect("ACTION_ENTITY_TYPE failed to parse as type name."),
-            resource: &EntityType::Specified(
-                "Resource"
-                    .parse()
-                    .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
-            ),
+            resource: &"Resource"
+                .parse()
+                .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
             context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,

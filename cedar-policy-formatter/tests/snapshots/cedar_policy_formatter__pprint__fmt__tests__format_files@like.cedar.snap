@@ -1,0 +1,16 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/like.cedar
+---
+permit (principal, action, resource)
+when { resource.path like "/home/*" };
+
+permit (principal, action, resource)
+when
+{
+  resource.path // Checking path
+  like
+    // is `home`
+    "/home/*"
+};

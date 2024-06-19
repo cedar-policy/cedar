@@ -106,12 +106,10 @@ pub mod partial {
     }
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
     pub enum Decision {
-        #[serde(rename = "allow")]
         Allow,
-        #[serde(rename = "deny")]
         Deny,
-        #[serde(rename = "unknown")]
         Unknown,
     }
 

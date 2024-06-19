@@ -15,8 +15,8 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue, Unknown, Value,
-    ValueKind,
+    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
+    Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -120,7 +120,7 @@ impl RestrictedExpr {
     /// Throws an error if any key occurs two or more times.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         // Record expressions are valid restricted-exprs if their elements are;
         // and we know the elements are because we require `RestrictedExpr`s in
         // the parameter
@@ -625,7 +625,7 @@ pub enum RestrictedExpressionError {
     InvalidRestrictedExpression(#[from] restricted_expr_errors::InvalidRestrictedExpressionError),
 }
 
-/// Error subtypes for [`RestrictedExprError`]
+/// Error subtypes for [`RestrictedExpressionError`]
 pub mod restricted_expr_errors {
     use super::Expr;
     use miette::Diagnostic;
@@ -686,7 +686,7 @@ pub enum RestrictedExpressionParseError {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ast::ExprConstructionError;
+    use crate::ast::expression_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
     use crate::parser::Loc;
     use std::str::FromStr;
@@ -700,7 +700,12 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val("hello"),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
+            )
         );
 
         // duplicate key is an error when mapped to different values of same type
@@ -709,7 +714,12 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(101),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
+            )
         );
 
         // duplicate key is an error when mapped to the same value multiple times
@@ -718,7 +728,12 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(37),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
+            )
         );
 
         // duplicate key is an error even when other keys appear in between
@@ -730,7 +745,12 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("eggs".into(), RestrictedExpr::val("spam"),),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(
+                expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                    key: "foo".into()
+                }
+                .into()
+            )
         );
 
         // duplicate key is also an error when parsing from string
@@ -739,8 +759,11 @@ mod test {
             RestrictedExpr::from_str(str),
             Err(RestrictedExpressionParseError::Parse(
                 ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
-                    ToASTErrorKind::ExprConstructionError(
-                        ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
+                    ToASTErrorKind::ExpressionConstructionError(
+                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                            key: "foo".into()
+                        }
+                        .into()
                     ),
                     Loc::new(0..32, Arc::from(str))
                 )))

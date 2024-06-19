@@ -855,7 +855,13 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
                 "Baz": {},
                 "Buz": {}
             },
-            "actions": { "act": {} }
+            "actions": { "act": {
+                "appliesTo" : {
+                    "principalTypes" : ["Foo", "Bar", "Baz", "Buz"],
+                    "resourceTypes" : ["Foo", "Bar", "Baz", "Buz"]
+                }
+            }
+            }
         }"#,
     )
     .expect("Expected valid schema");
@@ -979,6 +985,12 @@ fn record_entity_lub_non_term() {
     let schema: NamespaceDefinition = serde_json::from_value(serde_json::json!(
     {
         "entityTypes": {
+            "E" : {
+                "shape" : {
+                    "type" : "Record",
+                    "attributes" : {}
+                },
+            },
           "U": {
             "shape": {
               "type": "Record",
@@ -998,7 +1010,7 @@ fn record_entity_lub_non_term() {
           "view": {
             "appliesTo": {
               "principalTypes": ["U"],
-              "resourceTypes": null
+              "resourceTypes": ["E"]
             }
           }
         }
@@ -1050,7 +1062,7 @@ fn validate_policy_with_typedef_schema() {
           "act": {
             "appliesTo": {
               "principalTypes": ["Entity"],
-              "resourceTypes": null
+              "resourceTypes": ["Entity"]
             }
           }
         }

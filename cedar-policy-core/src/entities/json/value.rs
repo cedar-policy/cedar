@@ -19,8 +19,8 @@ use super::{
     SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
-    RestrictedExpr, Unknown, Value, ValueKind,
+    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
@@ -162,6 +162,7 @@ impl JsonRecord {
 
 /// Structure expected by the `__entity` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct TypeAndId {
@@ -198,7 +199,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            Name::from_normalized_str(&e.entity_type)?,
+            Name::from_normalized_str(&e.entity_type)?.into(),
             Eid::new(e.id),
             None,
         ))
@@ -207,6 +208,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
 /// Structure expected by the `__extn` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct FnAndArg {
@@ -246,9 +248,9 @@ impl CedarValueJson {
                     .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
             )
             .map_err(|e| match e {
-                ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                    JsonDeserializationError::duplicate_key_in_record_literal(ctx(), key)
-                }
+                ExpressionConstructionError::DuplicateKeyInRecordLiteral(
+                    expression_construction_errors::DuplicateKeyInRecordLiteralError { key },
+                ) => JsonDeserializationError::duplicate_key_in_record_literal(ctx(), key),
             })?),
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
                 EntityUID::try_from(entity.clone()).map_err(|errs| {
@@ -559,9 +561,11 @@ impl<'e> ValueParser<'e> {
                     // duplicate keys; they're both maps), but we can still throw
                     // the error properly in the case that it somehow happens
                     RestrictedExpr::record(rexpr_pairs).map_err(|e| match e {
-                        ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                            JsonDeserializationError::duplicate_key_in_record_literal(ctx2(), key)
-                        }
+                        ExpressionConstructionError::DuplicateKeyInRecordLiteral(
+                            expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                                key,
+                            },
+                        ) => JsonDeserializationError::duplicate_key_in_record_literal(ctx2(), key),
                     })
                 }
                 val => {

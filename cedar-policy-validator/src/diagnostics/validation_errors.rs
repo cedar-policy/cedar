@@ -27,7 +27,7 @@ use cedar_policy_core::parser::Loc;
 use std::collections::BTreeSet;
 
 use cedar_policy_core::ast::{
-    CallStyle, Eid, EntityUID, Expr, ExprKind, ExprShapeOnly, Name, PolicyID, Var,
+    CallStyle, EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var,
 };
 use cedar_policy_core::parser::join_with_conjunction;
 
@@ -136,24 +136,6 @@ impl Diagnostic for InvalidActionApplication {
             )),
             (false, false) => None,
         }
-    }
-}
-
-/// Structure containing details about an unspecified entity error.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("for policy `{policy_id}`, unspecified entity with id `{}`", .entity_id.escaped())]
-pub struct UnspecifiedEntity {
-    pub source_loc: Option<Loc>,
-    pub policy_id: PolicyID,
-    /// EID of the unspecified entity
-    pub entity_id: Eid,
-}
-
-impl Diagnostic for UnspecifiedEntity {
-    impl_diagnostic_from_source_loc_field!();
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new("unspecified entities cannot be used in policies"))
     }
 }
 
@@ -523,8 +505,8 @@ impl Diagnostic for FunctionArgumentValidation {
 pub struct HierarchyNotRespected {
     pub source_loc: Option<Loc>,
     pub policy_id: PolicyID,
-    pub in_lhs: Option<Name>,
-    pub in_rhs: Option<Name>,
+    pub in_lhs: Option<EntityType>,
+    pub in_rhs: Option<EntityType>,
 }
 
 impl Diagnostic for HierarchyNotRespected {
@@ -677,11 +659,13 @@ impl Display for AttributeAccess {
 // optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
 mod test_attr_access {
-    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Var};
+    use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder, ExprKind, Var};
 
     use super::AttributeAccess;
     use crate::types::{OpenTag, RequestEnv, Type};
 
+    // PANIC SAFETY: testing
+    #[allow(clippy::panic)]
     #[track_caller]
     fn assert_message_and_help(
         attr_access: &Expr<Option<Type>>,
@@ -689,10 +673,13 @@ mod test_attr_access {
         help: impl AsRef<str>,
     ) {
         let env = RequestEnv::DeclaredAction {
-            principal: &EntityType::Specified("Principal".parse().unwrap()),
-            action: &EntityUID::with_eid_and_type(crate::schema::ACTION_ENTITY_TYPE, "action")
-                .unwrap(),
-            resource: &EntityType::Specified("Resource".parse().unwrap()),
+            principal: &"Principal".parse().unwrap(),
+            action: &EntityUID::with_eid_and_type(
+                cedar_policy_core::ast::ACTION_ENTITY_TYPE,
+                "action",
+            )
+            .unwrap(),
+            resource: &"Resource".parse().unwrap(),
             context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,

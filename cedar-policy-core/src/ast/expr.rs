@@ -133,8 +133,8 @@ pub enum ExprKind<T = ()> {
     Is {
         /// Expression to test. Must evaluate to an Entity.
         expr: Arc<Expr<T>>,
-        /// The entity type `Name` used for the type membership test.
-        entity_type: Name,
+        /// The [`EntityType`] used for the type membership test.
+        entity_type: EntityType,
     },
     /// Set (whose elements may be arbitrary expressions)
     //
@@ -424,7 +424,7 @@ impl Expr {
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         ExprBuilder::new().record(pairs)
     }
 
@@ -481,7 +481,7 @@ impl Expr {
     }
 
     /// Create an `is` expression.
-    pub fn is_entity_type(expr: Expr, entity_type: Name) -> Self {
+    pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
     }
 
@@ -995,14 +995,17 @@ impl<T> ExprBuilder<T> {
     pub fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
-    ) -> Result<Expr<T>, ExprConstructionError> {
+    ) -> Result<Expr<T>, ExpressionConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
-                        key: oentry.key().clone(),
-                    });
+                    return Err(
+                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
+                            key: oentry.key().clone(),
+                        }
+                        .into(),
+                    );
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1087,7 +1090,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
-    pub fn is_entity_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+    pub fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,
@@ -1145,15 +1148,45 @@ impl<T: Clone> ExprBuilder<T> {
     }
 }
 
-/// Errors when constructing an `Expr`
+/// Errors when constructing an expression
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum ExprConstructionError {
+pub enum ExpressionConstructionError {
     /// The same key occurred two or more times in a single record literal
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateKeyInRecordLiteral(
+        #[from] expression_construction_errors::DuplicateKeyInRecordLiteralError,
+    ),
+}
+
+/// Error subtypes for [`ExpressionConstructionError`]
+pub mod expression_construction_errors {
+    use miette::Diagnostic;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// The same key occurred two or more times in a single record literal
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
     #[error("duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
+    pub struct DuplicateKeyInRecordLiteralError {
         /// The key which occurred two or more times in the record literal
-        key: SmolStr,
-    },
+        pub(crate) key: SmolStr,
+    }
+
+    impl DuplicateKeyInRecordLiteralError {
+        /// Get the key which occurred two or more times in the record literal
+        pub fn key(&self) -> &str {
+            &self.key
+        }
+    }
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
@@ -1378,21 +1411,18 @@ impl<T> Expr<T> {
 
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Var {
     /// the Principal of the given request
-    #[serde(rename = "principal")]
     Principal,
     /// the Action of the given request
-    #[serde(rename = "action")]
     Action,
     /// the Resource of the given request
-    #[serde(rename = "resource")]
     Resource,
     /// the Context of the given request
-    #[serde(rename = "context")]
     Context,
 }
 
