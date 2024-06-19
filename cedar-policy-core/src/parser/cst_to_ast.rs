@@ -45,6 +45,7 @@ use crate::ast::{
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -247,7 +248,7 @@ impl cst::Policy {
         // this position to indicate where to fill in vars if we're missing one.
         let mut end_of_last_var = self.effect.loc.end();
 
-        let mut vars = self.variables.iter().peekable();
+        let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
             scope1.to_principal_constraint()
@@ -277,22 +278,15 @@ impl cst::Policy {
             )
             .into())
         };
-        let maybe_extra_vars = if vars.peek().is_some() {
+        let maybe_extra_vars = if let Some(vars) = NonEmpty::collect(vars) {
             // Add each of the extra constraints to the error list
-            let mut errs: Vec<ParseError> = vec![];
-            for extra_var in vars {
-                if let Some(def) = extra_var.as_inner() {
-                    errs.push(
-                        extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone()))
-                            .into(),
-                    )
-                }
-            }
-            match ParseErrors::from_iter(errs) {
-                None => Ok(()),
-                Some(errs) => Err(errs),
-            }
+            Err(ParseErrors::new_from_nonempty(vars.map(|extra_var| {
+                extra_var
+                    .try_as_inner()
+                    .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
+                    .unwrap_or_else(|e| e)
+                    .into()
+            })))
         } else {
             Ok(())
         };
