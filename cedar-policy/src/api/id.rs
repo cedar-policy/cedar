@@ -215,6 +215,10 @@ impl EntityUid {
 
     /// Creates `EntityUid` from a JSON value, which should have
     /// either the implicit or explicit `__entity` form.
+    ///
+    /// Examples:
+    /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
+    /// * `{ "type": "User", "id": "123abc" }`
     /// ```
     /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
     /// # use std::str::FromStr;

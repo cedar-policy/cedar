@@ -77,6 +77,11 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
 
 /// Input is a JSON encoding of [`ValidationCall`] and output is a JSON
 /// encoding of [`ValidationAnswer`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input JSON cannot be deserialized as a
+/// [`ValidationCall`].
 pub fn validate_json(json: serde_json::Value) -> Result<serde_json::Value, serde_json::Error> {
     let ans = validate(serde_json::from_value(json)?);
     serde_json::to_value(ans)
@@ -84,6 +89,11 @@ pub fn validate_json(json: serde_json::Value) -> Result<serde_json::Value, serde
 
 /// Input and output are strings containing serialized JSON, in the shapes
 /// expected by [`validate_json()`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input cannot be converted to valid JSON or
+/// deserialized as a [`ValidationCall`].
 pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = validate(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
