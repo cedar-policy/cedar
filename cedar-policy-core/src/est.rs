@@ -3679,3 +3679,272 @@ mod test {
         }
     }
 }
+
+#[cfg(test)]
+mod issue_891 {
+    use crate::est::{self, FromJsonError};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    fn est_json_with_body(body: serde_json::Value) -> serde_json::Value {
+        json!(
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": body,
+                    }
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn invalid_extension_func() {
+        let src = est_json_with_body(json!( { "ow4": [ { "Var": "principal" } ] }));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ow4".parse().unwrap());
+
+        let src = est_json_with_body(json!(
+            {
+                "==": {
+                    "left": {"Var": "principal"},
+                    "right": {
+                        "ownerOrEqual": [
+                            {"Var": "resource"},
+                            {"decimal": [{ "Value": "0.75" }]}
+                        ]
+                    }
+                }
+            }
+        ));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ownerOrEqual".parse().unwrap());
+
+        let src = est_json_with_body(json!(
+            {
+                "==": {
+                    "left": {"Var": "principal"},
+                    "right": {
+                        "resorThanOrEqual": [
+                            {"decimal": [{ "Value": "0.75" }]}
+                        ]
+                    }
+                }
+            }
+        ));
+        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
+        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "resorThanOrEqual".parse().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod issue_925 {
+    use crate::{
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn invalid_action_type() {
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "==",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected an entity uid with type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entity": {
+                        "type": "NotAction",
+                        "id": "view",
+                    }
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected an entity uid with type `Action` but got `NotAction::"view"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "in",
+                    "entities": [
+                        {
+                            "type": "NotAction",
+                            "id": "view",
+                        },
+                        {
+                            "type": "Other",
+                            "id": "edit",
+                        }
+                    ]
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            }
+        );
+        let est: est::Policy = serde_json::from_value(src.clone()).unwrap();
+        assert_matches!(
+            est.try_into_ast_policy(None),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"expected entity uids with type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
+                        .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod issue_994 {
+    use crate::{
+        entities::json::err::JsonDeserializationError,
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn empty_annotation() {
+        let src = json!(
+            {
+                "annotations": {"": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id ``: unexpected end of input"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn annotation_with_space() {
+        let src = json!(
+            {
+                "annotations": {"has a space": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `has a space`: unexpected token `a`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn special_char() {
+        let src = json!(
+            {
+                "annotations": {"@": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `@`: unexpected token `@`"#)
+                        .build()
+                );
+            }
+        );
+    }
+}
