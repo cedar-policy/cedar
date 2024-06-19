@@ -265,7 +265,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    #[error("transitive closure computation/enforcement error on action hierarchy")]
     #[diagnostic(transparent)]
     pub struct ActionTransitiveClosureError(
         #[from] pub(crate) Box<transitive_closure::TcError<EntityUID>>,
@@ -277,7 +277,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
+    #[error("transitive closure computation/enforcement error on entity type hierarchy")]
     #[diagnostic(transparent)]
     pub struct EntityTypeTransitiveClosureError(
         #[from] pub(crate) Box<transitive_closure::TcError<EntityType>>,
@@ -449,7 +449,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("unsupported feature used in schema: {0}")]
+    #[error("unsupported feature used in schema")]
     #[diagnostic(transparent)]
     pub struct UnsupportedFeatureError(#[from] pub(crate) UnsupportedFeature);
 
