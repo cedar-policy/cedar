@@ -45,7 +45,6 @@ use crate::ast::{
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
-use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -278,15 +277,18 @@ impl cst::Policy {
             )
             .into())
         };
-        let maybe_extra_vars = if let Some(vars) = NonEmpty::collect(vars) {
+
+        let maybe_extra_vars = if let Some(errs) = ParseErrors::from_iter(
             // Add each of the extra constraints to the error list
-            Err(ParseErrors::new_from_nonempty(vars.map(|extra_var| {
+            vars.map(|extra_var| {
                 extra_var
                     .try_as_inner()
                     .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
                     .unwrap_or_else(|e| e)
                     .into()
-            })))
+            }),
+        ) {
+            Err(errs)
         } else {
             Ok(())
         };

@@ -707,10 +707,10 @@ impl ParseErrors {
 
     /// Construct a new `ParseErrors` with at least one element
     pub(crate) fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
-        let mut nv = NonEmpty::singleton(first);
-        let mut v = rest.into_iter().collect::<Vec<_>>();
-        nv.append(&mut v);
-        Self(nv)
+        Self(NonEmpty {
+            head: first,
+            tail: rest.into_iter().collect::<Vec<_>>(),
+        })
     }
 
     /// Construct a new `ParseErrors` from another `NonEmpty` type
@@ -719,8 +719,7 @@ impl ParseErrors {
     }
 
     pub(crate) fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
-        let v = i.into_iter().collect::<Vec<_>>();
-        Some(Self(NonEmpty::from_vec(v)?))
+        NonEmpty::collect(i).map(Self::new_from_nonempty)
     }
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
