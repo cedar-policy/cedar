@@ -44,8 +44,8 @@ This looks like a regular policy, but it has `?principal` instead of a concrete 
 Let's link this template to give `alice` access:
 ```
 cargo run link \
-	--policies-file policies.cedar \
-	--template-linked-file ./linked \
+	--policies policies.cedar \
+	--template-linked ./linked \
 	--template-id "AccessVacation" \
 	--new-id "AliceAccess" \
 	--arguments '{ "?principal" : "User::\"alice\"" }'
@@ -70,8 +70,8 @@ And we should now get `ALLOW`.
 Let's also give `bob` access:
 ```
 cargo run link \
-	--policies-file policies.cedar \
-	--template-linked-file ./linked \
+	--policies policies.cedar \
+	--template-linked ./linked \
 	--template-id "AccessVacation" \
 	--new-id "BobAccess" \
 	--arguments '{ "?principal" : "User::\"bob\"" }'
