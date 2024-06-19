@@ -317,7 +317,7 @@ pub enum ToASTErrorKind {
     #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
     InvalidAccess(ast::Name, SmolStr),
     /// Returned when a policy attempts to index on a fields of a value with no fields
-    #[error("invalid indexing expression `{0}[{1}]`, `{0}` has no fields")]
+    #[error("invalid indexing expression `{0}[\"{}\"]`, `{0}` has no fields", .1.escape_debug())]
     InvalidIndex(ast::Name, SmolStr),
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
