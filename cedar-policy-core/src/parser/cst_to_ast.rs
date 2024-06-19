@@ -4650,7 +4650,7 @@ mod tests {
         let src = "foo.attr";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error( &format!("invalid member access `foo.attr`, `foo` has no fields or methods"),)
+                &ExpectedErrorMessageBuilder::error( &"invalid member access `foo.attr`, `foo` has no fields or methods".to_string(),)
                     .exactly_one_underline("foo.attr")
                     .build()
             );
@@ -4659,7 +4659,7 @@ mod tests {
         let src = r#"foo["attr"]"#;
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error( &format!(r#"invalid indexing expression `foo["attr"]`, `foo` has no fields"#),)
+                &ExpectedErrorMessageBuilder::error( &r#"invalid indexing expression `foo["attr"]`, `foo` has no fields"#.to_string(),)
                     .exactly_one_underline(r#"foo["attr"]"#)
                     .build()
             );
@@ -4668,7 +4668,7 @@ mod tests {
         let src = r#"foo["\n"]"#;
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error( &format!(r#"invalid indexing expression `foo["\n"]`, `foo` has no fields"#),)
+                &ExpectedErrorMessageBuilder::error( &r#"invalid indexing expression `foo["\n"]`, `foo` has no fields"#.to_string(),)
                     .exactly_one_underline(r#"foo["\n"]"#)
                     .build()
             );
