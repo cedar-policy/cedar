@@ -18,8 +18,8 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, ContextCreationError, EntityAttrEvaluationError, EntityUID, Expr,
-    ExprKind, Name, PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, Name,
+    PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
@@ -71,10 +71,6 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExpectedExtnValue(ExpectedExtnValue),
-    /// Errors creating the request context from JSON
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error(transparent)]
     #[diagnostic(transparent)]

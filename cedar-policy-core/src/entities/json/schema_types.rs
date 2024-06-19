@@ -276,7 +276,7 @@ pub enum GetSchemaTypeError {
     /// Trying to compute the [`SchemaType`], but the value or expression
     /// contains an [`Unknown`] that has insufficient type information
     /// associated in order to compute the `SchemaType`
-    #[error("can't compute SchemaType because of insufficient type information for `{unknown}`")]
+    #[error("cannot compute type because of insufficient type information for `{unknown}`")]
     UnknownInsufficientTypeInfo {
         /// `Unknown` which has insufficient type information
         unknown: Unknown,
@@ -285,7 +285,7 @@ pub enum GetSchemaTypeError {
     /// residual which is not just a single `Unknown`). For now, we do not
     /// attempt to compute the [`SchemaType`] in these cases, and just return
     /// this error.
-    #[error("can't compute SchemaType of nontrivial residual `{residual}`")]
+    #[error("cannot compute type of nontrivial residual `{residual}`")]
     NontrivialResidual {
         /// Nontrivial residual which we were trying to compute the
         /// [`SchemaType`] of

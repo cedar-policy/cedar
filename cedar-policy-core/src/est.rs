@@ -2909,11 +2909,13 @@ mod test {
             .clone()
             .link(&HashMap::from_iter([]))
             .expect_err("didn't fill all the slots");
-        assert_eq!(
-            err,
-            LinkingError::MissedSlot {
-                slot: ast::SlotId::principal()
-            }
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "failed to link template: no value provided for `?principal`",
+            )
+            .build(),
         );
         let err = est
             .clone()
@@ -2922,11 +2924,13 @@ mod test {
                 EntityUidJson::new("XYZCorp::User", "12UA45"),
             )]))
             .expect_err("didn't fill all the slots");
-        assert_eq!(
-            err,
-            LinkingError::MissedSlot {
-                slot: ast::SlotId::resource()
-            }
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "failed to link template: no value provided for `?resource`",
+            )
+            .build(),
         );
         let linked = est
             .link(&HashMap::from_iter([
@@ -3889,21 +3893,31 @@ mod test {
                 .unwrap();
             let est: Policy = cst.try_into().unwrap();
             let err = est.clone().link(&HashMap::from_iter([]));
-            assert_eq!(
+            assert_matches!(
                 err,
-                Err(LinkingError::MissedSlot {
-                    slot: ast::SlotId::principal()
-                })
+                Err(e) => {
+                    expect_err(
+                        "",
+                        &miette::Report::new(e),
+                        &ExpectedErrorMessageBuilder::error("failed to link template: no value provided for `?principal`")
+                            .build()
+                    );
+                }
             );
             let err = est.clone().link(&HashMap::from_iter([(
                 ast::SlotId::principal(),
                 EntityUidJson::new("User", "alice"),
             )]));
-            assert_eq!(
+            assert_matches!(
                 err,
-                Err(LinkingError::MissedSlot {
-                    slot: ast::SlotId::resource()
-                })
+                Err(e) => {
+                    expect_err(
+                        "",
+                        &miette::Report::new(e),
+                        &ExpectedErrorMessageBuilder::error("failed to link template: no value provided for `?resource`")
+                            .build()
+                    );
+                }
             );
             let linked = est
                 .link(&HashMap::from_iter([
@@ -4154,6 +4168,95 @@ mod issue_925 {
                     &miette::Report::new(e),
                     &ExpectedErrorMessageBuilder::error(r#"expected entity uids with type `Action` but got `NotAction::"view"` and `Other::"edit"`"#)
                         .help("action entities must have type `Action`, optionally in a namespace")
+                        .build()
+                );
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod issue_994 {
+    use crate::{
+        entities::json::err::JsonDeserializationError,
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn empty_annotation() {
+        let src = json!(
+            {
+                "annotations": {"": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id ``: unexpected end of input"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn annotation_with_space() {
+        let src = json!(
+            {
+                "annotations": {"has a space": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `has a space`: unexpected token `a`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn special_char() {
+        let src = json!(
+            {
+                "annotations": {"@": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `@`: unexpected token `@`"#)
                         .build()
                 );
             }

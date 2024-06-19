@@ -17,7 +17,7 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
-use crate::entities::json::err::JsonDeserializationError;
+use crate::entities_json_errors::JsonDeserializationError;
 use crate::ParseErrors;
 use cedar_policy_core::ast;
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;

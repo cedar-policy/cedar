@@ -4409,7 +4409,7 @@ mod policy_set_est_tests {
     fn test_est_policyset_decoding_empty() {
         let empty = serde_json::json!({
             "templates" : [],
-            "static_policies" : [],
+            "staticPolicies" : [],
             "links" : []
         });
         let empty = PolicySet::from_json_value(empty).unwrap();
@@ -4419,7 +4419,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_single() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4471,7 +4471,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4562,7 +4562,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_link_name() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4641,7 +4641,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_empty_env() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4718,7 +4718,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_links() {
         let value = serde_json::json!({
-            "static_policies" : [],
+            "staticPolicies" : [],
         "templates" : [
             { "id" : "template1",
               "policy" : {
@@ -4767,7 +4767,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_extra_vals() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4847,7 +4847,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_vals() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4929,7 +4929,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_euid() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4995,15 +4995,393 @@ mod policy_set_est_tests {
             }
         ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap();
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error serializing/deserializing policy set to/from JSON")
+                .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 64 column 17"#)
+                .build(),
+        );
+    }
+}
+
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
+mod authorization_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_evaluation_error() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Principal", "p")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "r")),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+
+        let e = r#"[
+            {
+                "uid": {"type":"Principal","id":"p"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"r"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(
+            Some("id0".into()),
+            "permit(principal,action,resource) when {principal.foo == 1};",
+        )
+        .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+        assert_eq!(response.diagnostics().reason().count(), 0);
+        let errs = response.diagnostics().errors().collect::<Vec<_>>();
+        assert_eq!(errs.len(), 1);
+        expect_err(
+            "",
+            &Report::new(errs[0].clone()),
+            &ExpectedErrorMessageBuilder::error(r#"error while evaluating policy `id0`: `Principal::"p"` does not have the attribute `foo`"#)
+                .build(),
+        );
+    }
+}
+
+mod request_validation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Principal": {},
+                    "Resource": {},
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "principalTypes": ["Principal"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn undeclared_action() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "undeclared")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
         expect_err(
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                "error serializing/deserializing policy set to/from JSON",
+                r#"request's action `Action::"undeclared"` is not declared in the schema"#,
             )
-            .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 64 column 17"#)
             .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Undeclared", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "principal type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Undeclared", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "resource type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Resource", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Principal", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `Principal` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_context() {
+        let schema = schema();
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+
+        let err = Request::new(
+            Some(EntityUid::from_strs("Principal", "principal")),
+            Some(EntityUid::from_strs("Action", "action")),
+            Some(EntityUid::from_strs("Resource", "resource")),
+            Context::from_json_value(json!({"foo": 123}), None)
+                .expect("context creation should have succeeded"),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+}
+
+mod context_creation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "action": {
+                            "appliesTo": {
+                                "context": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": { "type": "String" },
+                                        "bar": { "type": "Extension", "name": "decimal", "required": false }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ))
+            .unwrap()
+    }
+
+    #[test]
+    fn schema_based_parsing() {
+        let schema = schema();
+
+        // ok
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": { "__extn": { "fn": "decimal", "arg": "1.23" } }}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok - and 1.23 is parsed as a decimal instead of a string
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok (despite the fact that "foo" has the incorrect type) - the schema for
+        // `Context::from_json_value` is used for schema-based parsing, not validation
+        Context::from_json_value(
+            json!({"foo": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // error - missing a required attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"xxx": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, expected the record to have an attribute `foo`, but it does not",
+            )
+            .build(),
+        );
+
+        // error - including an undefined attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"foo": "some string", "xxx": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, record attribute `xxx` should not exist according to the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn missing_action() {
+        let schema = schema();
+        let err = Context::from_json_value(
+            json!({"foo": "some string"}),
+            Some((&schema, &EntityUid::from_strs("Action", "foo"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"action `Action::"foo"` does not exist in the supplied schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn context_creation_errors() {
+        let err = Context::from_json_value(json!("not_a_record"), None).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(r#"expression is not a record: "not_a_record""#)
+                .build(),
+        );
+
+        let err = Context::from_json_value(
+            json!({"foo": { "__extn": { "fn": "ip", "arg": "not_an_ip_address" }}}),
+            None,
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error while evaluating `ipaddr` extension function: invalid IP address: not_an_ip_address")
+                .build(),
+        );
+
+        let pairs = vec![
+            (
+                String::from("key1"),
+                RestrictedExpression::new_string("foo".into()),
+            ),
+            (String::from("key1"), RestrictedExpression::new_bool(true)),
+        ];
+        let err = Context::from_pairs(pairs).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("duplicate key `key1` in record literal").build(),
         );
     }
 }
