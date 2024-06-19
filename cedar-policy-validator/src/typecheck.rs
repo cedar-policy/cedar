@@ -143,7 +143,7 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv, PolicyCheck)> {
+    ) -> Vec<(RequestEnv<'_>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, |request, expr| {
             let mut type_errors = Vec::new();
             let empty_prior_eff = EffectSet::new();
@@ -172,9 +172,9 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv, C)>
+    ) -> Vec<(RequestEnv<'_>, C)>
     where
-        F: Fn(&RequestEnv, &Expr) -> C,
+        F: Fn(&RequestEnv<'_>, &Expr) -> C,
     {
         let mut result_checks = Vec::new();
 
@@ -201,7 +201,7 @@ impl<'a> Typechecker<'a> {
     pub fn multi_typecheck_by_request_env(
         &self,
         policy_templates: &[&Template],
-    ) -> Vec<(RequestEnv, Vec<PolicyCheck>)> {
+    ) -> Vec<(RequestEnv<'_>, Vec<PolicyCheck>)> {
         let mut env_checks = Vec::new();
         for request in self.unlinked_request_envs() {
             let mut policy_checks = Vec::new();
@@ -233,7 +233,7 @@ impl<'a> Typechecker<'a> {
         env_checks
     }
 
-    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
+    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = self
             .schema
@@ -278,7 +278,7 @@ impl<'a> Typechecker<'a> {
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv> + 'b> {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'_>> + 'b> {
         match env {
             RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
             RequestEnv::DeclaredAction {
@@ -371,7 +371,7 @@ impl<'a> Typechecker<'a> {
     /// successfully typechecked.
     fn typecheck<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -1188,7 +1188,7 @@ impl<'a> Typechecker<'a> {
     /// INVARIANT: `bin_expr` must be a `BinaryApp`
     fn typecheck_binary<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         bin_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -1472,7 +1472,7 @@ impl<'a> Typechecker<'a> {
     /// Get the type for an `==` expression given the input types.
     fn type_of_equality<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         lhs_expr: &'b Expr,
         lhs_ty: &Option<Type>,
         rhs_expr: &'b Expr,
@@ -1532,7 +1532,7 @@ impl<'a> Typechecker<'a> {
     /// type false, allowing for short circuiting in `if` and `and` expressions.
     fn typecheck_in<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         in_expr: &Expr,
         lhs: &'b Expr,
@@ -1754,7 +1754,7 @@ impl<'a> Typechecker<'a> {
 
     // Given an expression, if that expression is a literal or the `action`
     // variable, return it as an EntityUID. Return `None` otherwise.
-    fn euid_from_euid_literal_or_action(request_env: &RequestEnv, e: &Expr) -> Option<EntityUID> {
+    fn euid_from_euid_literal_or_action(request_env: &RequestEnv<'_>, e: &Expr) -> Option<EntityUID> {
         match Typechecker::replace_action_var_with_euid(request_env, e)
             .as_ref()
             .expr_kind()
@@ -1768,7 +1768,7 @@ impl<'a> Typechecker<'a> {
     // extracted by `euid_from_uid_literal_or_action`. Return `None` if any
     // cannot be converted.
     fn euids_from_euid_literals_or_action<'b>(
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         exprs: impl IntoIterator<Item = &'b Expr>,
     ) -> Option<Vec<EntityUID>> {
         exprs
@@ -1777,7 +1777,7 @@ impl<'a> Typechecker<'a> {
             .collect::<Option<Vec<_>>>()
     }
 
-    fn is_unspecified_entity(query_env: &RequestEnv, expr: &Expr) -> bool {
+    fn is_unspecified_entity(query_env: &RequestEnv<'_>, expr: &Expr) -> bool {
         match expr.expr_kind() {
             ExprKind::Var(Var::Principal) => matches!(
                 query_env.principal_entity_type(),
@@ -1801,7 +1801,7 @@ impl<'a> Typechecker<'a> {
     /// entity literal or set of entity literals.
     fn type_of_var_in_entity_literals<'b, 'c>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         lhs_var: Var,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
@@ -1900,7 +1900,7 @@ impl<'a> Typechecker<'a> {
 
     fn type_of_entity_literal_in_entity_literals<'b, 'c>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         lhs_euid: &EntityUID,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
@@ -2078,7 +2078,7 @@ impl<'a> Typechecker<'a> {
     /// INVARIANT: `unary_expr` must be of kind `UnaryApp`
     fn typecheck_unary<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         unary_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -2146,7 +2146,7 @@ impl<'a> Typechecker<'a> {
     /// Return the TypecheckSuccess with the type otherwise.
     fn expect_one_of_types<'b, F>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: &[Type],
@@ -2206,7 +2206,7 @@ impl<'a> Typechecker<'a> {
     /// type.
     fn expect_type<'b, F>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: Type,
@@ -2270,7 +2270,7 @@ impl<'a> Typechecker<'a> {
     /// a expression for the entity uid for the action variable in the request
     /// environment. Otherwise, return the expression unchanged.
     fn replace_action_var_with_euid(
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         maybe_action_var: &'a Expr,
     ) -> Cow<'a, Expr> {
         match maybe_action_var.expr_kind() {
@@ -2320,7 +2320,7 @@ impl<'a> Typechecker<'a> {
     /// INVARIANT `ext_expr` must be a `ExtensionFunctionApp`
     fn typecheck_extension<'b>(
         &self,
-        request_env: &RequestEnv,
+        request_env: &RequestEnv<'_>,
         prior_eff: &EffectSet<'b>,
         ext_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,

@@ -457,7 +457,7 @@ struct SchemaTypeVisitor;
 impl<'de> Visitor<'de> for SchemaTypeVisitor {
     type Value = SchemaType;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("builtin type or reference to type defined in commonTypes")
     }
 

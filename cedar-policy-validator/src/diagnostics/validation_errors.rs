@@ -669,7 +669,7 @@ pub enum AttributeAccess {
 impl AttributeAccess {
     /// Construct an `AttributeAccess` access from a `GetAttr` expression `expr.attr`.
     pub(crate) fn from_expr(
-        req_env: &RequestEnv,
+        req_env: &RequestEnv<'_>,
         mut expr: &Expr<Option<Type>>,
         attr: SmolStr,
     ) -> AttributeAccess {

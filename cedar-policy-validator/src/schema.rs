@@ -841,7 +841,7 @@ impl<'a> CommonTypeResolver<'a> {
     }
 
     // Resolve common type references
-    fn resolve(&self, extensions: Extensions) -> Result<HashMap<Name, Type>> {
+    fn resolve(&self, extensions: Extensions<'_>) -> Result<HashMap<Name, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
         })?;
