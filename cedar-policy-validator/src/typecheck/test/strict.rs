@@ -42,7 +42,7 @@ use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder};
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
     schema: SchemaFragment,
-    env: &RequestEnv,
+    env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
 ) {
@@ -64,7 +64,7 @@ fn assert_typechecks_strict(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
     schema: SchemaFragment,
-    env: &RequestEnv,
+    env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
     expected_error: ValidationError,
@@ -87,7 +87,7 @@ fn assert_strict_type_error(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_types_must_match(
     schema: SchemaFragment,
-    env: &RequestEnv,
+    env: &RequestEnv<'_>,
     e: Expr,
     on_expr: Expr,
     expected_type: Type,
@@ -138,7 +138,7 @@ fn simple_schema_file() -> SchemaFragment {
 
 fn with_simple_schema_and_request<F>(f: F)
 where
-    F: FnOnce(SchemaFragment, RequestEnv),
+    F: FnOnce(SchemaFragment, RequestEnv<'_>),
 {
     f(
         simple_schema_file(),

@@ -860,7 +860,7 @@ impl EntityLUB {
         }
     }
 
-    /// Like `get_single_entity()`, but consumes the EntityLUB and produces an
+    /// Like `get_single_entity()`, but consumes the [`EntityLUB`] and produces an
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<Name> {
         let mut names = self.lub_elements.into_iter();
@@ -922,8 +922,8 @@ impl EntityLUB {
         })
     }
 
-    /// Generate the least upper bound of this EntityLUB and another. This
-    /// returns an EntityLUB for the union of the entity types in both argument
+    /// Generate the least upper bound of this [`EntityLUB`] and another. This
+    /// returns an [`EntityLUB`] for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
     pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
@@ -935,19 +935,19 @@ impl EntityLUB {
         }
     }
 
-    /// Return true if the set of entity types composing this EntityLUB is
+    /// Return true if the set of entity types composing this [`EntityLUB`] is
     /// disjoint from th entity types composing another LUB.
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
         self.lub_elements.is_disjoint(&other.lub_elements)
     }
 
-    /// Return true if the given entity type `Name` is in the set of entity
+    /// Return true if the given entity type [`Name`] is in the set of entity
     /// types comprising this LUB.
     pub(crate) fn contains(&self, ty: &Name) -> bool {
         self.lub_elements.contains(ty)
     }
 
-    /// An iterator over the entity type `Name`s in the set of entity types
+    /// An iterator over the entity type [`Name`]s in the set of entity types
     /// comprising this LUB.
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
         self.lub_elements.iter()
@@ -1135,7 +1135,7 @@ impl OpenTag {
 /// Represents whether a type is an entity type, record type, or could be either
 ///
 /// The subtyping lattice for these types is that
-/// Entity <: AnyEntity. Record does not subtype anything.
+/// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum EntityRecordKind {
     /// A record type, with these attributes
@@ -1428,7 +1428,7 @@ pub struct AttributeType {
 }
 
 impl AttributeType {
-    /// Construct an AttributeType with some type that may be required or
+    /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter.
     pub fn new(attr_type: Type, is_required: bool) -> Self {
         Self {
@@ -1437,7 +1437,7 @@ impl AttributeType {
         }
     }
 
-    /// Construct an AttributeType for an attribute that must be present given
+    /// Construct an [`AttributeType`] for an attribute that must be present given
     /// the type of the attribute.
     pub fn required_attribute(attr_type: Type) -> Self {
         Self::new(attr_type, true)
