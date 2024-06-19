@@ -1070,7 +1070,7 @@ pub mod request_validation_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    use crate::{EntityTypeName, EntityUid};
+    use crate::{Context, EntityTypeName, EntityUid};
 
     /// Request action is not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
