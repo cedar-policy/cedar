@@ -5184,7 +5184,7 @@ mod request_validation_tests {
 
     #[test]
     fn invalid_resource_type() {
-        let schema: Schema = schema();
+        let schema = schema();
         let err = Request::new(
             EntityUid::from_strs("Principal", "principal"),
             EntityUid::from_strs("Action", "action"),
