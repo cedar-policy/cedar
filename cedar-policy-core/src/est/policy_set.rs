@@ -51,9 +51,7 @@ impl PolicySet {
                     None
                 }
             })
-            .collect::<Vec<_>>()
-            .first()
-            .cloned();
+            .next();
 
         let maybe_link = self
             .links
@@ -69,9 +67,7 @@ impl PolicySet {
                     None
                 }
             })
-            .collect::<Vec<_>>()
-            .first()
-            .cloned();
+            .next();
 
         maybe_static_policy.or(maybe_link)
     }
@@ -90,9 +86,7 @@ impl PolicySet {
                     None
                 }
             })
-            .collect::<Vec<_>>()
-            .first()
-            .cloned()
+            .next()
     }
 }
 

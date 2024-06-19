@@ -310,6 +310,7 @@ pub enum RequestValidationError {
     /// Error computing the type of the `Context`; see the contained error type
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
+    #[diagnostic(transparent)]
     TypeOfContext(GetSchemaTypeError),
 }
 
