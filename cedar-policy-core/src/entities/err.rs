@@ -23,11 +23,11 @@ use thiserror::Error;
 #[derive(Debug, Diagnostic, Error)]
 pub enum EntitiesError {
     /// Error occurring in serialization of entities
-    #[error("error during entity serialization: {0}")]
+    #[error("error during entity serialization")]
     #[diagnostic(transparent)]
     Serialization(#[from] crate::entities::json::err::JsonSerializationError),
     /// Error occurring in deserialization of entities
-    #[error("error during entity deserialization: {0}")]
+    #[error("error during entity deserialization")]
     #[diagnostic(transparent)]
     Deserialization(#[from] crate::entities::json::err::JsonDeserializationError),
     /// Error constructing the Entities collection as there is a duplicate Entity UID
@@ -36,11 +36,11 @@ pub enum EntitiesError {
     Duplicate(Duplicate),
     /// Errors occurring while computing or enforcing transitive closure on the
     /// entity hierarchy.
-    #[error("transitive closure computation/enforcement error: {0}")]
+    #[error("transitive closure computation/enforcement error")]
     #[diagnostic(transparent)]
     TransitiveClosureError(#[from] TransitiveClosureError),
     /// Error because an entity doesn't conform to the schema
-    #[error("entity does not conform to the schema: {0}")]
+    #[error("entity does not conform to the schema")]
     #[diagnostic(transparent)]
     InvalidEntity(#[from] crate::entities::conformance::err::EntitySchemaConformanceError),
 }

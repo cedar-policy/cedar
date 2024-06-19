@@ -108,7 +108,7 @@ pub enum ContextJsonDeserializationError {
     ///
     /// (Note: as of this writing, `JsonDeserializationError` actually contains
     /// many variants that aren't possible here)
-    #[error("while parsing context, {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
     JsonDeserialization(#[from] JsonDeserializationError),
     /// Error constructing the `Context` itself

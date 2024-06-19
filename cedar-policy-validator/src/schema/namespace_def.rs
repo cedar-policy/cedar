@@ -535,6 +535,7 @@ impl ValidatorNamespaceDef {
                 }
             }
             if !actions_with_attributes.is_empty() {
+                actions_with_attributes.sort(); // TODO(#833): sort required for deterministic error messages
                 return Err(
                     UnsupportedFeatureError(UnsupportedFeature::ActionAttributes(
                         actions_with_attributes,

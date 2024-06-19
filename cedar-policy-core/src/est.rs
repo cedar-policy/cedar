@@ -3196,7 +3196,8 @@ mod test {
                 expect_err(
                     "",
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"tried to convert JSON representing a template to a static policy: found slot `?principal` where slots are not allowed"#)
+                    &ExpectedErrorMessageBuilder::error(r#"tried to convert JSON representing a template to a static policy"#)
+                        .source("found slot `?principal` where slots are not allowed")
                         .build()
                 );
             }
