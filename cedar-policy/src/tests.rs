@@ -169,7 +169,7 @@ permit(principal ==  A :: B
         let result = EntityTypeName::from_str(src);
 
         assert_matches!(result, Err(_));
-        let error = result.err().unwrap();
+        let error = result.unwrap_err();
         expect_err(
             src,
             &Report::new(error),
@@ -3310,7 +3310,7 @@ mod schema_based_parsing_tests {
                 "parents": []
             }
         ]);
-        let r = Entities::from_json_value(json.clone(), None).err().unwrap();
+        let r = Entities::from_json_value(json.clone(), None).unwrap_err();
         match r {
             EntitiesError::Duplicate(euid) => {
                 expect_err(
@@ -4628,7 +4628,7 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
+        let err = PolicySet::from_json_value(value).unwrap_err();
         expect_err(
             "",
             &Report::new(err),
@@ -4705,7 +4705,7 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
+        let err = PolicySet::from_json_value(value).unwrap_err();
         expect_err(
             "",
             &Report::new(err),
@@ -4754,7 +4754,7 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
+        let err = PolicySet::from_json_value(value).unwrap_err();
         expect_err(
             "",
             &Report::new(err),
@@ -4834,7 +4834,7 @@ mod policy_set_est_tests {
             }
         ]});
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
+        let err = PolicySet::from_json_value(value).unwrap_err();
         expect_err(
             "",
             &Report::new(err),
