@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON format Cedar policies will now fail to parse if the action scope
   constraint contains a non-action entity type, matching the behavior for
   human-readable Cedar policies. (#943, resolving #925)
+- JSON format Cedar policies will now fail to parse if any annotations are not
+  valid Cedar identifiers. (#1004, resolving #994)
 
 ## [3.2.1] - 2024-05-31
 
