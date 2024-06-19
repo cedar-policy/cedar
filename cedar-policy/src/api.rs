@@ -43,7 +43,6 @@ use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
-use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use ref_cast::RefCast;
