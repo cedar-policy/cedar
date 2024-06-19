@@ -277,7 +277,7 @@ pub struct ApplySpec {
     pub context: AttributesOrContext,
 }
 
-/// Represents the EntityUID of an action
+/// Represents the [`EntityUID`] of an action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -845,14 +845,14 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 /// flattened for serialization, so, in JSON format, this appears as a regular
 /// type with one extra property `required`.
 ///
-/// Note that we can't add #[serde(deny_unknown_fields)] here because we are
-/// using #[serde(tag = "type")] in ty:SchemaType which is flattened here.
-/// The way serde(flatten) is implemented means it may be possible to access
+/// Note that we can't add `#[serde(deny_unknown_fields)]` here because we are
+/// using `#[serde(tag = "type")]` in [`SchemaType`] which is flattened here.
+/// The way `serde(flatten)` is implemented means it may be possible to access
 /// fields incorrectly if a struct contains two structs that are flattened
 /// (`<https://github.com/serde-rs/serde/issues/1547>`). This shouldn't apply to
-/// us as we're using flatten only once
+/// us as we're using `flatten` only once
 /// (`<https://github.com/serde-rs/serde/issues/1600>`). This should be ok because
-/// unknown fields for TypeOfAttribute should be passed to SchemaType where
+/// unknown fields for [`TypeOfAttribute`] should be passed to [`SchemaType`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]

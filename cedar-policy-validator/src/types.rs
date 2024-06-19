@@ -109,7 +109,7 @@ impl Type {
     }
 
     /// Construct a type for a literal EUID. This type will be a named entity
-    /// type for the type of the EntityUID.
+    /// type for the type of the [`EntityUID`].
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         if entity.entity_type().is_action() {
             schema
@@ -383,8 +383,8 @@ impl Type {
         }
     }
 
-    /// Is this validator type "consistent with" the given Core SchemaType.
-    /// Meaning, is there at least some value that could have this SchemaType and
+    /// Is this validator type "consistent with" the given Core `SchemaType`.
+    /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
     pub(crate) fn is_consistent_with(
         &self,

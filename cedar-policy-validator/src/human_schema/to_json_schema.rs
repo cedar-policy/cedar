@@ -42,9 +42,9 @@ use super::{
 };
 
 /// Convert a schema AST into the JSON representation.
-/// This will let you subsequently decode that into the Validator AST for Schemas (`[ValidatorSchema]`).
+/// This will let you subsequently decode that into the Validator AST for Schemas ([`ValidatorSchema`]).
 /// On success, this function returns a tuple containing:
-///     * The SchemaFragment
+///     * The `SchemaFragment`
 ///     * A vector of name collisions, that are essentially warnings
 pub fn custom_schema_to_json_schema(
     schema: Schema,
@@ -371,7 +371,7 @@ impl<'a> ConversionContext<'a> {
             .map(move |name| (name.node, etype.clone())))
     }
 
-    /// Create a Record Type from a vector of AttrDecl's
+    /// Create a Record Type from a vector of `AttrDecl`s
     fn convert_attr_decls(
         &self,
         attrs: Vec<Node<AttrDecl>>,
@@ -406,7 +406,7 @@ impl<'a> ConversionContext<'a> {
         }))
     }
 
-    /// Convert an attribute type from an AttrDecl
+    /// Convert an attribute type from an `AttrDecl`
     fn convert_attr_decl(
         &self,
         attr: Node<AttrDecl>,

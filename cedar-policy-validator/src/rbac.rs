@@ -296,7 +296,7 @@ impl Validator {
         .into_iter()
     }
 
-    /// Gather all ApplySpec objects for all actions in the schema. The `applies_to`
+    /// Gather all `ApplySpec` objects for all actions in the schema. The `applies_to`
     /// field is optional in the schema. In the case that it was not supplied, the
     /// `applies_to` field will contain `UnspecifiedEntity`.
     pub(crate) fn get_apply_specs_for_action<'a>(

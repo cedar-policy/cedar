@@ -16,7 +16,7 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
+#![warn(rust_2018_idioms)]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -28,7 +28,7 @@
     rustdoc::bare_urls,
     clippy::doc_markdown
 )]
-#![allow(clippy::result_large_err)] // see #878
+#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};

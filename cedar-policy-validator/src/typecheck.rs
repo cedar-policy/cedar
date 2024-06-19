@@ -363,7 +363,7 @@ impl<'a> Typechecker<'a> {
     /// This method handles the majority of the work. Given an expression,
     /// the type for the request, and the a prior effect context for the
     /// expression, return the result of typechecking the expression, and add
-    /// any errors encountered into the type_errors list. The result of
+    /// any errors encountered into the `type_errors` list. The result of
     /// typechecking contains the type of the expression, any current effect of
     /// the expression, and a flag indicating whether the expression
     /// successfully typechecked.
@@ -2047,8 +2047,8 @@ impl<'a> Typechecker<'a> {
     }
 
     /// Check that an expression has a type that is a subtype of one of the
-    /// given types. If not, generate a type error and return TypecheckFail.
-    /// Return the TypecheckSuccess with the type otherwise.
+    /// given types. If not, generate a type error and return `TypecheckFail`.
+    /// Return `TypecheckSuccess` with the type otherwise.
     fn expect_one_of_types<'b, F>(
         &self,
         request_env: &RequestEnv<'_>,
@@ -2133,8 +2133,8 @@ impl<'a> Typechecker<'a> {
 
     /// Return the least upper bound of all types is the `types` vector. If
     /// there isn't a least upper bound, then a type error is reported and
-    /// TypecheckFail is returned. Note that this function does not preserve the
-    /// effects of the input TypecheckAnswers.
+    /// `TypecheckFail` is returned. Note that this function does not preserve the
+    /// effects of the input [`TypecheckAnswers`].
     fn least_upper_bound_or_error(
         &self,
         expr: &Expr,

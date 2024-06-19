@@ -504,12 +504,12 @@ impl ValidatorSchema {
         }
     }
 
-    /// Lookup the ValidatorActionId object in the schema with the given name.
+    /// Lookup the [`ValidatorActionId`] object in the schema with the given name.
     pub fn get_action_id(&self, action_id: &EntityUID) -> Option<&ValidatorActionId> {
         self.action_ids.get(action_id)
     }
 
-    /// Lookup the ValidatorEntityType object in the schema with the given name.
+    /// Lookup the [`ValidatorEntityType`] object in the schema with the given name.
     pub fn get_entity_type<'a>(
         &'a self,
         entity_type_id: &EntityType,
@@ -517,12 +517,12 @@ impl ValidatorSchema {
         self.entity_types.get(entity_type_id)
     }
 
-    /// Return true when the entity_type_id corresponds to a valid entity type.
+    /// Return true when the `action_id` corresponds to a valid action.
     pub(crate) fn is_known_action_id(&self, action_id: &EntityUID) -> bool {
         self.action_ids.contains_key(action_id)
     }
 
-    /// Return true when the entity_type_id corresponds to a valid entity type.
+    /// Return true when the `entity_type` corresponds to a valid entity type.
     pub(crate) fn is_known_entity_type(&self, entity_type: &EntityType) -> bool {
         entity_type.is_action() || self.entity_types.contains_key(entity_type)
     }
@@ -693,10 +693,14 @@ impl<'a> CommonTypeResolver<'a> {
     }
 
     /// Perform topological sort on the dependency graph
+    ///
     /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
     /// depends on `B`)
-    /// topo_sort(A -> B -> C) produces [C, B, A]
+    ///
+    /// `topo_sort(A -> B -> C)` produces [C, B, A]
+    ///
     /// If there is a cycle, a type name involving in this cycle is the error
+    ///
     /// It implements a variant of Kahn's algorithm
     fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
         // The in-degree map

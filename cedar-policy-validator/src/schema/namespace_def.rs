@@ -197,7 +197,7 @@ impl<T: 'static> WithUnresolvedTypeDefs<T> {
     }
 
     /// Instantiate any names referencing types with the definition of the type
-    /// from the input HashMap.
+    /// from the input `HashMap`.
     pub fn resolve_type_defs(self, type_defs: &HashMap<Name, Type>) -> Result<T> {
         match self {
             WithUnresolvedTypeDefs::WithUnresolved(f) => f(type_defs),
@@ -602,10 +602,10 @@ impl ValidatorNamespaceDef {
     }
 
     /// Take an action identifier as a string and use it to construct an
-    /// EntityUID for that action. The entity type of the action will always
+    /// [`EntityUID`] for that action. The entity type of the action will always
     /// have the base type `Action`. The type will be qualified with any
     /// namespace provided in the `namespace` argument or with the namespace
-    /// inside the ActionEntityUID if one is present.
+    /// inside the [`ActionEntityUID`] if one is present.
     fn parse_action_id_with_namespace(
         action_id: &ActionEntityUID,
         namespace: Option<&Name>,
