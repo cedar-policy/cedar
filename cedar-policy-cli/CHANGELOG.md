@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Added command `translate-policy` that translates a policy set in its human-readable format to the JSON format (except comments).
+
 ### Changed
 
 - The default `--schema-format` is now `human` for all subcommands that take
