@@ -277,19 +277,19 @@ pub struct ApplySpec {
     pub context: AttributesOrContext,
 }
 
-/// Represents the [`EntityUID`] of an action
+/// Represents the [`ast::EntityUID`] of an action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID {
-    /// Represents the `Eid` of the action
+    /// Represents the [`ast::Eid`] of the action
     pub id: SmolStr,
 
     /// Represents the type of the action.
     /// `None` is shorthand for `Action`.
-    /// If this is `Some`, the last component of the `Name` should be `Action`.
+    /// If this is `Some`, the last component of the [`Name`] should be `Action`.
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]

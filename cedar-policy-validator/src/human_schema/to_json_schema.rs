@@ -42,7 +42,7 @@ use super::{
 };
 
 /// Convert a schema AST into the JSON representation.
-/// This will let you subsequently decode that into the Validator AST for Schemas ([`ValidatorSchema`]).
+/// This will let you subsequently decode that into the Validator AST for Schemas ([`crate::ValidatorSchema`]).
 /// On success, this function returns a tuple containing:
 ///     * The `SchemaFragment`
 ///     * A vector of name collisions, that are essentially warnings
