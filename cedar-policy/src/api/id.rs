@@ -366,7 +366,7 @@ impl From<PolicyId> for ast::PolicyID {
 /// Identifier for a Template slot
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
 pub struct SlotId(ast::SlotId);
 
 impl SlotId {
