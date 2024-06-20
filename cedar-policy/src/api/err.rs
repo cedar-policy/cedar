@@ -1080,6 +1080,13 @@ pub mod request_validation_errors {
         pub(super) action: EntityUid,
     }
 
+    impl UndeclaredActionError {
+        /// The action which was not declared in the schema
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
+    }
+
     /// Request principal is of a type not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
     #[error("principal type `{principal_ty}` is not declared in the schema")]
@@ -1088,12 +1095,26 @@ pub mod request_validation_errors {
         pub(super) principal_ty: EntityTypeName,
     }
 
+    impl UndeclaredPrincipalTypeError {
+        /// The principal type which was not declared in the schema
+        pub fn principal_ty(&self) -> &EntityTypeName {
+            &self.principal_ty
+        }
+    }
+
     /// Request resource is of a type not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
     #[error("resource type `{resource_ty}` is not declared in the schema")]
     pub struct UndeclaredResourceTypeError {
         /// Resource type which was not declared in the schema
         pub(super) resource_ty: EntityTypeName,
+    }
+
+    impl UndeclaredResourceTypeError {
+        /// The resource type which was not declared in the schema
+        pub fn resource_ty(&self) -> &EntityTypeName {
+            &self.resource_ty
+        }
     }
 
     /// Request principal is of a type that is declared in the schema, but is
@@ -1107,6 +1128,18 @@ pub mod request_validation_errors {
         pub(super) action: EntityUid,
     }
 
+    impl InvalidPrincipalTypeError {
+        /// The principal type which is not valid
+        pub fn principal_ty(&self) -> &EntityTypeName {
+            &self.principal_ty
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
+    }
+
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
     #[derive(Debug, Diagnostic, Error)]
@@ -1118,6 +1151,18 @@ pub mod request_validation_errors {
         pub(super) action: EntityUid,
     }
 
+    impl InvalidResourceTypeError {
+        /// The resource type which is not valid
+        pub fn resource_ty(&self) -> &EntityTypeName {
+            &self.resource_ty
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
+    }
+
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Diagnostic, Error)]
     #[error("context `{context}` is not valid for `{action}`")]
@@ -1126,6 +1171,18 @@ pub mod request_validation_errors {
         pub(super) context: Context,
         /// Action which it is not valid for
         pub(super) action: EntityUid,
+    }
+
+    impl InvalidResourceTypeError {
+        /// The context which is not valid
+        pub fn context(&self) -> &Context {
+            &self.context
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            &self.action
+        }
     }
 
     /// Error computing the type of the `Context`
