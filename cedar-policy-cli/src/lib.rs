@@ -95,6 +95,9 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Slice a policy set
+    #[cfg(feature = "policy-slicing")]
+    Slice(SliceArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
@@ -412,6 +415,20 @@ pub struct NewArgs {
     /// Name of the Cedar project
     #[arg(short, long, value_name = "DIR")]
     pub name: String,
+}
+
+#[cfg(feature = "policy-slicing")]
+#[derive(Args, Debug)]
+pub struct SliceArgs {
+    /// Request args (incorporated by reference)
+    #[command(flatten)]
+    pub request: RequestArgs,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// File containing JSON representation of the Cedar entity hierarchy
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
 }
 
 /// Wrapper struct
@@ -959,6 +976,36 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
         .open(path)
         .into_diagnostic()?;
     serde_json::to_writer(f, linked).into_diagnostic()
+}
+
+#[cfg(feature = "policy-slicing")]
+fn slice_inner(args: &SliceArgs) -> Result<()> {
+    let policies = args.policies.get_policy_set()?;
+    let entities = load_entities(
+        <std::string::String as AsRef<Path>>::as_ref(&args.entities_file),
+        None,
+    )?;
+    let request = args.request.get_request(None)?;
+    println!(
+        "{} -> {}",
+        policies.policies().collect::<Vec<&Policy>>().len(),
+        get_policy_set_slice(&request, &entities, &policies)
+            .policies()
+            .collect::<Vec<&Policy>>()
+            .len()
+    );
+    Ok(())
+}
+
+#[cfg(feature = "policy-slicing")]
+pub fn slice(args: &SliceArgs) -> CedarExitCode {
+    match slice_inner(args) {
+        Ok(_) => CedarExitCode::Success,
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
+    }
 }
 
 pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {

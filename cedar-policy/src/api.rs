@@ -42,6 +42,8 @@ use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
+#[cfg(feature = "policy-slicing")]
+use cedar_policy_core::slicer::Slicer;
 use cedar_policy_core::FromNormalizedStr;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 use itertools::{Either, Itertools};
@@ -3550,4 +3552,17 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
+}
+
+/// Get a slice of a policy set based on a request and a store
+#[cfg(feature = "policy-slicing")]
+pub fn get_policy_set_slice(
+    request: &Request,
+    entities: &Entities,
+    policy_set: &PolicySet,
+) -> PolicySet {
+    let slicer = Slicer::new(&policy_set.ast, &entities.0);
+    //PANIC SAFETY: a core policy set should be a valid api policy set
+    #[allow(clippy::unwrap_used)]
+    PolicySet::from_str(&slicer.get_slice(&request.0).to_string()).unwrap()
 }

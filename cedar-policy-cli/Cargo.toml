@@ -22,9 +22,10 @@ thiserror = "1.0"
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate"]
+experimental = ["permissive-validate", "partial-validate", "policy-slicing"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
+policy-slicing = ["cedar-policy/policy-slicing"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
