@@ -1055,3 +1055,27 @@ fn test_json_policy() {
         .assert()
         .code(0);
 }
+
+#[test]
+fn test_translate_policy() {
+    let human_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
+    let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.json";
+    let human = std::fs::read_to_string(human_filename).unwrap();
+    let json = std::fs::read_to_string(json_filename).unwrap();
+    let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("human-to-json")
+        .arg("-p")
+        .arg(human_filename)
+        .assert();
+
+    let translated = std::str::from_utf8(&translate_cmd.get_output().stdout)
+        .expect("output should be decodable");
+
+    assert_eq!(
+        translated, json,
+        "\noriginal:\n{human}\n\ttranslated:\n{translated}",
+    );
+}
