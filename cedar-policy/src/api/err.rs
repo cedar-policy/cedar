@@ -271,7 +271,7 @@ impl EntityAttrEvaluationError {
 impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
-            uid: EntityUid::new(err.uid),
+            uid: err.uid.into(),
             attr: err.attr,
             err: err.err,
         }
