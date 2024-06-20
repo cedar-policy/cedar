@@ -3393,7 +3393,20 @@ impl Context {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Context> for Context {
+    fn from(c: ast::Context) -> Self {
+        Self(c)
+    }
+}
+
 impl std::fmt::Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
