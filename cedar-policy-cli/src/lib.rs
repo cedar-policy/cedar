@@ -95,6 +95,8 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Translate natural policy syntax to JSON (except comments)
+    TranslatePolicy(TranslatePolicyArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
@@ -102,10 +104,28 @@ pub enum Commands {
 }
 
 #[derive(Args, Debug)]
+pub struct TranslatePolicyArgs {
+    /// The direction of translation,
+    #[arg(long)]
+    pub direction: PolicyTranslationDirection,
+    /// Filename to read the policies from.
+    /// If not provided, will default to reading stdin.
+    #[arg(short = 'p', long = "policies", value_name = "FILE")]
+    pub input_file: Option<String>,
+}
+
+/// The direction of translation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum PolicyTranslationDirection {
+    /// Human policy syntax -> JSON
+    HumanToJson,
+}
+
+#[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
     /// The direction of translation,
     #[arg(long)]
-    pub direction: TranslationDirection,
+    pub direction: SchemaTranslationDirection,
     /// Filename to read the schema from.
     /// If not provided, will default to reading stdin.
     #[arg(short = 's', long = "schema", value_name = "FILE")]
@@ -114,7 +134,7 @@ pub struct TranslateSchemaArgs {
 
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum TranslationDirection {
+pub enum SchemaTranslationDirection {
     /// JSON -> Human schema syntax
     JsonToHuman,
     /// Human schema syntax -> JSON
@@ -671,13 +691,39 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_to_human(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+    let output = policy_set.to_json()?.to_string();
+    Ok(output)
+}
+
+fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
+    let translate = match args.direction {
+        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+    };
+    read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
+}
+
+pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
+    match translate_policy_inner(args) {
+        Ok(sf) => {
+            println!("{sf}");
+            CedarExitCode::Success
+        }
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
+    }
+}
+
+fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
     let output = fragment.as_natural()?;
     Ok(output)
 }
 
-fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
     let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
@@ -689,11 +735,12 @@ fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        TranslationDirection::JsonToHuman => translate_to_human,
-        TranslationDirection::HumanToJson => translate_to_json,
+        SchemaTranslationDirection::JsonToHuman => translate_schema_to_human,
+        SchemaTranslationDirection::HumanToJson => translate_schema_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
+
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     match translate_schema_inner(args) {
         Ok(sf) => {

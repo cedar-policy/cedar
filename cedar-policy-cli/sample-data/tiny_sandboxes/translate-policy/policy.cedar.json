@@ -1,0 +1,1 @@
+{"templates":{},"staticPolicies":{"policy0":{"effect":"permit","principal":{"op":"==","entity":{"type":"User","id":"alice"}},"action":{"op":"==","entity":{"type":"Action","id":"update"}},"resource":{"op":"==","entity":{"type":"Photo","id":"VacationPhoto94.jpg"}},"conditions":[]}},"templateLinks":[]}
