@@ -15,7 +15,7 @@
  */
 //! Note on panic safety
 //! If any of the panics in this file are triggered, that means that this file has become
-//! out-of-date with the decimal extension definition in CedarCore.
+//! out-of-date with the decimal extension definition in Core.
 //! This is tested by the `extension_schema_correctness()` test
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
@@ -29,7 +29,7 @@ use super::eval_extension_constructor;
 /// Note on safety:
 /// This module depends on the Cedar parser only constructing AST with valid extension calls
 /// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the decimal extension definition in CedarCore.
+/// out-of-date with the decimal extension definition in Core.
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]

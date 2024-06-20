@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! `Display` implementations for formatting a schema in human syntax
+
 use std::{collections::HashSet, fmt::Display};
 
 use cedar_policy_core::ast::Name;
@@ -156,8 +158,10 @@ impl Display for ActionType {
     }
 }
 
+/// Error converting a schema to human syntax
 #[derive(Debug, Diagnostic, Error)]
 pub enum ToHumanSchemaSyntaxError {
+    /// Collisions between names prevented the conversion to human syntax
     #[diagnostic(transparent)]
     #[error(transparent)]
     NameCollisions(#[from] NameCollisionsError),
@@ -178,6 +182,7 @@ impl NameCollisionsError {
     }
 }
 
+/// Convert a [`SchemaFragment`] to a string containing human schema syntax
 pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
 ) -> Result<String, ToHumanSchemaSyntaxError> {

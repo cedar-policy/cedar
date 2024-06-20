@@ -49,17 +49,22 @@ pub use entity_type::ValidatorEntityType;
 mod namespace_def;
 pub use namespace_def::ValidatorNamespaceDef;
 
-// We do not have a formal model for action attributes, so we disable them by default.
-#[derive(Eq, PartialEq, Copy, Clone, Default)]
+/// Configurable validator behaviors regarding actions
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
 pub enum ActionBehavior {
     /// Action entities cannot have attributes. Attempting to declare attributes
     /// will result in a error when constructing the schema.
+    ///
+    /// Since we do not have a formal model for action attributes, this behavior
+    /// (disabling/prohibiting them) is the default.
     #[default]
     ProhibitAttributes,
     /// Action entities may have attributes.
     PermitAttributes,
 }
 
+/// A `ValidatorSchemaFragment` consists of any number (even 0) of
+/// `ValidatorNamespaceDef`s.
 #[derive(Debug)]
 pub struct ValidatorSchemaFragment(Vec<ValidatorNamespaceDef>);
 
@@ -76,10 +81,12 @@ impl TryInto<ValidatorSchemaFragment> for SchemaFragment {
 }
 
 impl ValidatorSchemaFragment {
+    /// Construct a [`ValidatorSchemaFragment`] from multiple [`ValidatorNamespaceDef`]s
     pub fn from_namespaces(namespaces: impl IntoIterator<Item = ValidatorNamespaceDef>) -> Self {
         Self(namespaces.into_iter().collect())
     }
 
+    /// Construct a [`ValidatorSchemaFragment`] from a [`SchemaFragment`]
     pub fn from_schema_fragment(
         fragment: SchemaFragment,
         action_behavior: ActionBehavior,
@@ -102,20 +109,25 @@ impl ValidatorSchemaFragment {
     }
 
     /// Access the `Name`s for the namespaces in this fragment.
+    /// `None` indicates the empty namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = &Option<Name>> {
         self.0.iter().map(|d| d.namespace())
     }
 }
 
+/// Internal representation of the schema for use by the validator.
+///
+/// In this representation, all common types are fully expanded, and all entity
+/// type names are fully disambiguated (fully qualified).
 #[serde_as]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidatorSchema {
-    /// Map from entity type names to the ValidatorEntityType object.
+    /// Map from entity type names to the [`ValidatorEntityType`] object.
     #[serde_as(as = "Vec<(_, _)>")]
     entity_types: HashMap<EntityType, ValidatorEntityType>,
 
-    /// Map from action id names to the ValidatorActionId object.
+    /// Map from action id names to the [`ValidatorActionId`] object.
     #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 }
@@ -150,7 +162,8 @@ impl TryFrom<SchemaFragment> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
-    // Create a ValidatorSchema without any entity types or actions ids.
+    /// Create a [`ValidatorSchema`] without any definitions (of entity types,
+    /// common types, or actions).
     pub fn empty() -> ValidatorSchema {
         Self {
             entity_types: HashMap::new(),
@@ -158,7 +171,7 @@ impl ValidatorSchema {
         }
     }
 
-    /// Construct a `ValidatorSchema` from a JSON value in the appropriate
+    /// Construct a [`ValidatorSchema`] from a JSON value in the appropriate
     /// shape.
     pub fn from_json_value(json: serde_json::Value, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -168,7 +181,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` from a string containing JSON in the
+    /// Construct a [`ValidatorSchema`] from a string containing JSON in the
     /// appropriate shape.
     pub fn from_json_str(json: &str, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -178,7 +191,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` directly from a file containing JSON
+    /// Construct a [`ValidatorSchema`] directly from a file containing JSON
     /// in the appropriate shape.
     pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
@@ -188,7 +201,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a `ValidatorSchema` directly from a file containing Cedar
+    /// Construct a [`ValidatorSchema`] directly from a file containing Cedar
     /// "natural" schema syntax.
     pub fn from_file_natural(
         r: impl std::io::Read,
@@ -201,7 +214,7 @@ impl ValidatorSchema {
         Ok(schema_and_warnings)
     }
 
-    /// Constructor a `ValidatorSchema` from a string containing Cedar "natural"
+    /// Construct a [`ValidatorSchema`] from a string containing Cedar "natural"
     /// schema syntax.
     pub fn from_str_natural(
         src: &str,
@@ -214,7 +227,7 @@ impl ValidatorSchema {
         Ok(schema_and_warnings)
     }
 
-    /// Helper function to construct a `ValidatorSchema` from a single `SchemaFragment`
+    /// Helper function to construct a [`ValidatorSchema`] from a single [`SchemaFragment`].
     pub(crate) fn from_schema_frag(
         schema_file: SchemaFragment,
         action_behavior: ActionBehavior,
@@ -230,7 +243,7 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a new `ValidatorSchema` from some number of schema fragments.
+    /// Construct a [`ValidatorSchema`] from some number of [`ValidatorSchemaFragment`]s.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment>,
         extensions: Extensions<'_>,
@@ -491,12 +504,12 @@ impl ValidatorSchema {
         }
     }
 
-    /// Lookup the ValidatorActionId object in the schema with the given name.
+    /// Lookup the [`ValidatorActionId`] object in the schema with the given name.
     pub fn get_action_id(&self, action_id: &EntityUID) -> Option<&ValidatorActionId> {
         self.action_ids.get(action_id)
     }
 
-    /// Lookup the ValidatorEntityType object in the schema with the given name.
+    /// Lookup the [`ValidatorEntityType`] object in the schema with the given name.
     pub fn get_entity_type<'a>(
         &'a self,
         entity_type_id: &EntityType,
@@ -504,12 +517,12 @@ impl ValidatorSchema {
         self.entity_types.get(entity_type_id)
     }
 
-    /// Return true when the entity_type_id corresponds to a valid entity type.
+    /// Return true when the `action_id` corresponds to a valid action.
     pub(crate) fn is_known_action_id(&self, action_id: &EntityUID) -> bool {
         self.action_ids.contains_key(action_id)
     }
 
-    /// Return true when the entity_type_id corresponds to a valid entity type.
+    /// Return true when the `entity_type` corresponds to a valid entity type.
     pub(crate) fn is_known_entity_type(&self, entity_type: &EntityType) -> bool {
         entity_type.is_action() || self.entity_types.contains_key(entity_type)
     }
@@ -680,10 +693,14 @@ impl<'a> CommonTypeResolver<'a> {
     }
 
     /// Perform topological sort on the dependency graph
+    ///
     /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
     /// depends on `B`)
-    /// topo_sort(A -> B -> C) produces [C, B, A]
+    ///
+    /// `topo_sort(A -> B -> C)` produces [C, B, A]
+    ///
     /// If there is a cycle, a type name involving in this cycle is the error
+    ///
     /// It implements a variant of Kahn's algorithm
     fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
         // The in-degree map
@@ -807,7 +824,7 @@ impl<'a> CommonTypeResolver<'a> {
     }
 
     // Resolve common type references
-    fn resolve(&self, extensions: Extensions) -> Result<HashMap<Name, Type>> {
+    fn resolve(&self, extensions: Extensions<'_>) -> Result<HashMap<Name, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
         })?;

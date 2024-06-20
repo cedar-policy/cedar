@@ -18,7 +18,7 @@ use cedar_policy_core::ast::Expr;
 
 use crate::types::{EffectSet, Type};
 
-/// TypecheckAnswer holds the result of typechecking an expression.
+/// [`TypecheckAnswer`] holds the result of typechecking an expression.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum TypecheckAnswer<'a> {
     /// Typechecking succeeded, and we know the type and a possibly empty effect
@@ -37,12 +37,12 @@ pub(crate) enum TypecheckAnswer<'a> {
         expr_recovery_type: Expr<Option<Type>>,
     },
 
-    /// RecursionLimit Reached
+    /// Recursion limit reached
     RecursionLimit,
 }
 
 impl<'a> TypecheckAnswer<'a> {
-    /// Construct a successful TypecheckAnswer with a type but with an empty
+    /// Construct a successful [`TypecheckAnswer`] with a type but with an empty
     /// effect set.
     pub fn success(expr_type: Expr<Option<Type>>) -> Self {
         Self::TypecheckSuccess {
@@ -51,7 +51,7 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Construct a successful TypecheckAnswer with a type and an effect.
+    /// Construct a successful [`TypecheckAnswer`] with a type and an effect.
     pub fn success_with_effect(expr_type: Expr<Option<Type>>, expr_effect: EffectSet<'a>) -> Self {
         Self::TypecheckSuccess {
             expr_type,
@@ -59,14 +59,14 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Construct a failing TypecheckAnswer with a type.
+    /// Construct a failing [`TypecheckAnswer`] with a type.
     pub fn fail(expr_type: Expr<Option<Type>>) -> Self {
         Self::TypecheckFail {
             expr_recovery_type: expr_type,
         }
     }
 
-    /// Check if this TypecheckAnswer contains a particular type. It
+    /// Check if this [`TypecheckAnswer`] contains a particular type. It
     /// contains a type if the type annotated AST contains `Some`
     /// of the argument type at its root.
     pub fn contains_type(&self, ty: &Type) -> bool {
@@ -96,7 +96,7 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Transform the effect of this TypecheckAnswer without modifying the
+    /// Transform the effect of this [`TypecheckAnswer`] without modifying the
     /// success or type.
     pub fn map_effect<F>(self, f: F) -> Self
     where
@@ -115,9 +115,9 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Convert this TypecheckAnswer into an equivalent answer for an expression
-    /// that has failed to typecheck. If this is already TypecheckFail, then no
-    /// change is required, otherwise, a TypecheckFail is constructed containing
+    /// Convert this [`TypecheckAnswer`] into an equivalent answer for an expression
+    /// that has failed to typecheck. If this is already `TypecheckFail`, then no
+    /// change is required, otherwise, a `TypecheckFail` is constructed containing
     /// `Some` of the `expr_type`.
     pub fn into_fail(self) -> Self {
         match self {
@@ -128,8 +128,8 @@ impl<'a> TypecheckAnswer<'a> {
     }
 
     /// Sequence another typechecking operation after this answer. The result of
-    /// the operation will be adjusted to be a TypecheckFail if this is a
-    /// TypecheckFail, otherwise it will be returned unaltered.
+    /// the operation will be adjusted to be a `TypecheckFail` if this is a
+    /// `TypecheckFail`, otherwise it will be returned unaltered.
     pub fn then_typecheck<F>(self, f: F) -> Self
     where
         F: FnOnce(Expr<Option<Type>>, EffectSet<'a>) -> TypecheckAnswer<'a>,
@@ -149,7 +149,7 @@ impl<'a> TypecheckAnswer<'a> {
     /// Sequence another typechecking operation after all of the typechecking
     /// answers in the argument. The result of the operation is adjusted in the
     /// same manner as in `then_typecheck`, but accounts for the all the
-    /// TypecheckAnswers.
+    /// [`TypecheckAnswer`]s.
     pub fn sequence_all_then_typecheck<F>(
         answers: impl IntoIterator<Item = TypecheckAnswer<'a>>,
         f: F,
