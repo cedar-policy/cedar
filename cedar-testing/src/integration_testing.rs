@@ -22,8 +22,9 @@
 #![allow(clippy::expect_used)]
 
 use crate::cedar_test_impl::*;
+use cedar_policy::entities_errors::EntitiesError;
 use cedar_policy::{Decision, PolicyId, ValidationMode};
-use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
+use cedar_policy_core::ast::{Eid, EntityUID, Expr, PolicyID, PolicySet, Request, Value};
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
@@ -34,6 +35,11 @@ use std::{
     env,
     path::{Path, PathBuf},
 };
+
+trait IntegrationTest {
+    fn schema(&self) -> &str;
+    fn entities(&self) -> &str;
+}
 
 /// JSON representation of our integration test file format
 #[derive(Debug, Deserialize, Serialize)]
@@ -52,6 +58,39 @@ pub struct JsonTest {
     /// Requests to perform on that data, along with their expected results
     /// Alias for backwards compatibility
     pub requests: Vec<JsonRequest>,
+}
+
+/// JSON representation of our integration test file format
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonEvalTest {
+    /// Filename of a JSON file representing the entity hierarchy
+    pub entities: String,
+    /// Filename of the schema (in Cedar syntax)
+    pub schema: String,
+    /// Request to perform on that data, along with their expected results
+    pub request: JsonEvalRequest,
+}
+
+impl IntegrationTest for JsonTest {
+    fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    fn entities(&self) -> &str {
+        &self.entities
+    }
+}
+
+impl IntegrationTest for JsonEvalTest {
+    fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    fn entities(&self) -> &str {
+        &self.entities
+    }
 }
 
 /// JSON representation of a single request, along with its expected result,
@@ -92,6 +131,39 @@ pub struct JsonRequest {
     pub reason: Vec<PolicyId>,
     /// Expected policies that resulted in errors
     pub errors: Vec<PolicyId>,
+}
+
+/// JSON representation of a single eval request, along with its expected result,
+/// in our integration test file format
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonEvalRequest {
+    /// Description for the request
+    pub description: String,
+    /// Principal for the request, in either explicit or implicit `__entity` form
+    ///
+    /// Examples:
+    /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
+    /// * `{ "type": "User", "id": "123abc" }`
+    pub principal: Option<JsonValueWithNoDuplicateKeys>,
+    /// Action for the request, in either explicit or implicit `__entity` form
+    ///
+    /// Examples:
+    /// * `{ "__entity": { "type": "Action", "id": "view" } }`
+    /// * `{ "type": "Action", "id": "view" }`
+    pub action: Option<JsonValueWithNoDuplicateKeys>,
+    /// Resource for the request, in either explicit or implicit `__entity` form
+    ///
+    /// Examples:
+    /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
+    /// * `{ "type": "User", "id": "123abc" }`
+    pub resource: Option<JsonValueWithNoDuplicateKeys>,
+    /// Context for the request. This should be a JSON object, not any other kind
+    /// of JSON value
+    pub context: JsonValueWithNoDuplicateKeys,
+    pub expression: JsonValueWithNoDuplicateKeys,
+    pub output: Option<serde_json::Value>,
 }
 
 fn constant_true() -> bool {
@@ -143,17 +215,17 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
         .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies))
 }
 
-/// Given a `JsonTest`, parse the provided schema file.
+/// Given an `IntegrationTest`, parse the provided schema file.
 /// # Panics
 /// On failure to load or parse schema file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
-    let schema_file = resolve_integration_test_path(&test.schema);
+pub fn parse_schema_from_test<T: IntegrationTest>(test: &T) -> ValidatorSchema {
+    let schema_file = resolve_integration_test_path(test.schema());
     let schema_text = std::fs::read_to_string(schema_file)
-        .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
+        .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", test.schema()));
     ValidatorSchema::from_str_natural(&schema_text, Extensions::all_available())
-        .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
+        .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", test.schema()))
         .0
 }
 
@@ -162,12 +234,15 @@ pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
 /// On failure to load or parse entities file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> Entities {
-    let entity_file = resolve_integration_test_path(&test.entities);
+pub fn parse_entities_from_test<T: IntegrationTest>(
+    test: &T,
+    schema: &ValidatorSchema,
+) -> Entities {
+    let entity_file = resolve_integration_test_path(&test.entities());
     let json = std::fs::OpenOptions::new()
         .read(true)
         .open(entity_file)
-        .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
+        .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities()));
 
     let schema = cedar_policy_validator::CoreSchema::new(schema);
     let eparser = entities::EntityJsonParser::new(
@@ -177,7 +252,7 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> En
     );
     eparser
         .from_json_file(json)
-        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
+        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities()))
 }
 
 // PANIC SAFETY this is testing code
@@ -331,6 +406,161 @@ pub fn perform_integration_test(
     }
 }
 
+/// Given a `JsonEvalRequest`, parse the provided request.
+/// # Panics
+/// On failure to parse request.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_request_from_eval_test(
+    json_request: &JsonEvalRequest,
+    schema: &ValidatorSchema,
+    test_name: &str,
+) -> Request {
+    let principal = json_request
+        .principal
+        .clone()
+        .map(|json| {
+            let error_string = format!(
+                "Failed to parse principal for request \"{}\" in {}",
+                json_request.description, test_name
+            );
+            parse_entity_uid(json, error_string)
+        })
+        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("principal")));
+    let action = json_request
+        .action
+        .clone()
+        .map(|json| {
+            let error_string = format!(
+                "Failed to parse action for request \"{}\" in {}",
+                json_request.description, test_name
+            );
+            parse_entity_uid(json, error_string)
+        })
+        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("action")));
+    let resource = json_request
+        .resource
+        .clone()
+        .map(|json| {
+            let error_string = format!(
+                "Failed to parse resource for request \"{}\" in {}",
+                json_request.description, test_name
+            );
+            parse_entity_uid(json, error_string)
+        })
+        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("resource")));
+    let context_schema = cedar_policy_validator::context_schema_for_action(schema, &action)
+        .unwrap_or_else(|| {
+            panic!(
+                "Unknown action {} for request \"{}\" in {}",
+                action, json_request.description, test_name
+            )
+        });
+    let context =
+        entities::ContextJsonParser::new(Some(&context_schema), Extensions::all_available())
+            .from_json_value(json_request.context.clone().into())
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to parse context for request \"{}\" in {}: {e}",
+                    json_request.description, test_name
+                )
+            });
+    Request::new(
+        (principal, None),
+        (action, None),
+        (resource, None),
+        context,
+        Some(schema),
+        Extensions::all_available(),
+    )
+    .unwrap_or_else(|e| {
+        panic!(
+            "error validating request \"{}\" in {}: {e}",
+            json_request.description, test_name
+        )
+    })
+}
+
+/// Given a `JsonEvalRequest`, parse the provided expression.
+/// # Panics
+/// On failure to parse request.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_expression_from_eval_test(
+    json_request: &JsonEvalRequest,
+    test_name: &str,
+) -> cedar_policy_core::ast::Expr {
+    let expression = &json_request.expression;
+    let est: cedar_policy_core::est::Expr = serde_json::from_value(expression.clone().into())
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse expression for request \"{}\" in {}: {e}",
+                json_request.description, test_name
+            )
+        });
+    let expr = est
+        .try_into_ast(PolicyID::from_string("test"))
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to convert est to ast for request \"{}\" in {}: {e}",
+                json_request.description, test_name
+            )
+        });
+    expr
+}
+
+/// Run an integration eval test starting from a pre-parsed `JsonEvalTest`.
+///
+/// # Panics
+/// When the integration test fails.
+#[allow(clippy::too_many_lines)]
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn perform_integration_eval_test(
+    entities: Entities,
+    schema: ValidatorSchema,
+    json_request: JsonEvalRequest,
+    test_name: &str,
+    test_impl: &impl CedarTestImplementation,
+) {
+    let request = parse_request_from_eval_test(&json_request, &schema, test_name);
+    let expression = parse_expression_from_eval_test(&json_request, test_name);
+    println!("expression: {expression}");
+
+    let expected: Option<Expr> = match json_request.output {
+        Some(output) => {
+            println!("output: {output}");
+            let expected: Expr = serde_json::from_value(output).expect("Failed to parse output");
+            Some(expected)
+        }
+        None => None,
+    };
+
+    let res = test_impl.interpret(&request, &entities, &expression, true, expected.clone());
+    // check decision
+
+    // matches `expected`
+    match res {
+        TestResult::Failure(err) => {
+            // TODO(#175): Ignore cases where the definitional code returned an error due to
+            // an unknown extension function.
+            if err.contains("jsonToExtFun: unknown extension function") {
+                return;
+            }
+            // No other errors are expected
+            panic!("Unexpected error for {request}\nExpression: {expression}\nError: {err}");
+        }
+        TestResult::Success(response) => {
+            // The definitional interpreter response should be `true`
+            assert!(
+                response,
+                "Incorrect evaluation result for {request}\nExpression: {expression}\nEntities:\n{entities}\nExpected value:\n{:?}\n",
+                expected
+            )
+        }
+    }
+}
+
 /// Given the filename of a JSON file describing an integration test, perform
 /// the test.
 ///
@@ -367,9 +597,47 @@ pub fn perform_integration_test_from_json_custom(
     );
 }
 
+/// Given the filename of a JSON file describing an integration eval test, perform
+/// the test.
+///
+/// Relative paths are assumed to be relative to the root of the
+/// cedar-integration-tests folder.
+/// Absolute paths are handled without modification.
+/// # Panics
+/// When integration test data cannot be found.
+#[allow(clippy::too_many_lines)]
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn perform_integration_eval_test_from_json_custom(
+    jsonfile: impl AsRef<Path>,
+    test_impl: &impl CedarTestImplementation,
+) {
+    let jsonfile = resolve_integration_test_path(jsonfile);
+    eprintln!("Running test: {jsonfile:?}");
+    let test_name: String = jsonfile.display().to_string();
+    let jsonstr = std::fs::read_to_string(jsonfile.as_path())
+        .unwrap_or_else(|e| panic!("error reading from file {test_name}: {e}"));
+    let test: JsonEvalTest =
+        serde_json::from_str(&jsonstr).unwrap_or_else(|e| panic!("error parsing {test_name}: {e}"));
+    let schema = parse_schema_from_test(&test);
+    let entities = parse_entities_from_test(&test, &schema);
+    perform_integration_eval_test(
+        entities,
+        schema,
+        test.request,
+        test_name.as_ref(),
+        test_impl,
+    );
+}
+
 /// Specialization of `perform_integration_test_from_json_custom` that performs
 /// an integration test on the `cedar-policy` API.
 pub fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let rust_impl = RustEngine::new();
     perform_integration_test_from_json_custom(jsonfile, &rust_impl);
+}
+
+pub fn perform_integration_eval_test_from_json(jsonfile: impl AsRef<Path>) {
+    let rust_impl = RustEngine::new();
+    perform_integration_eval_test_from_json_custom(jsonfile, &rust_impl);
 }

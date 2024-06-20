@@ -172,7 +172,7 @@ pub trait CedarTestImplementation {
         entities: &Entities,
         expr: &Expr,
         enable_extensions: bool,
-        expected: Option<Value>,
+        expected: Option<Expr>,
     ) -> TestResult<bool>;
 
     fn partial_is_authorized(
@@ -364,7 +364,7 @@ impl CedarTestImplementation for RustEngine {
         entities: &Entities,
         expr: &Expr,
         enable_extensions: bool,
-        expected: Option<Value>,
+        expected: Option<Expr>,
     ) -> TestResult<bool> {
         let exts = if enable_extensions {
             Extensions::all_available()
@@ -373,8 +373,21 @@ impl CedarTestImplementation for RustEngine {
         };
         let evaluator = Evaluator::new(request.clone(), entities, &exts);
         let result = evaluator.interpret(expr, &HashMap::default());
-        let response = result.ok() == expected;
-        TestResult::Success(response)
+        println!("result: {:?}", result);
+        println!("expected: {:?}", expected);
+        match result {
+            Ok(result) => {
+                let response = match expected {
+                    Some(expected) => Expr::from(result) == expected,
+                    None => true,
+                };
+                TestResult::Success(response)
+            }
+            Err(_) => match expected {
+                None => TestResult::Success(true),
+                _ => TestResult::Failure("Expected none due to error, got some".to_string()),
+            },
+        }
     }
 
     fn validate(

@@ -16,6 +16,7 @@
 
 //! Integration tests auto-generated using the differential tester.
 
+use cedar_testing::integration_testing::perform_integration_eval_test_from_json;
 use cedar_testing::integration_testing::perform_integration_test_from_json;
 use cedar_testing::integration_testing::resolve_integration_test_path;
 use std::path::Path;
@@ -23,6 +24,11 @@ use std::path::Path;
 /// Path of the folder containing the corpus tests
 fn folder() -> &'static Path {
     Path::new("corpus-tests")
+}
+
+/// Path of the folder containing the corpus tests
+fn eval_folder() -> &'static Path {
+    Path::new("eval-corpus-tests")
 }
 
 // PANIC SAFETY: Corpus Tests
@@ -56,5 +62,39 @@ fn corpus_tests() {
         });
     for test_json in test_jsons {
         perform_integration_test_from_json(test_json);
+    }
+}
+
+// PANIC SAFETY: Eval Corpus Tests
+#[allow(clippy::panic)]
+// for now we have a single #[test] that runs all the corpus tests.
+// The disadvantage of this is that only one error message will be displayed,
+// even if many of the corpus tests fail.
+// TODO(#438): figure out if we can procedurally generate one #[test]
+// per corpus test.
+#[test]
+// Don't run the corpus tests by default because they can take a minute to
+// complete, slowing things down substantially.
+#[ignore]
+fn eval_corpus_tests() {
+    let corpus_tests_folder = resolve_integration_test_path(eval_folder());
+    let test_jsons = std::fs::read_dir(&corpus_tests_folder)
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to read corpus-tests folder {}: {e}",
+                corpus_tests_folder.display()
+            )
+        })
+        .map(|e| e.expect("failed to access file in corpus-tests").path())
+        .filter(|p| {
+            let filename = p
+                .file_name()
+                .expect("didn't expect subdirectories in corpus-tests")
+                .to_str()
+                .expect("expected filenames to be valid UTF-8");
+            filename.ends_with(".json") && !filename.ends_with(".entities.json")
+        });
+    for test_json in test_jsons {
+        perform_integration_eval_test_from_json(test_json);
     }
 }
