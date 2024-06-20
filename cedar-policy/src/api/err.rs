@@ -1173,7 +1173,7 @@ pub mod request_validation_errors {
         pub(super) action: EntityUid,
     }
 
-    impl InvalidResourceTypeError {
+    impl InvalidContextError {
         /// The context which is not valid
         pub fn context(&self) -> &Context {
             &self.context
