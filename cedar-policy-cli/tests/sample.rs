@@ -1059,7 +1059,7 @@ fn test_json_policy() {
 #[test]
 fn test_translate_policy() {
     let human_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
-    let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.json";
+    let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
     let human = std::fs::read_to_string(human_filename).unwrap();
     let json = std::fs::read_to_string(json_filename).unwrap();
     let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
