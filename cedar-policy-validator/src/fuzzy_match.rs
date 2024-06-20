@@ -19,7 +19,7 @@ pub fn fuzzy_search(key: &str, lst: &[impl AsRef<str>]) -> Option<String> {
     if key.is_empty() || lst.is_empty() {
         None
     } else {
-        let t = lst.iter().fold((std::usize::MAX, ""), |acc, word| {
+        let t = lst.iter().fold((usize::MAX, ""), |acc, word| {
             let e = levenshtein_distance(key, word.as_ref());
             if e < acc.0 {
                 (e, word.as_ref())
