@@ -294,6 +294,7 @@ pub enum RequestValidationError {
     TypeOfContext(GetSchemaTypeError),
 }
 
+/// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
     use miette::Diagnostic;
