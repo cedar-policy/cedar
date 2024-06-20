@@ -874,24 +874,24 @@ impl EntityLUB {
     }
 
     /// Return true if the set of entity types composing this [`EntityLUB`] is
-    /// disjoint from th entity types composing another LUB.
+    /// disjoint from th entity types composing another [`EntityLUB`].
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
         self.lub_elements.is_disjoint(&other.lub_elements)
     }
 
     /// Return true if the given entity type [`Name`] is in the set of entity
-    /// types comprising this LUB.
+    /// types comprising this [`EntityLUB`].
     pub(crate) fn contains(&self, ty: &EntityType) -> bool {
         self.lub_elements.contains(ty)
     }
 
     /// An iterator over the entity type [`Name`]s in the set of entity types
-    /// comprising this LUB.
+    /// comprising this [`EntityLUB`].
     pub(crate) fn iter(&self) -> impl Iterator<Item = &EntityType> {
         self.lub_elements.iter()
     }
 
-    // Check if this EntityLUB contains a particular entity type.
+    // Check if this [`EntityLUB`] contains a particular entity type.
     pub(crate) fn contains_entity_type(&self, ety: &EntityType) -> bool {
         self.lub_elements.contains(ety)
     }
@@ -1093,7 +1093,7 @@ pub enum EntityRecordKind {
     /// represented using the `AnyEntity` record kind.
     ///
     /// Attributes in this case are not stored inline but must be looked up in
-    /// the schema, based on the elements of the EntityLUB.
+    /// the schema, based on the elements of the [`EntityLUB`].
     Entity(EntityLUB),
 
     /// We special case action entities, which store their attributes directly, like `Record`s do

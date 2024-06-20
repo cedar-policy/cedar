@@ -315,7 +315,7 @@ pub struct PRAppDecl {
 /// A declaration of constraints on an action type
 #[derive(Debug, Clone)]
 pub enum AppDecl {
-    /// Constraints on the `principal`` or `resource``
+    /// Constraints on the `principal` or `resource``
     PR(PRAppDecl),
     /// Constraints on the `context`
     Context(Either<Path, Vec<Node<AttrDecl>>>),
