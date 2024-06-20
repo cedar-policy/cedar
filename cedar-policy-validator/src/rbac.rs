@@ -18,8 +18,8 @@
 
 use cedar_policy_core::{
     ast::{
-        self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
-        PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, EntityReference, EntityUID, Name, Policy, PolicyID,
+        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
     parser::Loc,
 };
@@ -160,9 +160,9 @@ impl Validator {
     fn check_if_in_fixes<'a>(
         &'a self,
         scope_constraint: &PrincipalOrResourceConstraint,
-        apply_specs: &[&'a ValidatorApplySpec],
+        apply_specs: &[&'a ValidatorApplySpec<Name>],
         select_apply_spec: &impl Fn(
-            &'a ValidatorApplySpec,
+            &'a ValidatorApplySpec<Name>,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
         let entity_type = Validator::get_eq_comparison(scope_constraint);
@@ -180,10 +180,10 @@ impl Validator {
     // not exists spec in apply_specs such that lit in spec.principals
     fn check_if_none_equal<'a>(
         &'a self,
-        specs: &[&'a ValidatorApplySpec],
+        specs: &[&'a ValidatorApplySpec<Name>],
         lit_opt: Option<&ast::EntityType>,
         select_apply_spec: &impl Fn(
-            &'a ValidatorApplySpec,
+            &'a ValidatorApplySpec<Name>,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
         if let Some(lit) = lit_opt {
@@ -199,10 +199,10 @@ impl Validator {
     // exists spec in apply_specs such that there exists principal in spec.principals such that lit `memberOf` principal
     fn check_if_any_contain<'a>(
         &'a self,
-        specs: &[&'a ValidatorApplySpec],
+        specs: &[&'a ValidatorApplySpec<Name>],
         lit_opt: Option<&ast::EntityType>,
         select_apply_spec: &impl Fn(
-            &'a ValidatorApplySpec,
+            &'a ValidatorApplySpec<Name>,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
         if let Some(etype) = lit_opt.and_then(|typename| self.schema.get_entity_type(typename)) {
@@ -300,7 +300,7 @@ impl Validator {
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
         action_constraint: &'a ActionConstraint,
-    ) -> impl Iterator<Item = &ValidatorApplySpec> + 'a {
+    ) -> impl Iterator<Item = &ValidatorApplySpec<Name>> + 'a {
         self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
             // applies_to list.

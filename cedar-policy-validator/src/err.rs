@@ -150,11 +150,19 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
-    /// This error occurs when an undeclared common type appears in entity or context
-    /// attributes.
+    /// This error occurs when we cannot resolve a typename we found in an
+    /// entity or context attribute. (because it refers to an entity type
+    /// or common type that was not declared.)
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredCommonTypes(#[from] schema_errors::UndeclaredCommonTypesError),
+    TypeResolution(#[from] schema_errors::TypeResolutionError),
+    /// This error occurs when we cannot resolve a common-type reference.
+    /// Normally, such errors would be `TypeResolution` instead; I think
+    /// this variant should never occur, but not positive, and hard to guarantee
+    /// structurally.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredCommonType(#[from] schema_errors::UndeclaredCommonTypeError),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
     #[error(transparent)]
@@ -248,6 +256,7 @@ pub mod schema_errors {
     };
     use itertools::Itertools;
     use miette::Diagnostic;
+    use nonempty::NonEmpty;
     use smol_str::SmolStr;
     use thiserror::Error;
 
@@ -326,15 +335,52 @@ pub mod schema_errors {
         }
     }
 
-    /// Undeclared common types error
+    /// Undeclared common type error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("undeclared common type: {0}")]
-    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) Name);
+    pub struct UndeclaredCommonTypeError(
+        // Note this is a fully-qualified `Name`; we can't conclude a
+        // common-type reference is undeclared without first determining which
+        // fully-qualified `Name` it resolves to
+        pub(crate) Name,
+    );
+
+    /// Type resolution error
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("failed to resolve type{}: {}", if .0.len() > 1 { "s" } else { "" }, .0.iter().map(crate::ConditionalName::raw).join(", "))]
+    #[diagnostic(help("{}", .0.first().resolution_failure_help()))] // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
+    pub struct TypeResolutionError(pub(crate) NonEmpty<crate::ConditionalName>);
+
+    impl TypeResolutionError {
+        /// Combine all the errors into a single `TypeResolutionError`.
+        ///
+        /// Returns `None` if the input `errs` was empty, otherwise returns `Some`.
+        pub(crate) fn join(errs: impl IntoIterator<Item = TypeResolutionError>) -> Option<Self> {
+            NonEmpty::collect(errs.into_iter().flat_map(|err| err.0)).map(Self)
+        }
+
+        /// Combine all the errors into a single `TypeResolutionError`.
+        ///
+        /// Unlike `join()`, this cannot fail, because `NonEmpty` guarantees
+        /// there is at least one error to join.
+        pub(crate) fn join_nonempty(errs: NonEmpty<TypeResolutionError>) -> Self {
+            // PANIC SAFETY: Since the input is `NonEmpty`, there must be at
+            // least one error, so `NonEmpty::collect()` must return `Some`
+            #[allow(clippy::expect_used)]
+            Self(
+                NonEmpty::collect(errs.into_iter().flat_map(|err| err.0))
+                    .expect("input contained at least one error, so NonEmpty must be nonempty"),
+            )
+        }
+    }
 
     /// Duplicate entity type error
     //

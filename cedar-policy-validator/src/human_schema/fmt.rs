@@ -183,6 +183,9 @@ impl NameCollisionsError {
 }
 
 /// Convert a [`SchemaFragment`] to a string containing human schema syntax
+///
+/// TODO: Can/should we move these name-collision checks to some point after
+/// we've fully-qualified the names in question?
 pub fn json_schema_to_custom_schema_str<N: Display>(
     json_schema: &SchemaFragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {

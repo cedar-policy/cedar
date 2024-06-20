@@ -140,6 +140,9 @@ fn convert_namespace(
 ///
 /// Its primary purpose is implementing the procedure for looking up a type name
 /// and resolving it to a type.
+///
+/// TODO: Now we should do this during construction of the `ValidatorSchema`; it
+/// needs to apply to JSON schemas as well
 struct ConversionContext<'a> {
     names: &'a HashMap<Option<Name>, NamespaceRecord>,
     current_namespace_name: Option<Name>,

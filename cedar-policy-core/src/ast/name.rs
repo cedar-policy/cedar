@@ -152,20 +152,22 @@ impl Name {
 
     /// Qualify the name with a namespace
     ///
-    /// When the name already has an explicit namespace, it doesn't make sense
-    /// to prefix any namespace, and hence this method returns a copy of `self`.
+    /// If the name already has a non-empty namespace, this method does not
+    /// apply any prefix and instead returns a copy of `self`.
     ///
     /// If `namespace` is `None`, that represents the empty namespace, so no
     /// prefixing will be done.
     ///
-    /// When the name does not already have an explicit namespace, and
-    /// `namespace` is `Some`, prefix it with the namespace.
+    /// If the name does not already have an explicit namespace (i.e., it's
+    /// just a single `Id`), this applies `namespace` as a prefix (if it is
+    /// present).
     ///
     /// Examples:
-    /// `A::B`.qualify_with(Some(C)) is just A::B
-    /// `A`.qualify_with(Some(C)) is C::A
-    /// `A`.qualify_with(Some(B::C)) is B::C::A
-    /// `A`.qualify_with(None) is A
+    /// - `A::B`.qualify_with(None) is `A::B`
+    /// - `A::B`.qualify_with(Some(C)) is also `A::B`
+    /// - `A`.qualify_with(None) is `A`
+    /// - `A`.qualify_with(Some(C)) is `C::A`
+    /// - `A`.qualify_with(Some(B::C)) is `B::C::A`
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Name {
         if self.is_unqualified() {
             // Ideally, we want to implement `IntoIterator` for `Name`

@@ -1190,7 +1190,7 @@ impl Validator {
 /// used to validate a policy.
 #[derive(Debug)]
 pub struct SchemaFragment {
-    value: cedar_policy_validator::ValidatorSchemaFragment,
+    value: cedar_policy_validator::ValidatorSchemaFragment<cedar_policy_validator::ConditionalName>,
     lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
 }
 
@@ -1201,7 +1201,7 @@ impl SchemaFragment {
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
         self.value
             .namespaces()
-            .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
+            .map(|ns| ns.map(|ns| EntityNamespace(ns.clone())))
     }
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
