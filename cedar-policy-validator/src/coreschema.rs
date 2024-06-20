@@ -168,16 +168,18 @@ impl ast::RequestSchema for ValidatorSchema {
         } = request.principal()
         {
             if self.get_entity_type(principal.entity_type()).is_none() {
-                return Err(RequestValidationError::UndeclaredPrincipalType {
+                return Err(request_validation_errors::UndeclaredPrincipalTypeError {
                     principal_ty: principal.entity_type().clone(),
-                });
+                }
+                .into());
             }
         }
         if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
             if self.get_entity_type(resource.entity_type()).is_none() {
-                return Err(RequestValidationError::UndeclaredResourceType {
+                return Err(request_validation_errors::UndeclaredResourceTypeError {
                     resource_ty: resource.entity_type().clone(),
-                });
+                }
+                .into());
             }
         }
 
@@ -185,7 +187,7 @@ impl ast::RequestSchema for ValidatorSchema {
         match request.action() {
             EntityUIDEntry::Known { euid: action, .. } => {
                 let validator_action_id = self.get_action_id(action).ok_or_else(|| {
-                    RequestValidationError::UndeclaredAction {
+                    request_validation_errors::UndeclaredActionError {
                         action: Arc::clone(action),
                     }
                 })?;
@@ -197,10 +199,11 @@ impl ast::RequestSchema for ValidatorSchema {
                         .applies_to
                         .is_applicable_principal_type(principal.entity_type())
                     {
-                        return Err(RequestValidationError::InvalidPrincipalType {
+                        return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
-                        });
+                        }
+                        .into());
                     }
                 }
                 if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
@@ -208,10 +211,11 @@ impl ast::RequestSchema for ValidatorSchema {
                         .applies_to
                         .is_applicable_resource_type(resource.entity_type())
                     {
-                        return Err(RequestValidationError::InvalidResourceType {
+                        return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
-                        });
+                        }
+                        .into());
                     }
                 }
                 if let Some(context) = request.context() {
@@ -220,10 +224,11 @@ impl ast::RequestSchema for ValidatorSchema {
                         .typecheck_partial_value(context.as_ref(), extensions)
                         .map_err(RequestValidationError::TypeOfContext)?
                     {
-                        return Err(RequestValidationError::InvalidContext {
+                        return Err(request_validation_errors::InvalidContextError {
                             context: context.clone(),
                             action: Arc::clone(action),
-                        });
+                        }
+                        .into());
                     }
                 }
             }
@@ -254,54 +259,156 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
 #[derive(Debug, Diagnostic, Error)]
 pub enum RequestValidationError {
     /// Request action is not declared in the schema
-    #[error("request's action `{action}` is not declared in the schema")]
-    UndeclaredAction {
-        /// Action which was not declared in the schema
-        action: Arc<ast::EntityUID>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredAction(#[from] request_validation_errors::UndeclaredActionError),
     /// Request principal is of a type not declared in the schema
-    #[error("principal type `{principal_ty}` is not declared in the schema")]
-    UndeclaredPrincipalType {
-        /// Principal type which was not declared in the schema
-        principal_ty: ast::EntityType,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredPrincipalType(#[from] request_validation_errors::UndeclaredPrincipalTypeError),
     /// Request resource is of a type not declared in the schema
-    #[error("resource type `{resource_ty}` is not declared in the schema")]
-    UndeclaredResourceType {
-        /// Resource type which was not declared in the schema
-        resource_ty: ast::EntityType,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredResourceType(#[from] request_validation_errors::UndeclaredResourceTypeError),
     /// Request principal is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[error("principal type `{principal_ty}` is not valid for `{action}`")]
-    InvalidPrincipalType {
-        /// Principal type which is not valid
-        principal_ty: ast::EntityType,
-        /// Action which it is not valid for
-        action: Arc<ast::EntityUID>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidPrincipalType(#[from] request_validation_errors::InvalidPrincipalTypeError),
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[error("resource type `{resource_ty}` is not valid for `{action}`")]
-    InvalidResourceType {
-        /// Resource type which is not valid
-        resource_ty: ast::EntityType,
-        /// Action which it is not valid for
-        action: Arc<ast::EntityUID>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidResourceType(#[from] request_validation_errors::InvalidResourceTypeError),
     /// Context does not comply with the shape specified for the request action
-    #[error("context `{context}` is not valid for `{action}`")]
-    InvalidContext {
-        /// Context which is not valid
-        context: ast::Context,
-        /// Action which it is not valid for
-        action: Arc<ast::EntityUID>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidContext(#[from] request_validation_errors::InvalidContextError),
     /// Error computing the type of the `Context`; see the contained error type
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
     #[diagnostic(transparent)]
     TypeOfContext(GetSchemaTypeError),
+}
+
+pub mod request_validation_errors {
+    use cedar_policy_core::ast;
+    use miette::Diagnostic;
+    use std::sync::Arc;
+    use thiserror::Error;
+
+    /// Request action is not declared in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("request's action `{action}` is not declared in the schema")]
+    pub struct UndeclaredActionError {
+        /// Action which was not declared in the schema
+        pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl UndeclaredActionError {
+        /// The action which was not declared in the schema
+        pub fn action(&self) -> &ast::EntityUID {
+            &self.action
+        }
+    }
+
+    /// Request principal is of a type not declared in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("principal type `{principal_ty}` is not declared in the schema")]
+    pub struct UndeclaredPrincipalTypeError {
+        /// Principal type which was not declared in the schema
+        pub(super) principal_ty: ast::EntityType,
+    }
+
+    impl UndeclaredPrincipalTypeError {
+        /// The principal type which was not declared in the schema
+        pub fn principal_ty(&self) -> &ast::EntityType {
+            &self.principal_ty
+        }
+    }
+
+    /// Request resource is of a type not declared in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("resource type `{resource_ty}` is not declared in the schema")]
+    pub struct UndeclaredResourceTypeError {
+        /// Resource type which was not declared in the schema
+        pub(super) resource_ty: ast::EntityType,
+    }
+
+    impl UndeclaredResourceTypeError {
+        /// The resource type which was not declared in the schema
+        pub fn resource_ty(&self) -> &ast::EntityType {
+            &self.resource_ty
+        }
+    }
+
+    /// Request principal is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("principal type `{principal_ty}` is not valid for `{action}`")]
+    pub struct InvalidPrincipalTypeError {
+        /// Principal type which is not valid
+        pub(super) principal_ty: ast::EntityType,
+        /// Action which it is not valid for
+        pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl InvalidPrincipalTypeError {
+        /// The principal type which is not valid
+        pub fn principal_ty(&self) -> &ast::EntityType {
+            &self.principal_ty
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &ast::EntityUID {
+            &self.action
+        }
+    }
+
+    /// Request resource is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("resource type `{resource_ty}` is not valid for `{action}`")]
+    pub struct InvalidResourceTypeError {
+        /// Resource type which is not valid
+        pub(super) resource_ty: ast::EntityType,
+        /// Action which it is not valid for
+        pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl InvalidResourceTypeError {
+        /// The resource type which is not valid
+        pub fn resource_ty(&self) -> &ast::EntityType {
+            &self.resource_ty
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &ast::EntityUID {
+            &self.action
+        }
+    }
+
+    /// Context does not comply with the shape specified for the request action
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("context `{context}` is not valid for `{action}`")]
+    pub struct InvalidContextError {
+        /// Context which is not valid
+        pub(super) context: ast::Context,
+        /// Action which it is not valid for
+        pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl InvalidContextError {
+        /// The context which is not valid
+        pub fn context(&self) -> &ast::Context {
+            &self.context
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &ast::EntityUID {
+            &self.action
+        }
+    }
 }
 
 /// Struct which carries enough information that it can impl Core's
@@ -344,6 +451,7 @@ pub fn context_schema_for_action(
 #[cfg(test)]
 mod test {
     use super::*;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -589,8 +697,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::UndeclaredAction { action }) => {
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "destroy").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"request's action `Action::"destroy"` is not declared in the schema"#).build());
             }
         );
     }
@@ -607,8 +715,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
-                assert_eq!(principal_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Foo").unwrap()));
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("principal type `Foo` is not declared in the schema").build());
             }
         );
     }
@@ -625,8 +733,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
-                assert_eq!(resource_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Foo").unwrap()));
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("resource type `Foo` is not declared in the schema").build());
             }
         );
     }
@@ -643,9 +751,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidPrincipalType { principal_ty, action }) => {
-                assert_eq!(principal_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Album").unwrap()));
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#).build());
             }
         );
     }
@@ -662,9 +769,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidResourceType { resource_ty, action }) => {
-                assert_eq!(resource_ty, ast::EntityType::from(ast::Name::parse_unqualified_name("Group").unwrap()));
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#).build());
             }
         );
     }
@@ -681,9 +787,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidContext { context, action }) => {
-                assert_eq!(context, ast::Context::empty());
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 0 fields>` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -708,9 +813,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidContext { context, action }) => {
-                assert_eq!(context, context_with_extra_attr);
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 2 fields>` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -735,9 +839,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidContext { context, action }) => {
-                assert_eq!(context, context_with_wrong_type_attr);
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -765,9 +868,8 @@ mod test {
                 Some(&schema()),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::InvalidContext { context, action }) => {
-                assert_eq!(context, context_with_heterogeneous_set);
-                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap());
+            Err(e) => {
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }

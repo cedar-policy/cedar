@@ -31,7 +31,6 @@ pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
-use std::sync::Arc;
 use thiserror::Error;
 use to_human_syntax_errors::NameCollisionsError;
 
@@ -1019,47 +1018,26 @@ pub enum RequestValidationError {
 impl From<cedar_policy_validator::RequestValidationError> for RequestValidationError {
     fn from(e: cedar_policy_validator::RequestValidationError) -> Self {
         match e {
-            cedar_policy_validator::RequestValidationError::UndeclaredAction { action } => {
-                Self::UndeclaredAction(request_validation_errors::UndeclaredActionError {
-                    action: Arc::unwrap_or_clone(action).into(),
-                })
+            cedar_policy_validator::RequestValidationError::UndeclaredAction(e) => {
+                Self::UndeclaredAction(e.into())
             }
-            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType {
-                principal_ty,
-            } => Self::UndeclaredPrincipalType(
-                request_validation_errors::UndeclaredPrincipalTypeError {
-                    principal_ty: principal_ty.into(),
-                },
-            ),
-            cedar_policy_validator::RequestValidationError::UndeclaredResourceType {
-                resource_ty,
-            } => Self::UndeclaredResourceType(
-                request_validation_errors::UndeclaredResourceTypeError {
-                    resource_ty: resource_ty.into(),
-                },
-            ),
-            cedar_policy_validator::RequestValidationError::InvalidPrincipalType {
-                principal_ty,
-                action,
-            } => Self::InvalidPrincipalType(request_validation_errors::InvalidPrincipalTypeError {
-                principal_ty: principal_ty.into(),
-                action: Arc::unwrap_or_clone(action).into(),
-            }),
-            cedar_policy_validator::RequestValidationError::InvalidResourceType {
-                resource_ty,
-                action,
-            } => Self::InvalidResourceType(request_validation_errors::InvalidResourceTypeError {
-                resource_ty: resource_ty.into(),
-                action: Arc::unwrap_or_clone(action).into(),
-            }),
-            cedar_policy_validator::RequestValidationError::InvalidContext { context, action } => {
-                Self::InvalidContext(request_validation_errors::InvalidContextError {
-                    context: context.into(),
-                    action: Arc::unwrap_or_clone(action).into(),
-                })
+            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType(e) => {
+                Self::UndeclaredPrincipalType(e.into())
             }
-            cedar_policy_validator::RequestValidationError::TypeOfContext(inner) => {
-                Self::TypeOfContext(request_validation_errors::TypeOfContextError { inner })
+            cedar_policy_validator::RequestValidationError::UndeclaredResourceType(e) => {
+                Self::UndeclaredResourceType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidPrincipalType(e) => {
+                Self::InvalidPrincipalType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidResourceType(e) => {
+                Self::InvalidResourceType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidContext(e) => {
+                Self::InvalidContext(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::TypeOfContext(e) => {
+                Self::TypeOfContext(e.into())
             }
         }
     }
@@ -1068,129 +1046,121 @@ impl From<cedar_policy_validator::RequestValidationError> for RequestValidationE
 /// Error subtypes for [`RequestValidationError`]
 pub mod request_validation_errors {
     use miette::Diagnostic;
+    use ref_cast::RefCast;
     use thiserror::Error;
 
     use crate::{Context, EntityTypeName, EntityUid};
 
     /// Request action is not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
-    #[error("request's action `{action}` is not declared in the schema")]
-    pub struct UndeclaredActionError {
-        /// Action which was not declared in the schema
-        pub(super) action: EntityUid,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredActionError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredActionError,
+    );
 
     impl UndeclaredActionError {
         /// The action which was not declared in the schema
         pub fn action(&self) -> &EntityUid {
-            &self.action
+            RefCast::ref_cast(self.0.action())
         }
     }
 
     /// Request principal is of a type not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
-    #[error("principal type `{principal_ty}` is not declared in the schema")]
-    pub struct UndeclaredPrincipalTypeError {
-        /// Principal type which was not declared in the schema
-        pub(super) principal_ty: EntityTypeName,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredPrincipalTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredPrincipalTypeError,
+    );
 
     impl UndeclaredPrincipalTypeError {
         /// The principal type which was not declared in the schema
         pub fn principal_ty(&self) -> &EntityTypeName {
-            &self.principal_ty
+            RefCast::ref_cast(self.0.principal_ty())
         }
     }
 
     /// Request resource is of a type not declared in the schema
     #[derive(Debug, Diagnostic, Error)]
-    #[error("resource type `{resource_ty}` is not declared in the schema")]
-    pub struct UndeclaredResourceTypeError {
-        /// Resource type which was not declared in the schema
-        pub(super) resource_ty: EntityTypeName,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredResourceTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredResourceTypeError,
+    );
 
     impl UndeclaredResourceTypeError {
         /// The resource type which was not declared in the schema
         pub fn resource_ty(&self) -> &EntityTypeName {
-            &self.resource_ty
+            RefCast::ref_cast(self.0.resource_ty())
         }
     }
 
     /// Request principal is of a type that is declared in the schema, but is
     /// not valid for the request action
     #[derive(Debug, Diagnostic, Error)]
-    #[error("principal type `{principal_ty}` is not valid for `{action}`")]
-    pub struct InvalidPrincipalTypeError {
-        /// Principal type which is not valid
-        pub(super) principal_ty: EntityTypeName,
-        /// Action which it is not valid for
-        pub(super) action: EntityUid,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidPrincipalTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidPrincipalTypeError,
+    );
 
     impl InvalidPrincipalTypeError {
         /// The principal type which is not valid
         pub fn principal_ty(&self) -> &EntityTypeName {
-            &self.principal_ty
+            RefCast::ref_cast(self.0.principal_ty())
         }
 
         /// The action which it is not valid for
         pub fn action(&self) -> &EntityUid {
-            &self.action
+            RefCast::ref_cast(self.0.action())
         }
     }
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
     #[derive(Debug, Diagnostic, Error)]
-    #[error("resource type `{resource_ty}` is not valid for `{action}`")]
-    pub struct InvalidResourceTypeError {
-        /// Resource type which is not valid
-        pub(super) resource_ty: EntityTypeName,
-        /// Action which it is not valid for
-        pub(super) action: EntityUid,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidResourceTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidResourceTypeError,
+    );
 
     impl InvalidResourceTypeError {
         /// The resource type which is not valid
         pub fn resource_ty(&self) -> &EntityTypeName {
-            &self.resource_ty
+            RefCast::ref_cast(self.0.resource_ty())
         }
 
         /// The action which it is not valid for
         pub fn action(&self) -> &EntityUid {
-            &self.action
+            RefCast::ref_cast(self.0.action())
         }
     }
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Diagnostic, Error)]
-    #[error("context `{context}` is not valid for `{action}`")]
-    pub struct InvalidContextError {
-        /// Context which is not valid
-        pub(super) context: Context,
-        /// Action which it is not valid for
-        pub(super) action: EntityUid,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidContextError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidContextError,
+    );
 
     impl InvalidContextError {
         /// The context which is not valid
         pub fn context(&self) -> &Context {
-            &self.context
+            RefCast::ref_cast(self.0.context())
         }
 
         /// The action which it is not valid for
         pub fn action(&self) -> &EntityUid {
-            &self.action
+            RefCast::ref_cast(self.0.action())
         }
     }
 
     /// Error computing the type of the `Context`
     #[derive(Debug, Diagnostic, Error)]
-    #[error("context is not valid: {inner}")]
-    pub struct TypeOfContextError {
-        #[from]
-        #[diagnostic(transparent)]
-        pub(super) inner: cedar_policy_core::entities::json::GetSchemaTypeError,
-    }
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct TypeOfContextError(#[from] cedar_policy_core::entities::json::GetSchemaTypeError);
 }
