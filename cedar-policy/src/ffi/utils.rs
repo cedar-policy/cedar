@@ -948,6 +948,70 @@ mod test {
     }
 
     #[test]
+    fn policy_set_parser_is_compatible_with_est_parser() {
+        // The `PolicySet::parse` function accepts the `est::PolicySet` JSON format
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "foo" }
+                    },
+                    "conditions": []
+                }
+            },
+            "templates": {
+                "template": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "bob" }
+                    }
+                }
+            ]
+        });
+
+        // use `crate::PolicySet::from_json_value`
+        let ast_from_est = crate::PolicySet::from_json_value(json.clone())
+            .expect("failed to convert to policy set");
+
+        // use `PolicySet::parse`
+        let ffi_policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        let ast_from_ffi = ffi_policy_set
+            .parse()
+            .expect("failed to convert to policy set");
+
+        // check that the produced policy sets match
+        assert_eq!(ast_from_est, ast_from_ffi);
+    }
+
+    #[test]
     fn test_schema_parser() {
         // A string literal will be parsed as a schema in the Cedar syntax
         let schema_json = json!("entity User = {name: String};\nentity Photo;\naction viewPhoto appliesTo {principal: User, resource: Photo};");
