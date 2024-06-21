@@ -1400,7 +1400,10 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{human_schema::parser::parse_type, ActionBehavior, ValidatorNamespaceDef};
+    use crate::{
+        human_schema::parser::parse_type, schema::try_schema_type_into_validator_type,
+        ActionBehavior,
+    };
     use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
@@ -2117,7 +2120,7 @@ mod test {
         println!("{type_str}");
         let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
-        let type_from_schema_type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+        let type_from_schema_type = try_schema_type_into_validator_type(
             parsed_schema_type.qualify_type_references(None),
             Extensions::all_available(),
         )
