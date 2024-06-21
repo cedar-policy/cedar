@@ -59,7 +59,7 @@ where
     /// A map from request types to [`RootAccessTrie`]s.
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    per_action: HashMap<RequestType, RootAccessTrie<T>>,
+    pub(crate) per_action: HashMap<RequestType, RootAccessTrie<T>>,
 }
 
 /// A map of data fields to [`AccessTrie`]s.
@@ -117,7 +117,7 @@ where
     /// The data that needs to be loaded, organized by root.
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    trie: HashMap<EntityRoot, AccessTrie<T>>,
+    pub(crate) trie: HashMap<EntityRoot, AccessTrie<T>>,
 }
 
 /// A Trie representing a set of data paths to load,
@@ -137,15 +137,15 @@ pub struct AccessTrie<T = ()> {
     /// Child data of this entity slice.
     /// The keys are edges in the trie pointing to sub-trie values.
     #[serde_as(as = "Vec<(_, _)>")]
-    children: Fields<T>,
+    pub(crate) children: Fields<T>,
     /// For entity types, this boolean may be `true`
     /// to signal that all the ancestors in the entity hierarchy
     /// are required (transitively).
-    ancestors_required: bool,
+    pub(crate) ancestors_required: bool,
     /// Optional data annotation, usually used for type information.
     #[serde(skip_serializing, skip_deserializing)]
     #[serde(bound(deserialize = "T: Default"))]
-    data: T,
+    pub(crate) data: T,
 }
 
 /// A data path that may end with requesting the parents of
@@ -342,7 +342,7 @@ impl Default for RootAccessTrie {
 impl<T: Clone> AccessTrie<T> {
     /// Union two [`AccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    fn union(&self, other: &Self) -> Self {
+    pub fn union(&self, other: &Self) -> Self {
         Self {
             children: union_fields(&self.children, &other.children),
             ancestors_required: self.ancestors_required || other.ancestors_required,
@@ -370,7 +370,7 @@ impl<T: Clone> AccessTrie<T> {
 
 impl AccessTrie {
     /// A new trie that requests no data.
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             children: Default::default(),
             ancestors_required: false,

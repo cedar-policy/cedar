@@ -33,6 +33,8 @@ pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 use cedar_policy_validator::entity_manifest::{
     self, FailedAnalysisError, PartialExpressionError, PartialRequestError,
 };
+#[cfg(feature = "entity-manifest")]
+pub use cedar_policy_validator::entity_slicing::EntitySliceError;
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;

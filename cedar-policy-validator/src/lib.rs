@@ -37,6 +37,8 @@ use std::collections::HashSet;
 
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
+#[cfg(feature = "entity-manifest")]
+pub mod entity_slicing;
 mod err;
 pub use err::*;
 mod coreschema;
