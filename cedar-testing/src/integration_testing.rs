@@ -146,19 +146,19 @@ pub struct JsonEvalRequest {
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
-    pub principal: Option<JsonValueWithNoDuplicateKeys>,
+    pub principal: JsonValueWithNoDuplicateKeys,
     /// Action for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "Action", "id": "view" } }`
     /// * `{ "type": "Action", "id": "view" }`
-    pub action: Option<JsonValueWithNoDuplicateKeys>,
+    pub action: JsonValueWithNoDuplicateKeys,
     /// Resource for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
-    pub resource: Option<JsonValueWithNoDuplicateKeys>,
+    pub resource: JsonValueWithNoDuplicateKeys,
     /// Context for the request. This should be a JSON object, not any other kind
     /// of JSON value
     pub context: JsonValueWithNoDuplicateKeys,
@@ -416,39 +416,22 @@ pub fn parse_request_from_eval_test(
     schema: &ValidatorSchema,
     test_name: &str,
 ) -> Request {
-    let principal = json_request
-        .principal
-        .clone()
-        .map(|json| {
-            let error_string = format!(
-                "Failed to parse principal for request \"{}\" in {}",
-                json_request.description, test_name
-            );
-            parse_entity_uid(json, error_string)
-        })
-        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("principal")));
-    let action = json_request
-        .action
-        .clone()
-        .map(|json| {
-            let error_string = format!(
-                "Failed to parse action for request \"{}\" in {}",
-                json_request.description, test_name
-            );
-            parse_entity_uid(json, error_string)
-        })
-        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("action")));
-    let resource = json_request
-        .resource
-        .clone()
-        .map(|json| {
-            let error_string = format!(
-                "Failed to parse resource for request \"{}\" in {}",
-                json_request.description, test_name
-            );
-            parse_entity_uid(json, error_string)
-        })
-        .unwrap_or(EntityUID::unspecified_from_eid(Eid::new("resource")));
+    let error_string = format!(
+        "Failed to parse principal for request \"{}\" in {}",
+        json_request.description, test_name
+    );
+    let principal = parse_entity_uid(json_request.principal.clone(), error_string);
+    let error_string = format!(
+        "Failed to parse action for request \"{}\" in {}",
+        json_request.description, test_name
+    );
+    let action = parse_entity_uid(json_request.action.clone(), error_string);
+    let error_string = format!(
+        "Failed to parse resource for request \"{}\" in {}",
+        json_request.description, test_name
+    );
+    let resource = parse_entity_uid(json_request.resource.clone(), error_string);
+
     let context_schema = cedar_policy_validator::context_schema_for_action(schema, &action)
         .unwrap_or_else(|| {
             panic!(
