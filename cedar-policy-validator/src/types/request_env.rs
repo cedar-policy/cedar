@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{EntityType, EntityUID};
+use cedar_policy_core::ast::{EntityType, EntityUID, RequestType};
+use serde::Serialize;
 
 use crate::ValidatorSchema;
 
@@ -22,7 +23,7 @@ use super::Type;
 
 /// Represents a request type environment. In principle, this contains full
 /// types for the four variables (principal, action, resource, context).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum RequestEnv<'a> {
     /// Contains the four variables bound in the type environment. These together
     /// represent the full type of (principal, action, resource, context)
@@ -49,6 +50,26 @@ pub enum RequestEnv<'a> {
 }
 
 impl<'a> RequestEnv<'a> {
+    /// Return the types of each of the elements of this request.
+    /// Returns [`None`] when the request is not fully concrete.
+    pub fn to_request_types(&self) -> Option<RequestType> {
+        match self {
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context: _,
+                principal_slot: _,
+                resource_slot: _,
+            } => Some(RequestType {
+                principal: (*principal).clone(),
+                action: (*action).clone(),
+                resource: (*resource).clone(),
+            }),
+            RequestEnv::UndeclaredAction => None,
+        }
+    }
+
     /// The principal type for this request environment, as an [`EntityType`].
     /// `None` indicates we don't know (only possible in partial schema validation).
     pub fn principal_entity_type(&self) -> Option<&'a EntityType> {

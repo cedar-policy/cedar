@@ -89,6 +89,8 @@ pub enum Commands {
     Evaluate(EvaluateArgs),
     /// Validate a policy set against a schema
     Validate(ValidateArgs),
+    /// Compute the entity manifest for a schema and policy set
+    EntityManifest(EntityManifestArgs),
     /// Check that policies successfully parse
     CheckParse(CheckParseArgs),
     /// Link a template
@@ -154,6 +156,14 @@ pub enum SchemaFormat {
     Json,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ManifestFormat {
+    /// Human-readable format
+    Human,
+    /// JSON format
+    Json,
+}
+
 impl Default for SchemaFormat {
     fn default() -> Self {
         Self::Cedar
@@ -168,6 +178,22 @@ pub enum ValidationMode {
     Permissive,
     /// Partial validation
     Partial,
+}
+
+#[derive(Args, Debug)]
+pub struct EntityManifestArgs {
+    /// File containing the schema
+    #[arg(short, long = "schema", value_name = "FILE")]
+    pub schema_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Schema format (Human-readable or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    pub schema_format: SchemaFormat,
+    #[arg(long, value_enum, default_value_t = ManifestFormat::Human)]
+    /// Manifest format (Human-readable or JSON)
+    pub manifest_format: ManifestFormat,
 }
 
 #[derive(Args, Debug)]
@@ -695,6 +721,42 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
             CedarExitCode::Failure
         }
     }
+}
+
+pub fn entity_manifest(args: &EntityManifestArgs) -> CedarExitCode {
+    let pset = match args.policies.get_policy_set() {
+        Ok(pset) => pset,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+
+    let schema = match read_schema_file(&args.schema_file, args.schema_format) {
+        Ok(schema) => schema,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+
+    let manifest = match compute_entity_manifest(&schema, &pset) {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+    match args.manifest_format {
+        ManifestFormat::Human => {
+            println!("{}", manifest.to_str_natural());
+        }
+        ManifestFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+        }
+    }
+
+    CedarExitCode::Success
 }
 
 pub fn validate(args: &ValidateArgs) -> CedarExitCode {

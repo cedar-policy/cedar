@@ -21,15 +21,15 @@ use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
-    RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprKind, ExpressionConstructionError,
+    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -47,6 +47,32 @@ pub struct Request {
     /// Context associated with the request.
     /// `None` means that variable will result in a residual for partial evaluation.
     pub(crate) context: Option<Context>,
+}
+
+/// Represents the principal, action, and resource types.
+/// Used to index the [`EntityManifest`]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct RequestType {
+    /// Principal type
+    pub principal: EntityType,
+    /// Aciton type
+    pub action: EntityUID,
+    /// Resource type
+    pub resource: EntityType,
+}
+
+impl RequestType {
+    /// Create a human-readable string for the request types,
+    /// written as a tuple of three elements.
+    /// TODO would be better as a cedar struct?
+    pub fn to_str_natural(&self) -> String {
+        format!(
+            "({} {} {})",
+            self.principal.name(),
+            self.action,
+            self.resource.name(),
+        )
+    }
 }
 
 /// An entry in a request for a Entity UID.
@@ -185,6 +211,18 @@ impl Request {
     /// Returning `None` means the variable is unknown, and will result in a residual expression
     pub fn context(&self) -> Option<&Context> {
         self.context.as_ref()
+    }
+
+    /// Get the request types that correspond to this request.
+    /// This includes the types of the principal, action, resource,
+    /// and context.
+    /// Returns `None` if the request is not fully concrete.
+    pub fn to_concrete_env(&self) -> Option<RequestType> {
+        Some(RequestType {
+            principal: self.principal.uid()?.clone().components().0,
+            action: self.action.uid()?.clone(),
+            resource: self.resource().uid()?.clone().components().0,
+        })
     }
 }
 

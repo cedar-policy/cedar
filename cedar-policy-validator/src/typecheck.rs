@@ -40,7 +40,7 @@ use crate::{
 
 use cedar_policy_core::ast::{
     BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var, ACTION_ENTITY_TYPE,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2304,5 +2304,35 @@ impl<'a> Typechecker<'a> {
                 }
             }
         }
+    }
+}
+
+impl Typechecker<'_> {
+    /// Typecheck an expression outside the context of a policy. This is
+    /// currently only used for testing.
+    pub(crate) fn typecheck_expr<'a>(
+        &self,
+        e: &'a Expr,
+        unique_type_errors: &mut HashSet<ValidationError>,
+    ) -> TypecheckAnswer<'a> {
+        // Using bogus entity type names here for testing. They'll be treated as
+        // having empty attribute records, so tests will behave as expected.
+        let request_env = RequestEnv::DeclaredAction {
+            principal: &"Principal"
+                .parse()
+                .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
+            action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE, "action")
+                .expect("ACTION_ENTITY_TYPE failed to parse as type name."),
+            resource: &"Resource"
+                .parse()
+                .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
+            principal_slot: None,
+            resource_slot: None,
+        };
+        let mut type_errors = Vec::new();
+        let ans = self.typecheck(&request_env, &EffectSet::new(), e, &mut type_errors);
+        unique_type_errors.extend(type_errors);
+        ans
     }
 }

@@ -46,6 +46,7 @@ fn main() -> CedarExitCode {
         Commands::Evaluate(args) => evaluate(&args).0,
         Commands::CheckParse(args) => check_parse(&args),
         Commands::Validate(args) => validate(&args),
+        Commands::EntityManifest(args) => entity_manifest(&args),
         Commands::Format(args) => format_policies(&args),
         Commands::Link(args) => link(&args),
         Commands::TranslatePolicy(args) => translate_policy(&args),
