@@ -667,18 +667,11 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
 
 pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
     match load_entities(&args.entities_file, None) {
-        Ok(entities) => match entities.to_dot_str() {
-            Ok(dot_str) => {
-                println!("{}", dot_str);
-                CedarExitCode::Success
-            }
-            Err(e) => {
-                eprintln!("{}", e);
-                CedarExitCode::Failure
-            }
-        },
-        Err(e) => {
-            let report = miette::Report::new(e);
+        Ok(entities) => {
+            println!("{}", entities.to_dot_str());
+            CedarExitCode::Success
+        }
+        Err(report) => {
             eprintln!("{report:?}");
             CedarExitCode::Failure
         }

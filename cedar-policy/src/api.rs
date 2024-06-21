@@ -652,7 +652,7 @@ impl Entities {
     /// Visualize an `Entities` object in the graphviz `dot`
     /// format. Entity visualization is best-effort and not well tested.
     /// Feel free to submit an issue if you are using this feature and would like it improved.
-    pub fn to_dot_str(&self) -> std::result::Result<String, std::fmt::Error> {
+    pub fn to_dot_str(&self) -> String {
         self.0.to_dot_str()
     }
 }

@@ -267,10 +267,10 @@ impl Entities {
     }
 
     /// Write entities into a DOT graph
-    pub fn to_dot_str(&self) -> std::result::Result<String, std::fmt::Error> {
+    pub fn to_dot_str(&self) -> String {
         let mut dot_str = String::new();
         // write prelude
-        dot_str.write_str("strict digraph {\n\tordering=\"out\"\n\tnode[shape=box]\n")?;
+        dot_str.push_str("strict digraph {\n\tordering=\"out\"\n\tnode[shape=box]\n");
 
         // From DOT language reference:
         // An ID is one of the following:
@@ -288,31 +288,31 @@ impl Entities {
         let entities_by_type = self.get_entities_by_entity_type();
 
         for (et, entities) in entities_by_type {
-            dot_str.write_str(&format!(
+            dot_str.push_str(&format!(
                 "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel={}\n",
                 to_dot_id(&et)
-            ))?;
+            ));
             for entity in entities {
                 let euid = to_dot_id(&entity.uid());
                 let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid().escaped()));
-                dot_str.write_str(&format!("\t\t{euid} {label}\n"))?;
+                dot_str.push_str(&format!("\t\t{euid} {label}\n"));
             }
-            dot_str.write_str("\t}\n")?;
+            dot_str.push_str("\t}\n");
         }
 
         // adding edges
         for entity in self.iter() {
             for ancestor in entity.ancestors() {
-                dot_str.write_str(&format!(
+                dot_str.push_str(&format!(
                     "\t{} -> {}\n",
                     to_dot_id(&entity.uid()),
                     to_dot_id(&ancestor)
-                ))?;
+                ));
             }
         }
 
-        dot_str.write_str("}\n")?;
-        Ok(dot_str)
+        dot_str.push_str("}\n");
+        dot_str
     }
 }
 
