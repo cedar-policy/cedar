@@ -49,7 +49,7 @@ pub use entity_type::ValidatorEntityType;
 mod namespace_def;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
-pub(crate) use raw_name::RawName;
+pub use raw_name::RawName;
 
 /// Configurable validator behaviors regarding actions
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
