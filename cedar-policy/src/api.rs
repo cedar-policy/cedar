@@ -1183,7 +1183,7 @@ impl Validator {
 #[derive(Debug)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment,
-    lossless: cedar_policy_validator::SchemaFragment,
+    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
 }
 
 impl SchemaFragment {

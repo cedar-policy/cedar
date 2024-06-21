@@ -27,7 +27,8 @@ use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
     types::{EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinition, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
+    ValidatorSchema,
 };
 
 // Placeholder policy id for use when typechecking an expression directly.
@@ -335,7 +336,7 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     });
 }
 
-pub(crate) fn empty_schema_file() -> NamespaceDefinition {
+pub(crate) fn empty_schema_file() -> NamespaceDefinition<RawName> {
     NamespaceDefinition::new([], [])
 }
 

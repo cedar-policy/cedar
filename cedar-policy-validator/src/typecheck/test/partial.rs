@@ -27,7 +27,8 @@ use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::validation_errors::{AttributeAccess, UnexpectedTypeHelp};
 use crate::{
-    NamespaceDefinition, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
+    ValidatorSchema,
 };
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -499,7 +500,7 @@ mod fails_empty_schema {
     }
 }
 
-fn partial_schema_file() -> NamespaceDefinition {
+fn partial_schema_file() -> NamespaceDefinition<RawName> {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {
