@@ -31,11 +31,15 @@ use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_field, pa
 use miette::Diagnostic;
 use thiserror::Error;
 
+/// Warning for strings containing mixed scripts
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, string `\"{string}\"` contains mixed scripts")]
 pub struct MixedScriptString {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
+    /// String containing mixed scripts
     pub string: String,
 }
 
@@ -44,11 +48,15 @@ impl Diagnostic for MixedScriptString {
     impl_diagnostic_warning!();
 }
 
+/// Warning for strings containing BIDI control characters
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, string `\"{string}\"` contains BIDI control characters")]
 pub struct BidiCharsInString {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
+    /// String containing BIDI control characters
     pub string: String,
 }
 
@@ -57,11 +65,15 @@ impl Diagnostic for BidiCharsInString {
     impl_diagnostic_warning!();
 }
 
+/// Warning for identifiers containing BIDI control characters
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, identifier `{id}` contains BIDI control characters")]
 pub struct BidiCharsInIdentifier {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
+    /// Identifier containing BIDI control characters
     pub id: String,
 }
 
@@ -70,11 +82,15 @@ impl Diagnostic for BidiCharsInIdentifier {
     impl_diagnostic_warning!();
 }
 
+/// Warning for identifiers containing mixed scripts
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, identifier `{id}` contains mixed scripts")]
 pub struct MixedScriptIdentifier {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
+    /// Identifier containing mixed scripts
     pub id: String,
 }
 impl Diagnostic for MixedScriptIdentifier {
@@ -82,11 +98,15 @@ impl Diagnostic for MixedScriptIdentifier {
     impl_diagnostic_warning!();
 }
 
+/// Warning for identifiers containing confusable characters
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, identifier `{id}` contains characters that fall outside of the General Security Profile for Identifiers")]
 pub struct ConfusableIdentifier {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
+    /// Identifier containing confusable characters
     pub id: String,
 }
 
@@ -95,10 +115,13 @@ impl Diagnostic for ConfusableIdentifier {
     impl_diagnostic_warning!();
 }
 
+/// Warning for policies that are impossible (evaluate to `false` for all valid requests)
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
 #[error("for policy `{policy_id}`, policy is impossible: the policy expression evaluates to false for all valid requests")]
 pub struct ImpossiblePolicy {
+    /// Source location
     pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
 }
 

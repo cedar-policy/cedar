@@ -35,15 +35,13 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
-use cedar_policy_core::est;
-use cedar_policy_core::est::{Link, PolicyEntry};
+use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
-use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -1711,22 +1709,18 @@ impl PolicySet {
 
     /// Get the EST representation of the [`PolicySet`]
     fn est(self) -> Result<est::PolicySet, PolicyToJsonError> {
-        let (static_policies, links): (Vec<_>, Vec<_>) =
+        let (static_policies, template_links): (Vec<_>, Vec<_>) =
             fold_partition(self.policies, is_static_or_link)?;
+        let static_policies = static_policies.into_iter().collect::<HashMap<_, _>>();
         let templates = self
             .templates
             .into_iter()
-            .map(|(id, template)| {
-                template.lossless.est().map(|est| PolicyEntry {
-                    id: id.into(),
-                    policy: est,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|(id, template)| template.lossless.est().map(|est| (id.into(), est)))
+            .collect::<Result<HashMap<_, _>, _>>()?;
         let est = est::PolicySet {
             templates,
             static_policies,
-            links,
+            template_links,
         };
 
         Ok(est)
@@ -2018,27 +2012,25 @@ impl std::fmt::Display for PolicySet {
 /// link
 fn is_static_or_link(
     (id, policy): (PolicyId, Policy),
-) -> Result<Either<est::PolicyEntry, Link>, PolicyToJsonError> {
+) -> Result<Either<(ast::PolicyID, est::Policy), TemplateLink>, PolicyToJsonError> {
     match policy.template_id() {
         Some(template_id) => {
-            let slots = policy
+            let values = policy
                 .ast
                 .env()
                 .iter()
                 .map(|(id, euid)| (*id, euid.clone()))
                 .collect();
-            Ok(Either::Right(Link {
-                id: id.into(),
-                template: template_id.clone().into(),
-                slots,
+            Ok(Either::Right(TemplateLink {
+                new_id: id.into(),
+                template_id: template_id.clone().into(),
+                values,
             }))
         }
-        None => policy.lossless.est().map(|est| {
-            Either::Left(PolicyEntry {
-                id: id.into(),
-                policy: est,
-            })
-        }),
+        None => policy
+            .lossless
+            .est()
+            .map(|est| Either::Left((id.into(), est))),
     }
 }
 
@@ -3394,7 +3386,20 @@ impl Context {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Context> for Context {
+    fn from(c: ast::Context) -> Self {
+        Self(c)
+    }
+}
+
 impl std::fmt::Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
