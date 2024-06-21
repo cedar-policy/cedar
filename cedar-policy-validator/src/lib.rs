@@ -16,7 +16,20 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
-#![allow(clippy::result_large_err)] // see #878
+#![warn(rust_2018_idioms)]
+#![deny(
+    missing_docs,
+    missing_debug_implementations,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_html_tags,
+    rustdoc::invalid_rust_codeblocks,
+    rustdoc::bare_urls,
+    clippy::doc_markdown
+)]
+#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
+#![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
@@ -47,9 +60,13 @@ pub mod types;
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]
 pub enum ValidationMode {
+    /// Strict mode
     #[default]
     Strict,
+    /// Permissive mode
     Permissive,
+    /// Partial validation, allowing you to use an incomplete schema, but
+    /// providing no formal guarantees
     #[cfg(feature = "partial-validate")]
     Partial,
 }

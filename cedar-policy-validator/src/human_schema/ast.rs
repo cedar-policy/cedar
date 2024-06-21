@@ -136,7 +136,7 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
+    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`)
     fn is_in_cedar(&self) -> bool {
         // `0` is the position of the most significant namespace
         self.namespace
@@ -150,7 +150,7 @@ impl PathInternal {
         self.namespace.is_empty() && self.basename.as_ref() == CEDAR_NAMESPACE
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
+    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace
     fn is_in_unqualified_or_cedar(&self) -> bool {
         self.namespace.is_empty() || self.is_in_cedar()
     }
@@ -315,7 +315,7 @@ pub struct PRAppDecl {
 /// A declaration of constraints on an action type
 #[derive(Debug, Clone)]
 pub enum AppDecl {
-    /// Constraints on the `principal`` or `resource``
+    /// Constraints on the `principal` or `resource`
     PR(PRAppDecl),
     /// Constraints on the `context`
     Context(Either<Path, Vec<Node<AttrDecl>>>),

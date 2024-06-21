@@ -41,6 +41,8 @@ pub struct ValidationResult {
 }
 
 impl ValidationResult {
+    /// Create a new `ValidationResult` with these errors and warnings.
+    /// Empty iterators are allowed for either or both arguments.
     pub fn new(
         errors: impl IntoIterator<Item = ValidationError>,
         warnings: impl IntoIterator<Item = ValidationWarning>,
@@ -140,9 +142,12 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     FunctionArgumentValidation(#[from] validation_errors::FunctionArgumentValidation),
+    /// The policy uses an empty set literal in a way that is forbidden
     #[diagnostic(transparent)]
     #[error(transparent)]
     EmptySetForbidden(#[from] validation_errors::EmptySetForbidden),
+    /// The policy passes a non-literal to an extension constructor, which is
+    /// forbidden in strict validation
     #[diagnostic(transparent)]
     #[error(transparent)]
     NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),

@@ -101,8 +101,9 @@ fn is_bidi_char(c: char) -> bool {
     BIDI_CHARS.iter().any(|bidi| bidi == &c)
 }
 
-/// List of BIDI chars to warn on
-/// Source: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/hidden_unicode_codepoints/static.TEXT_DIRECTION_CODEPOINT_IN_LITERAL.html
+/// List of BIDI chars to warn on.
+/// Source: <`https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/hidden_unicode_codepoints/static.TEXT_DIRECTION_CODEPOINT_IN_LITERAL.html`>
+///
 /// We could instead parse the structure of BIDI overrides and make sure it's well balanced.
 /// This is less prone to error, and since it's only a warning can be ignored by a user if need be.
 const BIDI_CHARS: [char; 9] = [

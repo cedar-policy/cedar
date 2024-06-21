@@ -20,13 +20,17 @@ use thiserror::Error;
 
 use crate::human_schema;
 
+/// Error creating a schema from human syntax
 #[derive(Debug, Error, Diagnostic)]
 pub enum HumanSchemaError {
+    /// Errors with the schema content
     #[error(transparent)]
     #[diagnostic(transparent)]
     Schema(#[from] SchemaError),
+    /// IO error
     #[error(transparent)]
     IO(#[from] std::io::Error),
+    /// Parse error
     #[error(transparent)]
     #[diagnostic(transparent)]
     Parsing(#[from] HumanSyntaxParseError),
@@ -230,6 +234,7 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
     }
 }
 
+/// Convenience alias
 pub type Result<T> = std::result::Result<T, SchemaError>;
 
 /// Error subtypes for [`SchemaError`]

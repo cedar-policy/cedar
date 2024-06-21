@@ -134,12 +134,6 @@ impl EntityTypeName {
     pub fn namespace(&self) -> String {
         self.0.name().namespace()
     }
-
-    /// Construct an [`EntityTypeName`] from the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn new(ty: ast::EntityType) -> Self {
-        Self(ty)
-    }
 }
 
 /// This `FromStr` implementation requires the _normalized_ representation of the
@@ -157,6 +151,20 @@ impl FromStr for EntityTypeName {
 impl std::fmt::Display for EntityTypeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Name> for EntityTypeName {
+    fn from(name: ast::Name) -> Self {
+        Self(name.into())
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::EntityType> for EntityTypeName {
+    fn from(ty: ast::EntityType) -> Self {
+        Self(ty)
     }
 }
 
@@ -226,9 +234,11 @@ impl EntityUid {
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        Ok::<Self, JsonDeserializationError>(Self::new(
-            parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-        ))
+        Ok::<Self, JsonDeserializationError>(
+            parsed
+                .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+                .into(),
+        )
     }
 
     /// Testing utility for creating `EntityUids` a bit easier
@@ -238,12 +248,6 @@ impl EntityUid {
             EntityTypeName::from_str(typename).unwrap(),
             EntityId::from_str(id).unwrap(),
         )
-    }
-
-    /// Construct an [`EntityUid`] from the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn new(uid: ast::EntityUID) -> Self {
-        Self(uid)
     }
 }
 
@@ -275,7 +279,7 @@ impl FromStr for EntityUid {
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
         ast::EntityUID::from_normalized_str(uid_str)
-            .map(Self::new)
+            .map(Into::into)
             .map_err(Into::into)
     }
 }
@@ -297,6 +301,13 @@ impl AsRef<ast::EntityUID> for EntityUid {
 impl From<EntityUid> for ast::EntityUID {
     fn from(uid: EntityUid) -> Self {
         uid.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::EntityUID> for EntityUid {
+    fn from(uid: ast::EntityUID) -> Self {
+        Self(uid)
     }
 }
 
