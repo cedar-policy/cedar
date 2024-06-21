@@ -51,7 +51,7 @@ use crate::{fuzzy_match::fuzzy_search, types::OpenTag};
 /// In this representation, there may still be references to undeclared
 /// entity/common types, because any entity/common type may be declared in a
 /// different fragment that will only be known about when building the complete
-/// [`ValidatorSchema`].
+/// [`crate::ValidatorSchema`].
 ///
 /// In this representation, entity/common type names are fully
 /// qualified/disambiguated. This means that implicit namespace prepending no

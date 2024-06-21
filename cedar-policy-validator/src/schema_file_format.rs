@@ -318,7 +318,7 @@ pub struct ApplySpec<N> {
     pub context: AttributesOrContext<N>,
 }
 
-/// Represents the [`ast::EntityUID`] of an action
+/// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
@@ -326,7 +326,7 @@ pub struct ApplySpec<N> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID<N> {
-    /// Represents the [`ast::Eid`] of the action
+    /// Represents the [`cedar_policy_core::ast::Eid`] of the action
     pub id: SmolStr,
 
     /// Represents the type of the action.
@@ -339,7 +339,7 @@ pub struct ActionEntityUID<N> {
 }
 
 impl<N> ActionEntityUID<N> {
-    /// Given an `id`, get the `ActionEntityUID` representing `Action::<id>`.
+    /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
     pub fn default_type(id: SmolStr) -> Self {
         Self { id, ty: None }
     }
@@ -356,8 +356,8 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
     }
 }
 
-/// A restricted version of the `Type` enum containing only the types which are
-/// exposed to users.
+/// A restricted version of the [`crate::types::Type`] enum containing only the types
+/// which are exposed to users.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`SchemaType`], including recursively.
@@ -403,9 +403,9 @@ impl<N> SchemaType<N> {
     }
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a [`TypeDef`] because we can't
+    /// (recursively)? Returns `None` if this is a `TypeDef` because we can't
     /// easily properly check the type of a typedef, accounting for namespaces,
-    /// without first converting to a [`Type`].
+    /// without first converting to a [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
