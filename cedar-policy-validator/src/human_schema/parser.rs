@@ -95,7 +95,7 @@ pub enum HumanSyntaxParseErrors {
 }
 
 /// Parse a type, in human syntax, into a [`crate::SchemaType`]
-pub fn parse_type(src: &str) -> Result<crate::SchemaType, HumanSyntaxParseErrors> {
+pub fn parse_type(src: &str) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
     let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
     Ok(custom_type_to_json_type(ty)?)
 }
@@ -104,7 +104,13 @@ pub fn parse_type(src: &str) -> Result<crate::SchemaType, HumanSyntaxParseErrors
 /// possibly generating warnings
 pub fn parse_natural_schema_fragment(
     src: &str,
-) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), HumanSyntaxParseErrors> {
+) -> Result<
+    (
+        crate::SchemaFragment<crate::RawName>,
+        impl Iterator<Item = SchemaWarning>,
+    ),
+    HumanSyntaxParseErrors,
+> {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = custom_schema_to_json_schema(ast)?;
     Ok(tuple)
