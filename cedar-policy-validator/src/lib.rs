@@ -35,6 +35,7 @@ use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
 
+pub mod entity_slicing;
 mod err;
 pub use err::*;
 mod coreschema;

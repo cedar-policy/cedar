@@ -22,8 +22,12 @@ use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use nonempty::NonEmpty;
 use thiserror::Error;
+<<<<<<< HEAD
 
 use crate::cedar_schema;
+=======
+use crate::human_schema;
+>>>>>>> b9d23316 (Entity slicing implementation)
 
 /// Error creating a schema from the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]

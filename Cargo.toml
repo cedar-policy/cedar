@@ -6,7 +6,7 @@ members = [
 	"cedar-policy-formatter",
 	"cedar-policy-cli",
 	"cedar-testing",
-	"cedar-wasm"
+	"cedar-wasm",
 ]
 
 resolver = "2"
