@@ -884,6 +884,8 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use cedar_policy_core::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -1208,6 +1210,24 @@ mod test {
         });
         let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
+    }
+
+    #[test]
+    fn missing_namespace() {
+        let src = r#"
+        {
+            "entityTypes": { "User": { } },
+            "actions": {}
+        }"#;
+        let schema = ValidatorSchema::from_str(src);
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"failed to parse schema in JSON format: unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
+                    .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
+                    .build());
+        });
     }
 }
 
