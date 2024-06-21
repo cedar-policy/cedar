@@ -75,7 +75,7 @@ impl RawName {
     /// Note that if the `RawName` already had a non-empty explicit namespace,
     /// no additional prefixing will be done, even if `ns` is `Some`.
     pub fn qualify_with(self, ns: Option<&Name>) -> Name {
-        self.0.prefix_namespace_if_unqualified(ns)
+        self.0.qualify_with(ns)
     }
 }
 
