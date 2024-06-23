@@ -150,13 +150,23 @@ impl Name {
         self.path.iter().join("::")
     }
 
-    /// Prefix the name with a optional namespace
-    /// When the name is not an `Id`, it doesn't make sense to prefix any
-    /// namespace and hence this method returns a copy of `self`
-    /// When the name is an `Id`, prefix it with the optional namespace
-    /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
-    /// prefix `A` with `Some(B::C)` yields `B::C::A`
-    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<&Name>) -> Name {
+    /// Qualify the name with a namespace
+    ///
+    /// When the name already has an explicit namespace, it doesn't make sense
+    /// to prefix any namespace, and hence this method returns a copy of `self`.
+    ///
+    /// If `namespace` is `None`, that represents the empty namespace, so no
+    /// prefixing will be done.
+    ///
+    /// When the name does not already have an explicit namespace, and
+    /// `namespace` is `Some`, prefix it with the namespace.
+    ///
+    /// Examples:
+    /// `A::B`.qualify_with(Some(C)) is just A::B
+    /// `A`.qualify_with(Some(C)) is C::A
+    /// `A`.qualify_with(Some(B::C)) is B::C::A
+    /// `A`.qualify_with(None) is A
+    pub fn qualify_with(&self, namespace: Option<&Name>) -> Name {
         if self.is_unqualified() {
             // Ideally, we want to implement `IntoIterator` for `Name`
             match namespace {
@@ -388,35 +398,42 @@ mod test {
     }
 
     #[test]
-    fn prefix_namespace() {
+    fn qualify_with() {
         assert_eq!(
             "foo::bar::baz",
             Name::from_normalized_str("baz")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some(&"foo::bar".parse().unwrap()))
+                .qualify_with(Some(&"foo::bar".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "C::D",
             Name::from_normalized_str("C::D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some(&"A::B".parse().unwrap()))
+                .qualify_with(Some(&"A::B".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A::B::C::D",
             Name::from_normalized_str("D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some(&"A::B::C".parse().unwrap()))
+                .qualify_with(Some(&"A::B::C".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "B::C::D",
             Name::from_normalized_str("B::C::D")
                 .unwrap()
-                .prefix_namespace_if_unqualified(Some(&"A".parse().unwrap()))
+                .qualify_with(Some(&"A".parse().unwrap()))
                 .to_smolstr()
         );
+        assert_eq!(
+            "A",
+            Name::from_normalized_str("A")
+                .unwrap()
+                .qualify_with(None)
+                .to_smolstr()
+        )
     }
 
     #[test]

@@ -59,9 +59,9 @@ impl EntityType {
         self.0.loc()
     }
 
-    /// Calls [`Name::prefix_namespace_if_unqualified`] on the underlying [`Name`]
-    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<&Name>) -> Self {
-        Self(self.0.prefix_namespace_if_unqualified(namespace))
+    /// Calls [`Name::qualify_with`] on the underlying [`Name`]
+    pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
+        Self(self.0.qualify_with(namespace))
     }
 
     /// Wraps [`Name::from_normalized_str`]

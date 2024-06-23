@@ -35,15 +35,13 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
-use cedar_policy_core::est;
-use cedar_policy_core::est::{Link, PolicyEntry};
+use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
-use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -87,7 +85,6 @@ impl Entity {
     ) -> Result<Self, EntityAttrEvaluationError> {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
-        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs
@@ -106,7 +103,6 @@ impl Entity {
     pub fn new_no_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
-        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             HashMap::new(),
@@ -125,7 +121,6 @@ impl Entity {
     /// # cool_asserts::assert_matches!(alice.attr("age"), None);
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
-        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::with_uid(uid.into()))
     }
 
@@ -140,7 +135,7 @@ impl Entity {
     /// assert_eq!(alice.uid(), euid);
     /// ```
     pub fn uid(&self) -> EntityUid {
-        EntityUid::new(self.0.uid().clone())
+        self.0.uid().clone().into()
     }
 
     /// Get the value for the given attribute, or `None` if not present.
@@ -199,9 +194,9 @@ impl Entity {
             .collect();
 
         (
-            EntityUid::new(uid),
+            uid.into(),
             attrs,
-            ancestors.into_iter().map(EntityUid::new).collect(),
+            ancestors.into_iter().map(Into::into).collect(),
         )
     }
 
@@ -1188,7 +1183,7 @@ impl Validator {
 #[derive(Debug)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment,
-    lossless: cedar_policy_validator::SchemaFragment,
+    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
 }
 
 impl SchemaFragment {
@@ -1714,22 +1709,18 @@ impl PolicySet {
 
     /// Get the EST representation of the [`PolicySet`]
     fn est(self) -> Result<est::PolicySet, PolicyToJsonError> {
-        let (static_policies, links): (Vec<_>, Vec<_>) =
+        let (static_policies, template_links): (Vec<_>, Vec<_>) =
             fold_partition(self.policies, is_static_or_link)?;
+        let static_policies = static_policies.into_iter().collect::<HashMap<_, _>>();
         let templates = self
             .templates
             .into_iter()
-            .map(|(id, template)| {
-                template.lossless.est().map(|est| PolicyEntry {
-                    id: id.into(),
-                    policy: est,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|(id, template)| template.lossless.est().map(|est| (id.into(), est)))
+            .collect::<Result<HashMap<_, _>, _>>()?;
         let est = est::PolicySet {
             templates,
             static_policies,
-            links,
+            template_links,
         };
 
         Ok(est)
@@ -2021,27 +2012,25 @@ impl std::fmt::Display for PolicySet {
 /// link
 fn is_static_or_link(
     (id, policy): (PolicyId, Policy),
-) -> Result<Either<est::PolicyEntry, Link>, PolicyToJsonError> {
+) -> Result<Either<(ast::PolicyID, est::Policy), TemplateLink>, PolicyToJsonError> {
     match policy.template_id() {
         Some(template_id) => {
-            let slots = policy
+            let values = policy
                 .ast
                 .env()
                 .iter()
                 .map(|(id, euid)| (*id, euid.clone()))
                 .collect();
-            Ok(Either::Right(Link {
-                id: id.into(),
-                template: template_id.clone().into(),
-                slots,
+            Ok(Either::Right(TemplateLink {
+                new_id: id.into(),
+                template_id: template_id.clone().into(),
+                values,
             }))
         }
-        None => policy.lossless.est().map(|est| {
-            Either::Left(PolicyEntry {
-                id: id.into(),
-                policy: est,
-            })
-        }),
+        None => policy
+            .lossless
+            .est()
+            .map(|est| Either::Left((id.into(), est))),
     }
 }
 
@@ -2150,24 +2139,24 @@ impl Template {
             ast::PrincipalOrResourceConstraint::Any => TemplatePrincipalConstraint::Any,
             ast::PrincipalOrResourceConstraint::In(eref) => {
                 TemplatePrincipalConstraint::In(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 TemplatePrincipalConstraint::Eq(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                TemplatePrincipalConstraint::Is(EntityTypeName::new(entity_type.as_ref().clone()))
+                TemplatePrincipalConstraint::Is(entity_type.as_ref().clone().into())
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 TemplatePrincipalConstraint::IsIn(
-                    EntityTypeName::new(entity_type.as_ref().clone()),
+                    entity_type.as_ref().clone().into(),
                     match eref {
-                        ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                        ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                         ast::EntityReference::Slot => None,
                     },
                 )
@@ -2180,14 +2169,10 @@ impl Template {
         // Clone the data from Core to be consistent with the other constraints
         match self.ast.action_constraint() {
             ast::ActionConstraint::Any => ActionConstraint::Any,
-            ast::ActionConstraint::In(ids) => ActionConstraint::In(
-                ids.iter()
-                    .map(|id| EntityUid::new(id.as_ref().clone()))
-                    .collect(),
-            ),
-            ast::ActionConstraint::Eq(id) => {
-                ActionConstraint::Eq(EntityUid::new(id.as_ref().clone()))
+            ast::ActionConstraint::In(ids) => {
+                ActionConstraint::In(ids.iter().map(|id| id.as_ref().clone().into()).collect())
             }
+            ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(id.as_ref().clone().into()),
         }
     }
 
@@ -2197,24 +2182,24 @@ impl Template {
             ast::PrincipalOrResourceConstraint::Any => TemplateResourceConstraint::Any,
             ast::PrincipalOrResourceConstraint::In(eref) => {
                 TemplateResourceConstraint::In(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 TemplateResourceConstraint::Eq(match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                    ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                     ast::EntityReference::Slot => None,
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                TemplateResourceConstraint::Is(EntityTypeName::new(entity_type.as_ref().clone()))
+                TemplateResourceConstraint::Is(entity_type.as_ref().clone().into())
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 TemplateResourceConstraint::IsIn(
-                    EntityTypeName::new(entity_type.as_ref().clone()),
+                    entity_type.as_ref().clone().into(),
                     match eref {
-                        ast::EntityReference::EUID(e) => Some(EntityUid::new(e.as_ref().clone())),
+                        ast::EntityReference::EUID(e) => Some(e.as_ref().clone().into()),
                         ast::EntityReference::Slot => None,
                     },
                 )
@@ -2407,7 +2392,7 @@ impl Policy {
                 .ast
                 .env()
                 .iter()
-                .map(|(key, value)| ((*key).into(), EntityUid::new(value.clone())))
+                .map(|(key, value)| ((*key).into(), value.clone().into()))
                 .collect();
             Some(wrapped_vals)
         }
@@ -2463,11 +2448,11 @@ impl Policy {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                PrincipalConstraint::Is(EntityTypeName::new(entity_type.as_ref().clone()))
+                PrincipalConstraint::Is(entity_type.as_ref().clone().into())
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 PrincipalConstraint::IsIn(
-                    EntityTypeName::new(entity_type.as_ref().clone()),
+                    entity_type.as_ref().clone().into(),
                     self.convert_entity_reference(eref, slot_id).clone(),
                 )
             }
@@ -2501,11 +2486,11 @@ impl Policy {
                 ResourceConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
-                ResourceConstraint::Is(EntityTypeName::new(entity_type.as_ref().clone()))
+                ResourceConstraint::Is(entity_type.as_ref().clone().into())
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
                 ResourceConstraint::IsIn(
-                    EntityTypeName::new(entity_type.as_ref().clone()),
+                    entity_type.as_ref().clone().into(),
                     self.convert_entity_reference(eref, slot_id).clone(),
                 )
             }
@@ -3401,7 +3386,20 @@ impl Context {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Context> for Context {
+    fn from(c: ast::Context) -> Self {
+        Self(c)
+    }
+}
+
 impl std::fmt::Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -3492,7 +3490,7 @@ impl From<ast::Value> for EvalResult {
             ast::ValueKind::Lit(ast::Literal::Long(i)) => Self::Long(i),
             ast::ValueKind::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
             ast::ValueKind::Lit(ast::Literal::EntityUID(e)) => {
-                Self::EntityUid(EntityUid::new(ast::EntityUID::clone(&e)))
+                Self::EntityUid(ast::EntityUID::clone(&e).into())
             }
             ast::ValueKind::Set(set) => Self::Set(Set(set
                 .authoritative

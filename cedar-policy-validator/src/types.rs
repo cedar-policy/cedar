@@ -48,12 +48,14 @@ pub enum Type {
     /// Bottom type. Sub-type of all types.
     Never,
 
-    /// The singleton boolean types: true and false.
+    /// Singleton boolean type true
     True,
+    /// Singleton boolean type false
     False,
 
     /// Primitive types: bool, long, and string.
     Primitive {
+        /// Which primitive type: bool, long, or string
         #[serde(rename = "primitiveType")]
         primitive_type: Primitive,
     },
@@ -69,11 +71,12 @@ pub enum Type {
         element_type: Option<Box<Type>>,
     },
 
-    /// Record and entity types.
+    /// Record and entity types
     EntityOrRecord(EntityRecordKind),
 
-    // Extension types, like "ipaddr".
+    /// Extension types
     ExtensionType {
+        /// Name of the extension type
         name: Name,
     },
 }
@@ -106,7 +109,7 @@ impl Type {
     }
 
     /// Construct a type for a literal EUID. This type will be a named entity
-    /// type for the type of the EntityUID.
+    /// type for the type of the [`EntityUID`].
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         if entity.entity_type().is_action() {
             schema
@@ -380,8 +383,8 @@ impl Type {
         }
     }
 
-    /// Is this validator type "consistent with" the given Core SchemaType.
-    /// Meaning, is there at least some value that could have this SchemaType and
+    /// Is this validator type "consistent with" the given Core `SchemaType`.
+    /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
     pub(crate) fn is_consistent_with(
         &self,
@@ -795,7 +798,7 @@ impl EntityLUB {
         }
     }
 
-    /// Like `get_single_entity()`, but consumes the EntityLUB and produces an
+    /// Like `get_single_entity()`, but consumes the [`EntityLUB`] and produces an
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<EntityType> {
         let mut names = self.lub_elements.into_iter();
@@ -857,8 +860,8 @@ impl EntityLUB {
         })
     }
 
-    /// Generate the least upper bound of this EntityLUB and another. This
-    /// returns an EntityLUB for the union of the entity types in both argument
+    /// Generate the least upper bound of this [`EntityLUB`] and another. This
+    /// returns an [`EntityLUB`] for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
     pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
@@ -870,25 +873,25 @@ impl EntityLUB {
         }
     }
 
-    /// Return true if the set of entity types composing this EntityLUB is
-    /// disjoint from th entity types composing another LUB.
+    /// Return true if the set of entity types composing this [`EntityLUB`] is
+    /// disjoint from th entity types composing another [`EntityLUB`].
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
         self.lub_elements.is_disjoint(&other.lub_elements)
     }
 
-    /// Return true if the given entity type `Name` is in the set of entity
-    /// types comprising this LUB.
+    /// Return true if the given entity type [`Name`] is in the set of entity
+    /// types comprising this [`EntityLUB`].
     pub(crate) fn contains(&self, ty: &EntityType) -> bool {
         self.lub_elements.contains(ty)
     }
 
-    /// An iterator over the entity type `Name`s in the set of entity types
-    /// comprising this LUB.
+    /// An iterator over the entity type [`Name`]s in the set of entity types
+    /// comprising this [`EntityLUB`].
     pub(crate) fn iter(&self) -> impl Iterator<Item = &EntityType> {
         self.lub_elements.iter()
     }
 
-    // Check if this EntityLUB contains a particular entity type.
+    // Check if this [`EntityLUB`] contains a particular entity type.
     pub(crate) fn contains_entity_type(&self, ety: &EntityType) -> bool {
         self.lub_elements.contains(ety)
     }
@@ -898,6 +901,7 @@ impl EntityLUB {
 /// identifier, a flag indicating weather it is required, and a type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct Attributes {
+    /// Attributes map
     pub attrs: BTreeMap<SmolStr, AttributeType>,
 }
 
@@ -1049,11 +1053,11 @@ impl IntoIterator for Attributes {
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
 pub enum OpenTag {
-    // The attributes are open. A value of this type may have attributes other
-    // than those listed.
+    /// The attributes are open. A value of this type may have attributes other
+    /// than those listed.
     OpenAttributes,
-    // The attributes are closed. The attributes for a value of this type must
-    // exactly match the attributes listed in the type.
+    /// The attributes are closed. The attributes for a value of this type must
+    /// exactly match the attributes listed in the type.
     ClosedAttributes,
 }
 
@@ -1069,7 +1073,7 @@ impl OpenTag {
 /// Represents whether a type is an entity type, record type, or could be either
 ///
 /// The subtyping lattice for these types is that
-/// Entity <: AnyEntity. Record does not subtype anything.
+/// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum EntityRecordKind {
     /// A record type, with these attributes
@@ -1089,12 +1093,16 @@ pub enum EntityRecordKind {
     /// represented using the `AnyEntity` record kind.
     ///
     /// Attributes in this case are not stored inline but must be looked up in
-    /// the schema, based on the elements of the EntityLUB.
+    /// the schema, based on the elements of the [`EntityLUB`].
     Entity(EntityLUB),
 
-    ///We special case action entities. They store their attributes directly rather than
-    ///Names
-    ActionEntity { name: EntityType, attrs: Attributes },
+    /// We special case action entities, which store their attributes directly, like `Record`s do
+    ActionEntity {
+        /// Type name of the action entity
+        name: EntityType,
+        /// Attributes of the action entity
+        attrs: Attributes,
+    },
 }
 
 impl EntityRecordKind {
@@ -1141,6 +1149,8 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get the type of the given attribute in this entity or record, or `None`
+    /// if it doesn't exist (or not known to exist)
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
@@ -1152,6 +1162,7 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get all the attribute names for this entity or record
     pub fn all_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
@@ -1355,7 +1366,7 @@ pub struct AttributeType {
 }
 
 impl AttributeType {
-    /// Construct an AttributeType with some type that may be required or
+    /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter.
     pub fn new(attr_type: Type, is_required: bool) -> Self {
         Self {
@@ -1364,7 +1375,7 @@ impl AttributeType {
         }
     }
 
-    /// Construct an AttributeType for an attribute that must be present given
+    /// Construct an [`AttributeType`] for an attribute that must be present given
     /// the type of the attribute.
     pub fn required_attribute(attr_type: Type) -> Self {
         Self::new(attr_type, true)
@@ -2107,8 +2118,7 @@ mod test {
         let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
         let type_from_schema_type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            None,
-            parsed_schema_type,
+            parsed_schema_type.qualify_type_references(None),
             Extensions::all_available(),
         )
         .expect("Schema type should have converted to type.")

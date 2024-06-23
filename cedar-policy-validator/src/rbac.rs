@@ -296,9 +296,7 @@ impl Validator {
         .into_iter()
     }
 
-    /// Gather all ApplySpec objects for all actions in the schema. The `applies_to`
-    /// field is optional in the schema. In the case that it was not supplied, the
-    /// `applies_to` field will contain `UnspecifiedEntity`.
+    /// Gather all `ApplySpec` objects for all actions in the schema.
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
         action_constraint: &'a ActionConstraint,
@@ -413,7 +411,7 @@ mod test {
     use crate::{
         schema_file_format::{NamespaceDefinition, *},
         validation_errors::UnrecognizedEntityType,
-        ValidationMode, ValidationWarning, Validator,
+        RawName, ValidationMode, ValidationWarning, Validator,
     };
 
     #[test]
@@ -436,7 +434,7 @@ mod test {
 
     #[test]
     fn validate_equals_instead_of_in() {
-        let schema_file: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+        let schema_file: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
             {
                 "entityTypes": {
                     "user": {
@@ -726,7 +724,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_action_id_in_schema() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -758,7 +756,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_action() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -789,7 +787,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -824,7 +822,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_entity_type() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -1449,7 +1447,7 @@ mod test {
 
     #[test]
     fn unspecified_principal_resource_with_scope_conditions() {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
             r#"
         {
             "entityTypes": {"a": {}},
@@ -1482,11 +1480,11 @@ mod partial_schema {
         parser::parse_policy,
     };
 
-    use crate::{NamespaceDefinition, Validator};
+    use crate::{NamespaceDefinition, RawName, Validator};
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
             r#"
         {
             "entityTypes": { },
