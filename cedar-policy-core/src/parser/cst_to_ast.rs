@@ -4198,6 +4198,60 @@ mod tests {
     }
 
     #[test]
+    fn scope_unexpected_nested_sets() {
+        let policy = r#"
+            permit (
+                principal == [[User::"alice"]],
+                action,
+                resource
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid or template slot, found set of entity uids",
+                ).exactly_one_underline(r#"[[User::"alice"]]"#).build());
+            }
+        );
+
+        let policy = r#"
+            permit (
+                principal,
+                action,
+                resource == [[?resource]]
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid or template slot, found set of entity uids",
+                ).exactly_one_underline("[[?resource]]").build());
+            }
+        );
+
+        let policy = r#"
+            permit (
+                principal,
+                action in [[[Action::"act"]]],
+                resource
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid, found set of entity uids",
+                ).exactly_one_underline(r#"[[Action::"act"]]"#).build());
+            }
+        );
+    }
+
+    #[test]
     fn unsupported_ops() {
         let src = "1/2";
         assert_matches!(parse_expr(src), Err(e) => {
