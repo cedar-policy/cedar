@@ -140,7 +140,7 @@ impl Node<Option<cst::Expr>> {
 
     /// Extract a single `EntityUID` or a template slot from this expression.
     /// The expression must be exactly a single entity literal expression or
-    /// a single temple slot.
+    /// a single template slot.
     pub fn to_ref_or_slot(&self, var: ast::Var) -> Result<EntityReference> {
         self.to_ref_or_refs::<EntityReference>(var)
     }
