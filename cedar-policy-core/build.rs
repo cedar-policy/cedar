@@ -25,4 +25,7 @@ fn generate_parsers() {
     lalrpop::Configuration::new()
         .process_dir("src/parser/")
         .expect("parser synth");
+
+    prost_build::compile_protos(&["./schema/AuthorizationRequest.proto"], &["./schema"]).unwrap();
+
 }

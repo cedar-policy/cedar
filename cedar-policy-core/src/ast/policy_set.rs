@@ -16,8 +16,9 @@
 
 use super::{
     EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template,
+    StaticPolicy, Template, TemplateBody
 };
+use crate::ast::proto;
 use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
@@ -108,6 +109,55 @@ impl From<PolicySet> for LiteralPolicySet {
         Self { templates, links }
     }
 }
+
+impl From<proto::LiteralPolicySet> for LiteralPolicySet {
+    fn from(v: proto::LiteralPolicySet) -> Self {
+        let templates : HashMap<PolicyID, Template> = v.templates
+            .into_iter()
+            .map(|(key, value)| (
+                PolicyID::from_string(key),
+                Template::from(TemplateBody::from(value)))
+            )
+            .collect();
+        
+        let links : HashMap<PolicyID, LiteralPolicy> = v.links
+            .into_iter()
+            .map(|(key, value)| (PolicyID::from_string(key), LiteralPolicy::from(value)))
+            .collect();
+
+        Self {
+            templates: templates,
+            links: links
+        }
+    }
+}
+
+impl From<LiteralPolicySet> for proto::LiteralPolicySet {
+    fn from(v: LiteralPolicySet) -> Self {
+        let templates: HashMap<String, proto::TemplateBody> = v.templates
+            .into_iter()
+            .map(|(key, value)| (
+                String::from(key.as_ref()),
+                proto::TemplateBody::from(TemplateBody::from(value))
+            ))
+            .collect();
+
+        let links: HashMap<String, proto::LiteralPolicy> = v.links
+            .into_iter()
+            .map(|(key, value)| (
+                String::from(key.as_ref()),
+                proto::LiteralPolicy::from(value)
+            ))
+            .collect();
+
+
+        Self {
+            templates: templates,
+            links: links
+        }
+    }
+}
+
 
 /// Potential errors when working with `PolicySet`s.
 #[derive(Debug, Diagnostic, Error)]
@@ -503,10 +553,14 @@ mod test {
     use crate::{
         ast::{
             ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
+            AnyId, Annotation, PrincipalOrResourceConstraint, Name
         },
         parser,
+        from_normalized_str::FromNormalizedStr,
     };
+
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[test]
     fn link_conflicts() {
@@ -897,5 +951,37 @@ mod test {
         );
         assert!(pset.get(&tid1).is_none());
         assert_eq!(pset.all_templates().count(), 4);
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let annotation1: Annotation = Annotation { val: "".into(), loc: None };
+        let pc: PrincipalConstraint = PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
+        let ac: ActionConstraint = ActionConstraint::Eq(EntityUID::with_eid("read").into());
+        let rc: ResourceConstraint = ResourceConstraint { constraint: PrincipalOrResourceConstraint::is_entity_type(Name::from_normalized_str("photo").unwrap().into()) };
+
+        let tb: TemplateBody = TemplateBody::new(
+            PolicyID::from_string("template"),
+            None,
+            Annotations::from_iter(vec![(AnyId::from_str("read").expect(""), annotation1)]),
+            Effect::Permit,
+            pc,
+            ac,
+            rc,
+            Expr::val(true)
+        );
+
+        let policy: Policy = Policy::from_when_clause(Effect::Permit, Expr::val(true), PolicyID::from_string("alice"), None);
+
+        let mut ps: PolicySet = PolicySet::new();
+        ps.add_template(Template::from(tb)).expect("Failed to add template to policy set.");
+        ps.add(policy).expect("Failed to add policy to policy set.");
+        // Can't clone LiteralPolicySets directly
+        let lps1 : LiteralPolicySet = LiteralPolicySet::from(ps.clone());
+        let lps2 : LiteralPolicySet = LiteralPolicySet::from(ps.clone());
+        let lps_roundtrip : LiteralPolicySet = LiteralPolicySet::from(proto::LiteralPolicySet::from(lps1));
+        // Can't compare LiteralPolicySets directly, so we compare their fields
+        assert_eq!(lps2.templates, lps_roundtrip.templates);
+        assert_eq!(lps2.links, lps_roundtrip.links);
     }
 }

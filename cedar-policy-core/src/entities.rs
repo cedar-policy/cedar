@@ -353,6 +353,46 @@ impl std::fmt::Display for Entities {
     }
 }
 
+impl From<proto::Entities> for Entities {
+    fn from(v: proto::Entities) -> Self {
+        let entities : Vec<Entity> = v.entities
+            .into_iter()
+            .map(Entity::from)
+            .collect();
+
+        let result = Entities::new();
+
+        #[cfg(feature = "partial-eval")]
+        if v.mode == proto::entities::Mode::Partial {
+            result = result.partial();
+        }
+
+        result.add_entities(
+            entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::none()
+        ).unwrap()
+    }
+}
+
+impl From<Entities> for proto::Entities {
+    fn from(v: Entities) -> Self {
+        let entities: Vec<proto::Entity> = v.entities
+            .values()
+            .map(|value| proto::Entity::from(value.to_owned()))
+            .collect();
+
+        #[cfg(feature = "partial-eval")]
+        if v.mode == Mode::Partial {
+            return Self { entities: entities, mode: proto::entities::Mode::Partial.into() };
+        }
+
+        Self { entities: entities, mode: proto::entities::Mode::Concrete.into() }
+    }
+}
+
+
 /// Results from dereferencing values from the Entity Store
 #[derive(Debug, Clone)]
 pub enum Dereference<'a, T> {
@@ -3164,5 +3204,61 @@ mod schema_based_parsing_tests {
                 "did you mean `XYZCorp::Employee`?",
             ).build());
         });
+    }
+}
+
+#[cfg(test)]
+pub mod protobuf_tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::iter;
+    use smol_str::SmolStr;
+
+    #[test]
+    fn roundtrip() {
+
+        // Empty Test
+        let entities1: Entities = Entities::new();
+        assert_eq!(
+            entities1,
+            Entities::from(proto::Entities::from(entities1.clone()))
+        );
+
+
+        // Single Element Test
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity: Entity = Entity::new(
+        r#"Foo::"bar""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            &Extensions::none()
+        ).unwrap();
+        let mut entities2: Entities = Entities::new();
+        entities2 = entities2.add_entities(
+            iter::once(entity.clone()),
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::none()
+        ).unwrap();
+        assert_eq!(entities2, Entities::from(proto::Entities::from(entities2.clone())));
+
+        // Two Element Test
+        let entity2: Entity = Entity::new(
+            r#"Bar::"foo""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            &Extensions::none()
+        ).unwrap();
+        let mut entities3: Entities = Entities::new();
+        entities3 = entities3.add_entities(
+            iter::once(entity.clone()).chain(iter::once(entity2)),
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::none()
+        ).unwrap();
+        assert_eq!(entities3, Entities::from(proto::Entities::from(entities3.clone())));
+
     }
 }

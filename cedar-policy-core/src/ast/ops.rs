@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::CallStyle;
+use crate::ast::{CallStyle, proto};
 use serde::{Deserialize, Serialize};
 
 /// Built-in operators with exactly one argument
@@ -29,6 +29,24 @@ pub enum UnaryOp {
     ///
     /// Argument must have Long type
     Neg,
+}
+
+impl From<proto::expr::expr_kind::UnaryOp> for UnaryOp {
+    fn from(v: proto::expr::expr_kind::UnaryOp) -> Self {
+        match v {
+            proto::expr::expr_kind::UnaryOp::Not => UnaryOp::Not,
+            proto::expr::expr_kind::UnaryOp::Neg => UnaryOp::Neg
+        }
+    }
+}
+
+impl From<UnaryOp> for proto::expr::expr_kind::UnaryOp {
+    fn from(v: UnaryOp) -> Self {
+        match v {
+            UnaryOp::Not => proto::expr::expr_kind::UnaryOp::Not,
+            UnaryOp::Neg => proto::expr::expr_kind::UnaryOp::Neg
+        }
+    }
 }
 
 /// Built-in operators with exactly two arguments
@@ -117,11 +135,73 @@ impl std::fmt::Display for BinaryOp {
     }
 }
 
+impl From<proto::expr::expr_kind::BinaryOp> for BinaryOp {
+    fn from(v: proto::expr::expr_kind::BinaryOp) -> Self {
+        match v {
+            proto::expr::expr_kind::BinaryOp::Eq => BinaryOp::Eq,
+            proto::expr::expr_kind::BinaryOp::Less => BinaryOp::Less,
+            proto::expr::expr_kind::BinaryOp::LessEq => BinaryOp::LessEq,
+            proto::expr::expr_kind::BinaryOp::Add => BinaryOp::Add,
+            proto::expr::expr_kind::BinaryOp::Sub => BinaryOp::Sub,
+            proto::expr::expr_kind::BinaryOp::Mul => BinaryOp::Mul,
+            proto::expr::expr_kind::BinaryOp::In => BinaryOp::In,
+            proto::expr::expr_kind::BinaryOp::Contains => BinaryOp::Contains,
+            proto::expr::expr_kind::BinaryOp::ContainsAll => BinaryOp::ContainsAll,
+            proto::expr::expr_kind::BinaryOp::ContainsAny => BinaryOp::ContainsAny
+        }
+    }
+}
+
+impl From<BinaryOp> for proto::expr::expr_kind::BinaryOp {
+    fn from(v: BinaryOp) -> Self {
+        match v {
+            BinaryOp::Eq => proto::expr::expr_kind::BinaryOp::Eq,
+            BinaryOp::Less => proto::expr::expr_kind::BinaryOp::Less,
+            BinaryOp::LessEq => proto::expr::expr_kind::BinaryOp::LessEq,
+            BinaryOp::Add => proto::expr::expr_kind::BinaryOp::Add,
+            BinaryOp::Sub => proto::expr::expr_kind::BinaryOp::Sub,
+            BinaryOp::Mul => proto::expr::expr_kind::BinaryOp::Mul,
+            BinaryOp::In => proto::expr::expr_kind::BinaryOp::In,
+            BinaryOp::Contains => proto::expr::expr_kind::BinaryOp::Contains,
+            BinaryOp::ContainsAll => proto::expr::expr_kind::BinaryOp::ContainsAll,
+            BinaryOp::ContainsAny => proto::expr::expr_kind::BinaryOp::ContainsAny
+        }
+    }
+}
+
 impl std::fmt::Display for CallStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::FunctionStyle => write!(f, "function-style"),
             Self::MethodStyle => write!(f, "method-style"),
         }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn protobuf_roundtrip() {
+        assert_eq!(
+            UnaryOp::Neg,
+            UnaryOp::from(proto::expr::expr_kind::UnaryOp::from(UnaryOp::Neg))
+        );
+
+        assert_eq!(
+            UnaryOp::Neg,
+            UnaryOp::from(proto::expr::expr_kind::UnaryOp::from(UnaryOp::Neg))
+        );
+
+        assert_eq!(
+            BinaryOp::Eq,
+            BinaryOp::from(proto::expr::expr_kind::BinaryOp::from(BinaryOp::Eq))
+        );
+
+        assert_eq!(
+            BinaryOp::ContainsAny,
+            BinaryOp::from(proto::expr::expr_kind::BinaryOp::from(BinaryOp::ContainsAny))
+        );
     }
 }

@@ -16,6 +16,11 @@
 
 //! This module contains the AST datatypes.
 
+pub mod proto {
+    #![allow(missing_docs)]
+    include!(concat!(env!("OUT_DIR"), "/cedar.cedar_policy_core.ast.proto.rs"));
+}
+
 mod expr;
 pub use expr::*;
 mod entity;

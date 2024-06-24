@@ -52,6 +52,40 @@ impl EntityType {
     }
 }
 
+impl From<proto::EntityType> for EntityType {
+    fn from(v: proto::EntityType) -> Self {
+        let pty = proto::entity_type::EntityTypeType::try_from(v.ty).unwrap();
+        match pty  {
+            proto::entity_type::EntityTypeType::Unspecified => {
+                EntityType::Unspecified
+            }
+            proto::entity_type::EntityTypeType::Specified => {
+                EntityType::Specified(Name::from(v.name.unwrap()))
+            }
+        }
+    }
+}
+
+impl From<EntityType> for proto::EntityType {
+    fn from(v: EntityType) -> Self {
+        match v {
+            EntityType::Unspecified => { 
+                Self {
+                    ty: proto::entity_type::EntityTypeType::Unspecified.into(),
+                    name: None
+                }
+            }
+            EntityType::Specified(name) => {
+                Self {
+                    ty: proto::entity_type::EntityTypeType::Specified.into(),
+                    name: Some(proto::Name::from(name))
+                }
+            }
+        }
+    }
+}
+
+
 // Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
 // `Unspecified` never conflicts with `Specified(name)`.
 impl std::fmt::Display for EntityType {
@@ -224,6 +258,30 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
             eid: u.arbitrary()?,
             loc: None,
         })
+    }
+}
+
+impl From<proto::EntityUid> for EntityUID {
+    fn from(v: proto::EntityUid) -> Self {
+        let loc : Option<Loc> = v.loc.map(Loc::from);
+        Self {
+            ty: EntityType::from(v.ty.unwrap()),
+            eid: Eid::new(v.eid),
+            loc: loc
+        }
+    }
+}
+
+impl From<EntityUID> for proto::EntityUid {
+    fn from(v: EntityUID) -> Self {
+        let loc: Option<proto::Loc> = v.loc.map(proto::Loc::from);
+        let eid_ref : &str = v.eid.as_ref();
+        Self {
+            ty: Some(proto::EntityType::from(v.ty)),
+            eid: eid_ref.to_owned(),
+            loc: loc
+        }
+
     }
 }
 
@@ -516,6 +574,55 @@ impl std::fmt::Display for Entity {
     }
 }
 
+impl From<proto::Entity> for Entity {
+    fn from(v: proto::Entity) -> Self {
+        let extensions_none = Extensions::none();
+        let eval = RestrictedEvaluator::new(&extensions_none);
+
+        let attrs : BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v.attrs
+            .into_iter()
+            .map(|(key, value)| {
+                let pval = eval.partial_interpret(BorrowedRestrictedExpr::new(&Expr::from(value)).unwrap()).unwrap();
+                (key.into(), pval.into())
+            })
+            .collect();
+
+        let ancestors : HashSet<EntityUID> = v.ancestors
+            .into_iter()
+            .map(EntityUID::from)
+            .collect();
+
+        Self {
+            uid: EntityUID::from(v.uid.unwrap()),
+            attrs: attrs,
+            ancestors: ancestors
+        }
+    }
+}
+
+impl From<Entity> for proto::Entity {
+    fn from(v: Entity) -> Self {
+        let attrs: HashMap<String, proto::Expr> = v.attrs
+            .into_iter()
+            .map(|(key, value)| (
+                key.to_string(),
+                proto::Expr::from(Expr::from(PartialValue::from(value)))
+            ))
+            .collect();
+    
+        let ancestors: Vec<proto::EntityUid> = v.ancestors
+            .into_iter()
+            .map(proto::EntityUid::from)
+            .collect();
+
+        Self {
+            uid: Some(proto::EntityUid::from(v.uid)),
+            attrs: attrs,
+            ancestors: ancestors
+        }
+    }
+}
+
 /// `PartialValue`, but serialized as a `RestrictedExpr`.
 ///
 /// (Extension values can't be directly serialized, but can be serialized as
@@ -630,5 +737,39 @@ mod test {
         assert!(!euid.is_action());
         let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
         assert!(!euid.is_action());
+    }
+
+    #[test]
+    fn round_trip_protobuf() {
+        assert_eq!(
+            EntityType::Unspecified,
+            EntityType::from(proto::EntityType::from(EntityType::Unspecified))
+        );
+
+        let name = Name::from_normalized_str("B::C::D").unwrap();
+        let ety_specified = EntityType::Specified(name);
+        assert_eq!(
+            ety_specified,
+            EntityType::from(proto::EntityType::from(ety_specified.clone()))
+        );
+
+        let euid1 = EntityUID::with_eid("foo");
+        assert_eq!(euid1, EntityUID::from(proto::EntityUid::from(euid1.clone())));
+
+        let euid2 = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
+        assert_eq!(euid2, EntityUID::from(proto::EntityUid::from(euid2.clone())));
+
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity = Entity::new(
+            r#"Foo::"bar""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            &Extensions::none(),
+        ).unwrap();
+        assert_eq!(entity, Entity::from(proto::Entity::from(entity.clone())));
+
+
     }
 }

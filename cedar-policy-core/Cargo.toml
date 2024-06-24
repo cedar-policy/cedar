@@ -27,6 +27,7 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.1.0", features = ["serde"] }
 nonempty = "0.10.0"
+prost = "0.12"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
@@ -54,6 +55,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]
 lalrpop = "0.20.0"
+prost-build = "0.5"
 
 [dev-dependencies]
 cool_asserts = "2.0"

@@ -19,10 +19,12 @@ use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
 use std::sync::Arc;
+use std::str::FromStr;
 
 use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
+use crate::ast::proto;
 
 use super::PrincipalOrResource;
 
@@ -228,6 +230,38 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
     }
 }
 
+impl From<proto::Name> for Name {
+    fn from(v: proto::Name) -> Self {
+        let loc : Option<Loc> = v.loc.map(Loc::from);
+        let path : Arc<Vec<Id>> = Arc::new(v.path
+            .into_iter()
+            .map(|value| Id::from_str(&value).unwrap())
+            .collect()
+        );
+
+        Self {
+            id: Id::from_str(&v.id).unwrap(),
+            path: path,
+            loc: loc
+        }
+    }
+}
+
+impl From<Name> for proto::Name {
+    fn from(v: Name) -> Self {
+        let path: Vec<String> = Arc::unwrap_or_clone(v.path)
+            .into_iter()
+            .map(|value| String::from(value.as_ref()))
+            .collect();
+
+        Self {
+            id: String::from(v.id.as_ref()),
+            path: path,
+            loc: v.loc.map(proto::Loc::from)
+        }
+    }
+}
+
 struct NameVisitor;
 
 impl<'de> serde::de::Visitor<'de> for NameVisitor {
@@ -301,6 +335,25 @@ impl std::fmt::Display for SlotId {
         write!(f, "{}", self.0)
     }
 }
+
+impl From<proto::SlotId> for SlotId {
+    fn from(v: proto::SlotId) -> Self {
+        match v {
+            proto::SlotId::Principal => SlotId::principal(),
+            proto::SlotId::Resource => SlotId::resource()
+        }
+    }
+}
+
+impl From<SlotId> for proto::SlotId {
+    fn from(v: SlotId) -> Self {
+        match v {
+            SlotId(ValidSlotId::Principal) => proto::SlotId::Principal,
+            SlotId(ValidSlotId::Resource) => proto::SlotId::Resource
+        }
+    }
+}
+
 
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -408,5 +461,17 @@ mod test {
                 .prefix_namespace_if_unqualified(Some(&"A".parse().unwrap()))
                 .to_smolstr()
         );
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();
+        assert_eq!(orig_name, Name::from(proto::Name::from(orig_name.to_owned())));
+
+        let orig_slot1: SlotId = SlotId::principal();
+        assert_eq!(orig_slot1, SlotId::from(proto::SlotId::from(orig_slot1)));
+
+        let orig_slot2: SlotId = SlotId::resource();
+        assert_eq!(orig_slot2, SlotId::from(proto::SlotId::from(orig_slot2)));
     }
 }

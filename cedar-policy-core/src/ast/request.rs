@@ -20,6 +20,7 @@ use crate::entities::json::{
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
+use crate::ast::proto;
 use miette::Diagnostic;
 use serde::Serialize;
 use smol_str::SmolStr;
@@ -98,6 +99,45 @@ impl EntityUIDEntry {
         }
     }
 }
+
+impl From<proto::EntityUidEntry> for EntityUIDEntry {
+    fn from(v: proto::EntityUidEntry) -> Self {
+        let loc : Option<Loc> = v.loc.map(Loc::from);
+        let ety = proto::entity_uid_entry::EntityUidEntryType::try_from(v.ty).unwrap();
+
+        match ety {
+            proto::entity_uid_entry::EntityUidEntryType::Unknown => {
+                Self::Unknown { loc: loc }
+            }
+            proto::entity_uid_entry::EntityUidEntryType::Known => {
+                EntityUIDEntry::concrete(EntityUID::from(v.euid.unwrap()), loc)
+            }
+        }
+    }
+}
+
+impl From<EntityUIDEntry> for proto::EntityUidEntry {
+    fn from(v: EntityUIDEntry) -> Self {
+        match v {
+            EntityUIDEntry::Unknown { loc } => {
+                Self {
+                    ty: proto::entity_uid_entry::EntityUidEntryType::Unknown.into(),
+                    euid: None,
+                    loc: loc.map(proto::Loc::from)
+                }
+            }
+            EntityUIDEntry::Known { euid, loc } => {
+                Self {
+                    ty: proto::entity_uid_entry::EntityUidEntryType::Known.into(),
+                    euid: Some(proto::EntityUid::from(Arc::unwrap_or_clone(euid))),
+                    loc: loc.map(proto::Loc::from)
+                }
+            }
+        }
+    }
+}
+
+
 
 impl Request {
     /// Default constructor.
@@ -204,6 +244,28 @@ impl std::fmt::Display for Request {
                 None => "unknown".to_string(),
             }
         )
+    }
+}
+
+impl From<proto::Request> for Request {
+    fn from(v: proto::Request) -> Self {
+        Request::new_unchecked(
+            EntityUIDEntry::from(v.principal.unwrap()),
+            EntityUIDEntry::from(v.action.unwrap()),
+            EntityUIDEntry::from(v.resource.unwrap()),
+            v.context.map(Context::from)
+        )
+    }
+}
+
+impl From<Request> for proto::Request {
+    fn from(v: Request) -> Self {
+        Self {
+            principal: Some(proto::EntityUidEntry::from(v.principal)),
+            action: Some(proto::EntityUidEntry::from(v.action)),
+            resource: Some(proto::EntityUidEntry::from(v.resource)),
+            context: v.context.map(proto::Context::from)
+        }
     }
 }
 
@@ -362,6 +424,23 @@ impl std::fmt::Display for Context {
     }
 }
 
+impl From<proto::Context> for Context {
+    fn from(v: proto::Context) -> Self {
+        Context::from_expr(
+            BorrowedRestrictedExpr::new(&Expr::from(v.context.unwrap())).unwrap(),
+            Extensions::none()
+        ).unwrap()
+    }
+}
+
+impl From<Context> for proto::Context {
+    fn from(v: Context) -> Self {
+        Self {
+            context: Some(Expr::from(PartialValue::from(v.context)).into())
+        }
+    }
+}
+
 /// Errors while trying to create a `Context`
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextCreationError {
@@ -472,5 +551,29 @@ mod test {
                 ContextCreationError::NotARecord { .. }
             ))
         );
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let context: Context = Context::from_expr(
+            RestrictedExpr::record([
+                    ("foo".into(), RestrictedExpr::val(37),)
+                ])
+                .expect("Error creating restricted record.")
+                .as_borrowed()
+            ,
+            Extensions::none()
+        ).expect("Error creating context");
+        let request = Request::new_unchecked(
+            EntityUIDEntry::Known{ euid: Arc::new(EntityUID::with_eid("andrew")), loc: None },
+            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("read")), loc: None },
+            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("book")), loc: None },
+            Some(context.clone())
+        );
+        let request_roundtrip: Request = Request::from(proto::Request::from(request.clone()));
+        assert_eq!(context, Context::from(proto::Context::from(context.clone())));
+        assert_matches!(request_roundtrip.principal, EntityUIDEntry::Known{ euid: _, loc: _ });
+        assert_matches!(request_roundtrip.action, EntityUIDEntry::Known{ euid: _, loc: _ });
+        assert_matches!(request_roundtrip.resource, EntityUIDEntry::Known{ euid: _, loc: _ });
     }
 }

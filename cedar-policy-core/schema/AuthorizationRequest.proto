@@ -1,0 +1,323 @@
+syntax = "proto3";
+package cedar.cedar_policy_core.ast.proto;
+
+/*
+    Enums must begin with 0
+    Default values do not get encoded, should I have an UNSPECIFIED = 0 for enums?
+
+    NOTE: For scalar message fields, once a message is parsed
+    there’s no way of telling whether a field was explicitly set to the
+    default value (for example whether a boolean was set to false) or just not set at all.
+
+
+    Maybe to make writing the compiler code easier, we will not consider
+    the oneof implementation even though it would make things more space
+    efficient? That can be a stretch goal.
+
+    NOTE: Annoying behavior is that the compiled version of the code won't have
+    multiple letters consecutatively be capitalized. Hence EntityUIDEntry becomes EntityUidEntry
+
+    NOTE: Nested messages in Rust is compiled as modules and modules are all lowercase.
+    EntityUIDEntry becomes entity_uid_entry
+
+    NOTE: When messages are used as fields it gets compiled as an Option in Rust
+*/
+
+message AuthorizationRequest {
+    Request request = 1;
+    LiteralPolicySet policies = 2;
+    Entities entities = 3;
+}
+
+message Request {
+    EntityUidEntry principal = 1;
+    EntityUidEntry action = 2;
+    EntityUidEntry resource = 3;
+    Context context = 4;
+}
+
+message LiteralPolicySet {
+    map<string, TemplateBody> templates = 1;
+    map<string, LiteralPolicy> links = 2;
+}
+
+message Entities {
+    repeated Entity entities = 1;
+
+    Mode mode = 3;
+
+    enum Mode {
+        Concrete = 0;
+        Partial = 1;
+    }
+}
+
+message Context {
+    Expr context = 1;
+}
+// BEGIN REQUEST MESSAGES
+
+message EntityUidEntry {
+    EntityUidEntryType ty = 1;
+    EntityUid euid = 2;
+    Loc loc = 3;
+
+    enum EntityUidEntryType {
+        Unknown = 0; // Expects Option<Loc>
+        Known = 1; // Expects EntityUid and Option<Loc>
+    }
+}
+
+message EntityUid {
+    EntityType ty = 1;
+    string eid = 2;
+    Loc loc = 3;
+}
+
+message EntityType {
+    EntityTypeType ty = 1;
+    Name name = 2;
+
+    enum EntityTypeType {
+        Unspecified = 0;
+        Specified = 1; // Expects (name: Name)
+    }
+}
+
+// alias Id = string
+message Name {
+    string id = 1;
+    repeated string path = 2;
+    Loc loc = 3;
+}
+
+message Loc {
+    uint32 offset = 1;
+    uint32 length = 2;
+    string src = 3;
+}
+
+
+// END REQUEST MESSAGES
+
+
+// BEGIN POLICYSET MESSAGES
+
+message LiteralPolicy {
+    string template_id = 1;
+    string link_id = 2;
+    bool link_id_specified = 3;
+    // map<SlotId, EntityUid> is not allowed since keys in map
+    // fields cannot be enum types
+    // map<SlotId, EntityUid> values = 4;
+    EntityUid principal_euid = 4;
+    EntityUid resource_euid = 5;
+}
+
+message TemplateBody {
+    string id = 1;
+    Loc loc = 2;
+    // alias AnyId = string
+    // alias Annotations = map<AnyId, Annotation>
+    map<string, Annotation> annotations = 4;
+    Effect effect = 5;
+    PrincipalConstraint principal_constraint = 6;
+    ActionConstraint action_constraint = 7;
+    ResourceConstraint resource_constraint = 8;
+    Expr non_scope_constraints = 9;
+
+    message Annotation {
+        string val = 1;
+        Loc loc = 2;
+    }
+
+    enum Effect {
+        Forbid = 0;
+        Permit = 1;
+    }
+}
+
+message PrincipalConstraint {
+    PrincipalOrResourceConstraint constraint = 1;
+}
+
+message ResourceConstraint {
+    PrincipalOrResourceConstraint constraint = 1;
+}
+
+message PrincipalOrResourceConstraint {
+    PrincipalOrResourceConstraintType ty = 1;
+    EntityReference er = 2;
+    Name na = 3;
+
+    enum PrincipalOrResourceConstraintType {
+        Any = 0;
+        In = 1; // Expects EntityReference
+        Eq = 2; // Expects EntityReference
+        Is = 3; // Expects Name
+        IsIn = 4; // Expects Name and EntityReference
+    }
+
+    message EntityReference {
+        EntityReferenceType ty = 1;
+        EntityUid euid = 2;
+
+        enum EntityReferenceType {
+            Euid = 0; // Expects EntityUid
+            Slot = 1;
+        }
+    }
+}
+
+enum SlotId {
+    Principal = 0;
+    Resource = 1;
+}
+
+message ActionConstraint {
+    ActionConstraintType ty = 1;
+    repeated EntityUid euids = 2;
+    EntityUid euid = 3;
+
+    enum ActionConstraintType {
+        Any = 0;
+        In = 1; // Expects repeated EntityUid
+        Eq = 2; // Expects EntityUid
+    }
+}
+
+message Expr {
+    ExprKind expr_kind = 1;
+    Loc source_loc = 2;
+    // Ignoring data for now
+
+    message ExprKind {
+        ExprKindType ty = 1;
+        Literal lit = 2;
+        Var var = 3;
+        SlotId slot = 4;
+        Unknown unknown = 5;
+        Expr test_expr = 6;
+        Expr then_expr = 7;
+        Expr else_expr = 8;
+        Expr left = 9;
+        Expr right = 10;
+        UnaryOp uop = 11;
+        Expr arg = 12;
+        BinaryOp bop = 13;
+        Expr arg1 = 14;
+        Expr arg2 = 15;
+        Name fn_name = 16;
+        repeated Expr args = 17;
+        Expr expr = 18;
+        string attr = 19;
+        // alias Patterns = repeated PatternElem
+        repeated PatternElem pattern = 20;
+        Name entity_type = 21;
+        map<string, Expr> record = 22;
+
+        enum ExprKindType {
+            Lit = 0; // Expects (lit: Literal)
+            VarTy = 1; // Expects (var: Var)
+            Slot = 2; // Expects (slot: SlotId)
+            UnknownTy = 3; // Expects (unknown: Unknown)
+            If = 4; // Expects (test_expr: Expr, then_expr: Expr, else_expr: Expr)
+            And = 5; // Expects (left: Expr, right: Expr)
+            Or = 6; // Expects (left: Expr, right: Expr)
+            UnaryApp = 7; // Expects (op: UnaryOp, arg: Expr)
+            BinaryApp = 8; // Expects (op: BinaryOp, arg1: Expr, arg2: Expr)
+            ExtensionFunctionApp = 9; // Expects (fn_name: Name, args: repeated Expr)
+            GetAttr = 10; // Expects (expr: Expr, attr: string)
+            HasAttr = 11; // Expects (expr: Expr, attr: string)
+            Like = 12; // Expects (expr: Expr, pattern: Pattern)
+            Is = 13; // Expects (expr: Expr, entity_type: Name)
+            Set = 14; // Expects (args: repeated Expr)
+            Record = 15; // Expects (record: map<string, Expr>)
+        }
+
+        message Literal {
+            LiteralType ty = 1;
+            bool b = 2;
+            int64 i = 3;
+            string s = 4;
+            EntityUid euid = 5;
+
+            enum LiteralType {
+                Bool = 0; // Expects (b: bool)
+                Long = 1; // Expects (i: long signed integer)
+                String = 2; // Expects (s: string)
+                EntityUid = 3; // Expects (euid : EntityUid)
+            }
+        }
+
+        enum Var {
+            Principal = 0;
+            Action = 1;
+            Resource = 2;
+            CONTEXT = 3;
+        }
+
+        message Unknown {
+            string name = 1;
+            Type type_annotation = 2;
+
+            message Type {
+                TypeType ty = 1;
+                EntityType ety = 2;
+                Name name = 3;
+
+                enum TypeType {
+                    Bool = 0;
+                    Long = 1;
+                    String = 2;
+                    Set = 3;
+                    Record = 4;
+                    Entity = 5; // Expects (ety: EntityType)
+                    Extension = 6; // Expects (name: Name)
+                }
+            }
+        }
+
+        enum UnaryOp {
+            Not = 0;
+            Neg = 1;
+        }
+
+        enum BinaryOp {
+            Eq = 0;
+            Less = 1;
+            LessEq = 2;
+            Add = 3;
+            Sub = 4;
+            Mul = 5;
+            In = 6;
+            Contains = 7;
+            ContainsAll = 8;
+            ContainsAny = 9;
+        }
+
+        message PatternElem {
+            PatternElemType ty = 1;
+            string c = 2;
+
+            enum PatternElemType {
+                Char = 0; // Expects (c: char)
+                Wildcard = 1;
+            }
+
+        }
+    } // END ExprKind
+} // END Expr
+
+// END POLICYSET MESSAGES
+
+
+// ENTER ENTITITES MESSAGES
+
+message Entity {
+    EntityUid uid = 1;
+    map<string, Expr> attrs = 2;
+    repeated EntityUid ancestors = 3;
+}
+
+// END ENTITITES MESSAGES

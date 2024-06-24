@@ -720,6 +720,263 @@ impl std::fmt::Display for Unknown {
     }
 }
 
+impl From<proto::expr::expr_kind::Unknown> for Unknown {
+    fn from(v: proto::expr::expr_kind::Unknown) -> Self {
+        Self {
+            name: v.name.into(),
+            type_annotation: v.type_annotation.map(Type::from)
+        }
+    }
+}
+
+impl From<Unknown> for proto::expr::expr_kind::Unknown {
+    fn from(v: Unknown) -> Self {
+        Self {
+            name: v.name.to_string(),
+            type_annotation: v.type_annotation.map(proto::expr::expr_kind::unknown::Type::from)
+        }
+    }
+}
+
+impl From<proto::Expr> for Expr {
+    fn from(v: proto::Expr) -> Self {
+        let source_loc : Option<Loc> = v.source_loc.map(Loc::from);
+        let pdata = v.expr_kind.unwrap();
+        let ety = proto::expr::expr_kind::ExprKindType::try_from(pdata.ty).unwrap();
+
+        match ety {
+
+            proto::expr::expr_kind::ExprKindType::Lit => {
+                Expr::val(Literal::from(pdata.lit.unwrap()))
+                    .with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::VarTy => {
+                let pvar = proto::expr::expr_kind::Var::try_from(pdata.var).unwrap();
+                Expr::var(Var::from(pvar))
+                    .with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::Slot => {
+                let pslot = proto::SlotId::try_from(pdata.slot).unwrap();
+                Expr::slot(SlotId::from(pslot))
+                    .with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::UnknownTy => {
+                Expr::unknown(Unknown::from(pdata.unknown.unwrap()))
+                    .with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::If => {
+                Expr::ite(
+                    Expr::from(*(pdata.test_expr.unwrap())),
+                    Expr::from(*(pdata.then_expr.unwrap())),
+                    Expr::from(*(pdata.else_expr.unwrap()))
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::And => {
+                Expr::and(
+                    Expr::from(*(pdata.left.unwrap())),
+                    Expr::from(*(pdata.right.unwrap()))
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::Or => {
+                Expr::or(
+                    Expr::from(*(pdata.left.unwrap())),
+                    Expr::from(*(pdata.right.unwrap()))
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::UnaryApp => {
+                let puop = proto::expr::expr_kind::UnaryOp::try_from(pdata.uop).unwrap();
+                Expr::unary_app(
+                    UnaryOp::from(puop),
+                    Expr::from(*(pdata.arg.unwrap()))
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::BinaryApp => {
+                let pbop = proto::expr::expr_kind::BinaryOp::try_from(pdata.bop).unwrap();
+                Expr::binary_app(
+                    BinaryOp::from(pbop),
+                    Expr::from(*(pdata.arg1.unwrap())),
+                    Expr::from(*(pdata.arg2.unwrap()))
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::ExtensionFunctionApp => {
+                Expr::call_extension_fn(
+                    Name::from(pdata.fn_name.unwrap()),
+                    pdata.args
+                        .into_iter()
+                        .map(Expr::from)
+                        .collect()
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::GetAttr => {
+                Expr::get_attr(
+                    Expr::from(*(pdata.expr.unwrap())),
+                    pdata.attr.into()
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::HasAttr => {
+                Expr::has_attr(
+                    Expr::from(*(pdata.expr.unwrap())),
+                    pdata.attr.into()
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::Like => {
+                Expr::like(
+                    Expr::from(*(pdata.expr.unwrap())),
+                    pdata.pattern
+                        .into_iter()
+                        .map(PatternElem::from)
+                ).with_maybe_source_loc(source_loc)
+                
+            }
+
+            proto::expr::expr_kind::ExprKindType::Is => {
+                Expr::is_entity_type(
+                    Expr::from(*(pdata.expr.unwrap())),
+                    Name::from(pdata.entity_type.unwrap())
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::Set => {
+                Expr::set(
+                    pdata.args
+                        .into_iter()
+                        .map(Expr::from)
+                ).with_maybe_source_loc(source_loc)
+            }
+
+            proto::expr::expr_kind::ExprKindType::Record => {
+                Expr::record(
+                    pdata.record
+                        .into_iter()
+                        .map(|(key, value)| (key.into(), Expr::from(value)))
+                ).unwrap().with_maybe_source_loc(source_loc)
+            }
+
+        }
+    }
+}
+
+impl From<Expr> for proto::Expr {
+    fn from(v: Expr) -> Self {
+        let source_loc : Option<proto::Loc> = v.source_loc.map(proto::Loc::from);
+        let mut expr_kind : proto::expr::ExprKind = proto::expr::ExprKind {
+            ty: 0, lit: None, var: 0, slot: 0, unknown: None, test_expr: None,
+            then_expr: None, else_expr: None, left: None, right: None, uop: 0,
+            arg: None, bop: 0, arg1: None, arg2: None, fn_name: None,
+            args: Vec::<proto::Expr>::new(), expr: None, attr: "".to_string(),
+            pattern: Vec::<proto::expr::expr_kind::PatternElem>::new(), entity_type: None,
+            record: HashMap::<String, proto::Expr>::new()
+        };
+        match v.expr_kind {
+            ExprKind::Lit(l) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Lit.into();
+                expr_kind.lit = Some(proto::expr::expr_kind::Literal::from(l));
+            }
+            ExprKind::Var(v) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::VarTy.into();
+                expr_kind.var = proto::expr::expr_kind::Var::from(v).into();
+            }
+            ExprKind::Slot(sid) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Slot.into();
+                expr_kind.slot = proto::SlotId::from(sid).into();
+            }
+            ExprKind::Unknown(u) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::UnknownTy.into();
+                expr_kind.unknown = Some(proto::expr::expr_kind::Unknown::from(u));
+            }
+            ExprKind::If { test_expr, then_expr, else_expr } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::If.into();
+                expr_kind.test_expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(test_expr))));
+                expr_kind.then_expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(then_expr))));
+                expr_kind.else_expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(else_expr))));
+            }
+            ExprKind::And { left, right } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::And.into();
+                expr_kind.left = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(left))));
+                expr_kind.right = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(right))));
+            }
+            ExprKind::Or { left, right } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Or.into();
+                expr_kind.left = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(left))));
+                expr_kind.right = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(right))));
+            }
+            ExprKind::UnaryApp { op, arg } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::UnaryApp.into();
+                expr_kind.uop = proto::expr::expr_kind::UnaryOp::from(op).into();
+                expr_kind.arg = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(arg))));
+            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::BinaryApp.into();
+                expr_kind.bop = proto::expr::expr_kind::BinaryOp::from(op).into();
+                expr_kind.arg1 = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(arg1))));
+                expr_kind.arg2 = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(arg2))));
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::ExtensionFunctionApp.into();
+                expr_kind.fn_name = Some(proto::Name::from(fn_name));
+                expr_kind.args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(|value| proto::Expr::from(value))
+                    .collect();
+            }
+            ExprKind::GetAttr { expr, attr } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::GetAttr.into();
+                expr_kind.expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(expr))));
+                expr_kind.attr = attr.to_string();
+            }
+            ExprKind::HasAttr { expr, attr } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::HasAttr.into();
+                expr_kind.expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(expr))));
+                expr_kind.attr = attr.to_string();
+            }
+            ExprKind::Like { expr, pattern } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Like.into();
+                expr_kind.expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(expr))));
+                expr_kind.pattern = pattern.iter()
+                    .map(|value| proto::expr::expr_kind::PatternElem::from(*value))
+                    .collect();
+
+            }
+            ExprKind::Is { expr, entity_type } => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Is.into();
+                expr_kind.expr = Some(Box::new(proto::Expr::from(Arc::unwrap_or_clone(expr))));
+                expr_kind.entity_type = Some(proto::Name::from(entity_type))
+            }
+            ExprKind::Set(args) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Set.into();
+                expr_kind.args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(|value| proto::Expr::from(value))
+                    .collect();
+            }
+            ExprKind::Record(record) => {
+                expr_kind.ty = proto::expr::expr_kind::ExprKindType::Record.into();
+                expr_kind.record = Arc::unwrap_or_clone(record)
+                    .into_iter()
+                    .map(|(key, value)| (key.to_string(), proto::Expr::from(value)))
+                    .collect();
+            }
+        }
+        Self {
+            expr_kind: Some(Box::new(expr_kind)),
+            source_loc: source_loc
+        }
+    }
+}
+
+
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optionally a `source_loc`.
 #[derive(Debug)]
@@ -1473,6 +1730,28 @@ impl std::fmt::Display for Var {
     }
 }
 
+impl From<proto::expr::expr_kind::Var> for Var {
+    fn from(v: proto::expr::expr_kind::Var) -> Self {
+        match v {
+            proto::expr::expr_kind::Var::Principal => Var::Principal,
+            proto::expr::expr_kind::Var::Action => Var::Action,
+            proto::expr::expr_kind::Var::Resource => Var::Resource,
+            proto::expr::expr_kind::Var::Context => Var::Context
+        }
+    }
+}
+
+impl From<Var> for proto::expr::expr_kind::Var {
+    fn from(v: Var) -> Self {
+        match v {
+            Var::Principal => proto::expr::expr_kind::Var::Principal,
+            Var::Action => proto::expr::expr_kind::Var::Action,
+            Var::Resource => proto::expr::expr_kind::Var::Resource,
+            Var::Context => proto::expr::expr_kind::Var::Context
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use cool_asserts::assert_matches;
@@ -1920,5 +2199,30 @@ mod test {
         };
         let r = TypedSubstitution::substitute(&u, None).unwrap();
         assert_eq!(r, Expr::unknown(u));
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let e1: Expr = Expr::val(33);
+        assert_eq!(e1, Expr::from(proto::Expr::from(e1.to_owned())));
+        let e2: Expr = Expr::val("hello");
+        assert_eq!(e2, Expr::from(proto::Expr::from(e2.to_owned())));
+        let e3: Expr = Expr::val(EntityUID::with_eid("foo"));
+        assert_eq!(e3, Expr::from(proto::Expr::from(Expr::val(EntityUID::with_eid("foo")))));
+        let e4: Expr = Expr::var(Var::Principal);
+        assert_eq!(e4, Expr::from(proto::Expr::from(e4.to_owned())));
+        let e5: Expr = Expr::ite(Expr::val(true), Expr::val(88), Expr::val(-100));
+        assert_eq!(e5, Expr::from(proto::Expr::from(e5.to_owned())));
+        let e6: Expr = Expr::not(Expr::val(false));
+        assert_eq!(e6, Expr::from(proto::Expr::from(e6.to_owned())));
+        let e7: Expr = Expr::get_attr(Expr::val(EntityUID::with_eid("foo")), "some_attr".into());
+        assert_eq!(e7, Expr::from(proto::Expr::from(e7.to_owned())));
+        let e8: Expr = Expr::has_attr(Expr::val(EntityUID::with_eid("foo")), "some_attr".into());
+        assert_eq!(e8, Expr::from(proto::Expr::from(e8.to_owned())));
+        let e9: Expr = Expr::is_entity_type(
+            Expr::val(EntityUID::with_eid("foo")),
+            "Type".parse().unwrap()
+        );
+        assert_eq!(e9, Expr::from(proto::Expr::from(e9.to_owned())));
     }
 }

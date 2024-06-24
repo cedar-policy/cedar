@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
+use crate::ast::{EntityUID, Integer, StaticallyTyped, Type, proto};
 use crate::parser;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -125,6 +125,48 @@ impl From<Arc<EntityUID>> for Literal {
     }
 }
 
+impl From<proto::expr::expr_kind::Literal> for Literal {
+    fn from(v: proto::expr::expr_kind::Literal) -> Self {
+        let pty = proto::expr::expr_kind::literal::LiteralType::try_from(v.ty).unwrap();
+        match pty {
+            proto::expr::expr_kind::literal::LiteralType::Bool => Literal::Bool(v.b),
+            proto::expr::expr_kind::literal::LiteralType::Long => Literal::Long(v.i),
+            proto::expr::expr_kind::literal::LiteralType::String => Literal::String(v.s.into()),
+            proto::expr::expr_kind::literal::LiteralType::EntityUid => {
+                Literal::EntityUID(EntityUID::from(v.euid.unwrap()).into())
+            }
+        }
+    }
+}
+
+impl From<Literal> for proto::expr::expr_kind::Literal {
+    fn from(v: Literal) -> Self {
+        let mut result = Self {
+            ty: 0, b: false, i: 0, s: "".to_string(),
+            euid: None
+        };
+        match v {
+            Literal::Bool(b) => {
+                result.ty = proto::expr::expr_kind::literal::LiteralType::Bool.into();
+                result.b = b;
+            }
+            Literal::Long(l) => {
+                result.ty = proto::expr::expr_kind::literal::LiteralType::Long.into();
+                result.i = l;
+            }
+            Literal::String(s) => {
+                result.ty = proto::expr::expr_kind::literal::LiteralType::String.into();
+                result.s = s.to_string();
+            }
+            Literal::EntityUID(euid) => {
+                result.ty = proto::expr::expr_kind::literal::LiteralType::EntityUid.into();
+                result.euid = Some(proto::EntityUid::from(Arc::unwrap_or_clone(euid)));
+            }
+        }
+        result
+    }
+}
+
 impl Literal {
     /// Check if this literal is an entity reference
     ///
@@ -133,4 +175,35 @@ impl Literal {
     pub fn is_ref(&self) -> bool {
         matches!(self, Self::EntityUID(..))
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use proto::expr::expr_kind;
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let bool_literal_f = Literal::from(false);
+        assert_eq!(bool_literal_f, Literal::from(expr_kind::Literal::from(bool_literal_f.to_owned())));
+
+        let bool_literal_t = Literal::from(true);
+        assert_eq!(bool_literal_t, Literal::from(expr_kind::Literal::from(bool_literal_t.to_owned())));
+
+        let long_literal0 = Literal::from(0);
+        assert_eq!(long_literal0, Literal::from(expr_kind::Literal::from(long_literal0.to_owned())));
+
+        let long_literal1 = Literal::from(1);
+        assert_eq!(long_literal1, Literal::from(expr_kind::Literal::from(long_literal1.to_owned())));
+
+        let str_literal0 = Literal::from("");
+        assert_eq!(str_literal0, Literal::from(expr_kind::Literal::from(str_literal0.to_owned())));
+
+        let str_literal1 = Literal::from("foo");
+        assert_eq!(str_literal1, Literal::from(expr_kind::Literal::from(str_literal1.to_owned())));
+
+        let euid_literal = Literal::from(EntityUID::with_eid("foo"));
+        assert_eq!(euid_literal, Literal::from(expr_kind::Literal::from(euid_literal.to_owned())));
+    }
+
 }

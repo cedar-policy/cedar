@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityType, Name};
+use crate::ast::{EntityType, Name, proto};
 use serde::{Deserialize, Serialize};
 
 /// This represents the runtime type of a Cedar value.
@@ -88,6 +88,60 @@ impl std::fmt::Display for Type {
     }
 }
 
+impl From<proto::expr::expr_kind::unknown::Type> for Type {
+    fn from(v: proto::expr::expr_kind::unknown::Type) -> Self {
+        let pty = proto::expr::expr_kind::unknown::r#type::TypeType::try_from(v.ty).unwrap();
+        match pty {
+            proto::expr::expr_kind::unknown::r#type::TypeType::Bool => Type::Bool,
+            proto::expr::expr_kind::unknown::r#type::TypeType::Long => Type::Long,
+            proto::expr::expr_kind::unknown::r#type::TypeType::String => Type::String,
+            proto::expr::expr_kind::unknown::r#type::TypeType::Set => Type::Set,
+            proto::expr::expr_kind::unknown::r#type::TypeType::Record => Type::Record,
+            proto::expr::expr_kind::unknown::r#type::TypeType::Entity => {
+                Type::Entity{ ty: EntityType::from(v.ety.unwrap()) }
+            }
+            proto::expr::expr_kind::unknown::r#type::TypeType::Extension => {
+                Type::Extension{ name: Name::from(v.name.unwrap()) }
+            }
+        }
+    }
+}
+
+impl From<Type> for proto::expr::expr_kind::unknown::Type {
+    fn from(v: Type) -> Self {
+        let mut result = Self {
+            ty: 0, ety: None, name: None
+        };
+        match v {
+            Type::Bool => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Bool.into();
+            }
+            Type::Long => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Long.into()
+            }
+            Type::String => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::String.into();
+            }
+            Type::Set => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Set.into();
+            }
+            Type::Record => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Set.into();
+            }
+            Type::Entity { ty } => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Entity.into();
+                result.ety = Some(proto::EntityType::from(ty));
+            }
+            Type::Extension { name } => {
+                result.ty = proto::expr::expr_kind::unknown::r#type::TypeType::Extension.into();
+                result.name = Some(proto::Name::from(name));
+            }
+        }
+        result
+    }
+}
+
+
 /// Trait for everything in Cedar that has a type known statically.
 ///
 /// For instance, `Value` and `Entity` implement this, but `Expr` does not
@@ -95,4 +149,27 @@ impl std::fmt::Display for Type {
 pub trait StaticallyTyped {
     /// Get the object's type
     fn type_of(&self) -> Type;
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::FromNormalizedStr;
+
+    #[test]
+    fn protobuf_roundtrip() {
+        assert_eq!(
+            Type::Bool,
+            Type::from(proto::expr::expr_kind::unknown::Type::from(Type::Bool))
+        );
+
+        let name: Name = Name::from_normalized_str("B::C::D").unwrap();
+
+        let orig_type2: Type = Type::entity_type(name.to_owned());
+        assert_eq!(orig_type2, Type::from(proto::expr::expr_kind::unknown::Type::from(orig_type2.to_owned())));
+
+        let orig_type3: Type = Type::Extension { name: name.to_owned() };
+        assert_eq!(orig_type3, Type::from(proto::expr::expr_kind::unknown::Type::from(orig_type3.to_owned())))
+
+    }
 }

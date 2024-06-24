@@ -21,6 +21,7 @@ use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
+use std::str::FromStr;
 use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -568,6 +569,57 @@ pub struct LiteralPolicy {
     values: SlotEnv,
 }
 
+impl From<proto::LiteralPolicy> for LiteralPolicy {
+    fn from(v: proto::LiteralPolicy) -> Self {
+        let link: Option<PolicyID> = 
+            if v.link_id_specified { Some(PolicyID::from_string(v.link_id)) }
+            else { None };
+
+        let mut values : SlotEnv = HashMap::new();
+        if v.principal_euid.is_some() {
+            values.insert(SlotId::principal(), EntityUID::from(v.principal_euid.unwrap()));
+        }
+        if v.resource_euid.is_some() {
+            values.insert(SlotId::resource(), EntityUID::from(v.resource_euid.unwrap()));
+        }
+
+        Self {
+            template_id: PolicyID::from_string(v.template_id),
+            link_id: link,
+            values: values
+        }
+    }
+}
+
+
+impl From<LiteralPolicy> for proto::LiteralPolicy {
+    fn from(v: LiteralPolicy) -> Self {
+        let template_id_str : &str = v.template_id.as_ref();
+        let link_id_str : &str = match v.link_id {
+            Some(ref pid) => { pid.as_ref() }
+            None => {""}
+        };
+
+        // Are both principal and resource ids necessary
+        let principal_euid: Option<proto::EntityUid> = v.values
+            .get(&SlotId::principal())
+            .map(|v| proto::EntityUid::from(v.to_owned()));
+
+        let resource_euid: Option<proto::EntityUid> = v.values
+            .get(&SlotId::resource())
+            .map(|v| proto::EntityUid::from(v.to_owned()));
+
+        Self {
+            template_id: String::from(template_id_str),
+            link_id: String::from(link_id_str),
+            link_id_specified: v.link_id.is_some(),
+            principal_euid: principal_euid,
+            resource_euid: resource_euid
+        }
+    }
+
+}
+
 /// A borrowed version of LiteralPolicy exclusively for serialization
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BorrowedLiteralPolicy<'a> {
@@ -1094,6 +1146,54 @@ impl std::fmt::Display for TemplateBody {
     }
 }
 
+impl From<proto::TemplateBody> for TemplateBody {
+    fn from(v: proto::TemplateBody) -> Self {        
+        let loc : Option<Loc> = v.loc.map(Loc::from);
+        let annotations : Annotations = Annotations::from_iter(v.annotations
+            .into_iter()
+            .map(|(key, value)| (AnyId::from_str(&key).unwrap(), Annotation::from(value)))
+        );
+        let effect = Effect::from(proto::template_body::Effect::try_from(v.effect).unwrap());
+
+        let body : TemplateBody = TemplateBody::new(
+            PolicyID::from_string(v.id),
+            loc,
+            annotations,
+            effect,
+            PrincipalConstraint::from(v.principal_constraint.unwrap()),
+            ActionConstraint::from(v.action_constraint.unwrap()),
+            ResourceConstraint::from(v.resource_constraint.unwrap()),
+            Expr::from(v.non_scope_constraints.unwrap())
+        );
+        body
+    }
+}
+
+impl From<TemplateBody> for proto::TemplateBody {
+    fn from(v: TemplateBody) -> Self {
+        let id_str: &str = v.id.as_ref();
+        let loc: Option<proto::Loc> = v.loc.map(proto::Loc::from);
+        let annotations: HashMap<String, proto::template_body::Annotation> = Arc::unwrap_or_clone(v.annotations)
+            .into_iter()
+            .map(|(key, value)| {
+                let id_str : &str = key.as_ref();
+                (String::from(id_str), proto::template_body::Annotation::from(value))
+            })
+            .collect();
+
+        Self {
+            id: String::from(id_str),
+            loc: loc,
+            annotations: annotations,
+            effect: proto::template_body::Effect::from(v.effect).into(),
+            principal_constraint: Some(proto::PrincipalConstraint::from(v.principal_constraint)),
+            action_constraint: Some(proto::ActionConstraint::from(v.action_constraint)),
+            resource_constraint: Some(proto::ResourceConstraint::from(v.resource_constraint)),
+            non_scope_constraints: Some(proto::Expr::from(Arc::unwrap_or_clone(v.non_scope_constraints)))
+        }
+    }
+}
+
 /// Struct which holds the annotations for a policy
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct Annotations(BTreeMap<AnyId, Annotation>);
@@ -1168,6 +1268,24 @@ pub struct Annotation {
 impl AsRef<str> for Annotation {
     fn as_ref(&self) -> &str {
         &self.val
+    }
+}
+
+impl From<proto::template_body::Annotation> for Annotation {
+    fn from(v: proto::template_body::Annotation) -> Self {
+        Self {
+            val: v.val.into(),
+            loc: v.loc.map(Loc::from)
+        }
+    }
+}
+
+impl From<Annotation> for proto::template_body::Annotation {
+    fn from(v: Annotation) -> Self {
+        Self {
+            val: v.val.to_string(),
+            loc: v.loc.map(proto::Loc::from)
+        }
     }
 }
 
@@ -1278,6 +1396,22 @@ impl std::fmt::Display for PrincipalConstraint {
     }
 }
 
+impl From<proto::PrincipalConstraint> for PrincipalConstraint {
+    fn from(v: proto::PrincipalConstraint) -> Self {
+        Self {
+            constraint : PrincipalOrResourceConstraint::from(v.constraint.unwrap())
+        }
+    }
+}
+
+impl From<PrincipalConstraint> for proto::PrincipalConstraint {
+    fn from(v: PrincipalConstraint) -> Self {
+        Self {
+            constraint: Some(proto::PrincipalOrResourceConstraint::from(v.constraint))
+        }
+    }
+}
+
 /// Template constraint on resource scope variables
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
@@ -1385,6 +1519,22 @@ impl std::fmt::Display for ResourceConstraint {
     }
 }
 
+impl From<proto::ResourceConstraint> for ResourceConstraint {
+    fn from(v: proto::ResourceConstraint) -> Self {
+        Self {
+            constraint : PrincipalOrResourceConstraint::from(v.constraint.unwrap())
+        }
+    }
+}
+
+impl From<ResourceConstraint> for proto::ResourceConstraint {
+    fn from(v: ResourceConstraint) -> Self {
+        Self {
+            constraint: Some(proto::PrincipalOrResourceConstraint::from(v.constraint))
+        }
+    }
+}
+
 /// A reference to an EntityUID that may be a Slot
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum EntityReference {
@@ -1409,6 +1559,39 @@ impl EntityReference {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
             EntityReference::Slot => Expr::slot(slot),
+        }
+    }
+}
+
+impl From<proto::principal_or_resource_constraint::EntityReference> for EntityReference {
+    fn from(v: proto::principal_or_resource_constraint::EntityReference) -> Self {
+        let pty = proto::principal_or_resource_constraint::entity_reference::EntityReferenceType::try_from(v.ty).unwrap();
+        match pty {
+            proto::principal_or_resource_constraint::entity_reference::EntityReferenceType::Euid => {
+                EntityReference::euid(EntityUID::from(v.euid.unwrap()).into())
+            }
+            proto::principal_or_resource_constraint::entity_reference::EntityReferenceType::Slot => {
+                EntityReference::Slot
+            }
+        }
+    }
+}
+
+impl From<EntityReference> for proto::principal_or_resource_constraint::EntityReference {
+    fn from(v: EntityReference) -> Self {
+        match v {
+            EntityReference::EUID(euid) => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::entity_reference::EntityReferenceType::Euid.into(),
+                    euid: Some(proto::EntityUid::from(Arc::unwrap_or_clone(euid)))
+                }
+            }
+            EntityReference::Slot => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::entity_reference::EntityReferenceType::Slot.into(),
+                    euid: None
+                }
+            }
         }
     }
 }
@@ -1600,6 +1783,74 @@ impl PrincipalOrResourceConstraint {
     }
 }
 
+impl From<proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
+    fn from(v: proto::PrincipalOrResourceConstraint) -> Self {
+        let pty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::try_from(v.ty).unwrap();
+        match pty {
+            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Any => {
+                PrincipalOrResourceConstraint::Any
+            }
+            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::In => {
+                PrincipalOrResourceConstraint::In(EntityReference::from(v.er.unwrap()))
+            }
+            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Eq => {
+                PrincipalOrResourceConstraint::Eq(EntityReference::from(v.er.unwrap()))
+            }
+            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is => {
+                PrincipalOrResourceConstraint::Is(Name::from(v.na.unwrap()).into())
+            }
+            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn => {
+                PrincipalOrResourceConstraint::IsIn(
+                    Name::from(v.na.unwrap()).into(),
+                    EntityReference::from(v.er.unwrap())
+                )
+            }
+        }
+    }
+}
+
+impl From<PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstraint {
+    fn from(v: PrincipalOrResourceConstraint) -> Self {
+        match v {
+            PrincipalOrResourceConstraint::Any => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Any.into(),
+                    er: None,
+                    na: None
+                }
+            }
+            PrincipalOrResourceConstraint::In(er) => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::In.into(),
+                    er: Some(proto::principal_or_resource_constraint::EntityReference::from(er)),
+                    na: None
+                }
+            }
+            PrincipalOrResourceConstraint::Eq(er) => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Eq.into(),
+                    er: Some(proto::principal_or_resource_constraint::EntityReference::from(er)),
+                    na: None
+                }
+            }
+            PrincipalOrResourceConstraint::Is(na) => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is.into(),
+                    er: None,
+                    na: Some(proto::Name::from(Arc::unwrap_or_clone(na)))
+                }
+            }
+            PrincipalOrResourceConstraint::IsIn(na, er) => {
+                Self {
+                    ty: proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn.into(),
+                    er: Some(proto::principal_or_resource_constraint::EntityReference::from(er)),
+                    na: Some(proto::Name::from(Arc::unwrap_or_clone(na)))
+                }
+            }
+        }
+    }
+}
+
 /// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -1707,6 +1958,60 @@ impl ActionConstraint {
     }
 }
 
+impl From<proto::ActionConstraint> for ActionConstraint {
+    fn from(v: proto::ActionConstraint) -> Self {
+        let pty = proto::action_constraint::ActionConstraintType::try_from(v.ty).unwrap();
+        match pty {
+            proto::action_constraint::ActionConstraintType::Any => {
+                ActionConstraint::Any
+            }
+            proto::action_constraint::ActionConstraintType::In => {
+                ActionConstraint::In(v.euids
+                    .into_iter()
+                    .map(|value| EntityUID::from(value).into())
+                    .collect()
+                )
+            }
+            proto::action_constraint::ActionConstraintType::Eq => {
+                ActionConstraint::Eq(EntityUID::from(v.euid.unwrap()).into())
+            }
+        }
+    }
+}
+
+impl From<ActionConstraint> for proto::ActionConstraint {
+    fn from(v: ActionConstraint) -> Self {
+        match v {
+            ActionConstraint::Any => {
+                Self {
+                    ty: proto::action_constraint::ActionConstraintType::Any.into(),
+                    euids: Vec::<proto::EntityUid>::new(),
+                    euid: None
+                }
+            }
+            ActionConstraint::In(euids) => {
+                let peuids: Vec<proto::EntityUid> = euids
+                    .into_iter()
+                    .map(|value| proto::EntityUid::from(Arc::unwrap_or_clone(value)))
+                    .collect();
+                Self {
+                    ty: proto::action_constraint::ActionConstraintType::In.into(),
+                    euids: peuids,
+                    euid: None
+                }
+            }
+            ActionConstraint::Eq(euid) => {
+                Self {
+                    ty: proto::action_constraint::ActionConstraintType::Eq.into(),
+                    euids: Vec::<proto::EntityUid>::new(),
+                    euid: Some(proto::EntityUid::from(Arc::unwrap_or_clone(euid)))
+                }
+            }
+        }
+    }
+}
+
+
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
@@ -1785,6 +2090,25 @@ impl std::fmt::Display for Effect {
         }
     }
 }
+
+impl From<proto::template_body::Effect> for Effect {
+    fn from(v: proto::template_body::Effect) -> Self {
+        match v {
+            proto::template_body::Effect::Forbid => Effect::Forbid,
+            proto::template_body::Effect::Permit => Effect::Permit
+        }
+    }
+}
+
+impl From<Effect> for proto::template_body::Effect {
+    fn from(v: Effect) -> Self {
+        match v {
+            Effect::Permit => proto::template_body::Effect::Permit,
+            Effect::Forbid => proto::template_body::Effect::Forbid
+        }
+    }
+}
+
 
 enum EntityIterator<'a> {
     None,
@@ -1900,6 +2224,7 @@ mod test {
             test_utils::{expect_exactly_one_error, expect_some_error_matches},
         },
         test_utils::ExpectedErrorMessageBuilder,
+        from_normalized_str::FromNormalizedStr
     };
 
     #[test]
@@ -2237,5 +2562,76 @@ mod test {
             );
             assert_eq!(e.len(), 2);
         });
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let annotation1: Annotation = Annotation { val: "".into(), loc: None };
+        assert_eq!(annotation1, Annotation::from(proto::template_body::Annotation::from(annotation1.clone())));
+
+        let annotation2: Annotation = Annotation { val: "Hello World".into(), loc: None };
+        assert_eq!(annotation2, Annotation::from(proto::template_body::Annotation::from(annotation2.clone())));
+
+        assert_eq!(Effect::Permit, Effect::from(proto::template_body::Effect::from(Effect::Permit)));
+        assert_eq!(Effect::Forbid, Effect::from(proto::template_body::Effect::from(Effect::Forbid)));
+
+        let er1: EntityReference = EntityReference::euid(Arc::new(EntityUID::with_eid("foo")));
+        assert_eq!(er1, EntityReference::from(proto::principal_or_resource_constraint::EntityReference::from(er1.clone())));
+        assert_eq!(EntityReference::Slot, EntityReference::from(proto::principal_or_resource_constraint::EntityReference::from(EntityReference::Slot)));
+
+        let read_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("read"));
+        let write_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("write"));
+        let ac1: ActionConstraint = ActionConstraint::Eq(read_euid.clone());
+        let ac2: ActionConstraint = ActionConstraint::In(vec![read_euid.clone(), write_euid.clone()]);
+        assert_eq!(ActionConstraint::Any, ActionConstraint::from(proto::ActionConstraint::from(ActionConstraint::Any)));
+        assert_eq!(ac1, ActionConstraint::from(proto::ActionConstraint::from(ac1.clone())));
+        assert_eq!(ac2, ActionConstraint::from(proto::ActionConstraint::from(ac2.clone())));
+
+        let euid1: Arc<EntityUID> = Arc::new(EntityUID::with_eid("friend"));
+        let name1: Arc<Name> = Arc::new(Name::from_normalized_str("B::C::D").unwrap());
+        let prc1: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
+        let prc2: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_in(euid1.to_owned());
+        let prc3: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+        let prc4: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_entity_type_in(name1.to_owned(), euid1.to_owned());
+        assert_eq!(
+
+            PrincipalOrResourceConstraint::any(),
+            PrincipalOrResourceConstraint::from(proto::PrincipalOrResourceConstraint::from(PrincipalOrResourceConstraint::any()))
+        );
+        assert_eq!(prc1, PrincipalOrResourceConstraint::from(proto::PrincipalOrResourceConstraint::from(prc1.to_owned())));
+        assert_eq!(prc2, PrincipalOrResourceConstraint::from(proto::PrincipalOrResourceConstraint::from(prc2.to_owned())));
+        assert_eq!(prc3, PrincipalOrResourceConstraint::from(proto::PrincipalOrResourceConstraint::from(prc3.to_owned())));
+        assert_eq!(prc4, PrincipalOrResourceConstraint::from(proto::PrincipalOrResourceConstraint::from(prc4.to_owned())));
+
+        let pc: PrincipalConstraint = PrincipalConstraint { constraint: prc1 };
+        let rc: ResourceConstraint = ResourceConstraint { constraint: prc3 };
+        assert_eq!(pc, PrincipalConstraint::from(proto::PrincipalConstraint::from(pc.to_owned())));
+        assert_eq!(rc, ResourceConstraint::from(proto::ResourceConstraint::from(rc.to_owned())));
+
+        assert_eq!(Effect::Permit, Effect::from(proto::template_body::Effect::from(Effect::Permit)));
+        assert_eq!(Effect::Forbid, Effect::from(proto::template_body::Effect::from(Effect::Forbid)));
+
+        let tb: TemplateBody = TemplateBody {
+            id: PolicyID::from_string("template"),
+            annotations: Arc::new(Annotations::from_iter(vec![(AnyId::from_str("read").expect(""), annotation1)])),
+            effect: Effect::Permit,
+            principal_constraint: pc,
+            action_constraint: ac1,
+            resource_constraint: rc,
+            loc: None,
+            non_scope_constraints: Arc::new(Expr::val(true))
+        };
+        assert_eq!(tb, TemplateBody::from(proto::TemplateBody::from(tb.clone())));
+
+        let mut v: HashMap<SlotId, EntityUID> = HashMap::new();
+        v.insert(SlotId::principal(), EntityUID::with_eid("eid"));
+        let policy: LiteralPolicy = LiteralPolicy {
+            template_id: PolicyID::from_string("template"),
+            link_id: Some(PolicyID::from_string("id")),
+            values: v
+        };
+        assert_eq!(policy, LiteralPolicy::from(proto::LiteralPolicy::from(policy.clone())));
+
+
     }
 }

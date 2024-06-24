@@ -15,6 +15,7 @@
  */
 
 use std::sync::Arc;
+use crate::ast::proto;
 
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +52,36 @@ impl Serialize for PatternElem {
         }
     }
 }
+
+impl From<proto::expr::expr_kind::PatternElem> for PatternElem {
+    fn from(v: proto::expr::expr_kind::PatternElem) -> Self {
+        let pty = proto::expr::expr_kind::pattern_elem::PatternElemType::try_from(v.ty).unwrap();
+        match pty {
+            proto::expr::expr_kind::pattern_elem::PatternElemType::Char => PatternElem::Char(v.c.chars().next().unwrap()),
+            proto::expr::expr_kind::pattern_elem::PatternElemType::Wildcard => PatternElem::Wildcard
+        }
+    }
+}
+
+impl From<PatternElem> for proto::expr::expr_kind::PatternElem {
+    fn from(v: PatternElem) -> Self {
+        match v {
+            PatternElem::Char(c) => {
+                Self {
+                    ty: proto::expr::expr_kind::pattern_elem::PatternElemType::Char.into(),
+                    c: c.to_string()
+                }
+            }
+            PatternElem::Wildcard => {
+                Self {
+                    ty: proto::expr::expr_kind::pattern_elem::PatternElemType::Wildcard.into(),
+                    c: "".to_string()
+                }
+            }
+        }
+    }
+}
+
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
@@ -238,5 +269,20 @@ pub mod test {
 
         // Patterns that do not match "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         assert!(!(string_map("y") + star()).wildcard_match("ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"));
+    }
+
+    #[test]
+    fn protobuf_roundtrip() {
+        assert_eq!(
+            PatternElem::Wildcard,
+            PatternElem::from(proto::expr::expr_kind::PatternElem::from(PatternElem::Wildcard))
+        );
+
+        let pattern_elem1: PatternElem = PatternElem::Char('l');
+        assert_eq!(
+            pattern_elem1,
+            PatternElem::from(proto::expr::expr_kind::PatternElem::from(pattern_elem1))
+        );
+
     }
 }
