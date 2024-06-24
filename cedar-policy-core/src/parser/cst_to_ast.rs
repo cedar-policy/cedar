@@ -53,7 +53,7 @@ use std::sync::Arc;
 
 /// Defines the function `cst::Expr::to_ref_or_refs` and other similar functions
 /// for converting CST expressions into one or multiple entity UIDS. Used to
-/// extract entity uids from expression which appear in the policy scope.
+/// extract entity uids from expressions that appear in the policy scope.
 mod to_ref_or_refs;
 use to_ref_or_refs::OneOrMultipleRefs;
 

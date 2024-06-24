@@ -133,14 +133,14 @@ impl RefKind for OneOrMultipleRefs {
 
 impl Node<Option<cst::Expr>> {
     /// Extract a single `EntityUID` from this expression. The expression must
-    /// exactly a single entity literal expression.
+    /// be exactly a single entity literal expression.
     pub fn to_ref(&self, var: ast::Var) -> Result<EntityUID> {
         self.to_ref_or_refs::<SingleEntity>(var).map(|x| x.0)
     }
 
     /// Extract a single `EntityUID` or a template slot from this expression.
-    /// The expression must exactly a single entity literal expression or
-    /// exactly a single temple slot.
+    /// The expression must be exactly a single entity literal expression or
+    /// a single temple slot.
     pub fn to_ref_or_slot(&self, var: ast::Var) -> Result<EntityReference> {
         self.to_ref_or_refs::<EntityReference>(var)
     }
