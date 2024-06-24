@@ -34,7 +34,7 @@ use crate::{
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
-    fn create_multiple_refs(es: Vec<EntityUID>, loc: &Loc) -> Result<Self>;
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
     fn create_slot(loc: &Loc) -> Result<Self>;
 }
 
@@ -49,7 +49,7 @@ impl RefKind for SingleEntity {
         Ok(SingleEntity(e))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
@@ -85,7 +85,7 @@ impl RefKind for EntityReference {
         Ok(EntityReference::euid(Arc::new(e)))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
@@ -126,8 +126,11 @@ impl RefKind for OneOrMultipleRefs {
         Ok(OneOrMultipleRefs::Single(e))
     }
 
-    fn create_multiple_refs(es: Vec<EntityUID>, _loc: &Loc) -> Result<Self> {
-        Ok(OneOrMultipleRefs::Multiple(es))
+    fn create_multiple_refs(_loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+        fn create_multiple_refs(es: Vec<EntityUID>) -> OneOrMultipleRefs {
+            OneOrMultipleRefs::Multiple(es)
+        }
+        Ok(create_multiple_refs)
     }
 }
 
@@ -223,8 +226,11 @@ impl Node<Option<cst::Primary>> {
             }
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
             cst::Primary::EList(lst) => {
+                // Calling `create_multiple_refs` first so that we error
+                // immediately if we see a set when we don't except one.
+                let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
                 let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
-                T::create_multiple_refs(v, &self.loc)
+                Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
