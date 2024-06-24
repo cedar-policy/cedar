@@ -368,10 +368,8 @@ impl ActionType<RawName> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec<N> {
     /// Resource types that are valid for the action
-    #[serde(default)]
     pub resource_types: Vec<N>,
     /// Principal types that are valid for the action
-    #[serde(default)]
     pub principal_types: Vec<N>,
     /// Context type that this action expects
     #[serde(default)]

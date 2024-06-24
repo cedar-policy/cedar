@@ -203,10 +203,15 @@ mod test {
         let action_str = r#"Ex::Action::"Join""#;
         let schema_str = r#"{
             "Ex": {
-                "entityTypes": {},
+                "entityTypes": {
+                    "User": {},
+                    "Folder": {}
+                },
                 "actions": {
                     "Join": {
                         "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Folder"],
                             "context": {
                                 "type": "Record",
                                 "attributes": {
@@ -232,10 +237,15 @@ mod test {
         let action_str = r#"Ex::Action::"Join""#;
         let schema_str = r#"{
             "Ex": {
-                "entityTypes": {},
+                "entityTypes": {
+                    "User": {},
+                    "Folder": {}
+                },
                 "actions": {
                     "Join": {
                         "appliesTo": {
+                            "principalTypes" : ["User"],
+                            "resourceTypes": ["Folder"],
                             "context": {
                                 "type": "Record",
                                 "attributes": {
@@ -253,10 +263,12 @@ mod test {
         assert_syntax_result_has_errors(&check_parse_context(context_str, action_str, schema_str));
     }
 
+    #[track_caller]
     fn assert_syntax_result_is_ok(parse_result: &CheckParseResult) {
         assert!(matches!(parse_result, CheckParseResult::Success))
     }
 
+    #[track_caller]
     fn assert_syntax_result_has_errors(parse_result: &CheckParseResult) {
         assert!(matches!(
             parse_result,
