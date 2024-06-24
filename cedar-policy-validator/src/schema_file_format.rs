@@ -196,6 +196,29 @@ impl<N> NamespaceDefinition<N> {
     }
 }
 
+impl NamespaceDefinition<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> NamespaceDefinition<Name> {
+        NamespaceDefinition {
+            common_types: self
+                .common_types
+                .into_iter()
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
+            entity_types: self
+                .entity_types
+                .into_iter()
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
+            actions: self
+                .actions
+                .into_iter()
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
+        }
+    }
+}
+
 /// Represents the full definition of an entity type in the schema.
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
@@ -220,6 +243,20 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext<N>,
+}
+
+impl EntityType<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> EntityType<Name> {
+        EntityType {
+            member_of_types: self
+                .member_of_types
+                .into_iter()
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
+            shape: self.shape.qualify_type_references(ns),
+        }
+    }
 }
 
 /// Declaration of entity attributes, or of an action context.
@@ -260,6 +297,13 @@ impl<N> Default for AttributesOrContext<N> {
     }
 }
 
+impl AttributesOrContext<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> AttributesOrContext<Name> {
+        AttributesOrContext(self.0.qualify_type_references(ns))
+    }
+}
+
 /// An [`ActionType`] describes a specific action entity.
 /// It also describes what principals/resources/contexts are valid for the
 /// action.
@@ -290,6 +334,23 @@ pub struct ActionType<N> {
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
 }
 
+impl ActionType<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionType<Name> {
+        ActionType {
+            attributes: self.attributes,
+            applies_to: self
+                .applies_to
+                .map(|applyspec| applyspec.qualify_type_references(ns)),
+            member_of: self.member_of.map(|v| {
+                v.into_iter()
+                    .map(|aeuid| aeuid.qualify_type_references(ns))
+                    .collect()
+            }),
+        }
+    }
+}
+
 /// The apply spec specifies what principals and resources an action can be used
 /// with.  This specification can either be done through containing to entity
 /// types.
@@ -316,6 +377,25 @@ pub struct ApplySpec<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext<N>,
+}
+
+impl ApplySpec<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ApplySpec<Name> {
+        ApplySpec {
+            resource_types: self
+                .resource_types
+                .into_iter()
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
+            principal_types: self
+                .principal_types
+                .into_iter()
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
+            context: self.context.qualify_type_references(ns),
+        }
+    }
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
@@ -353,6 +433,16 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
             write!(f, "Action::")?
         }
         write!(f, "\"{}\"", self.id.escape_debug())
+    }
+}
+
+impl ActionEntityUID<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
+        ActionEntityUID {
+            id: self.id,
+            ty: self.ty.map(|rname| rname.qualify_with(ns)),
+        }
     }
 }
 
@@ -437,7 +527,7 @@ impl<N> SchemaType<N> {
 
 impl SchemaType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.qualify_type_references(ns)),
             Self::TypeDef { type_name } => SchemaType::TypeDef {
@@ -851,7 +941,7 @@ pub enum SchemaTypeVariant<N> {
 
 impl SchemaTypeVariant<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
         match self {
             Self::Boolean => SchemaTypeVariant::Boolean,
             Self::Long => SchemaTypeVariant::Long,
