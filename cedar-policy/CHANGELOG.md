@@ -386,7 +386,7 @@ Cedar Language Version: 2.2.0
 
 - The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
-## [2.4.5] - 2023-04-01
+## [2.4.5] - 2024-04-01
 Cedar Language Version: 2.2.0
 
 ### Changed
@@ -395,7 +395,7 @@ Cedar Language Version: 2.2.0
   now include multiplication of arbitrary expressions, not just multiplication of
   an expression and a constant.
 
-## [2.4.4] - 2023-03-08
+## [2.4.4] - 2024-03-08
 Cedar Language Version: 2.1.3
 
 ### Changed
