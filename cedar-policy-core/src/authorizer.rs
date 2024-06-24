@@ -34,7 +34,7 @@ extern crate tsify;
 
 mod err;
 mod partial_response;
-pub use err::AuthorizationError;
+pub use err::{AuthorizationError, ReauthorizationError};
 
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
@@ -90,7 +90,7 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> PartialResponse {
-        let eval = Evaluator::new(q, entities, &self.extensions);
+        let eval = Evaluator::new(q.clone(), entities, &self.extensions);
         let mut true_permits = vec![];
         let mut true_forbids = vec![];
         let mut false_permits = vec![];
@@ -150,6 +150,7 @@ impl Authorizer {
             false_forbids,
             residual_forbids,
             errors,
+            Arc::new(q),
         )
     }
 }
@@ -458,7 +459,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let mut r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("test".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
@@ -570,7 +571,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let mut r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("a".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);

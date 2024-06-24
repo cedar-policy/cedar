@@ -134,14 +134,7 @@ pub enum ReauthorizationError {
     /// A policy set error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PolicySet(#[from] PolicySetError),
-}
-
-#[doc(hidden)]
-impl From<cedar_policy_core::ast::PolicySetError> for ReauthorizationError {
-    fn from(e: cedar_policy_core::ast::PolicySetError) -> Self {
-        Self::PolicySet(e.into())
-    }
+    Reauthorization(#[from] cedar_policy_core::authorizer::ReauthorizationError),
 }
 
 /// Errors serializing Schemas to the natural syntax

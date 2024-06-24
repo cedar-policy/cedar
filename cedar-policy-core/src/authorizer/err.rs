@@ -17,6 +17,7 @@
 use crate::ast::*;
 use crate::evaluator::EvaluationError;
 use miette::Diagnostic;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
@@ -31,4 +32,30 @@ pub enum AuthorizationError {
         #[diagnostic(transparent)]
         error: EvaluationError,
     },
+}
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum ConcretizationError {
+    #[error("invalid value {given_value} of {id}: expected type {expected_type}")]
+    ValueError {
+        id: SmolStr,
+        expected_type: &'static str,
+        given_value: Value,
+    },
+    #[error("concretizing existing value {existing_value} of {id} with value {given_value}")]
+    VarConfictError {
+        id: SmolStr,
+        existing_value: Value,
+        given_value: Value,
+    },
+}
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum ReauthorizationError {
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicySetError(#[from] PolicySetError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ConcretizationError(#[from] ConcretizationError),
 }
