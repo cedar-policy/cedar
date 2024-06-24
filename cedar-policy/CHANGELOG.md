@@ -64,7 +64,7 @@ Cedar Language Version: 4.0.0
   valid Cedar identifiers. (#1004, resolving #994)
 
 ## [3.2.1] - 2024-05-31
-Cedar Language Version: 3.2.0
+Cedar Language Version: 3.3.0
 
 ### Fixed
 
@@ -77,7 +77,7 @@ Cedar Language Version: 3.2.0
 - Fixed Wasm build script to be multi-target in JS ecosystem (#933)
 
 ## [3.2.0] - 2024-05-17
-Cedar Language Version: 3.2.0
+Cedar Language Version: 3.3.0
 
 ### Added
 
