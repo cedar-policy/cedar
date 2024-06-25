@@ -424,7 +424,7 @@ impl Expr {
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
-    ) -> Result<Self, RecordConstructionError> {
+    ) -> Result<Self, ExpressionConstructionError> {
         ExprBuilder::new().record(pairs)
     }
 
@@ -995,18 +995,16 @@ impl<T> ExprBuilder<T> {
     pub fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
-    ) -> Result<Expr<T>, RecordConstructionError> {
+    ) -> Result<Expr<T>, ExpressionConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(
-                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                            key: oentry.key().clone(),
-                            context: "in record literal",
-                        }
-                        .into(),
-                    );
+                    return Err(expression_construction_errors::DuplicateKeyError {
+                        key: oentry.key().clone(),
+                        context: "in record literal",
+                    }
+                    .into());
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1155,16 +1153,14 @@ impl<T: Clone> ExprBuilder<T> {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum RecordConstructionError {
+pub enum ExpressionConstructionError {
     /// The same key occurred two or more times
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateKeyInRecordLiteral(
-        #[from] expression_construction_errors::DuplicateKeyInRecordLiteralError,
-    ),
+    DuplicateKeyInRecordLiteral(#[from] expression_construction_errors::DuplicateKeyError),
 }
 
-/// Error subtypes for [`RecordConstructionError`]
+/// Error subtypes for [`ExpressionConstructionError`]
 pub mod expression_construction_errors {
     use miette::Diagnostic;
     use smol_str::SmolStr;
@@ -1177,20 +1173,20 @@ pub mod expression_construction_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
     #[error("duplicate key `{key}` {context}")]
-    pub struct DuplicateKeyInRecordLiteralError {
+    pub struct DuplicateKeyError {
         /// The key which occurred two or more times
         pub(crate) key: SmolStr,
         /// Information about where the duplicate key occurred (e.g., "in record literal")
         pub(crate) context: &'static str,
     }
 
-    impl DuplicateKeyInRecordLiteralError {
+    impl DuplicateKeyError {
         /// Get the key which occurred two or more times
         pub fn key(&self) -> &str {
             &self.key
         }
 
-        /// Get a new error with an updated `context` field
+        /// Make a new error with an updated `context` field
         pub fn set_context(self, context: &'static str) -> Self {
             Self { context, ..self }
         }

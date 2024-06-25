@@ -27,8 +27,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, PartialValue, PartialValueSerializedAsExpr,
-    RecordConstructionError, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
+    PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -267,10 +267,12 @@ impl Context {
         // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
         match RestrictedExpr::record(pairs) {
             Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
-            Err(RecordConstructionError::DuplicateKeyInRecordLiteral(err)) => Err(
-                RecordConstructionError::DuplicateKeyInRecordLiteral(err.set_context("in context"))
-                    .into(),
-            ),
+            Err(ExpressionConstructionError::DuplicateKeyInRecordLiteral(err)) => {
+                Err(ExpressionConstructionError::DuplicateKeyInRecordLiteral(
+                    err.set_context("in context"),
+                )
+                .into())
+            }
         }
     }
 
@@ -382,7 +384,7 @@ pub enum ContextCreationError {
     /// Only returned by `Context::from_pairs()` and `Context::merge()`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RecordConstruction(#[from] RecordConstructionError),
+    ExpressionConstruction(#[from] ExpressionConstructionError),
 }
 
 impl ContextCreationError {
