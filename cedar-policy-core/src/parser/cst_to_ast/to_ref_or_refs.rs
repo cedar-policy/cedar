@@ -20,7 +20,7 @@ use super::Result;
 use crate::{
     ast::{self, EntityReference, EntityUID},
     parser::{
-        cst,
+        cst::{self, Literal},
         err::{self, ParseErrors, ToASTError, ToASTErrorKind},
         Loc, Node,
     },
@@ -198,15 +198,16 @@ impl Node<Option<cst::Primary>> {
                 }
             }
             cst::Primary::Literal(lit) => {
-                let found = match lit.as_inner() {
-                    Some(lit) => format!("literal `{lit}`"),
-                    None => "empty node".to_string(),
-                };
+                let lit = lit.try_as_inner()?;
+                let found = format!("literal `{lit}`");
                 Err(self
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
                         found,
-                        None::<String>,
+                        match lit {
+                            Literal::Str(_) => Some("try including the entity type if you intended this string to be an entity identifier"),
+                            _ => None,
+                        }
                     ))
                     .into())
             }
@@ -220,7 +221,12 @@ impl Node<Option<cst::Primary>> {
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
                         found,
-                        None::<String>,
+                        if var != ast::Var::Action {
+                            Some("try using `is` to test for an entity type".to_string())
+                        } else {
+                            // We don't allow `is` in the action scope, so we won't suggest trying it.
+                            None
+                        },
                     ))
                     .into())
             }
@@ -353,7 +359,7 @@ impl Node<Option<cst::Or>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `||` expression",
-                    None::<String>,
+                    Some("The policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy."),
                 ))
                 .into()),
         }
@@ -370,7 +376,7 @@ impl Node<Option<cst::And>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `&&` expression",
-                    None::<String>,
+                    Some("The policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition."),
                 ))
                 .into()),
         }
