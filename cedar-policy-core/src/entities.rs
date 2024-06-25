@@ -20,7 +20,6 @@ use crate::ast::*;
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
-use std::fmt::Write;
 use std::sync::Arc;
 
 use serde::Serialize;
