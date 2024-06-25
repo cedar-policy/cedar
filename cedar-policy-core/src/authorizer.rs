@@ -34,7 +34,7 @@ extern crate tsify;
 
 mod err;
 mod partial_response;
-pub use err::{AuthorizationError, ReauthorizationError};
+pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;

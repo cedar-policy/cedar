@@ -454,7 +454,7 @@ impl PartialResponse {
                 let eval = RestrictedEvaluator::new(&extns);
                 let partial_value =
                     eval.partial_interpret(BorrowedRestrictedExpr::new_unchecked(&expr))?;
-                context = Some(partial_value.into());
+                context = Some(Context::from_partial_value_unchecked(partial_value));
             }
         }
 
