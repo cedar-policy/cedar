@@ -1919,7 +1919,8 @@ pub mod test {
             ]),
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
+                    key: "foo".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -5526,7 +5527,8 @@ pub mod test {
             e,
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "a".into()
+                    key: "a".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -5540,7 +5542,8 @@ pub mod test {
             e,
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "a".into()
+                    key: "a".into(),
+                    context: "in record literal",
                 }
                 .into()
             )

@@ -424,7 +424,7 @@ impl Expr {
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
-    ) -> Result<Self, ExpressionConstructionError> {
+    ) -> Result<Self, RecordConstructionError> {
         ExprBuilder::new().record(pairs)
     }
 
@@ -995,7 +995,7 @@ impl<T> ExprBuilder<T> {
     pub fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
-    ) -> Result<Expr<T>, ExpressionConstructionError> {
+    ) -> Result<Expr<T>, RecordConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             match map.entry(k) {
@@ -1003,6 +1003,7 @@ impl<T> ExprBuilder<T> {
                     return Err(
                         expression_construction_errors::DuplicateKeyInRecordLiteralError {
                             key: oentry.key().clone(),
+                            context: "in record literal",
                         }
                         .into(),
                     );
@@ -1154,8 +1155,8 @@ impl<T: Clone> ExprBuilder<T> {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-pub enum ExpressionConstructionError {
-    /// The same key occurred two or more times in a single record literal
+pub enum RecordConstructionError {
+    /// The same key occurred two or more times
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateKeyInRecordLiteral(
@@ -1163,28 +1164,35 @@ pub enum ExpressionConstructionError {
     ),
 }
 
-/// Error subtypes for [`ExpressionConstructionError`]
+/// Error subtypes for [`RecordConstructionError`]
 pub mod expression_construction_errors {
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
 
-    /// The same key occurred two or more times in a single record literal
+    /// The same key occurred two or more times
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-    #[error("duplicate key `{key}` in record literal")]
+    #[error("duplicate key `{key}` {context}")]
     pub struct DuplicateKeyInRecordLiteralError {
-        /// The key which occurred two or more times in the record literal
+        /// The key which occurred two or more times
         pub(crate) key: SmolStr,
+        /// Information about where the duplicate key occurred (e.g., "in record literal")
+        pub(crate) context: &'static str,
     }
 
     impl DuplicateKeyInRecordLiteralError {
-        /// Get the key which occurred two or more times in the record literal
+        /// Get the key which occurred two or more times
         pub fn key(&self) -> &str {
             &self.key
+        }
+
+        /// Get a new error with an updated `context` field
+        pub fn set_context(self, context: &'static str) -> Self {
+            Self { context, ..self }
         }
     }
 }

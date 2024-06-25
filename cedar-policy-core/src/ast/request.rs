@@ -27,8 +27,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
-    PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, PartialValue, PartialValueSerializedAsExpr,
+    RecordConstructionError, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -215,8 +215,7 @@ pub struct Context {
     /// Context is serialized as a `RestrictedExpr`, for partly historical reasons.
     //
     // INVARIANT(ContextRecord): This must be a `Record`: either
-    // `PartialValue::Value(Value::Record)`, or
-    // `PartialValue::Residual(Expr::Record)`, or an appropriate unknown
+    // `PartialValue::Value(Value::Record)` or `PartialValue::Residual(Expr::Record)`
     #[serde(flatten)]
     context: PartialValueSerializedAsExpr,
 }
@@ -266,7 +265,13 @@ impl Context {
         extensions: Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
         // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
-        Self::from_expr(RestrictedExpr::record(pairs)?.as_borrowed(), extensions)
+        match RestrictedExpr::record(pairs) {
+            Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
+            Err(RecordConstructionError::DuplicateKeyInRecordLiteral(err)) => Err(
+                RecordConstructionError::DuplicateKeyInRecordLiteral(err.set_context("in context"))
+                    .into(),
+            ),
+        }
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -309,28 +314,28 @@ impl Context {
             .from_json_file(json)
     }
 
-    /// Iterate over the (key, value) pairs in the `Context`; or return `None`
-    /// if the `Context` is purely unknown
+    /// Get an iterator over the (key, value) pairs in the `Context`, cloning
+    /// only if necessary.
     //
-    // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
-    pub fn iter<'s>(&'s self) -> Option<Box<dyn Iterator<Item = (&SmolStr, PartialValue)> + 's>> {
+    // PANIC SAFETY: This is safe due to the invariant (ContextRecord) on `self.context`
+    pub fn values(self) -> Box<dyn Iterator<Item = (SmolStr, PartialValue)>> {
         // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
-        match self.context.as_ref() {
+        match self.context.into() {
             PartialValue::Value(Value {
                 value: ValueKind::Record(record),
                 ..
-            }) => Some(Box::new(
-                record
-                    .iter()
-                    .map(|(k, v)| (k, PartialValue::Value(v.clone()))),
-            )),
-            PartialValue::Residual(expr) => match expr.expr_kind() {
-                ExprKind::Record(map) => Some(Box::new(
-                    map.iter()
-                        .map(|(k, v)| (k, PartialValue::Residual(v.clone()))),
-                )),
-                ExprKind::Unknown(_) => None,
+            }) => Box::new(
+                Arc::unwrap_or_clone(record)
+                    .into_iter()
+                    .map(|(k, v)| (k, PartialValue::Value(v))),
+            ),
+            PartialValue::Residual(expr) => match expr.into_expr_kind() {
+                ExprKind::Record(map) => Box::new(
+                    Arc::unwrap_or_clone(map)
+                        .into_iter()
+                        .map(|(k, v)| (k, PartialValue::Residual(v))),
+                ),
                 kind => panic!("internal invariant violation: expected a record, got {kind:?}"),
             },
             v => panic!("internal invariant violation: expected a record, got {v:?}"),
@@ -373,11 +378,11 @@ pub enum ContextCreationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Evaluation(#[from] EvaluationError),
-    /// Error constructing the expression given for the `Context`.
-    /// Only returned by `Context::from_pairs()`
+    /// Error constructing a record for the `Context`.
+    /// Only returned by `Context::from_pairs()` and `Context::merge()`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExpressionConstruction(#[from] ExpressionConstructionError),
+    RecordConstruction(#[from] RecordConstructionError),
 }
 
 impl ContextCreationError {

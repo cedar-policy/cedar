@@ -2813,7 +2813,7 @@ impl Expression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExpressionConstructionError> {
+    ) -> Result<Self, RecordConstructionError> {
         Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))
@@ -2910,7 +2910,7 @@ impl RestrictedExpression {
     /// Error if any key appears two or more times in `fields`.
     pub fn new_record(
         fields: impl IntoIterator<Item = (String, Self)>,
-    ) -> Result<Self, ExpressionConstructionError> {
+    ) -> Result<Self, RecordConstructionError> {
         Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
         )?))
@@ -3383,6 +3383,34 @@ impl Context {
     ) -> Result<impl ContextSchema, ContextJsonError> {
         cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
             .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
+    }
+
+    /// Combine two [`Context`]s, returning an error if they contain overlapping keys
+    pub fn merge(self, context: Self) -> Result<Self, ContextCreationError> {
+        Self::from_pairs(self.values().into_iter().chain(context.values()))
+    }
+
+    /// Consume the context and return a `HashMap` of its elements. Note that
+    /// context elements are evaluated when the context is constructed, so the
+    /// stored values may not exactly match the expressions used as input to
+    /// constructors like [`Context::from_pairs`] or [`Context::from_json_str`].
+    pub fn values(self) -> HashMap<String, RestrictedExpression> {
+        self.0
+            .values()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    match v {
+                        ast::PartialValue::Value(val) => RestrictedExpression(
+                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
+                        ),
+                        ast::PartialValue::Residual(exp) => {
+                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
+                        }
+                    },
+                )
+            })
+            .collect()
     }
 }
 

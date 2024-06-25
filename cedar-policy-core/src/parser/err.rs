@@ -279,10 +279,10 @@ pub enum ToASTErrorKind {
     /// Returned when a policy uses the remainder/modulo operator (`%`), which is not supported
     #[error("remainder/modulo is not supported")]
     UnsupportedModulo,
-    /// Any `ExpressionConstructionError` can also happen while converting CST to AST
+    /// Any `RecordConstructionError` can also happen while converting CST to AST
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ExpressionConstructionError(#[from] ast::ExpressionConstructionError),
+    RecordConstructionError(#[from] ast::RecordConstructionError),
     /// Returned when a policy contains an integer literal that is out of range
     #[error("integer literal `{0}` is too large")]
     #[diagnostic(help("maximum allowed integer literal is `{}`", ast::InputInteger::MAX))]

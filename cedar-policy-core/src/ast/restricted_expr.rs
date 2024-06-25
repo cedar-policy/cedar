@@ -15,7 +15,7 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
+    EntityUID, Expr, ExprKind, Literal, Name, PartialValue, RecordConstructionError, Unknown,
     Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
@@ -120,7 +120,7 @@ impl RestrictedExpr {
     /// Throws an error if any key occurs two or more times.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-    ) -> Result<Self, ExpressionConstructionError> {
+    ) -> Result<Self, RecordConstructionError> {
         // Record expressions are valid restricted-exprs if their elements are;
         // and we know the elements are because we require `RestrictedExpr`s in
         // the parameter
@@ -702,7 +702,8 @@ mod test {
             ]),
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
+                    key: "foo".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -716,7 +717,8 @@ mod test {
             ]),
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
+                    key: "foo".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -730,7 +732,8 @@ mod test {
             ]),
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
+                    key: "foo".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -747,7 +750,8 @@ mod test {
             ]),
             Err(
                 expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
+                    key: "foo".into(),
+                    context: "in record literal",
                 }
                 .into()
             )
@@ -759,9 +763,10 @@ mod test {
             RestrictedExpr::from_str(str),
             Err(RestrictedExpressionParseError::Parse(
                 ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
-                    ToASTErrorKind::ExpressionConstructionError(
+                    ToASTErrorKind::RecordConstructionError(
                         expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                            key: "foo".into()
+                            key: "foo".into(),
+                            context: "in record literal",
                         }
                         .into()
                     ),
