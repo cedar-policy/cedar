@@ -416,7 +416,7 @@ impl PartialResponse {
         }
 
         if let Some((key, val)) = mapping.get_key_value("context") {
-            if let Ok(rec) = val.get_as_record() {
+            if val.get_as_record().is_ok() {
                 match self.request.context() {
                     Some(ctx) => {
                         return Err(ConcretizationError::VarConfictError {
@@ -426,15 +426,7 @@ impl PartialResponse {
                         });
                     }
                     None => {
-                        context = Some(
-                            Context::from_pairs(
-                                rec.as_ref().iter().map(|(attr, attr_val)| {
-                                    (attr.to_owned(), attr_val.clone().into())
-                                }),
-                                Extensions::all_available(),
-                            )
-                            .unwrap(),
-                        );
+                        context = Some(Context::from_partial_value_unchecked(val.clone().into()));
                     }
                 }
             } else {
