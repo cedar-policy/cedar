@@ -4411,7 +4411,7 @@ pub mod test {
             Either::Left(_) => panic!("Evalled to a value"),
             Either::Right(expr) => {
                 println!("{expr}");
-                assert!(expr.is_unknown());
+                assert!(expr.contains_unknown());
                 let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
                     .into_iter()
                     .collect();

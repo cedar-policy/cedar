@@ -350,6 +350,14 @@ impl From<Context> for PartialValue {
     }
 }
 
+impl From<PartialValue> for Context {
+    fn from(value: PartialValue) -> Self {
+        Self {
+            context: value.into(),
+        }
+    }
+}
+
 impl std::default::Default for Context {
     fn default() -> Context {
         Context::empty()

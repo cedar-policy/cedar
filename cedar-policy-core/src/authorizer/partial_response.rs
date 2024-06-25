@@ -22,12 +22,15 @@ use std::sync::Arc;
 
 use super::{
     err::{ConcretizationError, ReauthorizationError},
-    Annotations, AuthorizationError, Authorizer, Context, Decision, Effect, EntityUIDEntry, Expr,
-    PartialValue, Policy, PolicySet, PolicySetError, Request, RequestSchemaAllPass, Response, Type,
+    Annotations, AuthorizationError, Authorizer, BorrowedRestrictedExpr, Context, Decision, Effect,
+    EntityUIDEntry, Expr, PartialValue, Policy, PolicySet, PolicySetError, Request, Response,
     Value,
 };
 use crate::{
-    ast::PolicyID, entities::Entities, evaluator::EvaluationError, extensions::Extensions,
+    ast::PolicyID,
+    entities::Entities,
+    evaluator::{EvaluationError, RestrictedEvaluator},
+    extensions::Extensions,
 };
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
@@ -343,122 +346,124 @@ impl PartialResponse {
         let mut resource = self.request.resource.clone();
         let mut context = self.request.context.clone();
 
-        for (key, val) in mapping {
-            match key.as_ref() {
-                "principal" => {
-                    if let Ok(uid) = val.get_as_entity() {
-                        match self.request.principal() {
-                            EntityUIDEntry::Known { euid, .. } => {
-                                return Err(ConcretizationError::VarConfictError {
-                                    id: key.to_owned(),
-                                    existing_value: euid.as_ref().clone().into(),
-                                    given_value: val.clone(),
-                                });
-                            }
-                            EntityUIDEntry::Unknown { .. } => {
-                                principal = EntityUIDEntry::known(uid.clone(), None);
-                            }
-                        }
-                    } else {
-                        return Err(ConcretizationError::ValueError {
+        if let Some((key, val)) = mapping.get_key_value("principal") {
+            if let Ok(uid) = val.get_as_entity() {
+                match self.request.principal() {
+                    EntityUIDEntry::Known { euid, .. } => {
+                        return Err(ConcretizationError::VarConfictError {
                             id: key.to_owned(),
-                            expected_type: "entity",
-                            given_value: val.to_owned(),
+                            existing_value: euid.as_ref().clone().into(),
+                            given_value: val.clone(),
                         });
                     }
-                }
-                "action" => {
-                    if let Ok(uid) = val.get_as_entity() {
-                        match self.request.action() {
-                            EntityUIDEntry::Known { euid, .. } => {
-                                return Err(ConcretizationError::VarConfictError {
-                                    id: key.to_owned(),
-                                    existing_value: euid.as_ref().clone().into(),
-                                    given_value: val.clone(),
-                                });
-                            }
-                            EntityUIDEntry::Unknown { .. } => {
-                                action = EntityUIDEntry::known(uid.clone(), None);
-                            }
-                        }
-                    } else {
-                        return Err(ConcretizationError::ValueError {
-                            id: key.to_owned(),
-                            expected_type: "entity",
-                            given_value: val.to_owned(),
-                        });
+                    EntityUIDEntry::Unknown { .. } => {
+                        principal = EntityUIDEntry::known(uid.clone(), None);
                     }
                 }
-                "resource" => {
-                    if let Ok(uid) = val.get_as_entity() {
-                        match self.request.resource() {
-                            EntityUIDEntry::Known { euid, .. } => {
-                                return Err(ConcretizationError::VarConfictError {
-                                    id: key.to_owned(),
-                                    existing_value: euid.as_ref().clone().into(),
-                                    given_value: val.clone(),
-                                });
-                            }
-                            EntityUIDEntry::Unknown { .. } => {
-                                resource = EntityUIDEntry::known(uid.clone(), None);
-                            }
-                        }
-                    } else {
-                        return Err(ConcretizationError::ValueError {
-                            id: key.to_owned(),
-                            expected_type: "entity",
-                            given_value: val.to_owned(),
-                        });
-                    }
-                }
-                "context" => {
-                    if let Ok(rec) = val.get_as_record() {
-                        match self.request.context() {
-                            Some(ctx) if matches!(ctx.as_ref(), PartialValue::Value(_)) => {
-                                return Err(ConcretizationError::VarConfictError {
-                                    id: key.to_owned(),
-                                    existing_value: ctx.as_ref().to_owned().try_into().unwrap(),
-                                    given_value: val.clone(),
-                                });
-                            }
-                            Some(ctx) if matches!(ctx.as_ref(), PartialValue::Residual(_)) => {
-                                todo!();
-                            }
-                            None => {
-                                context = Some(
-                                    Context::from_pairs(
-                                        rec.as_ref().iter().map(|(attr, attr_val)| {
-                                            (attr.to_owned(), attr_val.clone().into())
-                                        }),
-                                        Extensions::all_available(),
-                                    )
-                                    .unwrap(),
-                                );
-                            }
-                            _ => {
-                                unreachable!("...");
-                            }
-                        }
-                    } else {
-                        return Err(ConcretizationError::ValueError {
-                            id: key.to_owned(),
-                            expected_type: "record",
-                            given_value: val.to_owned(),
-                        });
-                    }
-                }
-                _ => {}
+            } else {
+                return Err(ConcretizationError::ValueError {
+                    id: key.to_owned(),
+                    expected_type: "entity",
+                    given_value: val.to_owned(),
+                });
             }
         }
-        Ok(Request::new_with_unknowns(
+
+        if let Some((key, val)) = mapping.get_key_value("action") {
+            if let Ok(uid) = val.get_as_entity() {
+                match self.request.action() {
+                    EntityUIDEntry::Known { euid, .. } => {
+                        return Err(ConcretizationError::VarConfictError {
+                            id: key.to_owned(),
+                            existing_value: euid.as_ref().clone().into(),
+                            given_value: val.clone(),
+                        });
+                    }
+                    EntityUIDEntry::Unknown { .. } => {
+                        action = EntityUIDEntry::known(uid.clone(), None);
+                    }
+                }
+            } else {
+                return Err(ConcretizationError::ValueError {
+                    id: key.to_owned(),
+                    expected_type: "entity",
+                    given_value: val.to_owned(),
+                });
+            }
+        }
+
+        if let Some((key, val)) = mapping.get_key_value("resource") {
+            if let Ok(uid) = val.get_as_entity() {
+                match self.request.resource() {
+                    EntityUIDEntry::Known { euid, .. } => {
+                        return Err(ConcretizationError::VarConfictError {
+                            id: key.to_owned(),
+                            existing_value: euid.as_ref().clone().into(),
+                            given_value: val.clone(),
+                        });
+                    }
+                    EntityUIDEntry::Unknown { .. } => {
+                        resource = EntityUIDEntry::known(uid.clone(), None);
+                    }
+                }
+            } else {
+                return Err(ConcretizationError::ValueError {
+                    id: key.to_owned(),
+                    expected_type: "entity",
+                    given_value: val.to_owned(),
+                });
+            }
+        }
+
+        if let Some((key, val)) = mapping.get_key_value("context") {
+            if let Ok(rec) = val.get_as_record() {
+                match self.request.context() {
+                    Some(ctx) => {
+                        return Err(ConcretizationError::VarConfictError {
+                            id: key.to_owned(),
+                            existing_value: ctx.as_ref().clone(),
+                            given_value: val.clone(),
+                        });
+                    }
+                    None => {
+                        context = Some(
+                            Context::from_pairs(
+                                rec.as_ref().iter().map(|(attr, attr_val)| {
+                                    (attr.to_owned(), attr_val.clone().into())
+                                }),
+                                Extensions::all_available(),
+                            )
+                            .unwrap(),
+                        );
+                    }
+                }
+            } else {
+                return Err(ConcretizationError::ValueError {
+                    id: key.to_owned(),
+                    expected_type: "record",
+                    given_value: val.to_owned(),
+                });
+            }
+        }
+
+        // We need to replace unknowns in the partial context as well
+        if let Some(ref ctx) = context {
+            if let PartialValue::Residual(residual) = ctx.as_ref() {
+                let expr = residual.substitute(mapping);
+                let extns = Extensions::all_available();
+                let eval = RestrictedEvaluator::new(&extns);
+                let partial_value =
+                    eval.partial_interpret(BorrowedRestrictedExpr::new_unchecked(&expr))?;
+                context = Some(partial_value.into());
+            }
+        }
+
+        Ok(Request {
             principal,
             action,
             resource,
             context,
-            None::<&RequestSchemaAllPass>,
-            Extensions::all_available(),
-        )
-        .unwrap())
+        })
     }
 
     fn errors(self) -> impl Iterator<Item = AuthorizationError> {
@@ -585,7 +590,14 @@ mod test {
         }
     }
 
-    use crate::authorizer::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
+    use crate::{
+        authorizer::{
+            ActionConstraint, EntityUID, PrincipalConstraint, ResourceConstraint, RestrictedExpr,
+            Unknown,
+        },
+        parser::parse_policyset,
+        FromNormalizedStr,
+    };
 
     use super::*;
 
@@ -789,6 +801,76 @@ mod test {
                 &(ErrorState::NoError, Arc::default())
             )),
             None,
+        );
+    }
+
+    #[test]
+    fn reauthorize() {
+        let policies = parse_policyset(
+            r#"
+            permit(principal, action, resource) when {
+                principal == NS::"a" && resource == NS::"b"
+            };
+            forbid(principal, action, resource) when {
+                context.b
+            };
+        "#,
+        )
+        .unwrap();
+
+        let context_unknown = Context::from_pairs(
+            std::iter::once((
+                "b".into(),
+                RestrictedExpr::unknown(Unknown::new_untyped("b")),
+            )),
+            Extensions::all_available(),
+        )
+        .unwrap();
+
+        let partial_request = Request {
+            principal: EntityUIDEntry::known(r#"NS::"a""#.parse().unwrap(), None),
+            action: EntityUIDEntry::Unknown { loc: None },
+            resource: EntityUIDEntry::Unknown { loc: None },
+            context: Some(context_unknown),
+        };
+
+        let entities = Entities::new();
+
+        let authorizer = Authorizer::new();
+        let mut partial_response =
+            authorizer.is_authorized_core(partial_request, &policies, &entities);
+
+        let mut response_with_concrete_resource = partial_response
+            .reauthorize(
+                &HashMap::from_iter(std::iter::once((
+                    "resource".into(),
+                    EntityUID::from_normalized_str(r#"NS::"b""#).unwrap().into(),
+                ))),
+                &authorizer,
+                &entities,
+            )
+            .unwrap();
+
+        assert_eq!(
+            response_with_concrete_resource
+                .definitely_satisfied()
+                .next()
+                .unwrap()
+                .effect(),
+            Effect::Permit
+        );
+
+        let response_with_concrete_context_attr = response_with_concrete_resource
+            .reauthorize(
+                &HashMap::from_iter(std::iter::once(("b".into(), true.into()))),
+                &authorizer,
+                &entities,
+            )
+            .unwrap();
+
+        assert_eq!(
+            response_with_concrete_context_attr.decision(),
+            Some(Decision::Deny)
         );
     }
 }
