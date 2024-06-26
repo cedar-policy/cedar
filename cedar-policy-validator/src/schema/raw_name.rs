@@ -56,6 +56,20 @@ impl RawName {
         Self(Name::unqualified_name(id))
     }
 
+    /// Create a new `RawName` from the given `Name`.
+    ///
+    /// Note that if `name` includes explicit namespaces, the result will be a
+    /// `RawName` that also includes those explicit namespaces, as if that
+    /// fully-qualified name appeared directly in the (JSON or human) schema
+    /// format.
+    /// If `name` does not include explicit namespaces, the result will be a
+    /// `RawName` that also does not include explicit namespaces, which may or
+    /// may not translate back to the original input `name`, due to
+    /// namespace-qualification rules.
+    pub fn from_name(name: Name) -> Self {
+        Self(name)
+    }
+
     /// Create a new `RawName` from a basename, namespace components as `Id`s, and optional source location
     pub fn from_components(
         basename: Id,

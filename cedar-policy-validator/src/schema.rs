@@ -47,6 +47,7 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
+pub(crate) use namespace_def::try_schema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
 pub use raw_name::{RawName, RawUnreservedName};
@@ -848,11 +849,8 @@ impl<'a> CommonTypeResolver<'a> {
             resolve_table.insert(name, substituted_ty.clone());
             tys.insert(
                 name.clone(),
-                ValidatorNamespaceDef::try_schema_type_into_validator_type(
-                    substituted_ty,
-                    extensions,
-                )?
-                .resolve_type_defs(&HashMap::new())?,
+                try_schema_type_into_validator_type(substituted_ty, extensions)?
+                    .resolve_type_defs(&HashMap::new())?,
             );
         }
 
@@ -1403,7 +1401,7 @@ mod test {
                 name: "Foo".parse().unwrap()
             })
         );
-        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+        let ty: Type = try_schema_type_into_validator_type(
             schema_ty
                 .qualify_type_references(Some(
                     &UnreservedName::parse_unqualified_name("NS").unwrap(),
@@ -1427,7 +1425,7 @@ mod test {
                 name: "NS::Foo".parse().unwrap()
             })
         );
-        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+        let ty: Type = try_schema_type_into_validator_type(
             schema_ty
                 .qualify_type_references(Some(
                     &UnreservedName::parse_unqualified_name("NS").unwrap(),
@@ -1458,7 +1456,7 @@ mod test {
                 additional_attributes: false,
             }),
         );
-        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+        let ty: Type = try_schema_type_into_validator_type(
             schema_ty.qualify_type_references(None).unwrap(),
             Extensions::all_available(),
         )

@@ -196,6 +196,35 @@ impl<N> NamespaceDefinition<N> {
     }
 }
 
+impl NamespaceDefinition<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<NamespaceDefinition<UnreservedName>, ReservedNameError> {
+        Ok(NamespaceDefinition {
+            common_types: self
+                .common_types
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
+            entity_types:
+                self.entity_types
+                    .into_iter()
+                    .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                    .collect::<std::result::Result<
+                        HashMap<Id, EntityType<UnreservedName>>,
+                        ReservedNameError,
+                    >>()?,
+            actions: self
+                .actions
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
+        })
+    }
+}
+
 /// Represents the full definition of an entity type in the schema.
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
@@ -220,6 +249,23 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext<N>,
+}
+
+impl EntityType<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<EntityType<UnreservedName>, ReservedNameError> {
+        Ok(EntityType {
+            member_of_types: self
+                .member_of_types
+                .into_iter()
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+            shape: self.shape.qualify_type_references(ns)?,
+        })
+    }
 }
 
 /// Declaration of entity attributes, or of an action context.
@@ -260,6 +306,16 @@ impl<N> Default for AttributesOrContext<N> {
     }
 }
 
+impl AttributesOrContext<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<AttributesOrContext<UnreservedName>, ReservedNameError> {
+        Ok(AttributesOrContext(self.0.qualify_type_references(ns)?))
+    }
+}
+
 /// An [`ActionType`] describes a specific action entity.
 /// It also describes what principals/resources/contexts are valid for the
 /// action.
@@ -290,6 +346,30 @@ pub struct ActionType<N> {
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
 }
 
+impl ActionType<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ActionType<UnreservedName>, ReservedNameError> {
+        Ok(ActionType {
+            attributes: self.attributes,
+            applies_to: self
+                .applies_to
+                .map(|applyspec| applyspec.qualify_type_references(ns))
+                .transpose()?,
+            member_of: self
+                .member_of
+                .map(|v| {
+                    Ok(v.into_iter()
+                        .map(|aeuid| Ok(aeuid.qualify_type_references(ns)?))
+                        .collect::<std::result::Result<Vec<_>, _>>()?)
+                })
+                .transpose()?,
+        })
+    }
+}
+
 /// The apply spec specifies what principals and resources an action can be used
 /// with.  This specification can either be done through containing to entity
 /// types.
@@ -316,6 +396,28 @@ pub struct ApplySpec<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext<N>,
+}
+
+impl ApplySpec<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ApplySpec<UnreservedName>, ReservedNameError> {
+        Ok(ApplySpec {
+            resource_types: self
+                .resource_types
+                .into_iter()
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+            principal_types: self
+                .principal_types
+                .into_iter()
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+            context: self.context.qualify_type_references(ns)?,
+        })
+    }
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
@@ -353,6 +455,22 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
             write!(f, "Action::")?
         }
         write!(f, "\"{}\"", self.id.escape_debug())
+    }
+}
+
+impl ActionEntityUID<RawName> {
+    /// Prefix unqualified entity and common type references with the namespace they are in
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ActionEntityUID<UnreservedName>, ReservedNameError> {
+        Ok(ActionEntityUID {
+            id: self.id,
+            ty: self
+                .ty
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .transpose()?,
+        })
     }
 }
 
@@ -437,7 +555,7 @@ impl<N> SchemaType<N> {
 
 impl SchemaType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(
+    pub fn qualify_type_references(
         self,
         ns: Option<&UnreservedName>,
     ) -> std::result::Result<SchemaType<UnreservedName>, ReservedNameError> {
@@ -854,7 +972,7 @@ pub enum SchemaTypeVariant<N> {
 
 impl SchemaTypeVariant<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(
+    pub fn qualify_type_references(
         self,
         ns: Option<&UnreservedName>,
     ) -> std::result::Result<SchemaTypeVariant<UnreservedName>, ReservedNameError> {
