@@ -90,7 +90,7 @@ impl FromNormalizedStr for Id {
     }
 }
 
-/// An `Id` that is not equal to `__cedar`
+/// An `Id` that is not equal to `__cedar`, as specified by RFC 52
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct UnreservedId(pub(crate) Id);
 

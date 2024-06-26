@@ -1168,15 +1168,15 @@ mod translator_tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        human_schema::{
-            err::ToJsonSchemaError, parser::parse_schema,
-            to_json_schema::custom_schema_to_json_schema,
-        },
+        human_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
         types::{EntityLUB, Type},
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
     use cedar_policy_core::ast as cedar_ast;
 
+    // We allow translation schemas that violate RFC 52 to `SchemaFragment`
+    // The violations are reported during further translation to
+    // `ValidatorSchema`
     #[test]
     fn use_reserved_namespace() {
         let schema = SchemaFragment::from_str_natural(
@@ -1184,17 +1184,14 @@ mod translator_tests {
           namespace __cedar {}
         "#,
         );
-        assert!(schema.is_err(), "__cedar namespace shouldn't be allowed");
+        assert!(schema.is_ok());
 
         let schema = SchemaFragment::from_str_natural(
             r#"
           namespace __cedar::Foo {}
         "#,
         );
-        assert!(
-            schema.is_err(),
-            "__cedar::Foo namespace shouldn't be allowed"
-        );
+        assert!(schema.is_ok());
     }
 
     #[test]
@@ -1776,6 +1773,9 @@ mod translator_tests {
         assert!(schema.is_err());
     }
 
+    // Note that we do not throw any errors during the human-readable to JSON
+    // translation. An error will be raised if the translated JSON schema is
+    // further processed into `ValidatorSchema`
     #[test]
     fn reserved_namespace() {
         let schema = custom_schema_to_json_schema(
@@ -1788,7 +1788,7 @@ mod translator_tests {
             .unwrap(),
         )
         .map(|_| ());
-        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
+        assert_matches!(schema, Ok(()));
 
         let schema = custom_schema_to_json_schema(
             parse_schema(
@@ -1800,7 +1800,7 @@ mod translator_tests {
             .unwrap(),
         )
         .map(|_| ());
-        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::UseReservedNamespace(_)));
+        assert_matches!(schema, Ok(()));
 
         let schema = custom_schema_to_json_schema(
             parse_schema(

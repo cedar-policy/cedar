@@ -387,7 +387,7 @@ mod vars_test {
 }
 
 /// A newtype which indicates that the contained `Name` does not contain
-/// reserved `__cedar`
+/// reserved `__cedar`, as specified by RFC 52
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -414,6 +414,9 @@ impl FromNormalizedStr for UnreservedName {
 }
 
 impl UnreservedName {
+    /// Qualify the name with an optional namespace
+    /// This method has the same behavior as `Name::qualify_with` except that
+    /// the `namespace` argument is a `Option<&UnreservedName>`
     pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
         Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
     }

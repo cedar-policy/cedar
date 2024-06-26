@@ -146,14 +146,6 @@ impl<'a> ConversionContext<'a> {
         &self,
         n: Namespace,
     ) -> Result<NamespaceDefinition<RawName>, ToJsonSchemaErrors> {
-        // Ensure we aren't using a reserved namespace
-        match n.name.as_ref() {
-            Some(name) if name.node.is_reserved() => {
-                Err(ToJsonSchemaError::UseReservedNamespace(name.loc.clone()))
-            }
-            _ => Ok(()),
-        }?;
-
         // Partition the decls into entities, actions, and common types
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
         // Convert entity type decls, collecting all errors

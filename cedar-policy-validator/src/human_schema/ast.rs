@@ -131,20 +131,17 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    /// Is this referring to a name _in__ the reserved namespace that starts
-    /// with `__cedar`
+    /// Is this referring to a name _in__ the reserved namespace that contains
+    /// `__cedar`
     fn is_reserved(&self) -> bool {
-        // `0` is the position of the most significant namespace
-        // PANIC SAFETY: `self.iter()` returns at least one element
-        #[allow(clippy::unwrap_used)]
-        return self.iter().next().unwrap().as_ref() == CEDAR_NAMESPACE;
+        self.iter().any(|id| id.as_ref() == CEDAR_NAMESPACE)
     }
 
     /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace
     fn is_in_unqualified_or_cedar(&self) -> bool {
         match self.namespace.as_slice() {
             [] => true,
-            [_] => self.is_reserved(),
+            [id] => id.as_ref() == CEDAR_NAMESPACE,
             _ => false,
         }
     }
