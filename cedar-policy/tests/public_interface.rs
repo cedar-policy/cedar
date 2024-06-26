@@ -219,11 +219,35 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Decision::Allow
     );
 
+    // request with Account::"jane" and the unspecified entity
+    let principal = EntityUid::from_type_name_and_id(
+        EntityTypeName::from_str("Account").unwrap(),
+        EntityId::from_str("jane").unwrap(),
+    );
+    #[cfg(feature = "deprecated_unspecified")]
+    {
+        let request3a = Request::unspecified_new(
+            Some(principal.clone()),
+            None,
+            Some(resource.clone()),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+
+        // Check that we got an "Allow" result
+        assert_eq!(
+            auth.is_authorized(&request3a, &policies, &entities)
+                .decision(),
+            Decision::Allow
+        );
+    }
+
     // Requesting with a default principal or resource will return Deny (but not fail)
     let request4 = Request::new(
         r#"Ghost::"ghost""#.parse().unwrap(),
         action.clone(),
-        resource,
+        resource.clone(),
         Context::empty(),
         None,
     )
@@ -233,9 +257,34 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
             .decision(),
         Decision::Deny
     );
+    #[cfg(feature = "deprecated_unspecified")]
+    {
+        // Requesting with the unspecified principal or resource will return Deny (but not fail)
+        let request4a = Request::unspecified_new(
+            None,
+            Some(action.clone()),
+            Some(resource.clone()),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            auth.is_authorized(&request4a, &policies, &entities)
+                .decision(),
+            Decision::Deny
+        );
+        let request5a =
+            Request::unspecified_new(Some(principal), Some(action), None, Context::empty(), None)
+                .unwrap();
+        assert_eq!(
+            auth.is_authorized(&request5a, &policies, &entities)
+                .decision(),
+            Decision::Deny
+        );
+    }
     let request5 = Request::new(
-        principal,
-        action,
+        principal.clone(),
+        action.clone(),
         r#"Ghost::"ghost""#.parse().unwrap(),
         Context::empty(),
         None,
