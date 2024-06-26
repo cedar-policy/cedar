@@ -434,6 +434,8 @@ impl UnreservedName {
 
     /// Get the basename of the `UnreservedName` (ie, with namespaces stripped).
     pub fn basename(&self) -> UnreservedId {
+        // PANIC SAFETY: `UnreservedName` should consist of `UnreservedId`s
+        #![allow(clippy::unwrap_used)]
         self.0.basename().clone().try_into().unwrap()
     }
 }
