@@ -839,7 +839,7 @@ pub struct Response {
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, Clone, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct PartialResponse(cedar_policy_core::authorizer::PartialResponse);
 
 #[cfg(feature = "partial-eval")]
@@ -906,7 +906,7 @@ impl PartialResponse {
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
     pub fn reauthorize(
-        &self,
+        &mut self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
         auth: &Authorizer,
         es: &Entities,

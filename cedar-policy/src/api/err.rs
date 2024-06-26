@@ -124,6 +124,12 @@ impl From<authorizer::AuthorizationError> for AuthorizationError {
     }
 }
 
+/// Errors that occur during concretizing a partial request
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct ConcretizationError(pub(crate) cedar_policy_core::authorizer::ConcretizationError);
+
 /// Errors that can be encountered when re-evaluating a partial response
 #[derive(Debug, Diagnostic, Error)]
 pub enum ReauthorizationError {
@@ -135,12 +141,23 @@ pub enum ReauthorizationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PolicySet(#[from] PolicySetError),
+    /// A request concretization error was encountered
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Concretization(#[from] ConcretizationError),
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_core::ast::PolicySetError> for ReauthorizationError {
-    fn from(e: cedar_policy_core::ast::PolicySetError) -> Self {
-        Self::PolicySet(e.into())
+impl From<cedar_policy_core::authorizer::ReauthorizationError> for ReauthorizationError {
+    fn from(e: cedar_policy_core::authorizer::ReauthorizationError) -> Self {
+        match e {
+            cedar_policy_core::authorizer::ReauthorizationError::PolicySetError(err) => {
+                Self::PolicySet(err.into())
+            }
+            cedar_policy_core::authorizer::ReauthorizationError::ConcretizationError(err) => {
+                Self::Concretization(ConcretizationError(err))
+            }
+        }
     }
 }
 
