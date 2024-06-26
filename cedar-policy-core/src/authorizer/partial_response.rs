@@ -828,8 +828,7 @@ mod test {
         let entities = Entities::new();
 
         let authorizer = Authorizer::new();
-        let partial_response =
-            authorizer.is_authorized_core(partial_request, &policies, &entities);
+        let partial_response = authorizer.is_authorized_core(partial_request, &policies, &entities);
 
         let response_with_concrete_resource = partial_response
             .reauthorize(
