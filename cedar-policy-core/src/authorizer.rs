@@ -459,7 +459,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
             .unwrap();
 
-        let mut r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("test".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
@@ -571,7 +571,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
             .unwrap();
 
-        let mut r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         let map = [("a".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
