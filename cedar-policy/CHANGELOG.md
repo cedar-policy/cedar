@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+The "Cedar Language Version" refers to the language version as documented in the [Cedar Policy Language Guide](https://docs.cedarpolicy.com/other/doc-history.html). The language version may differ from the Rust crate version because a breaking change for the Cedar Rust API may or may not be a breaking change for the Cedar language.
+
 ## [Unreleased]
+Cedar Language Version: 4.0
 
 ### Added
 - JSON representation for Policy Sets, along with methods like
@@ -61,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   valid Cedar identifiers. (#1004, resolving #994)
 
 ## [3.2.1] - 2024-05-31
+Cedar Language Version: 3.3
 
 ### Fixed
 
@@ -73,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Wasm build script to be multi-target in JS ecosystem (#933)
 
 ## [3.2.0] - 2024-05-17
+Cedar Language Version: 3.3
 
 ### Added
 
@@ -123,12 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entity identifier expressions. (#861, resolving #787)
 
 ## [3.1.4] - 2024-05-17
+Cedar Language Version: 3.2
 
 ### Fixed
 
 - The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
 ## [3.1.3] - 2024-04-15
+Cedar Language Version: 3.2
 
 ### Changed
 
@@ -148,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   format. (#734, resolving #681)
 
 ## [3.1.2] - 2024-03-29
+Cedar Language Version: 3.2
 
 ### Changed
 
@@ -156,6 +164,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an expression and a constant.
 
 ## [3.1.1] - 2024-03-14
+Cedar Language Version: 3.1
 
 ### Fixed
 
@@ -166,7 +175,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in different namespaces. (#704, resolving #642)
 
 ## [3.1.0] - 2024-03-08
-Cedar Language Version: 3.1.0
+Cedar Language Version: 3.1
 
 ### Added
 
@@ -244,7 +253,7 @@ Cedar Language Version: 3.1.0
   (#626, resolving #606)
 
 ## [3.0.1] - 2023-12-21
-Cedar Language Version: 3.0.0
+Cedar Language Version: 3.0
 
 ### Fixed
 
@@ -252,7 +261,7 @@ Cedar Language Version: 3.0.0
   fixed by #526)
 
 ## [3.0.0] - 2023-12-15
-Cedar Language Version: 3.0.0
+Cedar Language Version: 3.0
 
 ### Added
 
@@ -362,6 +371,7 @@ Cedar Language Version: 3.0.0
   feature flag. (#428)
 
 ## [2.4.7] - 2024-05-31
+Cedar Language Version: 2.2
 
 ### Fixed
 
@@ -370,12 +380,14 @@ Cedar Language Version: 3.0.0
 - Fixed policy formatter dropping newlines in string literals. (#870, #910, resolving #862)
 
 ## [2.4.6] - 2024-05-17
+Cedar Language Version: 2.2
 
 ### Fixed
 
 - The formatter will now fail with an error if it changes a policy's semantics. (#865)
 
-## [2.4.5] - 2023-04-01
+## [2.4.5] - 2024-04-01
+Cedar Language Version: 2.2
 
 ### Changed
 
@@ -383,9 +395,8 @@ Cedar Language Version: 3.0.0
   now include multiplication of arbitrary expressions, not just multiplication of
   an expression and a constant.
 
-## [2.4.4] - 2023-03-08
-
-Cedar Language Version: 2.1.3
+## [2.4.4] - 2024-03-08
+Cedar Language Version: 2.1
 
 ### Changed
 
@@ -404,8 +415,7 @@ Cedar Language Version: 2.1.3
 - `Policy::to_json` does not error on policies containing special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
 
 ## [2.4.3] - 2023-12-21
-
-Cedar Language Version: 2.1.3
+Cedar Language Version: 2.1
 
 ### Fixed
 
@@ -420,7 +430,7 @@ Cedar Language Version: 2.1.3
   (#520)
 
 ## [2.4.2] - 2023-10-23
-Cedar Language Version: 2.1.2
+Cedar Language Version: 2.1
 
 ### Fixed
 
@@ -429,7 +439,7 @@ Cedar Language Version: 2.1.2
   and template-linked policy. (#371, resolving #370)
 
 ## [2.4.1] - 2023-10-12
-Cedar Language Version: 2.1.1
+Cedar Language Version: 2.1
 
 ### Added
 
@@ -450,7 +460,7 @@ Cedar Language Version: 2.1.1
   `None` to `Request::new()`). (#339)
 
 ## [2.4.0] - 2023-09-21
-Cedar Language Version: 2.1.1
+Cedar Language Version: 2.1
 
 ### Added
 
@@ -479,7 +489,7 @@ Cedar Language Version: 2.1.1
 - Uses of deprecated `__expr` escapes from integration tests.
 
 ## [2.3.3] - 2023-08-29
-Cedar Language Version: 2.1.0
+Cedar Language Version: 2.1
 
 ### Added
 
@@ -498,7 +508,7 @@ Cedar Language Version: 2.1.0
   correctly uses the default namespace. (#151)
 
 ## [2.3.2] - 2023-08-04
-Cedar Language Version: 2.1.0
+Cedar Language Version: 2.1
 
 ### Changed
 
@@ -524,7 +534,7 @@ Cedar Language Version: 2.1.0
   continue using this feature you must enable the `partial-eval` feature flag.
 
 ## [2.3.1] - 2023-07-20
-Cedar Language Version: 2.1.0
+Cedar Language Version: 2.1
 
 ### Fixed
 
@@ -532,7 +542,7 @@ Cedar Language Version: 2.1.0
   with a policy id corresponding to a static policy. (#203)
 
 ## [2.3.0] - 2023-06-29
-Cedar Language Version: 2.1.0
+Cedar Language Version: 2.1
 
 ### Changed
 
@@ -549,14 +559,14 @@ Cedar users was accepted due to the potential security ramifications; see
 discussion in the RFC.
 
 ## 2.2.0 - 2023-05-25
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 
 ### Added
 
 - `Entities::write_to_json` function to api.rs.
 
 ## 2.1.0 - 2023-05-23
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 
 ### Added
 
@@ -571,20 +581,20 @@ Cedar Language Version: 2.0.0
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
 
 ## 2.0.3 - 2023-05-17
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 
 ### Fixed
 
 - Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
 
 ## 2.0.2 - 2023-05-10
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 
 ## 2.0.1 - 2023-05-10
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 
 ## 2.0.0 - 2023-05-10
-Cedar Language Version: 2.0.0
+Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.1...main
