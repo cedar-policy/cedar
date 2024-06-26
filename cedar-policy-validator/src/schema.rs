@@ -2588,7 +2588,6 @@ mod test {
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::ReservedName(_)));
 
-        // But this one is Ok?
         let src: serde_json::Value = json!({
             "A": {
                 "commonTypes": {

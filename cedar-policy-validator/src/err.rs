@@ -215,7 +215,7 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
-    /// The schema used reserved namespace that starts with `__cedar`.
+    /// The schema used a reserved namespace or typename (as of this writing, just `__cedar`).
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedName(#[from] ReservedNameError),
