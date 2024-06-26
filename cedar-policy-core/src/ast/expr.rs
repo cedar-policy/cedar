@@ -1157,7 +1157,7 @@ pub enum ExpressionConstructionError {
     /// The same key occurred two or more times
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateKeyInRecordLiteral(#[from] expression_construction_errors::DuplicateKeyError),
+    DuplicateKey(#[from] expression_construction_errors::DuplicateKeyError),
 }
 
 /// Error subtypes for [`ExpressionConstructionError`]
@@ -1187,7 +1187,7 @@ pub mod expression_construction_errors {
         }
 
         /// Make a new error with an updated `context` field
-        pub fn set_context(self, context: &'static str) -> Self {
+        pub(crate) fn with_context(self, context: &'static str) -> Self {
             Self { context, ..self }
         }
     }

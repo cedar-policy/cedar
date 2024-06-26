@@ -274,12 +274,9 @@ impl Context {
         // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
         match RestrictedExpr::record(pairs) {
             Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
-            Err(ExpressionConstructionError::DuplicateKeyInRecordLiteral(err)) => {
-                Err(ExpressionConstructionError::DuplicateKeyInRecordLiteral(
-                    err.set_context("in context"),
-                )
-                .into())
-            }
+            Err(ExpressionConstructionError::DuplicateKey(err)) => Err(
+                ExpressionConstructionError::DuplicateKey(err.with_context("in context")).into(),
+            ),
         }
     }
 
