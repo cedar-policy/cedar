@@ -2118,7 +2118,7 @@ mod test {
         let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
         let type_from_schema_type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            parsed_schema_type.qualify_type_references(None),
+            parsed_schema_type.qualify_type_references(None).unwrap(),
             Extensions::all_available(),
         )
         .expect("Schema type should have converted to type.")

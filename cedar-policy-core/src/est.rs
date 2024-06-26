@@ -3997,10 +3997,7 @@ mod test {
     mod reserved_names {
         use cool_asserts::assert_matches;
 
-        use crate::{
-            entities::json::err::{JsonDeserializationError, ReservedNamespace},
-            est::FromJsonError,
-        };
+        use crate::{entities::json::err::JsonDeserializationError, est::FromJsonError};
 
         use super::Policy;
         #[test]
@@ -4022,7 +4019,10 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::InvalidEntityType(_))
+            );
 
             let policy: Policy = serde_json::from_value(serde_json::json!(
                 {
@@ -4048,7 +4048,10 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::InvalidEntityType(_))
+            );
         }
         #[test]
         fn entities() {
@@ -4084,7 +4087,12 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
             let policy: Policy = serde_json::from_value(serde_json::json!(
                 {
                     "effect": "permit",
@@ -4103,7 +4111,12 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
 
             let policy: Policy = serde_json::from_value(serde_json::json!(
                 {
@@ -4123,7 +4136,12 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
 
             let policy: Policy = serde_json::from_value(serde_json::json!(
                 {
@@ -4143,7 +4161,12 @@ mod test {
                 }
             ))
             .unwrap();
-            assert_matches!(policy.try_into_ast_policy(None), Err(FromJsonError::JsonDeserializationError(JsonDeserializationError::ReservedNamespace(ReservedNamespace { name }))) if name == "__cedar::Action".parse().unwrap());
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
         }
     }
 }

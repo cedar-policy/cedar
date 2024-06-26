@@ -39,9 +39,9 @@ const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 // PANIC SAFETY `Name`s in here are valid `Name`s
 #[allow(clippy::expect_used)]
 mod names {
-    use super::Name;
+    use super::UnreservedName;
     lazy_static::lazy_static! {
-        pub static ref ANY_ENTITY_TYPE : Name = Name::parse_unqualified_name("any_entity_type").expect("valid identifier");
+        pub static ref ANY_ENTITY_TYPE : UnreservedName = UnreservedName::parse_unqualified_name("any_entity_type").expect("valid identifier");
     }
 }
 
@@ -1597,7 +1597,7 @@ pub mod test {
                     assert_eq!(expected, nonempty![
                         Type::Record,
                         Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
+                            UnreservedName::parse_unqualified_name("any_entity_type")
                                 .expect("should be a valid identifier")
                         ),
                     ]);
@@ -1612,7 +1612,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -1660,7 +1660,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -1722,7 +1722,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -1740,7 +1740,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -2014,7 +2014,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -2029,7 +2029,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -2044,7 +2044,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -2059,7 +2059,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Record,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ]);
@@ -3324,7 +3324,7 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
+                    UnreservedName::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::Bool);
@@ -3380,7 +3380,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
+                    UnreservedName::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
@@ -3395,7 +3395,7 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
+                    UnreservedName::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
@@ -3410,7 +3410,7 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
+                    UnreservedName::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::Long);
@@ -3428,7 +3428,7 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
+                    UnreservedName::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )]);
                 assert_eq!(actual, Type::String);
@@ -3449,7 +3449,7 @@ pub mod test {
                 assert_eq!(expected, nonempty![
                     Type::Set,
                     Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type")
+                        UnreservedName::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     )
                 ]);

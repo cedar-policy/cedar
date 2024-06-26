@@ -1193,7 +1193,7 @@ impl SchemaFragment {
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
         self.value
             .namespaces()
-            .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
+            .map(|ns| ns.map(|ns| EntityNamespace(ns.clone())))
     }
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
@@ -1560,7 +1560,7 @@ pub fn confusable_string_checker<'a>(
 /// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EntityNamespace(ast::Name);
+pub struct EntityNamespace(ast::UnreservedName);
 
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
@@ -1568,7 +1568,7 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_str)
+        ast::UnreservedName::from_normalized_str(namespace_str)
             .map(EntityNamespace)
             .map_err(Into::into)
     }

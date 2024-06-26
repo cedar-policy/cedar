@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.name().basename().as_ref()
+        self.0.as_ref().basename().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -120,7 +120,11 @@ impl EntityTypeName {
     /// assert_eq!(components.next(), None);
     /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.name().namespace_components().map(AsRef::as_ref)
+        self.0
+            .name()
+            .as_ref()
+            .namespace_components()
+            .map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
@@ -132,7 +136,7 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.name().namespace()
+        self.0.as_ref().namespace()
     }
 }
 
@@ -142,7 +146,7 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_type_str)
+        ast::UnreservedName::from_normalized_str(namespace_type_str)
             .map(|name| Self(ast::EntityType::from(name)))
             .map_err(Into::into)
     }
@@ -151,13 +155,6 @@ impl FromStr for EntityTypeName {
 impl std::fmt::Display for EntityTypeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[doc(hidden)]
-impl From<ast::Name> for EntityTypeName {
-    fn from(name: ast::Name) -> Self {
-        Self(name.into())
     }
 }
 

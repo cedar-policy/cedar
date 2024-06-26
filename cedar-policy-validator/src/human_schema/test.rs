@@ -1382,7 +1382,7 @@ mod translator_tests {
         for (name, et) in validator_schema.entity_types() {
             if name.to_string() == "A::C" || name.to_string() == "X::Y" {
                 assert!(et.descendants.contains(&cedar_ast::EntityType::from(
-                    cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()
+                    cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap()
                 )));
             } else {
                 assert!(et.descendants.is_empty());
@@ -1471,7 +1471,7 @@ mod translator_tests {
             schema.try_into().expect("should be a valid schema");
         let et = validator_schema
             .get_entity_type(&cedar_ast::EntityType::from(
-                cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap(),
+                cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap(),
             ))
             .unwrap();
         let attr = et.attr("foo").unwrap();

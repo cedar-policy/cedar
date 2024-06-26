@@ -1969,15 +1969,15 @@ mod schema_based_parsing_tests {
         }
         fn entity_types_with_basename<'a>(
             &'a self,
-            basename: &'a Id,
+            basename: &'a UnreservedId,
         ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
             match basename.as_ref() {
-                "Employee" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
-                    basename.clone(),
-                )))),
-                "Action" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
-                    basename.clone(),
-                )))),
+                "Employee" => Box::new(std::iter::once(EntityType::from(
+                    UnreservedName::unqualified_name(basename.clone()),
+                ))),
+                "Action" => Box::new(std::iter::once(EntityType::from(
+                    UnreservedName::unqualified_name(basename.clone()),
+                ))),
                 _ => Box::new(std::iter::empty()),
             }
         }
@@ -1990,7 +1990,7 @@ mod schema_based_parsing_tests {
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
         fn entity_type(&self) -> EntityType {
-            EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
+            EntityType::from(UnreservedName::parse_unqualified_name("Employee").expect("valid"))
         }
 
         fn attr_type(&self, attr: &str) -> Option<SchemaType> {
@@ -1998,7 +1998,7 @@ mod schema_based_parsing_tests {
                 ty: self.entity_type(),
             };
             let hr_ty = || SchemaType::Entity {
-                ty: EntityType::from(Name::parse_unqualified_name("HR").expect("valid")),
+                ty: EntityType::from(UnreservedName::parse_unqualified_name("HR").expect("valid")),
             };
             match attr {
                 "isFullTime" => Some(SchemaType::Bool),
@@ -3124,11 +3124,11 @@ mod schema_based_parsing_tests {
             }
             fn entity_types_with_basename<'a>(
                 &'a self,
-                basename: &'a Id,
+                basename: &'a UnreservedId,
             ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
                 match basename.as_ref() {
                     "Employee" => Box::new(std::iter::once(EntityType::from(
-                        Name::from_str("XYZCorp::Employee").expect("valid name"),
+                        UnreservedName::from_str("XYZCorp::Employee").expect("valid name"),
                     ))),
                     _ => Box::new(std::iter::empty()),
                 }

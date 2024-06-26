@@ -446,14 +446,12 @@ mod test {
         expect_err(
             "permit(principal == User::\"alice\", action, resource);",
             &err,
-            &ExpectedErrorMessageBuilder::error(
-                r#"error parsing schema: unexpected token `permit`"#,
-            )
-            .exactly_one_underline_with_label(
-                "permit",
-                "expected `action`, `entity`, `namespace`, or `type`",
-            )
-            .build(),
+            &ExpectedErrorMessageBuilder::error(r"error parsing schema: unexpected token `permit`")
+                .exactly_one_underline_with_label(
+                    "permit",
+                    "expected `action`, `entity`, `namespace`, or `type`",
+                )
+                .build(),
         );
     }
 }

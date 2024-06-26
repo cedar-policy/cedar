@@ -23,7 +23,7 @@
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cedar_policy_core::{
-    ast::{Entity, EntityType, EntityUID, Name},
+    ast::{Entity, EntityType, EntityUID, Name, UnreservedName},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     transitive_closure::compute_tc,
@@ -49,7 +49,7 @@ pub use entity_type::ValidatorEntityType;
 mod namespace_def;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
-pub use raw_name::RawName;
+pub use raw_name::{RawName, RawUnreservedName};
 
 /// Configurable validator behaviors regarding actions
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
@@ -112,7 +112,7 @@ impl ValidatorSchemaFragment {
 
     /// Access the `Name`s for the namespaces in this fragment.
     /// `None` indicates the empty namespace.
-    pub fn namespaces(&self) -> impl Iterator<Item = &Option<Name>> {
+    pub fn namespaces(&self) -> impl Iterator<Item = Option<&UnreservedName>> {
         self.0.iter().map(|d| d.namespace())
     }
 }
@@ -264,7 +264,7 @@ impl ValidatorSchema {
                 match type_defs.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateCommonTypeError(o.key().clone()).into());
+                        return Err(DuplicateCommonTypeError(o.key().as_ref().clone()).into());
                     }
                 };
             }
@@ -677,18 +677,18 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 #[derive(Debug)]
 struct CommonTypeResolver<'a> {
     /// Common type declarations to resolve
-    type_defs: &'a HashMap<Name, SchemaType<Name>>,
+    type_defs: &'a HashMap<UnreservedName, SchemaType<UnreservedName>>,
     /// The dependency graph among common type names.
     /// The graph contains a vertex for each `Name` and `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a directed edge in the graph.
     /// A common type name is prefixed with the namespace id where it's declared.
-    graph: HashMap<Name, HashSet<Name>>,
+    graph: HashMap<UnreservedName, HashSet<UnreservedName>>,
 }
 
 impl<'a> CommonTypeResolver<'a> {
     /// Construct the resolver.
     /// Note that this requires that all common-type references are already
     /// fully qualified, because it uses [`Name`] and not [`RawName`].
-    fn new(type_defs: &'a HashMap<Name, SchemaType<Name>>) -> Self {
+    fn new(type_defs: &'a HashMap<UnreservedName, SchemaType<UnreservedName>>) -> Self {
         let mut graph = HashMap::new();
         for (name, ty) in type_defs {
             graph.insert(
@@ -709,11 +709,11 @@ impl<'a> CommonTypeResolver<'a> {
     /// If there is a cycle, a type name involving in this cycle is the error
     ///
     /// It implements a variant of Kahn's algorithm
-    fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
+    fn topo_sort(&self) -> std::result::Result<Vec<UnreservedName>, Name> {
         // The in-degree map
         // Note that the keys of this map may be a superset of all common type
         // names
-        let mut indegrees: HashMap<&Name, usize> = HashMap::new();
+        let mut indegrees: HashMap<&UnreservedName, usize> = HashMap::new();
         for (ty_name, deps) in self.graph.iter() {
             // Ensure that declared common types have values in `indegrees`
             indegrees.entry(ty_name).or_insert(0);
@@ -730,8 +730,8 @@ impl<'a> CommonTypeResolver<'a> {
         }
 
         // The set that contains type names with zero incoming edges
-        let mut work_set: HashSet<&Name> = HashSet::new();
-        let mut res: Vec<Name> = Vec::new();
+        let mut work_set: HashSet<&UnreservedName> = HashSet::new();
+        let mut res: Vec<UnreservedName> = Vec::new();
 
         // Find all type names with zero incoming edges
         for (name, degree) in indegrees.iter() {
@@ -774,13 +774,13 @@ impl<'a> CommonTypeResolver<'a> {
 
         // The set of nodes that have not been added to the result
         // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&Name> = HashSet::from_iter(self.graph.keys().clone());
+        let mut set: HashSet<&UnreservedName> = HashSet::from_iter(self.graph.keys().clone());
         for name in res.iter() {
             set.remove(name);
         }
 
         if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.clone())
+            Err(cycle.as_ref().clone())
         } else {
             // We need to reverse the result because, e.g.,
             // `res` is now [A,B,C] for A -> B -> C because no one depends on A
@@ -791,14 +791,14 @@ impl<'a> CommonTypeResolver<'a> {
 
     // Substitute common type references in `ty` according to `resolve_table`
     fn resolve_type(
-        resolve_table: &HashMap<&Name, SchemaType<Name>>,
-        ty: SchemaType<Name>,
-    ) -> Result<SchemaType<Name>> {
+        resolve_table: &HashMap<&UnreservedName, SchemaType<UnreservedName>>,
+        ty: SchemaType<UnreservedName>,
+    ) -> Result<SchemaType<UnreservedName>> {
         match ty {
             SchemaType::TypeDef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(
-                    UndeclaredCommonTypesError(type_name),
+                    UndeclaredCommonTypesError(type_name.as_ref().clone()),
                 ))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
@@ -832,7 +832,7 @@ impl<'a> CommonTypeResolver<'a> {
 
     // Resolve common type references, returning a map from (fully-qualified)
     // [`Name`] of a common type to its [`Type`] definition
-    fn resolve(&self, extensions: Extensions<'_>) -> Result<HashMap<Name, Type>> {
+    fn resolve(&self, extensions: Extensions<'_>) -> Result<HashMap<UnreservedName, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
         })?;
@@ -874,6 +874,7 @@ mod test {
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
+
     use serde_json::json;
 
     use super::*;
@@ -1403,7 +1404,11 @@ mod test {
             })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            schema_ty.qualify_type_references(Some(&Name::parse_unqualified_name("NS").unwrap())),
+            schema_ty
+                .qualify_type_references(Some(
+                    &UnreservedName::parse_unqualified_name("NS").unwrap(),
+                ))
+                .unwrap(),
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
@@ -1423,7 +1428,11 @@ mod test {
             })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            schema_ty.qualify_type_references(Some(&Name::parse_unqualified_name("NS").unwrap())),
+            schema_ty
+                .qualify_type_references(Some(
+                    &UnreservedName::parse_unqualified_name("NS").unwrap(),
+                ))
+                .unwrap(),
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
@@ -1450,7 +1459,7 @@ mod test {
             }),
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            schema_ty.qualify_type_references(None),
+            schema_ty.qualify_type_references(None).unwrap(),
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
@@ -1485,9 +1494,9 @@ mod test {
                 .map(|f| f.namespace())
                 .collect::<HashSet<_>>(),
             HashSet::from([
-                &Some("Foo::Bar::Baz".parse().unwrap()),
-                &Some("Foo".parse().unwrap()),
-                &Some("Bar".parse().unwrap())
+                Some(&"Foo::Bar::Baz".parse().unwrap()),
+                Some(&"Foo".parse().unwrap()),
+                Some(&"Bar".parse().unwrap())
             ])
         );
     }
@@ -2555,7 +2564,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::ReservedName(_)));
 
         let src: serde_json::Value = json!({
             "__cedar::A": {
@@ -2565,7 +2574,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar::A".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::ReservedName(_)));
 
         let src: serde_json::Value = json!({
             "": {
@@ -2579,7 +2588,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::ReservedName(_)));
 
         // But this one is Ok?
         let src: serde_json::Value = json!({
@@ -2594,7 +2603,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::ReservedName(_)));
 
         // We report `ReservedNamespaceError` instead of missing definitions
         // because `__cedar` is not applicable like the human-readable schema
@@ -2611,7 +2620,7 @@ mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::ReservedNamespace(ReservedNamespaceError(n))) if n == "__cedar".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::ReservedName(_)));
     }
 }
 
@@ -2619,13 +2628,15 @@ mod test {
 mod test_resolver {
     use std::collections::HashMap;
 
-    use cedar_policy_core::{ast::Name, extensions::Extensions};
+    use cedar_policy_core::{ast::UnreservedName, extensions::Extensions};
     use cool_asserts::assert_matches;
 
     use super::CommonTypeResolver;
     use crate::{err::SchemaError, types::Type, RawName, SchemaFragment, ValidatorSchemaFragment};
 
-    fn resolve(schema_json: serde_json::Value) -> Result<HashMap<Name, Type>, SchemaError> {
+    fn resolve(
+        schema_json: serde_json::Value,
+    ) -> Result<HashMap<UnreservedName, Type>, SchemaError> {
         let sfrag: SchemaFragment<RawName> = serde_json::from_value(schema_json).unwrap();
         let schema: ValidatorSchemaFragment = sfrag.try_into().unwrap();
         let mut type_defs = HashMap::new();

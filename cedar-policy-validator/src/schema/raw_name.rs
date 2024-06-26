@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{Id, Name};
+use cedar_policy_core::ast::{Id, Name, ReservedNameError, UnreservedName};
 use cedar_policy_core::parser::Loc;
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +26,29 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RawName(Name);
+
+/// A newtype which indicates that the contained `UnreservedName` may not yet be
+/// fully-qualified.
+///
+/// You can convert it to a fully-qualified `UnreservedName` using `.qualify_with()`.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RawUnreservedName(UnreservedName);
+
+impl TryFrom<RawName> for RawUnreservedName {
+    type Error = ReservedNameError;
+    fn try_from(value: RawName) -> Result<Self, Self::Error> {
+        value.0.try_into().map(Self)
+    }
+}
+
+impl RawUnreservedName {
+    /// Create a fully qualified `UnreservedName`
+    pub fn qualify_with(self, ns: Option<&UnreservedName>) -> UnreservedName {
+        self.0.qualify_with(ns)
+    }
+}
 
 impl RawName {
     /// Create a new `RawName` from the given `Id`

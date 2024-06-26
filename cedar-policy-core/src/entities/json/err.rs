@@ -22,6 +22,7 @@ use crate::ast::{
     PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
+use crate::entities::ReservedNameError;
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
@@ -156,7 +157,7 @@ pub enum JsonDeserializationError {
     /// Returned when a name contains `__cedar`
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ReservedNamespace(#[from] ReservedNamespace),
+    ReservedName(#[from] ReservedNameError),
 }
 
 impl JsonDeserializationError {
@@ -441,13 +442,6 @@ impl From<serde_json::Error> for JsonSerializationError {
     fn from(value: serde_json::Error) -> Self {
         Self::Serde(JsonError(value))
     }
-}
-
-/// Error throws when a name containing `__cedar` is encountered
-#[derive(Debug, Diagnostic, Error)]
-#[error("Use reserved namespace: `{name}`")]
-pub struct ReservedNamespace {
-    pub(crate) name: Name,
 }
 
 /// Errors thrown during serialization to JSON

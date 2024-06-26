@@ -674,7 +674,8 @@ mod test {
         assert_eq!(
             Value::from(EntityUID::with_eid("foo")).type_of(),
             Type::entity_type(
-                Name::parse_unqualified_name("test_entity_type").expect("valid identifier")
+                UnreservedName::parse_unqualified_name("test_entity_type")
+                    .expect("valid identifier")
             )
         );
     }

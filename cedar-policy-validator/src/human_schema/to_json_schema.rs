@@ -330,14 +330,14 @@ impl<'a> ConversionContext<'a> {
         }
         Ok(ApplySpec {
             resource_types: resource_types
-                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+                .map(|node| node.node.into_iter().collect())
                 .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
                     kind: PR::Resource,
                     name: action_info.0.clone(),
                     loc: action_info.1.clone(),
                 })?,
             principal_types: principal_types
-                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+                .map(|node| node.node.into_iter().collect())
                 .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
                     kind: PR::Principal,
                     name: action_info.0.clone(),
@@ -358,10 +358,7 @@ impl<'a> ConversionContext<'a> {
             attrs,
         } = e;
         // First build up the defined entity type
-        let member_of_types = member_of_types
-            .into_iter()
-            .map(|p| RawName::from(p).into())
-            .collect();
+        let member_of_types = member_of_types.into_iter().map(RawName::from).collect();
         let shape = self.convert_attr_decls(attrs)?;
         let etype = EntityType {
             member_of_types,
@@ -480,9 +477,7 @@ impl<'a> ConversionContext<'a> {
         if namespace_to_search.common_types.contains_key(&base) {
             Ok(SchemaType::TypeDef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
-            Ok(SchemaType::Type(SchemaTypeVariant::Entity {
-                name: name.into(),
-            }))
+            Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
         } else if is_unqualified_or_cedar {
             search_cedar_namespace(base, loc)
         } else {

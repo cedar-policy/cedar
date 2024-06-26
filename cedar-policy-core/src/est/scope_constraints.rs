@@ -16,7 +16,6 @@
 
 use super::{FromJsonError, LinkingError};
 use crate::ast;
-use crate::entities::json::err::ReservedNamespace;
 use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
 use crate::parser::err::parse_errors;
 use serde::{Deserialize, Serialize};
@@ -569,14 +568,6 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
-                    if entity_type.name().is_reserved() {
-                        return Err(Self::Error::JsonDeserializationError(
-                            ReservedNamespace {
-                                name: entity_type.name().clone(),
-                            }
-                            .into(),
-                        ));
-                    }
                     Ok(match in_entity {
                         None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
                             entity_type,

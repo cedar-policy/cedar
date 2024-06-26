@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{ast::EntityUID, transitive_closure};
+use cedar_policy_core::{
+    ast::{EntityUID, ReservedNameError},
+    transitive_closure,
+};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -215,7 +218,7 @@ pub enum SchemaError {
     /// The schema used reserved namespace that starts with `__cedar`.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ReservedNamespace(#[from] schema_errors::ReservedNamespaceError),
+    ReservedName(#[from] ReservedNameError),
     /// Common type names conflict with primitive types.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -574,15 +577,6 @@ pub mod schema_errors {
             })
         }
     }
-
-    /// This error is thrown when there's a reference to reserved namespace
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Error, Debug, Diagnostic)]
-    #[error("Used reserved namespace `{0}`")]
-    pub struct ReservedNamespaceError(pub(crate) Name);
 
     /// This error is thrown when a common type name conflicts with a primitive
     /// type

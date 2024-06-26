@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{Id, Name, ReservedNameError, UnreservedName},
     entities::CedarValueJson,
     FromNormalizedStr,
 };
@@ -37,7 +37,7 @@ use crate::{
     human_schema::{
         self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
-    HumanSchemaError, HumanSyntaxParseError, RawName,
+    HumanSchemaError, HumanSyntaxParseError, RawName, RawUnreservedName,
 };
 
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
@@ -437,12 +437,15 @@ impl<N> SchemaType<N> {
 
 impl SchemaType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
+    pub(crate) fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<SchemaType<UnreservedName>, ReservedNameError> {
         match self {
-            Self::Type(stv) => SchemaType::Type(stv.qualify_type_references(ns)),
-            Self::TypeDef { type_name } => SchemaType::TypeDef {
-                type_name: type_name.qualify_with(ns),
-            },
+            Self::Type(stv) => Ok(SchemaType::Type(stv.qualify_type_references(ns)?)),
+            Self::TypeDef { type_name } => Ok(SchemaType::TypeDef {
+                type_name: RawUnreservedName::try_from(type_name)?.qualify_with(ns),
+            }),
         }
     }
 
@@ -851,35 +854,41 @@ pub enum SchemaTypeVariant<N> {
 
 impl SchemaTypeVariant<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub(crate) fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
+    pub(crate) fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<SchemaTypeVariant<UnreservedName>, ReservedNameError> {
         match self {
-            Self::Boolean => SchemaTypeVariant::Boolean,
-            Self::Long => SchemaTypeVariant::Long,
-            Self::String => SchemaTypeVariant::String,
-            Self::Entity { name } => SchemaTypeVariant::Entity {
-                name: name.qualify_with(ns),
-            },
+            Self::Boolean => Ok(SchemaTypeVariant::Boolean),
+            Self::Long => Ok(SchemaTypeVariant::Long),
+            Self::String => Ok(SchemaTypeVariant::String),
+            Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
+                name: RawUnreservedName::try_from(name)?.qualify_with(ns),
+            }),
             Self::Record {
                 attributes,
                 additional_attributes,
-            } => SchemaTypeVariant::Record {
-                attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, TypeOfAttribute { ty, required })| {
-                        (
-                            attr,
-                            TypeOfAttribute {
-                                ty: ty.qualify_type_references(ns),
-                                required,
-                            },
-                        )
-                    },
-                )),
+            } => Ok(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(
+                    attributes
+                        .into_iter()
+                        .map(|(attr, TypeOfAttribute { ty, required })| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    ty: ty.qualify_type_references(ns)?,
+                                    required,
+                                },
+                            ))
+                        })
+                        .collect::<std::result::Result<Vec<_>, ReservedNameError>>()?,
+                ),
                 additional_attributes,
-            },
-            Self::Set { element } => SchemaTypeVariant::Set {
-                element: Box::new(element.qualify_type_references(ns)),
-            },
-            Self::Extension { name } => SchemaTypeVariant::Extension { name },
+            }),
+            Self::Set { element } => Ok(SchemaTypeVariant::Set {
+                element: Box::new(element.qualify_type_references(ns)?),
+            }),
+            Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
         }
     }
 
