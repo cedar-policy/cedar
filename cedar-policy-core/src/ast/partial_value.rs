@@ -53,7 +53,7 @@ impl<V: Into<Value>> From<V> for PartialValue {
 
 impl From<Expr> for PartialValue {
     fn from(e: Expr) -> Self {
-        debug_assert!(e.is_unknown());
+        debug_assert!(e.contains_unknown());
         PartialValue::Residual(e)
     }
 }

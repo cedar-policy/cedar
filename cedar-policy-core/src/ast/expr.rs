@@ -486,7 +486,7 @@ impl Expr {
     }
 
     /// Check if an expression contains any symbolic unknowns
-    pub fn is_unknown(&self) -> bool {
+    pub fn contains_unknown(&self) -> bool {
         self.subexpressions()
             .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
@@ -1670,13 +1670,13 @@ mod test {
             Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
             Expr::unknown(Unknown::new_untyped("c")),
         );
-        assert!(e.is_unknown());
+        assert!(e.contains_unknown());
         let e = Expr::ite(
             Expr::not(Expr::val(true)),
             Expr::and(Expr::val(1), Expr::val(3)),
             Expr::val(1),
         );
-        assert!(!e.is_unknown());
+        assert!(!e.contains_unknown());
     }
 
     #[test]

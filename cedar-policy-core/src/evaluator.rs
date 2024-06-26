@@ -20,6 +20,7 @@ use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
+use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -863,6 +864,14 @@ impl Value {
         match &self.value {
             ValueKind::Set(set) => Ok(set),
             _ => Err(EvaluationError::type_error_single(Type::Set, self)),
+        }
+    }
+
+    /// Convert the `Value` to a Record, or throw a type error if it's not a Record.
+    pub(crate) fn get_as_record(&self) -> Result<&Arc<BTreeMap<SmolStr, Value>>> {
+        match &self.value {
+            ValueKind::Record(rec) => Ok(rec),
+            _ => Err(EvaluationError::type_error_single(Type::Record, self)),
         }
     }
 
@@ -4401,7 +4410,7 @@ pub mod test {
             Either::Left(_) => panic!("Evalled to a value"),
             Either::Right(expr) => {
                 println!("{expr}");
-                assert!(expr.is_unknown());
+                assert!(expr.contains_unknown());
                 let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
                     .into_iter()
                     .collect();

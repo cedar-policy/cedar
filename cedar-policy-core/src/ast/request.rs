@@ -230,6 +230,13 @@ impl Context {
         }
     }
 
+    /// Create a `Context` from a `PartialValue` without checking its validity
+    pub(crate) fn from_partial_value_unchecked(val: PartialValue) -> Self {
+        Self {
+            context: val.into(),
+        }
+    }
+
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
     ///
     /// `extensions` provides the `Extensions` which should be active for
