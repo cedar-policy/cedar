@@ -2051,4 +2051,57 @@ mod test_duplicates_error {
         }"#;
         serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
+
+    #[test]
+    #[should_panic(expected = "missing field `resourceTypes`")]
+    fn missing_resource() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": { 
+                "foo" : {
+                    "appliesTo" : {
+                        "principalTypes" : ["a"]
+                    }
+                }
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `principalTypes`")]
+    fn missing_principal() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": { 
+                "foo" : {
+                    "appliesTo" : {
+                        "resourceTypes" : ["a"]
+                    }
+                }
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `resourceTypes`")]
+    fn missing_both() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": { 
+                "foo" : {
+                    "appliesTo" : {
+                    }
+                }
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+    }
 }
