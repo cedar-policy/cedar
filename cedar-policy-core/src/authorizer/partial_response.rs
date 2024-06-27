@@ -449,7 +449,7 @@ impl PartialResponse {
                 // INVARIANT(ContextRecord): `expr` is a record because it was previously
                 // a valid context. `partial_value` is also a record since
                 // `RestrictedEvaluator::partial_interpret` always returns a record
-                // given a record as input.
+                // (or an error) given a record as input.
                 context = Some(Context::from_partial_value_unchecked(partial_value));
             }
         }

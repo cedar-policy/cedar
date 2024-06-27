@@ -3385,9 +3385,14 @@ impl Context {
             .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
     }
 
-    /// Combine two [`Context`]s, returning an error if they contain overlapping keys
-    pub fn merge(self, context: Self) -> Result<Self, ContextCreationError> {
-        Self::from_pairs(self.into_iter().chain(context))
+    /// Merge this [`Context`] with another context (or iterator over
+    /// `(String, RestrictedExpression)` pairs), returning an error if the two
+    /// contain overlapping keys
+    pub fn merge(
+        self,
+        other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, ContextCreationError> {
+        Self::from_pairs(self.into_iter().chain(other_context))
     }
 }
 
@@ -3413,6 +3418,8 @@ mod context {
                             RestrictedExpression(ast::RestrictedExpr::from(val))
                         }
                         ast::PartialValue::Residual(exp) => {
+                            // `exp` is guaranteed to be a valid `RestrictedExpr`
+                            // since it was originally stored in a `Context`
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
                         }
                     },
