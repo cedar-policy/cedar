@@ -3387,17 +3387,25 @@ impl Context {
 
     /// Combine two [`Context`]s, returning an error if they contain overlapping keys
     pub fn merge(self, context: Self) -> Result<Self, ContextCreationError> {
-        Self::from_pairs(self.values().into_iter().chain(context.values()))
+        Self::from_pairs(self.into_iter().chain(context))
+    }
+}
+
+/// Utilities for implementing `IntoIterator` for `Context`
+mod context {
+    use super::{RestrictedExpression, ast};
+
+    /// `IntoIter` iterator for `Context`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <ast::Context as IntoIterator>::IntoIter,
     }
 
-    /// Consume the context and return a `HashMap` of its elements. Note that
-    /// context elements are evaluated when the context is constructed, so the
-    /// stored values may not exactly match the expressions used as input to
-    /// constructors like [`Context::from_pairs`] or [`Context::from_json_str`].
-    pub fn values(self) -> HashMap<String, RestrictedExpression> {
-        self.0
-            .values()
-            .map(|(k, v)| {
+    impl Iterator for IntoIter {
+        type Item = (String, RestrictedExpression);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(|(k, v)| {
                 (
                     k.to_string(),
                     match v {
@@ -3410,7 +3418,19 @@ impl Context {
                     },
                 )
             })
-            .collect()
+        }
+    }
+}
+
+impl IntoIterator for Context {
+    type Item = (String, RestrictedExpression);
+
+    type IntoIter = context::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            inner: self.0.into_iter(),
+        }
     }
 }
 

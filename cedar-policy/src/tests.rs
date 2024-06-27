@@ -5379,8 +5379,7 @@ mod context_tests {
         let context = context_pt_1
             .merge(context_pt_2)
             .expect("context merge should have succeeded");
-        let values = context.values();
-        assert_eq!(values.len(), 3);
+        let values = context.into_iter();
         for (k, v) in values {
             match k.as_ref() {
                 "key1" => {

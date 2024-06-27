@@ -16,8 +16,8 @@ Cedar Language Version: 4.0
   resolving #549)
 - Added methods for reading and writing individual `Entity`s as JSON
   (resolving #807)
-- `Context::values` to get a `HashMap` of the contents of a `Context` and
-  `Context::merge` to combine `Context`s (returning an error on duplicate keys)
+- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
+   to combine `Context`s (returning an error on duplicate keys)
 
 ### Changed
 

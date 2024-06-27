@@ -426,6 +426,7 @@ impl PartialResponse {
                         });
                     }
                     None => {
+                        // INVARIANT(ContextRecord): `val` is a record since `.get_as_record()` was Ok
                         context = Some(Context::from_partial_value_unchecked(val.clone().into()));
                     }
                 }
@@ -446,6 +447,10 @@ impl PartialResponse {
                 let eval = RestrictedEvaluator::new(&extns);
                 let partial_value =
                     eval.partial_interpret(BorrowedRestrictedExpr::new_unchecked(&expr))?;
+                // INVARIANT(ContextRecord): `expr` is a record because it was previously
+                // a valid context. `partial_value` is also a record since
+                // `RestrictedEvaluator::partial_interpret` always returns a record
+                // given a record as input.
                 context = Some(Context::from_partial_value_unchecked(partial_value));
             }
         }
