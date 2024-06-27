@@ -183,7 +183,7 @@ impl Entity {
                     k.to_string(),
                     match v {
                         ast::PartialValue::Value(val) => RestrictedExpression(
-                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
+                            ast::RestrictedExpr::from(val),
                         ),
                         ast::PartialValue::Residual(exp) => {
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
@@ -3410,7 +3410,7 @@ mod context {
                     k.to_string(),
                     match v {
                         ast::PartialValue::Value(val) => RestrictedExpression(
-                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
+                            ast::RestrictedExpr::from(val),
                         ),
                         ast::PartialValue::Residual(exp) => {
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
