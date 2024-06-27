@@ -317,15 +317,14 @@ impl PartialResponse {
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
     pub fn reauthorize(
-        &mut self,
+        &self,
         mapping: &HashMap<SmolStr, Value>,
         auth: &Authorizer,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let policyset = self.all_policies(mapping)?;
         let new_request = self.concretize_request(mapping)?;
-        self.request = Arc::new(new_request);
-        Ok(auth.is_authorized_core(self.request.as_ref().clone(), &policyset, es))
+        Ok(auth.is_authorized_core(new_request, &policyset, es))
     }
 
     fn all_policies(&self, mapping: &HashMap<SmolStr, Value>) -> Result<PolicySet, PolicySetError> {
@@ -829,10 +828,9 @@ mod test {
         let entities = Entities::new();
 
         let authorizer = Authorizer::new();
-        let mut partial_response =
-            authorizer.is_authorized_core(partial_request, &policies, &entities);
+        let partial_response = authorizer.is_authorized_core(partial_request, &policies, &entities);
 
-        let mut response_with_concrete_resource = partial_response
+        let response_with_concrete_resource = partial_response
             .reauthorize(
                 &HashMap::from_iter(std::iter::once((
                     "resource".into(),
