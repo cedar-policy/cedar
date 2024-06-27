@@ -18,6 +18,7 @@ use cedar_policy::*;
 
 use std::{error::Error, str::FromStr};
 
+#[allow(deprecated)]
 #[test]
 fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Startup the Authorizer with all extensions
@@ -273,9 +274,14 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
                 .decision(),
             Decision::Deny
         );
-        let request5a =
-            Request::unspecified_new(Some(principal), Some(action), None, Context::empty(), None)
-                .unwrap();
+        let request5a = Request::unspecified_new(
+            Some(principal.clone()),
+            Some(action.clone()),
+            None,
+            Context::empty(),
+            None,
+        )
+        .unwrap();
         assert_eq!(
             auth.is_authorized(&request5a, &policies, &entities)
                 .decision(),

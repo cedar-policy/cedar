@@ -39,6 +39,9 @@ default = ["ipaddr", "decimal"]
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
 decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
 
+# Backwards Compatibility APIs
+deprecated_unspecified = ["cedar-policy-validator/deprecated_unspecified"]
+
 # Features for memory or runtime profiling
 heap-profiling = ["dep:dhat"]
 corpus-timing = []
