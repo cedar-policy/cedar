@@ -182,9 +182,9 @@ impl Entity {
                 (
                     k.to_string(),
                     match v {
-                        ast::PartialValue::Value(val) => RestrictedExpression(
-                            ast::RestrictedExpr::from(val),
-                        ),
+                        ast::PartialValue::Value(val) => {
+                            RestrictedExpression(ast::RestrictedExpr::from(val))
+                        }
                         ast::PartialValue::Residual(exp) => {
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
                         }
@@ -3393,7 +3393,7 @@ impl Context {
 
 /// Utilities for implementing `IntoIterator` for `Context`
 mod context {
-    use super::{RestrictedExpression, ast};
+    use super::{ast, RestrictedExpression};
 
     /// `IntoIter` iterator for `Context`
     #[derive(Debug)]
@@ -3409,9 +3409,9 @@ mod context {
                 (
                     k.to_string(),
                     match v {
-                        ast::PartialValue::Value(val) => RestrictedExpression(
-                            ast::RestrictedExpr::from(val),
-                        ),
+                        ast::PartialValue::Value(val) => {
+                            RestrictedExpression(ast::RestrictedExpr::from(val))
+                        }
                         ast::PartialValue::Residual(exp) => {
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
                         }
