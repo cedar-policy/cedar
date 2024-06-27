@@ -444,12 +444,15 @@ impl PartialResponse {
                 let expr = residual.substitute(mapping);
                 let extns = Extensions::all_available();
                 let eval = RestrictedEvaluator::new(&extns);
-                let partial_value =
-                    eval.partial_interpret(BorrowedRestrictedExpr::new_unchecked(&expr))?;
-                // INVARIANT(ContextRecord): `expr` is a record because it was previously
-                // a valid context. `partial_value` is also a record since
-                // `RestrictedEvaluator::partial_interpret` always returns a record
-                // (or an error) given a record as input.
+                let partial_value = eval.partial_interpret
+                    // Substituting a partial context should produce a
+                    // restricted expression because a partial context is a
+                    // restricted expression and remains so after unknown
+                    // substitution, by the inductive definition of restricted
+                    // expressions
+                    (BorrowedRestrictedExpr::new_unchecked(&expr))?;
+                // Using the unchecked constructor of `Context` is justified
+                // because partially evaluating a context should yield a record
                 context = Some(Context::from_partial_value_unchecked(partial_value));
             }
         }

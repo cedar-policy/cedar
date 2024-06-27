@@ -253,7 +253,7 @@ impl Context {
     ) -> Result<Self, ContextCreationError> {
         match expr.expr_kind() {
             // INVARIANT(ContextRecord): `RestrictedEvaluator::partial_interpret`
-            // always returns a record given a record as input
+            // always returns a record (or an error) given a record as input
             ExprKind::Record { .. } => {
                 let evaluator = RestrictedEvaluator::new(&extensions);
                 let pval = evaluator.partial_interpret(expr)?;
