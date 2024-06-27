@@ -906,7 +906,7 @@ impl PartialResponse {
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
     pub fn reauthorize(
-        &mut self,
+        &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
         auth: &Authorizer,
         es: &Entities,

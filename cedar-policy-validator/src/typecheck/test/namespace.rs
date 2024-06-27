@@ -243,12 +243,14 @@ fn namespaced_entity_type_member_of() {
             "Fiz": {
                 "memberOfTypes": ["Bar"]
             },
-            "Bar": { }
+            "Bar": { },
+            "Resource" : { }
         },
         "actions": {
           "baz": {
             "appliesTo": {
-              "principalTypes": [ "Foo", "Fiz" ]
+              "principalTypes": [ "Foo", "Fiz" ],
+              "resourceTypes": [ "Resource" ]
             }
           }
         }
@@ -383,12 +385,14 @@ fn multiple_namespaces_member_of() {
                 "entityTypes": {
                     "Foo": {
                         "memberOfTypes": ["B::Foo"]
-                    }
+                    },
+                    "Bar": {}
                 },
                 "actions": {
                     "act": {
                         "appliesTo": {
-                            "principalTypes": ["Foo"]
+                            "principalTypes": ["Foo"],
+                            "resourceTypes" : ["Bar"]
                         }
                     }
                 }

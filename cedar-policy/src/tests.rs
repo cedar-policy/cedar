@@ -3604,6 +3604,8 @@ mod partial_schema {
         {
             "": {
                 "entityTypes": {
+                    "User" : {},
+                    "Folder" : {},
                     "Employee": {
                         "memberOfTypes": [],
                         "shape": {
@@ -3616,6 +3618,8 @@ mod partial_schema {
                 "actions": {
                     "Act": {
                         "appliesTo": {
+                            "principalTypes" : ["User"],
+                            "resourceTypes" : ["Folder"],
                             "context": {
                                 "type": "Record",
                                 "attributes": {},
@@ -5236,10 +5240,14 @@ mod context_tests {
         Schema::from_json_value(json!(
             {
                 "": {
-                    "entityTypes": {},
+                    "entityTypes": {
+                        "User" : {}
+                    },
                     "actions": {
                         "action": {
                             "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["User"],
                                 "context": {
                                     "type": "Record",
                                     "attributes": {
