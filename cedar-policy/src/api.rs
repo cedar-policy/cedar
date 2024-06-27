@@ -1206,11 +1206,13 @@ impl SchemaFragment {
         })
     }
 
-    #[cfg(feature = "deprecated_unspecified")]
+    #[cfg(feature = "rfc55_backwards_compatible")]
     #[deprecated]
-    /// Create an `SchemaFragment` from a JSON value (which should be an
-    /// object of the shape required for Cedar schemas).
-    pub fn from_json_value_30compat(json: serde_json::Value) -> Result<Self, SchemaError> {
+    /// Create a `SchemaFragment` from a JSON value (which should be an
+    /// object of the shape required for Cedar schemas). This function is provided
+    /// to provide backwards-compatible behavior with Cedar version 3.x. It will
+    /// be removed in a future release.
+    pub fn from_json_value_3_x_compatible(json: serde_json::Value) -> Result<Self, SchemaError> {
         let compat =
             cedar_policy_validator::compat::schema_file_format::SchemaFragment::from_json_value(
                 json,
@@ -3154,9 +3156,12 @@ impl Request {
     ///
     /// If `schema` is present, this constructor will validate that the
     /// `Request` complies with the given `schema`.
-    #[cfg(feature = "deprecated_unspecified")]
+    ///
+    /// This function is provided to provide backwards-compatible behavior with
+    /// Cedar version 3.x. It will be removed in a future release.
+    #[cfg(feature = "rfc55_backwards_compatible")]
     #[deprecated]
-    pub fn unspecified_new(
+    pub fn new_3_x_compatible(
         principal: Option<EntityUid>,
         action: Option<EntityUid>,
         resource: Option<EntityUid>,
@@ -3185,9 +3190,6 @@ impl Request {
     ///
     /// Note that you can create the `EntityUid`s using `.parse()` on any
     /// string (via the `FromStr` implementation for `EntityUid`).
-    /// The principal, action, and resource fields are optional to support
-    /// the case where these fields do not contribute to authorization
-    /// decisions (e.g., because they are not used in your policies).
     ///
     /// If `schema` is present, this constructor will validate that the
     /// `Request` complies with the given `schema`.

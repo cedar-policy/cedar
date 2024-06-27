@@ -38,7 +38,7 @@ default = ["ipaddr", "decimal"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
-deprecated_unspecified = []
+rfc55_backwards_compatible = []
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]

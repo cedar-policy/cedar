@@ -20,8 +20,6 @@ use cool_asserts::assert_matches;
 
 use crate::{NamespaceDefinition, RawName};
 
-use super::test_utils;
-
 fn schema_with_unspecified() -> &'static str {
     r#"
 {
@@ -64,11 +62,14 @@ fn unspecified_does_not_parse() {
     );
 }
 
-#[cfg(feature = "deprecated_unspecified")]
+#[cfg(feature = "rfc55_backwards_compatible")]
 mod backwards_compat_tests {
     use crate::{
-        compat, schema_file_format, schema_file_format::DEFAULT_CEDAR_TYPE,
-        typecheck::AttributeAccess, types::EntityLUB, RawName, ValidationError,
+        compat, schema_file_format,
+        schema_file_format::DEFAULT_CEDAR_TYPE,
+        typecheck::{test::test_utils, AttributeAccess},
+        types::EntityLUB,
+        RawName, ValidationError,
     };
     use cedar_policy_core::{
         ast::{Expr, PolicyID, StaticPolicy, Var},

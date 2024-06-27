@@ -225,7 +225,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         EntityTypeName::from_str("Account").unwrap(),
         EntityId::from_str("jane").unwrap(),
     );
-    #[cfg(feature = "deprecated_unspecified")]
+    #[cfg(feature = "rfc55_backwards_compatible")]
     {
         let request3a = Request::unspecified_new(
             Some(principal.clone()),
@@ -258,7 +258,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
             .decision(),
         Decision::Deny
     );
-    #[cfg(feature = "deprecated_unspecified")]
+    #[cfg(feature = "rfc55_backwards_compatible")]
     {
         // Requesting with the unspecified principal or resource will return Deny (but not fail)
         let request4a = Request::unspecified_new(

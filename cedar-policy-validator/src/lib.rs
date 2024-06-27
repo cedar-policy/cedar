@@ -56,7 +56,7 @@ pub mod human_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 /// Compatibility functions
-#[cfg(feature = "deprecated_unspecified")]
+#[cfg(feature = "rfc55_backwards_compatible")]
 pub mod compat;
 pub mod types;
 

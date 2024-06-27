@@ -46,7 +46,7 @@ lazy_static::lazy_static! {
     pub static ref DEFAULT_CEDAR_TYPE : Name = {
         // PANIC SAFETY: unwrapping a constant
         #[allow(clippy::unwrap_used)]
-        Name::from_str("__cedar::default").unwrap()
+        Name::from_str("__cedar::Default").unwrap()
     };
 }
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
