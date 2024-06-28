@@ -486,7 +486,7 @@ impl Expr {
     }
 
     /// Check if an expression contains any symbolic unknowns
-    pub fn is_unknown(&self) -> bool {
+    pub fn contains_unknown(&self) -> bool {
         self.subexpressions()
             .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
@@ -1257,12 +1257,11 @@ impl<T> ExprBuilder<T> {
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(
-                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                            key: oentry.key().clone(),
-                        }
-                        .into(),
-                    );
+                    return Err(expression_construction_errors::DuplicateKeyError {
+                        key: oentry.key().clone(),
+                        context: "in record literal",
+                    }
+                    .into());
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1412,12 +1411,10 @@ impl<T: Clone> ExprBuilder<T> {
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum ExpressionConstructionError {
-    /// The same key occurred two or more times in a single record literal
+    /// The same key occurred two or more times
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateKeyInRecordLiteral(
-        #[from] expression_construction_errors::DuplicateKeyInRecordLiteralError,
-    ),
+    DuplicateKey(#[from] expression_construction_errors::DuplicateKeyError),
 }
 
 /// Error subtypes for [`ExpressionConstructionError`]
@@ -1426,22 +1423,29 @@ pub mod expression_construction_errors {
     use smol_str::SmolStr;
     use thiserror::Error;
 
-    /// The same key occurred two or more times in a single record literal
+    /// The same key occurred two or more times
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
-    #[error("duplicate key `{key}` in record literal")]
-    pub struct DuplicateKeyInRecordLiteralError {
-        /// The key which occurred two or more times in the record literal
+    #[error("duplicate key `{key}` {context}")]
+    pub struct DuplicateKeyError {
+        /// The key which occurred two or more times
         pub(crate) key: SmolStr,
+        /// Information about where the duplicate key occurred (e.g., "in record literal")
+        pub(crate) context: &'static str,
     }
 
-    impl DuplicateKeyInRecordLiteralError {
-        /// Get the key which occurred two or more times in the record literal
+    impl DuplicateKeyError {
+        /// Get the key which occurred two or more times
         pub fn key(&self) -> &str {
             &self.key
+        }
+
+        /// Make a new error with an updated `context` field
+        pub(crate) fn with_context(self, context: &'static str) -> Self {
+            Self { context, ..self }
         }
     }
 }
@@ -1945,13 +1949,13 @@ mod test {
             Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
             Expr::unknown(Unknown::new_untyped("c")),
         );
-        assert!(e.is_unknown());
+        assert!(e.contains_unknown());
         let e = Expr::ite(
             Expr::not(Expr::val(true)),
             Expr::and(Expr::val(1), Expr::val(3)),
             Expr::val(1),
         );
-        assert!(!e.is_unknown());
+        assert!(!e.contains_unknown());
     }
 
     #[test]

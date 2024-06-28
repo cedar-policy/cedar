@@ -3604,6 +3604,8 @@ mod partial_schema {
         {
             "": {
                 "entityTypes": {
+                    "User" : {},
+                    "Folder" : {},
                     "Employee": {
                         "memberOfTypes": [],
                         "shape": {
@@ -3616,6 +3618,8 @@ mod partial_schema {
                 "actions": {
                     "Act": {
                         "appliesTo": {
+                            "principalTypes" : ["User"],
+                            "resourceTypes" : ["Folder"],
                             "context": {
                                 "type": "Record",
                                 "attributes": {},
@@ -5226,7 +5230,8 @@ mod request_validation_tests {
     }
 }
 
-mod context_creation_tests {
+mod context_tests {
+    use cool_asserts::assert_matches;
     use serde_json::json;
 
     use super::*;
@@ -5235,10 +5240,14 @@ mod context_creation_tests {
         Schema::from_json_value(json!(
             {
                 "": {
-                    "entityTypes": {},
+                    "entityTypes": {
+                        "User" : {}
+                    },
                     "actions": {
                         "action": {
                             "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["User"],
                                 "context": {
                                     "type": "Record",
                                     "attributes": {
@@ -5363,7 +5372,64 @@ mod context_creation_tests {
         expect_err(
             "",
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error("duplicate key `key1` in record literal").build(),
+            &ExpectedErrorMessageBuilder::error("duplicate key `key1` in context").build(),
+        );
+    }
+
+    #[test]
+    fn merge_contexts() {
+        let context_pt_1 = Context::from_json_value(json!({"key1": "foo", "key2": true}), None)
+            .expect("context creation should have succeeded");
+        let pairs = vec![(String::from("key3"), RestrictedExpression::new_long(42))];
+        let context_pt_2 =
+            Context::from_pairs(pairs).expect("context creation should have succeeded");
+
+        let context = context_pt_1
+            .merge(context_pt_2)
+            .expect("context merge should have succeeded");
+        let values = context.into_iter();
+        for (k, v) in values {
+            match k.as_ref() {
+                "key1" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                            assert_eq!(s.as_str(), "foo");
+                        }
+                    );
+                }
+                "key2" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Bool(true)),
+                    );
+                }
+                "key3" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Long(42)),
+                    );
+                }
+                _ => {
+                    panic!("unexpected key `{k}`");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn merge_contexts_duplicate_keys() {
+        let context_pt_1 = Context::from_json_value(json!({"key1": "foo", "key2": true}), None)
+            .expect("context creation should have succeeded");
+        let pairs = vec![(String::from("key2"), RestrictedExpression::new_long(42))];
+        let context_pt_2 =
+            Context::from_pairs(pairs).expect("context creation should have succeeded");
+
+        let err = context_pt_1.merge(context_pt_2).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("duplicate key `key2` in context").build(),
         );
     }
 }

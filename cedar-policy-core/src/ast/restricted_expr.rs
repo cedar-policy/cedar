@@ -700,12 +700,11 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val("hello"),),
             ]),
-            Err(
-                expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
-                }
-                .into()
-            )
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "foo".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         // duplicate key is an error when mapped to different values of same type
@@ -714,12 +713,11 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(101),),
             ]),
-            Err(
-                expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
-                }
-                .into()
-            )
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "foo".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         // duplicate key is an error when mapped to the same value multiple times
@@ -728,12 +726,11 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("foo".into(), RestrictedExpr::val(37),),
             ]),
-            Err(
-                expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
-                }
-                .into()
-            )
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "foo".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         // duplicate key is an error even when other keys appear in between
@@ -745,12 +742,11 @@ mod test {
                 ("foo".into(), RestrictedExpr::val(37),),
                 ("eggs".into(), RestrictedExpr::val("spam"),),
             ]),
-            Err(
-                expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                    key: "foo".into()
-                }
-                .into()
-            )
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "foo".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         // duplicate key is also an error when parsing from string
@@ -760,8 +756,9 @@ mod test {
             Err(RestrictedExpressionParseError::Parse(
                 ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                     ToASTErrorKind::ExpressionConstructionError(
-                        expression_construction_errors::DuplicateKeyInRecordLiteralError {
-                            key: "foo".into()
+                        expression_construction_errors::DuplicateKeyError {
+                            key: "foo".into(),
+                            context: "in record literal",
                         }
                         .into()
                     ),
