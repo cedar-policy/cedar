@@ -1,33 +1,5 @@
 syntax = "proto3";
-package cedar.cedar_policy_core.ast.proto;
-
-/*
-    Enums must begin with 0
-    Default values do not get encoded, should I have an UNSPECIFIED = 0 for enums?
-
-    NOTE: For scalar message fields, once a message is parsed
-    there’s no way of telling whether a field was explicitly set to the
-    default value (for example whether a boolean was set to false) or just not set at all.
-
-
-    Maybe to make writing the compiler code easier, we will not consider
-    the oneof implementation even though it would make things more space
-    efficient? That can be a stretch goal.
-
-    NOTE: Annoying behavior is that the compiled version of the code won't have
-    multiple letters consecutatively be capitalized. Hence EntityUIDEntry becomes EntityUidEntry
-
-    NOTE: Nested messages in Rust is compiled as modules and modules are all lowercase.
-    EntityUIDEntry becomes entity_uid_entry
-
-    NOTE: When messages are used as fields it gets compiled as an Option in Rust
-*/
-
-message AuthorizationRequest {
-    Request request = 1;
-    LiteralPolicySet policies = 2;
-    Entities entities = 3;
-}
+package cedar_policy_core;
 
 message Request {
     EntityUidEntry principal = 1;
@@ -37,24 +9,25 @@ message Request {
 }
 
 message LiteralPolicySet {
+    // Key is PolicyID as a string
     map<string, TemplateBody> templates = 1;
     map<string, LiteralPolicy> links = 2;
 }
 
+enum Mode {
+    Concrete = 0;
+    Partial = 1;
+}
+
 message Entities {
     repeated Entity entities = 1;
-
     Mode mode = 3;
-
-    enum Mode {
-        Concrete = 0;
-        Partial = 1;
-    }
 }
 
 message Context {
     Expr context = 1;
 }
+
 // BEGIN REQUEST MESSAGES
 
 message EntityUidEntry {
@@ -114,6 +87,16 @@ message LiteralPolicy {
     EntityUid resource_euid = 5;
 }
 
+message Annotation {
+    string val = 1;
+    Loc loc = 2;
+}
+
+enum Effect {
+    Forbid = 0;
+    Permit = 1;
+}
+
 message TemplateBody {
     string id = 1;
     Loc loc = 2;
@@ -125,16 +108,6 @@ message TemplateBody {
     ActionConstraint action_constraint = 7;
     ResourceConstraint resource_constraint = 8;
     Expr non_scope_constraints = 9;
-
-    message Annotation {
-        string val = 1;
-        Loc loc = 2;
-    }
-
-    enum Effect {
-        Forbid = 0;
-        Permit = 1;
-    }
 }
 
 message PrincipalConstraint {
@@ -143,6 +116,16 @@ message PrincipalConstraint {
 
 message ResourceConstraint {
     PrincipalOrResourceConstraint constraint = 1;
+}
+
+message EntityReference {
+    EntityReferenceType ty = 1;
+    EntityUid euid = 2;
+
+    enum EntityReferenceType {
+        Euid = 0; // Expects EntityUid
+        Slot = 1;
+    }
 }
 
 message PrincipalOrResourceConstraint {
@@ -156,16 +139,6 @@ message PrincipalOrResourceConstraint {
         Eq = 2; // Expects EntityReference
         Is = 3; // Expects Name
         IsIn = 4; // Expects Name and EntityReference
-    }
-
-    message EntityReference {
-        EntityReferenceType ty = 1;
-        EntityUid euid = 2;
-
-        enum EntityReferenceType {
-            Euid = 0; // Expects EntityUid
-            Slot = 1;
-        }
     }
 }
 
@@ -304,7 +277,6 @@ message Expr {
                 Char = 0; // Expects (c: char)
                 Wildcard = 1;
             }
-
         }
     } // END ExprKind
 } // END Expr

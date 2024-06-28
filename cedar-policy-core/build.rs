@@ -26,6 +26,6 @@ fn generate_parsers() {
         .process_dir("src/parser/")
         .expect("parser synth");
 
-    prost_build::compile_protos(&["./schema/AuthorizationRequest.proto"], &["./schema"]).unwrap();
+    prost_build::compile_protos(&["./schema/Request.proto"], &["./schema"]).unwrap();
 
 }

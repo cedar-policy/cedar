@@ -353,10 +353,10 @@ impl std::fmt::Display for Entities {
     }
 }
 
-impl From<proto::Entities> for Entities {
-    fn from(v: proto::Entities) -> Self {
+impl From<&proto::Entities> for Entities {
+    fn from(v: &proto::Entities) -> Self {
         let entities : Vec<Entity> = v.entities
-            .into_iter()
+            .iter()
             .map(Entity::from)
             .collect();
 
@@ -376,11 +376,11 @@ impl From<proto::Entities> for Entities {
     }
 }
 
-impl From<Entities> for proto::Entities {
-    fn from(v: Entities) -> Self {
+impl From<&Entities> for proto::Entities {
+    fn from(v: &Entities) -> Self {
         let entities: Vec<proto::Entity> = v.entities
             .values()
-            .map(|value| proto::Entity::from(value.to_owned()))
+            .map(proto::Entity::from)
             .collect();
 
         #[cfg(feature = "partial-eval")]
@@ -388,7 +388,7 @@ impl From<Entities> for proto::Entities {
             return Self { entities: entities, mode: proto::entities::Mode::Partial.into() };
         }
 
-        Self { entities: entities, mode: proto::entities::Mode::Concrete.into() }
+        Self { entities: entities, mode: proto::Mode::Concrete.into() }
     }
 }
 
@@ -3221,7 +3221,7 @@ pub mod protobuf_tests {
         let entities1: Entities = Entities::new();
         assert_eq!(
             entities1,
-            Entities::from(proto::Entities::from(entities1.clone()))
+            Entities::from(&proto::Entities::from(&entities1))
         );
 
 
@@ -3242,7 +3242,7 @@ pub mod protobuf_tests {
             TCComputation::AssumeAlreadyComputed,
             Extensions::none()
         ).unwrap();
-        assert_eq!(entities2, Entities::from(proto::Entities::from(entities2.clone())));
+        assert_eq!(entities2, Entities::from(&proto::Entities::from(&entities2)));
 
         // Two Element Test
         let entity2: Entity = Entity::new(
@@ -3258,7 +3258,7 @@ pub mod protobuf_tests {
             TCComputation::AssumeAlreadyComputed,
             Extensions::none()
         ).unwrap();
-        assert_eq!(entities3, Entities::from(proto::Entities::from(entities3.clone())));
+        assert_eq!(entities3, Entities::from(&proto::Entities::from(&entities3)));
 
     }
 }

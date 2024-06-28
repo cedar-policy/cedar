@@ -100,9 +100,9 @@ impl EntityUIDEntry {
     }
 }
 
-impl From<proto::EntityUidEntry> for EntityUIDEntry {
-    fn from(v: proto::EntityUidEntry) -> Self {
-        let loc : Option<Loc> = v.loc.map(Loc::from);
+impl From<&proto::EntityUidEntry> for EntityUIDEntry {
+    fn from(v: &proto::EntityUidEntry) -> Self {
+        let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
         let ety = proto::entity_uid_entry::EntityUidEntryType::try_from(v.ty).unwrap();
 
         match ety {
@@ -110,27 +110,27 @@ impl From<proto::EntityUidEntry> for EntityUIDEntry {
                 Self::Unknown { loc: loc }
             }
             proto::entity_uid_entry::EntityUidEntryType::Known => {
-                EntityUIDEntry::concrete(EntityUID::from(v.euid.unwrap()), loc)
+                EntityUIDEntry::concrete(EntityUID::from(v.euid.as_ref().unwrap()), loc)
             }
         }
     }
 }
 
-impl From<EntityUIDEntry> for proto::EntityUidEntry {
-    fn from(v: EntityUIDEntry) -> Self {
+impl From<&EntityUIDEntry> for proto::EntityUidEntry {
+    fn from(v: &EntityUIDEntry) -> Self {
         match v {
             EntityUIDEntry::Unknown { loc } => {
                 Self {
                     ty: proto::entity_uid_entry::EntityUidEntryType::Unknown.into(),
                     euid: None,
-                    loc: loc.map(proto::Loc::from)
+                    loc: loc.as_ref().map(proto::Loc::from)
                 }
             }
             EntityUIDEntry::Known { euid, loc } => {
                 Self {
                     ty: proto::entity_uid_entry::EntityUidEntryType::Known.into(),
-                    euid: Some(proto::EntityUid::from(Arc::unwrap_or_clone(euid))),
-                    loc: loc.map(proto::Loc::from)
+                    euid: Some(proto::EntityUid::from(euid.as_ref())),
+                    loc: loc.as_ref().map(proto::Loc::from)
                 }
             }
         }
@@ -247,24 +247,24 @@ impl std::fmt::Display for Request {
     }
 }
 
-impl From<proto::Request> for Request {
-    fn from(v: proto::Request) -> Self {
+impl From<&proto::Request> for Request {
+    fn from(v: &proto::Request) -> Self {
         Request::new_unchecked(
-            EntityUIDEntry::from(v.principal.unwrap()),
-            EntityUIDEntry::from(v.action.unwrap()),
-            EntityUIDEntry::from(v.resource.unwrap()),
-            v.context.map(Context::from)
+            EntityUIDEntry::from(v.principal.as_ref().unwrap()),
+            EntityUIDEntry::from(v.action.as_ref().unwrap()),
+            EntityUIDEntry::from(v.resource.as_ref().unwrap()),
+            v.context.as_ref().map(Context::from)
         )
     }
 }
 
-impl From<Request> for proto::Request {
-    fn from(v: Request) -> Self {
+impl From<&Request> for proto::Request {
+    fn from(v: &Request) -> Self {
         Self {
-            principal: Some(proto::EntityUidEntry::from(v.principal)),
-            action: Some(proto::EntityUidEntry::from(v.action)),
-            resource: Some(proto::EntityUidEntry::from(v.resource)),
-            context: v.context.map(proto::Context::from)
+            principal: Some(proto::EntityUidEntry::from(&v.principal)),
+            action: Some(proto::EntityUidEntry::from(&v.action)),
+            resource: Some(proto::EntityUidEntry::from(&v.resource)),
+            context: v.context.as_ref().map(proto::Context::from)
         }
     }
 }
@@ -424,19 +424,19 @@ impl std::fmt::Display for Context {
     }
 }
 
-impl From<proto::Context> for Context {
-    fn from(v: proto::Context) -> Self {
+impl From<&proto::Context> for Context {
+    fn from(v: &proto::Context) -> Self {
         Context::from_expr(
-            BorrowedRestrictedExpr::new(&Expr::from(v.context.unwrap())).unwrap(),
+            BorrowedRestrictedExpr::new(&Expr::from(v.context.as_ref().unwrap())).unwrap(),
             Extensions::none()
         ).unwrap()
     }
 }
 
-impl From<Context> for proto::Context {
-    fn from(v: Context) -> Self {
+impl From<&Context> for proto::Context {
+    fn from(v: &Context) -> Self {
         Self {
-            context: Some(Expr::from(PartialValue::from(v.context)).into())
+            context: Some(proto::Expr::from(&Expr::from(PartialValue::from(v.context.as_ref().to_owned()))))
         }
     }
 }
@@ -570,10 +570,10 @@ mod test {
             EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("book")), loc: None },
             Some(context.clone())
         );
-        let request_roundtrip: Request = Request::from(proto::Request::from(request.clone()));
-        assert_eq!(context, Context::from(proto::Context::from(context.clone())));
-        assert_matches!(request_roundtrip.principal, EntityUIDEntry::Known{ euid: _, loc: _ });
-        assert_matches!(request_roundtrip.action, EntityUIDEntry::Known{ euid: _, loc: _ });
-        assert_matches!(request_roundtrip.resource, EntityUIDEntry::Known{ euid: _, loc: _ });
+        let request_rt: Request = Request::from(&proto::Request::from(&request));
+        assert_eq!(context, Context::from(&proto::Context::from(&context)));
+        assert_eq!(request.principal().uid(), request_rt.principal().uid());
+        assert_eq!(request.action().uid(), request_rt.action().uid());
+        assert_eq!(request.resource().uid(), request_rt.resource().uid());
     }
 }

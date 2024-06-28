@@ -110,10 +110,10 @@ impl From<PolicySet> for LiteralPolicySet {
     }
 }
 
-impl From<proto::LiteralPolicySet> for LiteralPolicySet {
-    fn from(v: proto::LiteralPolicySet) -> Self {
+impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
+    fn from(v: &proto::LiteralPolicySet) -> Self {
         let templates : HashMap<PolicyID, Template> = v.templates
-            .into_iter()
+            .iter()
             .map(|(key, value)| (
                 PolicyID::from_string(key),
                 Template::from(TemplateBody::from(value)))
@@ -121,7 +121,7 @@ impl From<proto::LiteralPolicySet> for LiteralPolicySet {
             .collect();
         
         let links : HashMap<PolicyID, LiteralPolicy> = v.links
-            .into_iter()
+            .iter()
             .map(|(key, value)| (PolicyID::from_string(key), LiteralPolicy::from(value)))
             .collect();
 
@@ -132,18 +132,18 @@ impl From<proto::LiteralPolicySet> for LiteralPolicySet {
     }
 }
 
-impl From<LiteralPolicySet> for proto::LiteralPolicySet {
-    fn from(v: LiteralPolicySet) -> Self {
+impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
+    fn from(v: &LiteralPolicySet) -> Self {
         let templates: HashMap<String, proto::TemplateBody> = v.templates
-            .into_iter()
+            .iter()
             .map(|(key, value)| (
                 String::from(key.as_ref()),
-                proto::TemplateBody::from(TemplateBody::from(value))
+                proto::TemplateBody::from(value)
             ))
             .collect();
 
         let links: HashMap<String, proto::LiteralPolicy> = v.links
-            .into_iter()
+            .iter()
             .map(|(key, value)| (
                 String::from(key.as_ref()),
                 proto::LiteralPolicy::from(value)
@@ -158,6 +158,37 @@ impl From<LiteralPolicySet> for proto::LiteralPolicySet {
     }
 }
 
+impl From<&PolicySet> for proto::LiteralPolicySet {
+    fn from(v: &PolicySet) -> Self {
+        let templates: HashMap<String, proto::TemplateBody> = v.templates
+            .iter()
+            .map(|(key, value)| (
+                String::from(key.as_ref()),
+                proto::TemplateBody::from(value.as_ref())
+            ))
+            .collect();
+
+        let links: HashMap<String, proto::LiteralPolicy> = v.links
+            .iter()
+            .map(|(key, value)| (
+                String::from(key.as_ref()),
+                proto::LiteralPolicy::from(value)
+            ))
+            .collect();
+
+        Self {
+            templates: templates,
+            links: links
+        }
+    }
+}
+
+impl TryFrom<&proto::LiteralPolicySet> for PolicySet {
+    type Error = ReificationError;
+    fn try_from(pset: &proto::LiteralPolicySet) -> Result<Self, Self::Error> {
+        PolicySet::try_from(LiteralPolicySet::from(pset))
+    }
+}
 
 /// Potential errors when working with `PolicySet`s.
 #[derive(Debug, Diagnostic, Error)]
@@ -976,12 +1007,11 @@ mod test {
         let mut ps: PolicySet = PolicySet::new();
         ps.add_template(Template::from(tb)).expect("Failed to add template to policy set.");
         ps.add(policy).expect("Failed to add policy to policy set.");
-        // Can't clone LiteralPolicySets directly
-        let lps1 : LiteralPolicySet = LiteralPolicySet::from(ps.clone());
-        let lps2 : LiteralPolicySet = LiteralPolicySet::from(ps.clone());
-        let lps_roundtrip : LiteralPolicySet = LiteralPolicySet::from(proto::LiteralPolicySet::from(lps1));
+        let lps : LiteralPolicySet = LiteralPolicySet::from(ps);
+        let lps_roundtrip : LiteralPolicySet = LiteralPolicySet::from(&proto::LiteralPolicySet::from(&lps));
+        
         // Can't compare LiteralPolicySets directly, so we compare their fields
-        assert_eq!(lps2.templates, lps_roundtrip.templates);
-        assert_eq!(lps2.links, lps_roundtrip.links);
+        assert_eq!(lps.templates, lps_roundtrip.templates);
+        assert_eq!(lps.links, lps_roundtrip.links);
     }
 }

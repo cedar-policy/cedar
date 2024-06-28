@@ -88,8 +88,8 @@ impl std::fmt::Display for Type {
     }
 }
 
-impl From<proto::expr::expr_kind::unknown::Type> for Type {
-    fn from(v: proto::expr::expr_kind::unknown::Type) -> Self {
+impl From<&proto::expr::expr_kind::unknown::Type> for Type {
+    fn from(v: &proto::expr::expr_kind::unknown::Type) -> Self {
         let pty = proto::expr::expr_kind::unknown::r#type::TypeType::try_from(v.ty).unwrap();
         match pty {
             proto::expr::expr_kind::unknown::r#type::TypeType::Bool => Type::Bool,
@@ -97,18 +97,16 @@ impl From<proto::expr::expr_kind::unknown::Type> for Type {
             proto::expr::expr_kind::unknown::r#type::TypeType::String => Type::String,
             proto::expr::expr_kind::unknown::r#type::TypeType::Set => Type::Set,
             proto::expr::expr_kind::unknown::r#type::TypeType::Record => Type::Record,
-            proto::expr::expr_kind::unknown::r#type::TypeType::Entity => {
-                Type::Entity{ ty: EntityType::from(v.ety.unwrap()) }
-            }
-            proto::expr::expr_kind::unknown::r#type::TypeType::Extension => {
-                Type::Extension{ name: Name::from(v.name.unwrap()) }
-            }
+            proto::expr::expr_kind::unknown::r#type::TypeType::Entity =>
+                Type::Entity{ ty: EntityType::from(v.ety.as_ref().unwrap()) },
+            proto::expr::expr_kind::unknown::r#type::TypeType::Extension =>
+                Type::Extension{ name: Name::from(v.name.as_ref().unwrap()) }
         }
     }
 }
 
-impl From<Type> for proto::expr::expr_kind::unknown::Type {
-    fn from(v: Type) -> Self {
+impl From<&Type> for proto::expr::expr_kind::unknown::Type {
+    fn from(v: &Type) -> Self {
         let mut result = Self {
             ty: 0, ety: None, name: None
         };
@@ -160,16 +158,16 @@ pub mod test {
     fn protobuf_roundtrip() {
         assert_eq!(
             Type::Bool,
-            Type::from(proto::expr::expr_kind::unknown::Type::from(Type::Bool))
+            Type::from(&proto::expr::expr_kind::unknown::Type::from(&Type::Bool))
         );
 
         let name: Name = Name::from_normalized_str("B::C::D").unwrap();
 
         let orig_type2: Type = Type::entity_type(name.to_owned());
-        assert_eq!(orig_type2, Type::from(proto::expr::expr_kind::unknown::Type::from(orig_type2.to_owned())));
+        assert_eq!(orig_type2, Type::from(&proto::expr::expr_kind::unknown::Type::from(&orig_type2)));
 
         let orig_type3: Type = Type::Extension { name: name.to_owned() };
-        assert_eq!(orig_type3, Type::from(proto::expr::expr_kind::unknown::Type::from(orig_type3.to_owned())))
+        assert_eq!(orig_type3, Type::from(&proto::expr::expr_kind::unknown::Type::from(&orig_type3)))
 
     }
 }

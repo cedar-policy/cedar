@@ -31,8 +31,8 @@ pub enum UnaryOp {
     Neg,
 }
 
-impl From<proto::expr::expr_kind::UnaryOp> for UnaryOp {
-    fn from(v: proto::expr::expr_kind::UnaryOp) -> Self {
+impl From<&proto::expr::expr_kind::UnaryOp> for UnaryOp {
+    fn from(v: &proto::expr::expr_kind::UnaryOp) -> Self {
         match v {
             proto::expr::expr_kind::UnaryOp::Not => UnaryOp::Not,
             proto::expr::expr_kind::UnaryOp::Neg => UnaryOp::Neg
@@ -40,8 +40,8 @@ impl From<proto::expr::expr_kind::UnaryOp> for UnaryOp {
     }
 }
 
-impl From<UnaryOp> for proto::expr::expr_kind::UnaryOp {
-    fn from(v: UnaryOp) -> Self {
+impl From<&UnaryOp> for proto::expr::expr_kind::UnaryOp {
+    fn from(v: &UnaryOp) -> Self {
         match v {
             UnaryOp::Not => proto::expr::expr_kind::UnaryOp::Not,
             UnaryOp::Neg => proto::expr::expr_kind::UnaryOp::Neg
@@ -135,8 +135,8 @@ impl std::fmt::Display for BinaryOp {
     }
 }
 
-impl From<proto::expr::expr_kind::BinaryOp> for BinaryOp {
-    fn from(v: proto::expr::expr_kind::BinaryOp) -> Self {
+impl From<&proto::expr::expr_kind::BinaryOp> for BinaryOp {
+    fn from(v: &proto::expr::expr_kind::BinaryOp) -> Self {
         match v {
             proto::expr::expr_kind::BinaryOp::Eq => BinaryOp::Eq,
             proto::expr::expr_kind::BinaryOp::Less => BinaryOp::Less,
@@ -152,8 +152,8 @@ impl From<proto::expr::expr_kind::BinaryOp> for BinaryOp {
     }
 }
 
-impl From<BinaryOp> for proto::expr::expr_kind::BinaryOp {
-    fn from(v: BinaryOp) -> Self {
+impl From<&BinaryOp> for proto::expr::expr_kind::BinaryOp {
+    fn from(v: &BinaryOp) -> Self {
         match v {
             BinaryOp::Eq => proto::expr::expr_kind::BinaryOp::Eq,
             BinaryOp::Less => proto::expr::expr_kind::BinaryOp::Less,
@@ -186,22 +186,22 @@ pub mod test {
     fn protobuf_roundtrip() {
         assert_eq!(
             UnaryOp::Neg,
-            UnaryOp::from(proto::expr::expr_kind::UnaryOp::from(UnaryOp::Neg))
+            UnaryOp::from(&proto::expr::expr_kind::UnaryOp::from(&UnaryOp::Neg))
         );
 
         assert_eq!(
             UnaryOp::Neg,
-            UnaryOp::from(proto::expr::expr_kind::UnaryOp::from(UnaryOp::Neg))
+            UnaryOp::from(&proto::expr::expr_kind::UnaryOp::from(&UnaryOp::Neg))
         );
 
         assert_eq!(
             BinaryOp::Eq,
-            BinaryOp::from(proto::expr::expr_kind::BinaryOp::from(BinaryOp::Eq))
+            BinaryOp::from(&proto::expr::expr_kind::BinaryOp::from(&BinaryOp::Eq))
         );
 
         assert_eq!(
             BinaryOp::ContainsAny,
-            BinaryOp::from(proto::expr::expr_kind::BinaryOp::from(BinaryOp::ContainsAny))
+            BinaryOp::from(&proto::expr::expr_kind::BinaryOp::from(&BinaryOp::ContainsAny))
         );
     }
 }

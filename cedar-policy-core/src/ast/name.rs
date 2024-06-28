@@ -19,7 +19,6 @@ use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
 use std::sync::Arc;
-use std::str::FromStr;
 
 use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
@@ -230,34 +229,34 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
     }
 }
 
-impl From<proto::Name> for Name {
-    fn from(v: proto::Name) -> Self {
-        let loc : Option<Loc> = v.loc.map(Loc::from);
+impl From<&proto::Name> for Name {
+    fn from(v: &proto::Name) -> Self {
+        let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
         let path : Arc<Vec<Id>> = Arc::new(v.path
-            .into_iter()
-            .map(|value| Id::from_str(&value).unwrap())
+            .iter()
+            .map(Id::new_unchecked)
             .collect()
         );
 
         Self {
-            id: Id::from_str(&v.id).unwrap(),
+            id: Id::new_unchecked(&v.id),
             path: path,
             loc: loc
         }
     }
 }
 
-impl From<Name> for proto::Name {
-    fn from(v: Name) -> Self {
-        let path: Vec<String> = Arc::unwrap_or_clone(v.path)
-            .into_iter()
+impl From<&Name> for proto::Name {
+    fn from(v: &Name) -> Self {
+        let path: Vec<String> = v.path.as_ref()
+            .iter()
             .map(|value| String::from(value.as_ref()))
             .collect();
 
         Self {
             id: String::from(v.id.as_ref()),
             path: path,
-            loc: v.loc.map(proto::Loc::from)
+            loc: v.loc.as_ref().map(proto::Loc::from)
         }
     }
 }
@@ -336,8 +335,8 @@ impl std::fmt::Display for SlotId {
     }
 }
 
-impl From<proto::SlotId> for SlotId {
-    fn from(v: proto::SlotId) -> Self {
+impl From<&proto::SlotId> for SlotId {
+    fn from(v: &proto::SlotId) -> Self {
         match v {
             proto::SlotId::Principal => SlotId::principal(),
             proto::SlotId::Resource => SlotId::resource()
@@ -345,8 +344,8 @@ impl From<proto::SlotId> for SlotId {
     }
 }
 
-impl From<SlotId> for proto::SlotId {
-    fn from(v: SlotId) -> Self {
+impl From<&SlotId> for proto::SlotId {
+    fn from(v: &SlotId) -> Self {
         match v {
             SlotId(ValidSlotId::Principal) => proto::SlotId::Principal,
             SlotId(ValidSlotId::Resource) => proto::SlotId::Resource
@@ -466,12 +465,12 @@ mod test {
     #[test]
     fn protobuf_roundtrip() {
         let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();
-        assert_eq!(orig_name, Name::from(proto::Name::from(orig_name.to_owned())));
+        assert_eq!(orig_name, Name::from(&proto::Name::from(&orig_name)));
 
         let orig_slot1: SlotId = SlotId::principal();
-        assert_eq!(orig_slot1, SlotId::from(proto::SlotId::from(orig_slot1)));
+        assert_eq!(orig_slot1, SlotId::from(&proto::SlotId::from(&orig_slot1)));
 
         let orig_slot2: SlotId = SlotId::resource();
-        assert_eq!(orig_slot2, SlotId::from(proto::SlotId::from(orig_slot2)));
+        assert_eq!(orig_slot2, SlotId::from(&proto::SlotId::from(&orig_slot2)));
     }
 }

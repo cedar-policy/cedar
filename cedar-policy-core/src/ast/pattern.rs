@@ -53,8 +53,8 @@ impl Serialize for PatternElem {
     }
 }
 
-impl From<proto::expr::expr_kind::PatternElem> for PatternElem {
-    fn from(v: proto::expr::expr_kind::PatternElem) -> Self {
+impl From<&proto::expr::expr_kind::PatternElem> for PatternElem {
+    fn from(v: &proto::expr::expr_kind::PatternElem) -> Self {
         let pty = proto::expr::expr_kind::pattern_elem::PatternElemType::try_from(v.ty).unwrap();
         match pty {
             proto::expr::expr_kind::pattern_elem::PatternElemType::Char => PatternElem::Char(v.c.chars().next().unwrap()),
@@ -63,8 +63,8 @@ impl From<proto::expr::expr_kind::PatternElem> for PatternElem {
     }
 }
 
-impl From<PatternElem> for proto::expr::expr_kind::PatternElem {
-    fn from(v: PatternElem) -> Self {
+impl From<&PatternElem> for proto::expr::expr_kind::PatternElem {
+    fn from(v: &PatternElem) -> Self {
         match v {
             PatternElem::Char(c) => {
                 Self {
@@ -275,13 +275,13 @@ pub mod test {
     fn protobuf_roundtrip() {
         assert_eq!(
             PatternElem::Wildcard,
-            PatternElem::from(proto::expr::expr_kind::PatternElem::from(PatternElem::Wildcard))
+            PatternElem::from(&proto::expr::expr_kind::PatternElem::from(&PatternElem::Wildcard))
         );
 
         let pattern_elem1: PatternElem = PatternElem::Char('l');
         assert_eq!(
             pattern_elem1,
-            PatternElem::from(proto::expr::expr_kind::PatternElem::from(pattern_elem1))
+            PatternElem::from(&proto::expr::expr_kind::PatternElem::from(&pattern_elem1))
         );
 
     }

@@ -100,21 +100,21 @@ impl miette::SourceCode for &Loc {
     }
 }
 
-impl From<proto::Loc> for Loc {
-    fn from(v: proto::Loc) -> Self {
+impl From<&proto::Loc> for Loc {
+    fn from(v: &proto::Loc) -> Self {
         let offset_usize: usize = v.offset.try_into().unwrap();
         Loc::new(
             miette::SourceSpan::new(
                 miette::SourceOffset::from(offset_usize),
                 v.length.try_into().unwrap()
             ),
-            v.src.into()
+            v.src.clone().into()
         )
     }
 }
 
-impl From<Loc> for proto::Loc {
-    fn from(v: Loc) -> Self {
+impl From<&Loc> for proto::Loc {
+    fn from(v: &Loc) -> Self {
         let offset_u32 : u32 = v.span.offset().try_into().unwrap();
         let length_u32 : u32 = v.span.len().try_into().unwrap();
         Self {
@@ -138,7 +138,7 @@ pub mod tests {
             ),
             "test".into()
         );
-        assert_eq!(loc, Loc::from(proto::Loc::from(loc.clone())));
+        assert_eq!(loc, Loc::from(&proto::Loc::from(&loc)));
 
         let loc2 : Loc = Loc::new(
             miette::SourceSpan::new(
@@ -147,7 +147,7 @@ pub mod tests {
             ),
             "test".into()
         );
-        assert_eq!(loc2, Loc::from(proto::Loc::from(loc2.clone())));
+        assert_eq!(loc2, Loc::from(&proto::Loc::from(&loc2)));
     }
 
 }

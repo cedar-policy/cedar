@@ -18,7 +18,7 @@
 
 pub mod proto {
     #![allow(missing_docs)]
-    include!(concat!(env!("OUT_DIR"), "/cedar.cedar_policy_core.ast.proto.rs"));
+    include!(concat!(env!("OUT_DIR"), "/cedar_policy_core.rs"));
 }
 
 mod expr;
