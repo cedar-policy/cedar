@@ -1206,6 +1206,25 @@ impl SchemaFragment {
         })
     }
 
+    #[cfg(feature = "rfc55_backwards_compatible")]
+    #[deprecated]
+    /// Create a `SchemaFragment` from a JSON value (which should be an
+    /// object of the shape required for Cedar schemas). This function is provided
+    /// to provide backwards-compatible behavior with Cedar version 3.x. It will
+    /// be removed in a future release.
+    pub fn from_json_value_3_x_compatible(json: serde_json::Value) -> Result<Self, SchemaError> {
+        let compat =
+            cedar_policy_validator::compat::schema_file_format::SchemaFragment::from_json_value(
+                json,
+            )?;
+        let lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName> =
+            compat.into();
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
     /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
     pub fn from_file_natural(
         r: impl std::io::Read,
@@ -3134,6 +3153,43 @@ impl Request {
     /// decisions (e.g., because they are not used in your policies).
     /// If any of the fields are `None`, we will automatically generate
     /// a unique entity UID that is not equal to any UID in the store.
+    ///
+    /// If `schema` is present, this constructor will validate that the
+    /// `Request` complies with the given `schema`.
+    ///
+    /// This function is provided to provide backwards-compatible behavior with
+    /// Cedar version 3.x. It will be removed in a future release.
+    #[cfg(feature = "rfc55_backwards_compatible")]
+    #[deprecated]
+    pub fn new_3_x_compatible(
+        principal: Option<EntityUid>,
+        action: Option<EntityUid>,
+        resource: Option<EntityUid>,
+        context: Context,
+        schema: Option<&Schema>,
+    ) -> Result<Self, RequestValidationError> {
+        // PANIC SAFETY: unwrap of a constant
+        #[allow(clippy::unwrap_used)]
+        let unspecified: EntityUid = r#"__cedar::default::"default""#.parse().unwrap();
+        let r = ast::Request::new(
+            (
+                principal.unwrap_or_else(|| unspecified.clone()).into(),
+                None,
+            ),
+            (action.unwrap_or_else(|| unspecified.clone()).into(), None),
+            (resource.unwrap_or(unspecified).into(), None),
+            context.0,
+            schema.map(|schema| &schema.0),
+            Extensions::all_available(),
+        )?;
+
+        Ok(Self(r))
+    }
+
+    /// Create a Request.
+    ///
+    /// Note that you can create the `EntityUid`s using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
     ///
     /// If `schema` is present, this constructor will validate that the
     /// `Request` complies with the given `schema`.

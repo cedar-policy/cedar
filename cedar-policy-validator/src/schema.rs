@@ -37,6 +37,7 @@ use crate::{
     err::schema_errors::*,
     err::*,
     human_schema::SchemaWarning,
+    schema_file_format::DEFAULT_CEDAR_TYPE,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
@@ -441,13 +442,13 @@ impl ValidatorSchema {
             Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
 
             for p_entity in action.applies_to_principals() {
-                if !entity_types.contains_key(p_entity) {
+                if !entity_types.contains_key(p_entity) && p_entity.name() != &*DEFAULT_CEDAR_TYPE {
                     undeclared_e.insert(p_entity.clone());
                 }
             }
 
             for r_entity in action.applies_to_resources() {
-                if !entity_types.contains_key(r_entity) {
+                if !entity_types.contains_key(r_entity) && r_entity.name() != &*DEFAULT_CEDAR_TYPE {
                     undeclared_e.insert(r_entity.clone());
                 }
             }
