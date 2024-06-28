@@ -425,6 +425,7 @@ impl PartialResponse {
                         });
                     }
                     None => {
+                        // INVARIANT(ContextRecord): `val` is a record since `.get_as_record()` was Ok
                         context = Some(Context::from_partial_value_unchecked(val.clone().into()));
                     }
                 }

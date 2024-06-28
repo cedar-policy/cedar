@@ -42,12 +42,12 @@ pub mod entities_errors {
 /// Errors related to serializing/deserializing entities or contexts to/from JSON
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
-        ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
-        ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
-        ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
-        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
-        ReservedKey, Residual, TypeMismatch, TypeMismatchError, UnexpectedRecordAttr,
-        UnexpectedRestrictedExprKind, UnknownInImplicitConstructorArg,
+        ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
+        ExtensionFunctionLookup, ExtnCall0Arguments, ExtnCall2OrMoreArguments, HeterogeneousSet,
+        JsonDeserializationError, JsonError, JsonSerializationError, MissingImpliedConstructor,
+        MissingRequiredRecordAttr, ParseEscape, ReservedKey, Residual, TypeMismatch,
+        TypeMismatchError, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
+        UnknownInImplicitConstructorArg,
     };
 }
 

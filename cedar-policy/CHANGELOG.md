@@ -16,6 +16,9 @@ Cedar Language Version: 4.0
   resolving #549)
 - Added methods for reading and writing individual `Entity`s as JSON
   (resolving #807)
+- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
+  to combine `Context`s, returning an error on duplicate keys (#1027,
+  resolving #1013)
 
 ### Changed
 
