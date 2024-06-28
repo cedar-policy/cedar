@@ -3898,3 +3898,97 @@ mod issue_619 {
         );
     }
 }
+
+mod into_iter_entities {
+    use super::*;
+    use smol_str::SmolStr;
+
+    #[test]
+    fn into_iter_entities() {
+        let test_data = r#"
+        [
+        {
+        "uid": {"type":"User","id":"alice"},
+        "attrs": {
+            "age":19,
+            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+        },
+        "parents": [{"type":"Group","id":"admin"}]
+        },
+        {
+        "uid": {"type":"Group","id":"admin"},
+        "attrs": {},
+        "parents": []
+        }
+        ]
+        "#;
+
+        let list = Entities::from_json_str(test_data, None).unwrap();
+        let mut list_out: Vec<SmolStr> = list
+            .into_iter()
+            .map(|entity| entity.uid().id().escaped())
+            .collect();
+        list_out.sort();
+        assert_eq!(list_out, &["admin", "alice"]);
+    }
+}
+
+mod context_tests {
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn merge_contexts() {
+        let context_pt_1 = Context::from_json_value(json!({"key1": "foo", "key2": true}), None)
+            .expect("context creation should have succeeded");
+        let pairs = vec![(String::from("key3"), RestrictedExpression::new_long(42))];
+        let context_pt_2 =
+            Context::from_pairs(pairs).expect("context creation should have succeeded");
+
+        let context = context_pt_1
+            .merge(context_pt_2)
+            .expect("context merge should have succeeded");
+        let values = context.into_iter();
+        for (k, v) in values {
+            match k.as_ref() {
+                "key1" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                            assert_eq!(s.as_str(), "foo");
+                        }
+                    );
+                }
+                "key2" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Bool(true)),
+                    );
+                }
+                "key3" => {
+                    assert_matches!(
+                        v.into_inner().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Long(42)),
+                    );
+                }
+                _ => {
+                    panic!("unexpected key `{k}`");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn merge_contexts_duplicate_keys() {
+        let context_pt_1 = Context::from_json_value(json!({"key1": "foo", "key2": true}), None)
+            .expect("context creation should have succeeded");
+        let pairs = vec![(String::from("key2"), RestrictedExpression::new_long(42))];
+        let context_pt_2 =
+            Context::from_pairs(pairs).expect("context creation should have succeeded");
+
+        let err = context_pt_1.merge(context_pt_2).unwrap_err();
+        assert_eq!(err.to_string(), "duplicate key `key2` in context");
+    }
+}

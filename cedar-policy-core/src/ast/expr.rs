@@ -1000,9 +1000,11 @@ impl<T> ExprBuilder<T> {
         for (k, v) in pairs {
             match map.entry(k) {
                 btree_map::Entry::Occupied(oentry) => {
-                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                    return Err(expression_construction_errors::DuplicateKeyError {
                         key: oentry.key().clone(),
-                    });
+                        context: "in record literal",
+                    }
+                    .into());
                 }
                 btree_map::Entry::Vacant(ventry) => {
                     ventry.insert(v);
@@ -1148,12 +1150,39 @@ impl<T: Clone> ExprBuilder<T> {
 /// Errors when constructing an `Expr`
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum ExprConstructionError {
-    /// The same key occurred two or more times in a single record literal
-    #[error("duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
-        /// The key which occurred two or more times in the record literal
-        key: SmolStr,
-    },
+    /// The same key occurred two or more times
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateKey(#[from] expression_construction_errors::DuplicateKeyError),
+}
+
+/// Error subtypes for [`ExprConstructionError`]
+pub mod expression_construction_errors {
+    use miette::Diagnostic;
+    use smol_str::SmolStr;
+    use thiserror::Error;
+
+    /// The same key occurred two or more times
+    #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+    #[error("duplicate key `{key}` {context}")]
+    pub struct DuplicateKeyError {
+        /// The key which occurred two or more times
+        pub(crate) key: SmolStr,
+        /// Information about where the duplicate key occurred (e.g., "in record literal")
+        pub(crate) context: &'static str,
+    }
+
+    impl DuplicateKeyError {
+        /// Get the key which occurred two or more times
+        pub fn key(&self) -> &str {
+            &self.key
+        }
+
+        /// Make a new error with an updated `context` field
+        pub(crate) fn with_context(self, context: &'static str) -> Self {
+            Self { context, ..self }
+        }
+    }
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`

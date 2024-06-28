@@ -122,14 +122,10 @@ pub enum JsonDeserializationError {
         /// argument type of the constructor we were looking for
         arg_type: Box<SchemaType>,
     },
-    /// The same key appears two or more times in a single record literal
-    #[error("{ctx}, duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
-        /// Context of this error
-        ctx: Box<JsonDeserializationErrorContext>,
-        /// The key that appeared two or more times
-        key: SmolStr,
-    },
+    /// The same key appears two or more times in a single record
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateKey(DuplicateKey),
     /// Error when evaluating an entity attribute
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -236,6 +232,28 @@ pub enum JsonDeserializationError {
     /// Raised when the input JSON contains a `null`
     #[error("{0}, found a `null`; JSON `null`s are not allowed in Cedar")]
     Null(Box<JsonDeserializationErrorContext>),
+}
+
+impl JsonDeserializationError {
+    pub(crate) fn duplicate_key(
+        ctx: JsonDeserializationErrorContext,
+        key: impl Into<SmolStr>,
+    ) -> Self {
+        Self::DuplicateKey(DuplicateKey {
+            ctx: Box::new(ctx),
+            key: key.into(),
+        })
+    }
+}
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("{}, duplicate key `{}` in record", .ctx, .key)]
+/// Error type for records having duplicate keys
+pub struct DuplicateKey {
+    /// Context of this error
+    ctx: Box<JsonDeserializationErrorContext>,
+    /// The key that appeared two or more times
+    key: SmolStr,
 }
 
 /// Errors thrown during serialization to JSON
