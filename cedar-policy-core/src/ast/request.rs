@@ -23,12 +23,13 @@ use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::Serialize;
 use smol_str::SmolStr;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
-    PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprBuilder, ExprKind, ExpressionConstructionError,
+    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -208,60 +209,38 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
+///
+/// Context is serialized as a `RestrictedExpr`, for partly historical reasons.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Context {
-    /// Context is internally represented as a `PartialValue`
-    ///
-    /// Context is serialized as a `RestrictedExpr`, for partly historical reasons.
-    //
-    // INVARIANT(ContextRecord): This must be a `Record`: either
-    // `PartialValue::Value(Value::Record)` or `PartialValue::Residual(Expr::Record)`
-    #[serde(flatten)]
-    context: PartialValueSerializedAsExpr,
+pub enum Context {
+    /// The context is a concrete value.
+    Value(Arc<BTreeMap<SmolStr, Value>>),
+    /// The context is a residual expression, containing some unknown value in
+    /// the record attributes.
+    Residual(Arc<BTreeMap<SmolStr, Expr>>),
 }
 
 impl Context {
     /// Create an empty `Context`
-    //
-    // INVARIANT(ContextRecord): due to use of `Value::empty_record`
     pub fn empty() -> Self {
-        Self {
-            context: PartialValue::Value(Value::empty_record(None)).into(),
-        }
-    }
-
-    /// Create a `Context` from a `PartialValue` without checking its validity.
-    /// Should only be used in situations where the context invariant (which
-    /// guarantees that the context is a record) is assured to hold.
-    //
-    // WARNING: assumes INVARIANT(ContextRecord)
-    pub(crate) fn from_partial_value_unchecked(val: PartialValue) -> Self {
-        Self {
-            context: val.into(),
-        }
+        Self::Value(Arc::new(BTreeMap::new()))
     }
 
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
     ///
     /// `extensions` provides the `Extensions` which should be active for
     /// evaluating the `RestrictedExpr`.
-    //
-    // INVARIANT(ContextRecord): always constructs a record if it returns Ok
     pub fn from_expr(
         expr: BorrowedRestrictedExpr<'_>,
         extensions: Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
         match expr.expr_kind() {
-            // INVARIANT(ContextRecord): `RestrictedEvaluator::partial_interpret`
-            // always returns a record (or an error) given a record as input
             ExprKind::Record { .. } => {
                 let evaluator = RestrictedEvaluator::new(&extensions);
                 let pval = evaluator.partial_interpret(expr)?;
-                Ok(Self {
-                    context: pval.into(),
-                })
+                pval.try_into()
             }
-            _ => Err(ContextCreationError::not_a_record(expr.to_owned())),
+            _ => Err(ContextCreationError::not_a_record(expr.to_owned().into())),
         }
     }
 
@@ -274,7 +253,6 @@ impl Context {
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
-        // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
         match RestrictedExpr::record(pairs) {
             Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
             Err(ExpressionConstructionError::DuplicateKey(err)) => Err(
@@ -290,7 +268,6 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_str(json: &str) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_str` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_str(json)
     }
@@ -304,7 +281,6 @@ impl Context {
     pub fn from_json_value(
         json: serde_json::Value,
     ) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_value` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_value(json)
     }
@@ -318,7 +294,6 @@ impl Context {
     pub fn from_json_file(
         json: impl std::io::Read,
     ) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_file` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
     }
@@ -326,29 +301,18 @@ impl Context {
     /// Private helper function to implement `into_iter()` for `Context`.
     /// Gets an iterator over the (key, value) pairs in the `Context`, cloning
     /// only if necessary.
-    //
-    // PANIC SAFETY: This is safe due to the invariant (ContextRecord) on `self.context`
     fn into_values(self) -> Box<dyn Iterator<Item = (SmolStr, PartialValue)>> {
-        // PANIC SAFETY invariant on `self.context` ensures that it is a record
-        #[allow(clippy::panic)]
-        match self.context.into() {
-            PartialValue::Value(Value {
-                value: ValueKind::Record(record),
-                ..
-            }) => Box::new(
+        match self {
+            Context::Value(record) => Box::new(
                 Arc::unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, PartialValue::Value(v))),
             ),
-            PartialValue::Residual(expr) => match expr.into_expr_kind() {
-                ExprKind::Record(map) => Box::new(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k, PartialValue::Residual(v))),
-                ),
-                kind => panic!("internal invariant violation: expected a record, got {kind:?}"),
-            },
-            v => panic!("internal invariant violation: expected a record, got {v:?}"),
+            Context::Residual(record) => Box::new(
+                Arc::unwrap_or_clone(record)
+                    .into_iter()
+                    .map(|(k, v)| (k, PartialValue::Residual(v))),
+            ),
         }
     }
 }
@@ -385,15 +349,39 @@ impl IntoIterator for Context {
     }
 }
 
-impl AsRef<PartialValue> for Context {
-    fn as_ref(&self) -> &PartialValue {
-        &self.context
+impl From<Context> for PartialValue {
+    fn from(ctx: Context) -> PartialValue {
+        match ctx {
+            Context::Value(attrs) => {
+                PartialValue::Value(Value::new(ValueKind::Record(attrs), None))
+            }
+            Context::Residual(attrs) => {
+                PartialValue::Residual(ExprBuilder::new().record_arc(attrs))
+            }
+        }
     }
 }
 
-impl From<Context> for PartialValue {
-    fn from(ctx: Context) -> PartialValue {
-        ctx.context.into()
+impl TryFrom<PartialValue> for Context {
+    type Error = ContextCreationError;
+
+    fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
+        match value {
+            PartialValue::Value(v) => {
+                if let ValueKind::Record(attrs) = v.value {
+                    Ok(Context::Value(attrs))
+                } else {
+                    Err(ContextCreationError::not_a_record(v.into()))
+                }
+            }
+            PartialValue::Residual(e) => {
+                if let ExprKind::Record(attrs) = e.expr_kind() {
+                    Ok(Context::Residual(attrs.clone()))
+                } else {
+                    Err(ContextCreationError::not_a_record(e))
+                }
+            }
+        }
     }
 }
 
@@ -405,7 +393,7 @@ impl std::default::Default for Context {
 
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.context)
+        write!(f, "{}", Into::<PartialValue>::into(self.clone()))
     }
 }
 
@@ -428,7 +416,7 @@ pub enum ContextCreationError {
 }
 
 impl ContextCreationError {
-    pub(crate) fn not_a_record(expr: RestrictedExpr) -> Self {
+    pub(crate) fn not_a_record(expr: Expr) -> Self {
         Self::NotARecord(context_creation_errors::NotARecord {
             expr: Box::new(expr),
         })
@@ -437,7 +425,7 @@ impl ContextCreationError {
 
 /// Error subtypes for [`ContextCreationError`]
 pub mod context_creation_errors {
-    use super::RestrictedExpr;
+    use super::Expr;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -450,7 +438,7 @@ pub mod context_creation_errors {
     #[error("expression is not a record: {expr}")]
     pub struct NotARecord {
         /// Expression which is not a record
-        pub(super) expr: Box<RestrictedExpr>,
+        pub(super) expr: Box<Expr>,
     }
 
     // custom impl of `Diagnostic`: take source location from the `expr` field

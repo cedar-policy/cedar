@@ -415,19 +415,16 @@ impl PartialResponse {
         }
 
         if let Some((key, val)) = mapping.get_key_value("context") {
-            if val.get_as_record().is_ok() {
+            if let Ok(attrs) = val.get_as_record() {
                 match self.request.context() {
                     Some(ctx) => {
                         return Err(ConcretizationError::VarConfictError {
                             id: key.to_owned(),
-                            existing_value: ctx.as_ref().clone(),
+                            existing_value: ctx.clone().into(),
                             given_value: val.clone(),
                         });
                     }
-                    None => {
-                        // INVARIANT(ContextRecord): `val` is a record since `.get_as_record()` was Ok
-                        context = Some(Context::from_partial_value_unchecked(val.clone().into()));
-                    }
+                    None => context = Some(Context::Value(attrs.clone())),
                 }
             } else {
                 return Err(ConcretizationError::ValueError {
@@ -440,7 +437,7 @@ impl PartialResponse {
 
         // We need to replace unknowns in the partial context as well
         if let Some(ref ctx) = context {
-            if let PartialValue::Residual(residual) = ctx.as_ref() {
+            if let PartialValue::Residual(residual) = ctx.clone().into() {
                 let expr = residual.substitute(mapping);
                 let extns = Extensions::all_available();
                 let eval = RestrictedEvaluator::new(&extns);
@@ -453,7 +450,9 @@ impl PartialResponse {
                     (BorrowedRestrictedExpr::new_unchecked(&expr))?;
                 // Using the unchecked constructor of `Context` is justified
                 // because partially evaluating a context should yield a record
-                context = Some(Context::from_partial_value_unchecked(partial_value));
+                context = Some(TryInto::<Context>::try_into(partial_value).expect(
+                    "`TryInto::<Context>::try_into` should succeed when called on a record.",
+                ));
             }
         }
 
