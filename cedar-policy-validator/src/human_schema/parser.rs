@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Parser for schemas in human syntax
+
 use std::sync::Arc;
 
 use lalrpop_util::lalrpop_mod;
@@ -27,7 +29,7 @@ use super::{
 };
 
 lalrpop_mod!(
-    #[allow(warnings, unused)]
+    #[allow(warnings, unused, missing_docs, missing_debug_implementations)]
     //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unwrap_used)]
     //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
@@ -79,24 +81,36 @@ lazy_static::lazy_static! {
     static ref TYPE_PARSER: grammar::TypeParser = grammar::TypeParser::new();
 }
 
+/// Parse errors for parsing a human-syntax schema
 #[derive(Debug, Diagnostic, Error)]
 pub enum HumanSyntaxParseErrors {
+    /// Parse error for the human syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
     NaturalSyntaxError(#[from] err::ParseErrors),
+    /// Error converting the parsed representation into the internal JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
     JsonError(#[from] ToJsonSchemaErrors),
 }
 
-pub fn parse_type(src: &str) -> Result<crate::SchemaType, HumanSyntaxParseErrors> {
+/// Parse a type, in human syntax, into a [`crate::SchemaType`]
+pub fn parse_type(src: &str) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
     let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
     Ok(custom_type_to_json_type(ty)?)
 }
 
+/// Parse a schema fragment, in human syntax, into a [`crate::SchemaFragment`],
+/// possibly generating warnings
 pub fn parse_natural_schema_fragment(
     src: &str,
-) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), HumanSyntaxParseErrors> {
+) -> Result<
+    (
+        crate::SchemaFragment<crate::RawName>,
+        impl Iterator<Item = SchemaWarning>,
+    ),
+    HumanSyntaxParseErrors,
+> {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = custom_schema_to_json_schema(ast)?;
     Ok(tuple)

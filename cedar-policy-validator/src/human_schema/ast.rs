@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::Id,
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::SchemaTypeVariant;
+use crate::{RawName, SchemaTypeVariant};
 
 const IPADDR_EXTENSION: &str = "ipaddr";
 const DECIMAL_EXTENSION: &str = "decimal";
@@ -111,9 +111,9 @@ impl std::fmt::Display for Path {
     }
 }
 
-impl From<Path> for Name {
+impl From<Path> for RawName {
     fn from(value: Path) -> Self {
-        Self::new(
+        RawName::from_components(
             value.0.node.basename,
             value.0.node.namespace,
             Some(value.0.loc),
@@ -136,7 +136,7 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
+    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`)
     fn is_in_cedar(&self) -> bool {
         // `0` is the position of the most significant namespace
         self.namespace
@@ -150,7 +150,7 @@ impl PathInternal {
         self.namespace.is_empty() && self.basename.as_ref() == CEDAR_NAMESPACE
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
+    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace
     fn is_in_unqualified_or_cedar(&self) -> bool {
         self.namespace.is_empty() || self.is_in_cedar()
     }
@@ -202,6 +202,15 @@ impl Namespace {
     /// Is this [`Namespace`] unqualfiied?
     pub fn is_unqualified(&self) -> bool {
         self.name.is_none()
+    }
+
+    /// Get the name of this [`Namespace`] as a fully-qualified [`cedar_policy_core::ast::Name`],
+    /// or `None` for the empty namespace
+    pub fn name(&self) -> Option<cedar_policy_core::ast::Name> {
+        self.name.as_ref().map(|path| {
+            // `.qualify_with(None)` is OK because the `path` is already fully-qualified
+            crate::RawName::from(path.clone().node).qualify_with(None)
+        })
     }
 }
 
@@ -264,7 +273,7 @@ pub enum PrimitiveType {
     Bool,
 }
 
-impl From<PrimitiveType> for SchemaTypeVariant {
+impl<N> From<PrimitiveType> for SchemaTypeVariant<N> {
     fn from(value: PrimitiveType) -> Self {
         match value {
             PrimitiveType::Long => SchemaTypeVariant::Long,
@@ -315,7 +324,7 @@ pub struct PRAppDecl {
 /// A declaration of constraints on an action type
 #[derive(Debug, Clone)]
 pub enum AppDecl {
-    /// Constraints on the `principal`` or `resource``
+    /// Constraints on the `principal` or `resource`
     PR(PRAppDecl),
     /// Constraints on the `context`
     Context(Either<Path, Vec<Node<AttrDecl>>>),
@@ -324,9 +333,9 @@ pub enum AppDecl {
 /// An action declaration
 #[derive(Debug, Clone)]
 pub struct ActionDecl {
-    /// The names this declaration is bindings
-    /// More than one name can be bound if they have the same definition, for convenience
-    pub names: Vec<Node<SmolStr>>,
+    /// The names this declaration is binding.
+    /// More than one name can be bound if they have the same definition, for convenience.
+    pub names: NonEmpty<Node<SmolStr>>,
     /// The parents of this action
     pub parents: Option<NonEmpty<Node<QualName>>>,
     /// The constraining clauses in this declarations
@@ -335,7 +344,7 @@ pub struct ActionDecl {
 
 impl Decl for ActionDecl {
     fn names(&self) -> Vec<Node<SmolStr>> {
-        self.names.clone()
+        self.names.iter().cloned().collect()
     }
 }
 

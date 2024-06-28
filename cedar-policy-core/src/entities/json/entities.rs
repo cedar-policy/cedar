@@ -19,9 +19,7 @@ use super::{
     CedarValueJson, EntityTypeDescription, EntityUidJson, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
-use crate::ast::{
-    BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue, RestrictedExpr,
-};
+use crate::ast::{BorrowedRestrictedExpr, Entity, EntityUID, PartialValue, RestrictedExpr};
 use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
     conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
@@ -283,12 +281,9 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     )?)
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
-                        let suggested_types = match etype {
-                            EntityType::Specified(name) => {
-                                schema.entity_types_with_basename(name.basename()).collect()
-                            }
-                            EntityType::Unspecified => vec![],
-                        };
+                        let suggested_types = schema
+                            .entity_types_with_basename(etype.name().basename())
+                            .collect();
                         JsonDeserializationError::EntitySchemaConformance(
                             UnexpectedEntityTypeError {
                                 uid: uid.clone(),

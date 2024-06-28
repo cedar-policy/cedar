@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{Eid, Expr, Name, PolicyID};
+use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::Type;
@@ -41,6 +41,8 @@ pub struct ValidationResult {
 }
 
 impl ValidationResult {
+    /// Create a new `ValidationResult` with these errors and warnings.
+    /// Empty iterators are allowed for either or both arguments.
     pub fn new(
         errors: impl IntoIterator<Item = ValidationError>,
         warnings: impl IntoIterator<Item = ValidationWarning>,
@@ -101,11 +103,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -145,9 +142,12 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     FunctionArgumentValidation(#[from] validation_errors::FunctionArgumentValidation),
+    /// The policy uses an empty set literal in a way that is forbidden
     #[diagnostic(transparent)]
     #[error(transparent)]
     EmptySetForbidden(#[from] validation_errors::EmptySetForbidden),
+    /// The policy passes a non-literal to an extension constructor, which is
+    /// forbidden in strict validation
     #[diagnostic(transparent)]
     #[error(transparent)]
     NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
@@ -202,19 +202,6 @@ impl ValidationError {
             policy_id,
             would_in_fix_principal,
             would_in_fix_resource,
-        }
-        .into()
-    }
-
-    pub(crate) fn unspecified_entity(
-        source_loc: Option<Loc>,
-        policy_id: PolicyID,
-        entity_id: Eid,
-    ) -> Self {
-        validation_errors::UnspecifiedEntity {
-            source_loc,
-            policy_id,
-            entity_id,
         }
         .into()
     }
@@ -357,8 +344,8 @@ impl ValidationError {
         source_loc: Option<Loc>,
 
         policy_id: PolicyID,
-        in_lhs: Option<Name>,
-        in_rhs: Option<Name>,
+        in_lhs: Option<EntityType>,
+        in_rhs: Option<EntityType>,
     ) -> Self {
         validation_errors::HierarchyNotRespected {
             source_loc,

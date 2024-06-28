@@ -20,13 +20,17 @@ use thiserror::Error;
 
 use crate::human_schema;
 
+/// Error creating a schema from human syntax
 #[derive(Debug, Error, Diagnostic)]
 pub enum HumanSchemaError {
+    /// Errors with the schema content
     #[error(transparent)]
     #[diagnostic(transparent)]
     Schema(#[from] SchemaError),
+    /// IO error
     #[error(transparent)]
     IO(#[from] std::io::Error),
+    /// Parse error
     #[error(transparent)]
     #[diagnostic(transparent)]
     Parsing(#[from] HumanSyntaxParseError),
@@ -230,6 +234,7 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
     }
 }
 
+/// Convenience alias
 pub type Result<T> = std::result::Result<T, SchemaError>;
 
 /// Error subtypes for [`SchemaError`]
@@ -237,7 +242,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityUID, Id, Name},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -261,7 +266,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    #[error("transitive closure computation/enforcement error on action hierarchy")]
     #[diagnostic(transparent)]
     pub struct ActionTransitiveClosureError(
         #[from] pub(crate) Box<transitive_closure::TcError<EntityUID>>,
@@ -273,10 +278,10 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
+    #[error("transitive closure computation/enforcement error on entity type hierarchy")]
     #[diagnostic(transparent)]
     pub struct EntityTypeTransitiveClosureError(
-        #[from] pub(crate) Box<transitive_closure::TcError<Name>>,
+        #[from] pub(crate) Box<transitive_closure::TcError<EntityType>>,
     );
 
     /// Undeclared entity types error
@@ -288,7 +293,7 @@ pub mod schema_errors {
     #[diagnostic(help(
         "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
     ))]
-    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<Name>);
+    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<EntityType>);
 
     impl Display for UndeclaredEntityTypesError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -338,7 +343,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate entity type `{0}`")]
-    pub struct DuplicateEntityTypeError(pub(crate) Name);
+    pub struct DuplicateEntityTypeError(pub(crate) EntityType);
 
     /// Duplicate action error
     //
@@ -445,14 +450,14 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("unsupported feature used in schema: {0}")]
+    #[error("unsupported feature used in schema")]
     #[diagnostic(transparent)]
     pub struct UnsupportedFeatureError(#[from] pub(crate) UnsupportedFeature);
 
     #[derive(Debug)]
     pub(crate) enum ContextOrShape {
         ActionContext(EntityUID),
-        EntityTypeShape(Name),
+        EntityTypeShape(EntityType),
     }
 
     impl std::fmt::Display for ContextOrShape {
@@ -485,19 +490,24 @@ pub mod schema_errors {
     pub struct JsonDeserializationError {
         /// Error thrown by the `serde_json` crate
         err: serde_json::Error,
-        /// Did the schema look like it was intended to be human format instead of
-        /// JSON?
-        suspect_human_format: bool,
+        /// Possible fix for the error
+        advice: Option<JsonDeserializationAdvice>,
     }
 
     impl Diagnostic for JsonDeserializationError {
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            if self.suspect_human_format {
-                Some(Box::new("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"))
-            } else {
-                None
-            }
+            self.advice
+                .as_ref()
+                .map(|h| Box::new(h) as Box<dyn Display>)
         }
+    }
+
+    #[derive(Debug, Error)]
+    enum JsonDeserializationAdvice {
+        #[error("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?")]
+        HumanFormat,
+        #[error("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{{ \"\": {{..}} }}`")]
+        MissingNamespace,
     }
 
     impl JsonDeserializationError {
@@ -506,21 +516,36 @@ pub mod schema_errors {
         /// `src`: the JSON that we were trying to deserialize (if available in string form)
         pub(crate) fn new(err: serde_json::Error, src: Option<&str>) -> Self {
             match src {
-                None => Self {
-                    err,
-                    suspect_human_format: false,
-                },
+                None => Self { err, advice: None },
                 Some(src) => {
                     // let's see what the first non-whitespace character is
-                    let suspect_human_format = match src.trim_start().chars().next() {
-                        None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
-                        Some('{') => false, // yes, this looks like it was intended to be a JSON schema
-                        Some(_) => true, // any character other than '{', we suspect it might be a human-format schema
+                    let advice = match src.trim_start().chars().next() {
+                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+                        Some('{') => {
+                            // This looks like it was intended to be a JSON schema. Check fields of top level JSON object to see
+                            // if it looks like it's missing a namespace.
+                            if let Ok(serde_json::Value::Object(obj)) =
+                                serde_json::from_str::<serde_json::Value>(src)
+                            {
+                                if obj.contains_key("entityTypes")
+                                    || obj.contains_key("actions")
+                                    || obj.contains_key("commonTypes")
+                                {
+                                    // These keys are expected inside a namespace, so it's likely the user forgot to specify a
+                                    // namespace if they're at the top level of the schema json object.
+                                    Some(JsonDeserializationAdvice::MissingNamespace)
+                                } else {
+                                    // Probably something wrong inside a namespace definition.
+                                    None
+                                }
+                            } else {
+                                // Invalid JSON
+                                None
+                            }
+                        }
+                        Some(_) => Some(JsonDeserializationAdvice::HumanFormat), // any character other than '{', we suspect it might be a human-format schema
                     };
-                    Self {
-                        err,
-                        suspect_human_format,
-                    }
+                    Self { err, advice }
                 }
             }
         }

@@ -34,14 +34,14 @@
 // cloning.
 
 use super::cst;
-use super::err::{self, parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
+use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityUID, Integer, PatternElem,
-    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
+    PrincipalOrResourceConstraint, ResourceConstraint,
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
@@ -50,6 +50,12 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
 use std::sync::Arc;
+
+/// Defines the function `cst::Expr::to_ref_or_refs` and other similar functions
+/// for converting CST expressions into one or multiple entity UIDS. Used to
+/// extract entity uids from expressions that appear in the policy scope.
+mod to_ref_or_refs;
+use to_ref_or_refs::OneOrMultipleRefs;
 
 /// Type alias for convenience
 type Result<T> = std::result::Result<T, ParseErrors>;
@@ -247,7 +253,7 @@ impl cst::Policy {
         // this position to indicate where to fill in vars if we're missing one.
         let mut end_of_last_var = self.effect.loc.end();
 
-        let mut vars = self.variables.iter().peekable();
+        let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
             scope1.to_principal_constraint()
@@ -277,22 +283,18 @@ impl cst::Policy {
             )
             .into())
         };
-        let maybe_extra_vars = if vars.peek().is_some() {
+
+        let maybe_extra_vars = if let Some(errs) = ParseErrors::from_iter(
             // Add each of the extra constraints to the error list
-            let mut errs: Vec<ParseError> = vec![];
-            for extra_var in vars {
-                if let Some(def) = extra_var.as_inner() {
-                    errs.push(
-                        extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone()))
-                            .into(),
-                    )
-                }
-            }
-            match ParseErrors::from_iter(errs) {
-                None => Ok(()),
-                Some(errs) => Err(errs),
-            }
+            vars.map(|extra_var| {
+                extra_var
+                    .try_as_inner()
+                    .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
+                    .unwrap_or_else(|e| e)
+                    .into()
+            }),
+        ) {
+            Err(errs)
         } else {
             Ok(())
         };
@@ -540,7 +542,7 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    Arc::new(entity_type.to_expr_or_special()?.into_name()?),
+                    Arc::new(entity_type.to_expr_or_special()?.into_entity_type()?),
                     eref,
                 )),
                 (cst::RelOp::InvalidSingleEq, _) => {
@@ -550,7 +552,7 @@ impl Node<Option<cst::VariableDef>> {
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Ok(PrincipalOrResourceConstraint::Is(Arc::new(
-                entity_type.to_expr_or_special()?.into_name()?,
+                entity_type.to_expr_or_special()?.into_entity_type()?,
             )))
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
@@ -795,6 +797,10 @@ impl ExprOrSpecial<'_> {
         }
     }
 
+    fn into_entity_type(self) -> Result<ast::EntityType> {
+        self.into_name().map(ast::EntityType::from)
+    }
+
     fn into_name(self) -> Result<ast::Name> {
         match self {
             Self::StrLit { lit, .. } => Err(self
@@ -810,33 +816,6 @@ impl ExprOrSpecial<'_> {
 }
 
 impl Node<Option<cst::Expr>> {
-    fn to_ref(&self, var: ast::Var) -> Result<EntityUID> {
-        self.to_ref_or_refs::<SingleEntity>(var).map(|x| x.0)
-    }
-
-    fn to_ref_or_slot(&self, var: ast::Var) -> Result<EntityReference> {
-        self.to_ref_or_refs::<EntityReference>(var)
-    }
-
-    fn to_refs(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
-        self.to_ref_or_refs::<OneOrMultipleRefs>(var)
-    }
-
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let expr = self.try_as_inner()?;
-
-        match &*expr.expr {
-            cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(var),
-            cst::ExprData::If(_, _, _) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "an `if` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
     /// convert `cst::Expr` to `ast::Expr`
     pub fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
@@ -861,111 +840,6 @@ impl Node<Option<cst::Expr>> {
     }
 }
 
-/// Type level marker for parsing sets of entity uids or single uids
-/// This presents having either a large level of code duplication
-/// or runtime data.
-/// This marker is (currently) only used for translating entity references
-/// in the policy scope.
-trait RefKind: Sized {
-    fn err_str() -> &'static str;
-    fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
-    fn create_multiple_refs(es: Vec<EntityUID>, loc: &Loc) -> Result<Self>;
-    fn create_slot(loc: &Loc) -> Result<Self>;
-}
-
-struct SingleEntity(pub EntityUID);
-
-impl RefKind for SingleEntity {
-    fn err_str() -> &'static str {
-        "an entity uid"
-    }
-
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
-        Ok(SingleEntity(e))
-    }
-
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
-        Err(ToASTError::new(
-            ToASTErrorKind::wrong_entity_argument_one_expected(
-                err::parse_errors::Ref::Single,
-                err::parse_errors::Ref::Set,
-            ),
-            loc.clone(),
-        )
-        .into())
-    }
-
-    fn create_slot(loc: &Loc) -> Result<Self> {
-        Err(ToASTError::new(
-            ToASTErrorKind::wrong_entity_argument_one_expected(
-                err::parse_errors::Ref::Single,
-                err::parse_errors::Ref::Template,
-            ),
-            loc.clone(),
-        )
-        .into())
-    }
-}
-
-impl RefKind for EntityReference {
-    fn err_str() -> &'static str {
-        "an entity uid or matching template slot"
-    }
-
-    fn create_slot(_loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::Slot)
-    }
-
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::euid(Arc::new(e)))
-    }
-
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
-        Err(ToASTError::new(
-            ToASTErrorKind::wrong_entity_argument_two_expected(
-                err::parse_errors::Ref::Single,
-                err::parse_errors::Ref::Template,
-                err::parse_errors::Ref::Set,
-            ),
-            loc.clone(),
-        )
-        .into())
-    }
-}
-
-/// Simple utility enum for parsing lists/individual entityuids
-#[derive(Debug)]
-enum OneOrMultipleRefs {
-    Single(EntityUID),
-    Multiple(Vec<EntityUID>),
-}
-
-impl RefKind for OneOrMultipleRefs {
-    fn err_str() -> &'static str {
-        "an entity uid or set of entity uids"
-    }
-
-    fn create_slot(loc: &Loc) -> Result<Self> {
-        Err(ToASTError::new(
-            ToASTErrorKind::wrong_entity_argument_two_expected(
-                err::parse_errors::Ref::Single,
-                err::parse_errors::Ref::Set,
-                err::parse_errors::Ref::Template,
-            ),
-            loc.clone(),
-        )
-        .into())
-    }
-
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
-        Ok(OneOrMultipleRefs::Single(e))
-    }
-
-    fn create_multiple_refs(es: Vec<EntityUID>, _loc: &Loc) -> Result<Self> {
-        Ok(OneOrMultipleRefs::Multiple(es))
-    }
-}
-
 impl Node<Option<cst::Or>> {
     fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let or = self.try_as_inner()?;
@@ -984,39 +858,9 @@ impl Node<Option<cst::Or>> {
             }),
         }
     }
-
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let or = self.try_as_inner()?;
-
-        match or.extended.len() {
-            0 => or.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `||` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
 }
 
 impl Node<Option<cst::And>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let and = self.try_as_inner()?;
-
-        match and.extended.len() {
-            0 => and.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `&&` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1040,44 +884,6 @@ impl Node<Option<cst::And>> {
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let rel = self.try_as_inner()?;
-
-        match rel {
-            cst::Relation::Common { initial, extended } => match extended.len() {
-                0 => initial.to_ref_or_refs::<T>(var),
-                _n => Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        "a binary operator",
-                        None::<String>,
-                    ))
-                    .into()),
-            },
-            cst::Relation::Has { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `has` expression",
-                    None::<String>,
-                ))
-                .into()),
-            cst::Relation::Like { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `like` expression",
-                    None::<String>,
-                ))
-                .into()),
-            cst::Relation::IsIn { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "an `is` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1132,7 +938,7 @@ impl Node<Option<cst::Relation>> {
                 in_entity,
             } => {
                 let maybe_target = target.to_expr();
-                let maybe_entity_type = entity_type.to_expr_or_special()?.into_name();
+                let maybe_entity_type = entity_type.to_expr_or_special()?.into_entity_type();
                 let (t, n) = flatten_tuple_2(maybe_target, maybe_entity_type)?;
                 match in_entity {
                     Some(in_entity) => {
@@ -1158,17 +964,6 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let add = self.try_as_inner()?;
-
-        match add.extended.len() {
-            0 => add.initial.to_ref_or_refs::<T>(var),
-            _n => {
-                Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `+/-` expression", Some("entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"))).into())
-            }
-        }
-    }
-
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1196,21 +991,6 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let mult = self.try_as_inner()?;
-
-        match mult.extended.len() {
-            0 => mult.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `*` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1243,21 +1023,6 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let unary = self.try_as_inner()?;
-
-        match &unary.op {
-            Some(op) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    format!("a `{op}` expression"),
-                    None::<String>,
-                ))
-                .into()),
-            None => unary.item.to_ref_or_refs::<T>(var),
-        }
-    }
-
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1348,17 +1113,6 @@ impl Node<Option<cst::Member>> {
         match m.item.as_ref().node.as_ref()? {
             cst::Primary::Literal(lit) => lit.as_ref().node.as_ref(),
             _ => None,
-        }
-    }
-
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let mem = self.try_as_inner()?;
-
-        match mem.access.len() {
-            0 => mem.item.to_ref_or_refs::<T>(var),
-            _n => {
-                Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
-            }
         }
     }
 
@@ -1587,72 +1341,6 @@ impl Node<Option<cst::MemAccess>> {
 }
 
 impl Node<Option<cst::Primary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let prim = self.try_as_inner()?;
-
-        match prim {
-            cst::Primary::Slot(s) => {
-                // Call `create_slot` first so that we fail immediately if the
-                // `RefKind` does not permit slots, and only then complain if
-                // it's the wrong slot. This avoids getting an error
-                // `found ?action instead of ?action` when `action` doesn't
-                // support slots.
-                let slot_ref = T::create_slot(&self.loc)?;
-                let slot = s.try_as_inner()?;
-                if slot.matches(var) {
-                    Ok(slot_ref)
-                } else {
-                    Err(self
-                        .to_ast_err(ToASTErrorKind::wrong_node(
-                            T::err_str(),
-                            format!("{slot} instead of ?{var}"),
-                            None::<String>,
-                        ))
-                        .into())
-                }
-            }
-            cst::Primary::Literal(lit) => {
-                let found = match lit.as_inner() {
-                    Some(lit) => format!("literal `{lit}`"),
-                    None => "empty node".to_string(),
-                };
-                Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        None::<String>,
-                    ))
-                    .into())
-            }
-            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?, &self.loc),
-            cst::Primary::Name(name) => {
-                let found = match name.as_inner() {
-                    Some(name) => format!("name `{name}`"),
-                    None => "name".to_string(),
-                };
-                Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        None::<String>,
-                    ))
-                    .into())
-            }
-            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
-            cst::Primary::EList(lst) => {
-                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
-                T::create_multiple_refs(v, &self.loc)
-            }
-            cst::Primary::RInits(_) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "record initializer",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
     pub(crate) fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
@@ -1841,7 +1529,7 @@ impl Node<Option<cst::Ref>> {
 
         match refr {
             cst::Ref::Uid { path, eid } => {
-                let maybe_path = path.to_name();
+                let maybe_path = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid.as_valid_string().and_then(|s| {
                     to_unescaped_string(s).map_err(|escape_errs| {
                         ParseErrors::new_from_nonempty(
@@ -1962,7 +1650,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
         loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::Name, n: SmolStr, loc: Loc) -> ast::EntityUID {
+fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
     ast::EntityUID::from_components(p, eid, Some(loc))
 }
@@ -2074,7 +1762,7 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
 }
-fn construct_expr_is(e: ast::Expr, n: ast::Name, loc: Loc) -> ast::Expr {
+fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new()
         .with_source_loc(loc)
         .is_entity_type(e, n)
@@ -2129,7 +1817,7 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, loc: Loc) -> Result<ast
 mod tests {
     use super::*;
     use crate::{
-        ast::Expr,
+        ast::{EntityUID, Expr},
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
@@ -4095,7 +3783,7 @@ mod tests {
                     .build(),
             ),
             (
-                // `_ in _ is _` in the policy condition is an error in the text->CST parser 
+                // `_ in _ is _` in the policy condition is an error in the text->CST parser
                 r#"permit(principal, action, resource) when { principal in Group::"friends" is User };"#,
                 ExpectedErrorMessageBuilder::error("unexpected token `is`")
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
@@ -4475,6 +4163,22 @@ mod tests {
                 "try using '==' instead",
             ).exactly_one_underline("principal = User::\"alice\"").build());
         });
+        let p_src = r#"permit(principal, action = Action::"act", resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("action = Action::\"act\"").build());
+        });
+        let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("resource = Photo::\"photo\"").build());
+        });
     }
 
     #[test]
@@ -4502,6 +4206,10 @@ mod tests {
         let src = "7 % 3";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("remainder/modulo is not supported").exactly_one_underline("7 % 3").build());
+        });
+        let src = "7 = 3";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("'=' is not a valid operator in Cedar").exactly_one_underline("7 = 3").help("try using '==' instead").build());
         });
     }
 
@@ -4623,5 +4331,35 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
+    }
+
+    #[test]
+    fn arbitrary_name_attr_access() {
+        let src = "foo.attr";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("invalid member access `foo.attr`, `foo` has no fields or methods")
+                    .exactly_one_underline("foo.attr")
+                    .build()
+            );
+        });
+
+        let src = r#"foo["attr"]"#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"invalid indexing expression `foo["attr"]`, `foo` has no fields"#)
+                    .exactly_one_underline(r#"foo["attr"]"#)
+                    .build()
+            );
+        });
+
+        let src = r#"foo["\n"]"#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"invalid indexing expression `foo["\n"]`, `foo` has no fields"#)
+                    .exactly_one_underline(r#"foo["\n"]"#)
+                    .build()
+            );
+        });
     }
 }

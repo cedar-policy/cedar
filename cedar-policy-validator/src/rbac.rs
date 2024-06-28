@@ -18,8 +18,8 @@
 
 use cedar_policy_core::{
     ast::{
-        self, ActionConstraint, EntityReference, EntityUID, Name, Policy, PolicyID,
-        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
+        PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
     parser::Loc,
 };
@@ -48,38 +48,23 @@ impl Validator {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
-        policy_entity_type_names(template)
-            .filter_map(move |name| {
-                let is_action_entity_type = is_action_entity_type(name);
-                let is_known_entity_type = self.schema.is_known_entity_type(name);
+        policy_entity_type_names(template).filter_map(move |name| {
+            let is_known_entity_type = self.schema.is_known_entity_type(name);
 
-                if !is_action_entity_type && !is_known_entity_type {
-                    let actual_entity_type = name.to_string();
-                    let suggested_entity_type =
-                        fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                    Some(ValidationError::unrecognized_entity_type(
-                        name.loc().cloned(),
-                        template.id().clone(),
-                        actual_entity_type,
-                        suggested_entity_type,
-                    ))
-                } else {
-                    None
-                }
-            })
-            .chain(policy_entity_uids(template).filter_map(move |euid| {
-                let entity_type = euid.entity_type();
-                match entity_type {
-                    cedar_policy_core::ast::EntityType::Unspecified => {
-                        Some(ValidationError::unspecified_entity(
-                            euid.loc().cloned(),
-                            template.id().clone(),
-                            euid.eid().clone(),
-                        ))
-                    }
-                    cedar_policy_core::ast::EntityType::Specified(_) => None,
-                }
-            }))
+            if !name.is_action() && !is_known_entity_type {
+                let actual_entity_type = name.to_string();
+                let suggested_entity_type =
+                    fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
+                Some(ValidationError::unrecognized_entity_type(
+                    name.loc().cloned(),
+                    template.id().clone(),
+                    actual_entity_type,
+                    suggested_entity_type,
+                ))
+            } else {
+                None
+            }
+        })
     }
 
     /// Generate `UnrecognizedActionId` error for every entity id with an action
@@ -98,34 +83,21 @@ impl Validator {
             .collect::<Vec<_>>();
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
-            match entity_type {
-                ast::EntityType::Unspecified => Some(ValidationError::unspecified_entity(
+            if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
+                Some(ValidationError::unrecognized_action_id(
                     euid.loc().cloned(),
                     template.id().clone(),
-                    euid.eid().clone(),
-                )),
-                ast::EntityType::Specified(name) => {
-                    let is_known_action_entity_id = self.schema.is_known_action_id(euid);
-                    let is_action_entity_type = is_action_entity_type(name);
-
-                    if is_action_entity_type && !is_known_action_entity_id {
-                        Some(ValidationError::unrecognized_action_id(
-                            euid.loc().cloned(),
-                            template.id().clone(),
-                            euid.to_string(),
-                            fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
-                        ))
-                    } else {
-                        None
-                    }
-                }
+                    euid.to_string(),
+                    fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
+                ))
+            } else {
+                None
             }
         })
     }
 
-    /// Generate `UnrecognizedEntityType` or `UnspecifiedEntity` error for
-    /// every entity type in the slot environment that is either not in the schema,
-    /// or unspecified.
+    /// Generate `UnrecognizedEntityType` error for
+    /// every entity type in the slot environment that is not in the schema
     pub(crate) fn validate_entity_types_in_slots<'a>(
         &'a self,
         policy_id: &'a PolicyID,
@@ -141,29 +113,18 @@ impl Validator {
 
         slots.values().filter_map(move |euid| {
             let entity_type = euid.entity_type();
-            match entity_type {
-                cedar_policy_core::ast::EntityType::Unspecified => {
-                    Some(ValidationError::unspecified_entity(
-                        None,
-                        policy_id.clone(),
-                        euid.eid().clone(),
-                    ))
-                }
-                cedar_policy_core::ast::EntityType::Specified(name) => {
-                    if !self.schema.is_known_entity_type(name) {
-                        let actual_entity_type = entity_type.to_string();
-                        let suggested_entity_type =
-                            fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                        Some(ValidationError::unrecognized_entity_type(
-                            None,
-                            policy_id.clone(),
-                            actual_entity_type,
-                            suggested_entity_type,
-                        ))
-                    } else {
-                        None
-                    }
-                }
+            if !self.schema.is_known_entity_type(entity_type) {
+                let actual_entity_type = entity_type.to_string();
+                let suggested_entity_type =
+                    fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
+                Some(ValidationError::unrecognized_entity_type(
+                    None,
+                    policy_id.clone(),
+                    actual_entity_type,
+                    suggested_entity_type,
+                ))
+            } else {
+                None
             }
         })
     }
@@ -220,18 +181,15 @@ impl Validator {
     fn check_if_none_equal<'a>(
         &'a self,
         specs: &[&'a ValidatorApplySpec],
-        lit_opt: Option<&Name>,
+        lit_opt: Option<&ast::EntityType>,
         select_apply_spec: &impl Fn(
             &'a ValidatorApplySpec,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
         if let Some(lit) = lit_opt {
-            !specs.iter().any(|spec| {
-                select_apply_spec(spec).any(|e| match e {
-                    ast::EntityType::Specified(e) => e == lit,
-                    ast::EntityType::Unspecified => false,
-                })
-            })
+            !specs
+                .iter()
+                .any(|spec| select_apply_spec(spec).any(|e| e == lit))
         } else {
             false
         }
@@ -242,18 +200,15 @@ impl Validator {
     fn check_if_any_contain<'a>(
         &'a self,
         specs: &[&'a ValidatorApplySpec],
-        lit_opt: Option<&Name>,
+        lit_opt: Option<&ast::EntityType>,
         select_apply_spec: &impl Fn(
             &'a ValidatorApplySpec,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
         if let Some(etype) = lit_opt.and_then(|typename| self.schema.get_entity_type(typename)) {
-            specs.iter().any(|spec| {
-                select_apply_spec(spec).any(|p| match p {
-                    ast::EntityType::Specified(p) => etype.descendants.contains(p),
-                    ast::EntityType::Unspecified => false,
-                })
-            })
+            specs
+                .iter()
+                .any(|spec| select_apply_spec(spec).any(|p| etype.descendants.contains(p)))
         } else {
             false
         }
@@ -261,13 +216,12 @@ impl Validator {
 
     /// Check if an expression is an equality comparison between a literal EUID
     /// and a scope variable.  If it is, return the type of the literal EUID.
-    fn get_eq_comparison(scope_constraint: &PrincipalOrResourceConstraint) -> Option<&Name> {
+    fn get_eq_comparison(
+        scope_constraint: &PrincipalOrResourceConstraint,
+    ) -> Option<&ast::EntityType> {
         match scope_constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
-                match euid.entity_type() {
-                    ast::EntityType::Specified(name) => Some(name),
-                    ast::EntityType::Unspecified => None,
-                }
+                Some(euid.entity_type())
             }
             _ => None,
         }
@@ -312,10 +266,10 @@ impl Validator {
         resource_constraint: &ResourceConstraint,
     ) -> impl Iterator<Item = ValidationError> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
-        let resources_for_scope: HashSet<&Name> = self
+        let resources_for_scope: HashSet<&ast::EntityType> = self
             .get_resources_satisfying_constraint(resource_constraint)
             .collect();
-        let principals_for_scope: HashSet<&Name> = self
+        let principals_for_scope: HashSet<&ast::EntityType> = self
             .get_principals_satisfying_constraint(principal_constraint)
             .collect();
 
@@ -332,40 +286,17 @@ impl Validator {
         ))
         .filter(|_| {
             !apply_specs.any(|spec| {
-                let action_principals = spec
-                    .applicable_principal_types()
-                    .filter_map(|ty| match ty {
-                        ast::EntityType::Specified(name) => Some(name),
-                        ast::EntityType::Unspecified => None,
-                    })
-                    .collect::<HashSet<_>>();
-                let applicable_principal_unspecified = spec
-                    .applicable_principal_types()
-                    .any(|ty| matches!(ty, ast::EntityType::Unspecified));
-                let action_resources = spec
-                    .applicable_resource_types()
-                    .filter_map(|ty| match ty {
-                        ast::EntityType::Specified(name) => Some(name),
-                        ast::EntityType::Unspecified => None,
-                    })
-                    .collect::<HashSet<_>>();
-                let applicable_resource_unspecified = spec
-                    .applicable_resource_types()
-                    .any(|ty| matches!(ty, ast::EntityType::Unspecified));
-
-                let matching_principal = applicable_principal_unspecified
-                    || !principals_for_scope.is_disjoint(&action_principals);
-                let matching_resource = applicable_resource_unspecified
-                    || !resources_for_scope.is_disjoint(&action_resources);
+                let action_principals = spec.applicable_principal_types().collect::<HashSet<_>>();
+                let action_resources = spec.applicable_resource_types().collect::<HashSet<_>>();
+                let matching_principal = !principals_for_scope.is_disjoint(&action_principals);
+                let matching_resource = !resources_for_scope.is_disjoint(&action_resources);
                 matching_principal && matching_resource
             })
         })
         .into_iter()
     }
 
-    /// Gather all ApplySpec objects for all actions in the schema. The `applies_to`
-    /// field is optional in the schema. In the case that it was not supplied, the
-    /// `applies_to` field will contain `UnspecifiedEntity`.
+    /// Gather all `ApplySpec` objects for all actions in the schema.
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
         action_constraint: &'a ActionConstraint,
@@ -403,7 +334,7 @@ impl Validator {
     pub(crate) fn get_principals_satisfying_constraint<'a>(
         &'a self,
         principal_constraint: &'a PrincipalConstraint,
-    ) -> impl Iterator<Item = &'a Name> + 'a {
+    ) -> impl Iterator<Item = &'a ast::EntityType> + 'a {
         self.get_entity_types_satisfying_constraint(principal_constraint.as_inner())
     }
 
@@ -412,7 +343,7 @@ impl Validator {
     pub(crate) fn get_resources_satisfying_constraint<'a>(
         &'a self,
         resource_constraint: &'a ResourceConstraint,
-    ) -> impl Iterator<Item = &'a Name> + 'a {
+    ) -> impl Iterator<Item = &'a ast::EntityType> + 'a {
         self.get_entity_types_satisfying_constraint(resource_constraint.as_inner())
     }
 
@@ -421,18 +352,14 @@ impl Validator {
     fn get_entity_types_satisfying_constraint<'a>(
         &'a self,
         scope_constraint: &'a PrincipalOrResourceConstraint,
-    ) -> Box<dyn Iterator<Item = &'a Name> + 'a> {
+    ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a> {
         match scope_constraint {
             // <var>
             PrincipalOrResourceConstraint::Any => Box::new(self.schema.known_entity_types()),
             // <var> == <literal euid>
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Box::new(
-                match euid.entity_type() {
-                    ast::EntityType::Specified(name) => Some(name),
-                    ast::EntityType::Unspecified => None,
-                }
-                .into_iter(),
-            ),
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
+                Box::new(std::iter::once(euid.entity_type()))
+            }
             // <var> in <literal euid>
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
                 Box::new(self.schema.get_entity_types_in(euid.as_ref()).into_iter())
@@ -483,11 +410,9 @@ mod test {
     use super::*;
     use crate::{
         schema_file_format::{NamespaceDefinition, *},
-        validation_errors::{UnrecognizedEntityType, UnspecifiedEntity},
-        ValidationMode, ValidationWarning, Validator,
+        validation_errors::UnrecognizedEntityType,
+        RawName, ValidationMode, ValidationWarning, Validator,
     };
-
-    use cool_asserts::assert_matches;
 
     #[test]
     fn validate_entity_type_empty_schema() {
@@ -509,7 +434,7 @@ mod test {
 
     #[test]
     fn validate_equals_instead_of_in() {
-        let schema_file: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+        let schema_file: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
             {
                 "entityTypes": {
                     "user": {
@@ -799,7 +724,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_action_id_in_schema() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -831,7 +756,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_action() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -862,7 +787,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -873,7 +798,7 @@ mod test {
         )
         .expect("Expected schema parse.");
         let schema = descriptors.try_into().unwrap();
-        let entity_type: Name = "NS::Foo".parse().expect("Expected entity type parse.");
+        let entity_type: ast::EntityType = "NS::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
@@ -897,7 +822,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_entity_type() {
-        let descriptors: SchemaFragment = serde_json::from_str(
+        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -1030,7 +955,6 @@ mod test {
         let principals = validate
             .get_principals_satisfying_constraint(&principal_constraint)
             .cloned()
-            .map(cedar_policy_core::ast::EntityType::Specified)
             .collect::<HashSet<_>>();
         assert_eq!(HashSet::from([euid_foo.components().0]), principals);
     }
@@ -1068,8 +992,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: Some(vec![resource_type.parse().unwrap()]),
-                        principal_types: Some(vec![principal_type.parse().unwrap()]),
+                        resource_types: vec![resource_type.parse().unwrap()],
+                        principal_types: vec![principal_type.parse().unwrap()],
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
@@ -1472,8 +1396,8 @@ mod test {
                     action_name.into(),
                     ActionType {
                         applies_to: Some(ApplySpec {
-                            resource_types: Some(vec![resource_type.parse().unwrap()]),
-                            principal_types: Some(vec![principal_type.parse().unwrap()]),
+                            resource_types: vec![resource_type.parse().unwrap()],
+                            principal_types: vec![principal_type.parse().unwrap()],
                             context: AttributesOrContext::default(),
                         }),
                         member_of: Some(vec![ActionEntityUID {
@@ -1522,147 +1446,8 @@ mod test {
     }
 
     #[test]
-    fn unspecified_entity_in_scope() {
-        // Note: it's not possible to create an unspecified entity through the parser,
-        // so we have to test using manually-constructed policies.
-        let validate = Validator::new(ValidatorSchema::empty());
-
-        // resource == Unspecified::"foo"
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            None,
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::any(),
-            ResourceConstraint::is_eq(Arc::new(EntityUID::unspecified_from_eid(Eid::new("foo")))),
-            Expr::val(true),
-        );
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
-        assert_eq!(1, notes.len());
-        assert_matches!(notes.first(),
-            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                let eid: &str = entity_id.as_ref();
-                assert_eq!("foo", eid);
-            }
-        );
-
-        // principal in Unspecified::"foo"
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            None,
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_in(Arc::new(EntityUID::unspecified_from_eid(Eid::new("foo")))),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
-        assert_eq!(1, notes.len());
-        assert_matches!(notes.first(),
-            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                let eid: &str = entity_id.as_ref();
-                assert_eq!("foo", eid);
-            }
-        );
-    }
-
-    #[test]
-    fn unspecified_entity_in_additional_constraints() {
-        let validate = Validator::new(ValidatorSchema::empty());
-
-        // resource == Unspecified::"foo"
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            None,
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::is_eq(
-                Expr::var(cedar_policy_core::ast::Var::Resource),
-                Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
-            ),
-        );
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
-
-        println!("{:?}", notes);
-        assert_eq!(1, notes.len());
-        assert_matches!(notes.first(),
-            Some(ValidationError::UnspecifiedEntity(UnspecifiedEntity { entity_id, .. })) => {
-                let eid: &str = entity_id.as_ref();
-                assert_eq!("foo", eid);
-            }
-        );
-    }
-
-    #[test]
-    fn action_with_unspecified_resource_applies() {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
-            r#"
-        {
-            "entityTypes": {"a": {}},
-            "actions": {
-                "": {
-                    "appliesTo": {
-                        "principalTypes": ["a"],
-                        "resourceTypes": null
-                    }
-                }
-            }
-        }
-        "#,
-        )
-        .unwrap()
-        .try_into()
-        .unwrap();
-        let policy = parse_policy(
-            Some("0".to_string()),
-            r#"permit(principal == a::"", action == Action::"", resource);"#,
-        )
-        .unwrap();
-
-        let validator = Validator::new(schema);
-        let (template, _) = Template::link_static_policy(policy);
-        assert_validate_policy_succeeds(&validator, &template);
-    }
-
-    #[test]
-    fn action_with_unspecified_principal_applies() {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
-            r#"
-        {
-            "entityTypes": {"a": {}},
-            "actions": {
-                "": {
-                    "appliesTo": {
-                        "principalTypes": null,
-                        "resourceTypes": ["a"]
-                    }
-                }
-            }
-        }
-        "#,
-        )
-        .unwrap()
-        .try_into()
-        .unwrap();
-        let policy = parse_policy(
-            Some("0".to_string()),
-            r#"permit(principal, action == Action::"", resource == a::"");"#,
-        )
-        .unwrap();
-
-        let validator = Validator::new(schema);
-        let (template, _) = Template::link_static_policy(policy);
-        assert_validate_policy_succeeds(&validator, &template);
-    }
-
-    #[test]
     fn unspecified_principal_resource_with_scope_conditions() {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
             r#"
         {
             "entityTypes": {"a": {}},
@@ -1695,11 +1480,11 @@ mod partial_schema {
         parser::parse_policy,
     };
 
-    use crate::{NamespaceDefinition, Validator};
+    use crate::{NamespaceDefinition, RawName, Validator};
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
             r#"
         {
             "entityTypes": { },

@@ -584,7 +584,7 @@ mod test {
     use crate::{
         ast::{
             ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
-            AnyId, Annotation, PrincipalOrResourceConstraint, Name
+            AnyId, Annotation, PrincipalOrResourceConstraint, Name, EntityType
         },
         parser,
         from_normalized_str::FromNormalizedStr,
@@ -989,7 +989,7 @@ mod test {
         let annotation1: Annotation = Annotation { val: "".into(), loc: None };
         let pc: PrincipalConstraint = PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
         let ac: ActionConstraint = ActionConstraint::Eq(EntityUID::with_eid("read").into());
-        let rc: ResourceConstraint = ResourceConstraint { constraint: PrincipalOrResourceConstraint::is_entity_type(Name::from_normalized_str("photo").unwrap().into()) };
+        let rc: ResourceConstraint = ResourceConstraint { constraint: PrincipalOrResourceConstraint::is_entity_type(EntityType::from(Name::from_normalized_str("photo").unwrap()).into()) };
 
         let tb: TemplateBody = TemplateBody::new(
             PolicyID::from_string("template"),

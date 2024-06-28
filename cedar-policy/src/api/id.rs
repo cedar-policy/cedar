@@ -17,7 +17,7 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
-use crate::entities::json::err::JsonDeserializationError;
+use crate::entities_json_errors::JsonDeserializationError;
 use crate::ParseErrors;
 use cedar_policy_core::ast;
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
@@ -95,7 +95,7 @@ impl AsRef<str> for EntityId {
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityTypeName(ast::Name);
+pub struct EntityTypeName(ast::EntityType);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.basename().as_ref()
+        self.0.name().basename().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -120,7 +120,7 @@ impl EntityTypeName {
     /// assert_eq!(components.next(), None);
     /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.namespace_components().map(AsRef::as_ref)
+        self.0.name().namespace_components().map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
@@ -132,13 +132,7 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.namespace()
-    }
-
-    /// Construct an [`EntityTypeName`] from the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn new(ty: ast::Name) -> Self {
-        Self(ty)
+        self.0.name().namespace()
     }
 }
 
@@ -149,7 +143,7 @@ impl FromStr for EntityTypeName {
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
         ast::Name::from_normalized_str(namespace_type_str)
-            .map(Self::new)
+            .map(|name| Self(ast::EntityType::from(name)))
             .map_err(Into::into)
     }
 }
@@ -157,6 +151,20 @@ impl FromStr for EntityTypeName {
 impl std::fmt::Display for EntityTypeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Name> for EntityTypeName {
+    fn from(name: ast::Name) -> Self {
+        Self(name.into())
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::EntityType> for EntityTypeName {
+    fn from(ty: ast::EntityType) -> Self {
+        Self(ty)
     }
 }
 
@@ -183,12 +191,7 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn type_name(&self) -> &EntityTypeName {
-        // PANIC SAFETY by invariant on struct
-        #[allow(clippy::panic)]
-        match self.0.entity_type() {
-            ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
-            ast::EntityType::Specified(name) => EntityTypeName::ref_cast(name),
-        }
+        EntityTypeName::ref_cast(self.0.entity_type())
     }
 
     /// Returns the id portion of the Euid
@@ -231,10 +234,11 @@ impl EntityUid {
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, JsonDeserializationError>(Self::new(
-            parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-        ))
+        Ok::<Self, JsonDeserializationError>(
+            parsed
+                .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+                .into(),
+        )
     }
 
     /// Testing utility for creating `EntityUids` a bit easier
@@ -244,12 +248,6 @@ impl EntityUid {
             EntityTypeName::from_str(typename).unwrap(),
             EntityId::from_str(id).unwrap(),
         )
-    }
-
-    /// Construct an [`EntityUid`] from the internal type.
-    /// This function is only intended to be used internally.
-    pub(crate) fn new(uid: ast::EntityUID) -> Self {
-        Self(uid)
     }
 }
 
@@ -280,9 +278,8 @@ impl FromStr for EntityUid {
     /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        // INVARIANT there is no way to write down the unspecified entity
         ast::EntityUID::from_normalized_str(uid_str)
-            .map(Self::new)
+            .map(Into::into)
             .map_err(Into::into)
     }
 }
@@ -304,6 +301,13 @@ impl AsRef<ast::EntityUID> for EntityUid {
 impl From<EntityUid> for ast::EntityUID {
     fn from(uid: EntityUid) -> Self {
         uid.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::EntityUID> for EntityUid {
+    fn from(uid: ast::EntityUID) -> Self {
+        Self(uid)
     }
 }
 

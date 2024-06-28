@@ -347,15 +347,17 @@ impl Diagnostic for ToJsonSchemaErrors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate keys
-    #[error("Duplicate keys: `{key}`")]
+    #[error("duplicate keys: {key}")]
     DuplicateKeys { key: SmolStr, loc1: Loc, loc2: Loc },
     /// Error raised when there are duplicate declarations
-    #[error("Duplicate declarations: `{decl}`")]
+    #[error("duplicate declarations: {decl}")]
     DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
-    #[error("Duplicate context declaration. Action may have at most one context declaration")]
+    #[error("duplicate context declaration. Action may have at most one context declaration")]
     DuplicateContext { loc1: Loc, loc2: Loc },
-    #[error("Duplicate {kind} decleration. Action may have at most once {kind} declaration")]
-    DuplicatePR { kind: PR, loc1: Loc, loc2: Loc },
+    #[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
+    DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
+    #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
+    NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
 
     /// Error raised when there are duplicate namespace IDs
     #[error("Duplicate namespace IDs: `{namespace_id}`")]
@@ -392,7 +394,7 @@ impl Diagnostic for ToJsonSchemaError {
         match self {
             ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
             | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
-            | ToJsonSchemaError::DuplicatePR { loc1, loc2, .. }
+            | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
             | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
                 vec![
                     LabeledSpan::underline(loc1.span),
@@ -408,7 +410,8 @@ impl Diagnostic for ToJsonSchemaError {
             ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
                 LabeledSpan::underline(node.loc.span),
             ))),
-            ToJsonSchemaError::UseReservedNamespace(loc) => {
+            ToJsonSchemaError::UseReservedNamespace(loc)
+            | ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
             }
         }
@@ -481,9 +484,11 @@ pub mod schema_warnings {
 // when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
 pub enum SchemaWarning {
+    /// Warning when a declaration shadows a builtin type
     #[error(transparent)]
     #[diagnostic(transparent)]
     ShadowsBuiltin(#[from] schema_warnings::ShadowsBuiltinWarning),
+    /// Warning when a declaration shadows an entity type
     #[error(transparent)]
     #[diagnostic(transparent)]
     ShadowsEntity(#[from] schema_warnings::ShadowsEntityWarning),

@@ -34,6 +34,32 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use to_human_syntax_errors::NameCollisionsError;
 
+/// Errors related to [`crate::Entities`]
+pub mod entities_errors {
+    pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
+}
+
+/// Errors related to serializing/deserializing entities or contexts to/from JSON
+pub mod entities_json_errors {
+    pub use cedar_policy_core::entities::json::err::{
+        ActionParentIsNotAction, DuplicateKeyInRecordLiteral, ExpectedExtnValue,
+        ExpectedLiteralEntityRef, ExtensionFunctionLookup, ExtnCall0Arguments,
+        ExtnCall2OrMoreArguments, HeterogeneousSet, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, TypeMismatchError, UnexpectedRecordAttr,
+        UnexpectedRestrictedExprKind, UnknownInImplicitConstructorArg,
+    };
+}
+
+/// Errors related to schema conformance checking for entities
+pub mod conformance_errors {
+    pub use cedar_policy_core::entities::conformance::err::{
+        ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
+        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
+        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+    };
+}
+
 /// Errors that can occur during authorization
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
 pub enum AuthorizationError {
@@ -53,7 +79,7 @@ pub mod authorization_errors {
 
     /// An error occurred when evaluating a policy
     #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
-    #[error("while evaluating policy `{id}`: {error}")]
+    #[error("error while evaluating policy `{id}`: {error}")]
     pub struct PolicyEvaluationError {
         /// Id of the policy with an error
         id: ast::PolicyID,
@@ -245,7 +271,7 @@ impl EntityAttrEvaluationError {
 impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
-            uid: EntityUid::new(err.uid),
+            uid: err.uid.into(),
             attr: err.attr,
             err: err.err,
         }
@@ -275,7 +301,7 @@ impl From<ast::ContextCreationError> for ContextCreationError {
     fn from(e: ast::ContextCreationError) -> Self {
         match e {
             ast::ContextCreationError::NotARecord(nre) => Self::NotARecord(nre),
-            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e.into()),
+            ast::ContextCreationError::Evaluation(e) => Self::Evaluation(e),
             ast::ContextCreationError::ExpressionConstruction(ece) => {
                 Self::ExpressionConstruction(ece)
             }
@@ -311,11 +337,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
-    /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed by the parser.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntity(#[from] validation_errors::UnspecifiedEntity),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -378,7 +399,6 @@ impl ValidationError {
             Self::UnrecognizedEntityType(e) => e.policy_id(),
             Self::UnrecognizedActionId(e) => e.policy_id(),
             Self::InvalidActionApplication(e) => e.policy_id(),
-            Self::UnspecifiedEntity(e) => e.policy_id(),
             Self::UnexpectedType(e) => e.policy_id(),
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
@@ -407,9 +427,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InvalidActionApplication(e) => {
                 Self::InvalidActionApplication(e.into())
-            }
-            cedar_policy_validator::ValidationError::UnspecifiedEntity(e) => {
-                Self::UnspecifiedEntity(e.into())
             }
             cedar_policy_validator::ValidationError::UnexpectedType(e) => {
                 Self::UnexpectedType(e.into())
@@ -531,6 +548,7 @@ impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
 pub mod policy_set_errors {
     use super::Error;
     use crate::PolicyId;
+    use cedar_policy_core::ast;
     use miette::Diagnostic;
 
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -546,6 +564,15 @@ pub mod policy_set_errors {
         pub fn duplicate_id(&self) -> &PolicyId {
             &self.id
         }
+    }
+
+    /// Error when linking a template
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("unable to link template")]
+    pub struct LinkingError {
+        #[from]
+        #[diagnostic(transparent)]
+        pub(crate) inner: ast::LinkingError,
     }
 
     /// Expected a static policy, but a template-linked policy was provided
@@ -666,18 +693,9 @@ pub mod policy_set_errors {
         }
     }
 
-    /// Error when converting a policy from JSON format
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("Error deserializing a policy/template from JSON: {inner}")]
-    #[diagnostic(transparent)]
-    pub struct FromJsonError {
-        #[from]
-        pub(crate) inner: cedar_policy_core::est::FromJsonError,
-    }
-
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
     #[derive(Debug, Diagnostic, Error)]
-    #[error("Error serializing / deserializing PolicySet to / from JSON: {inner})")]
+    #[error("error serializing/deserializing policy set to/from JSON")]
     pub struct JsonPolicySetError {
         #[from]
         pub(crate) inner: serde_json::Error,
@@ -694,9 +712,9 @@ pub enum PolicySetError {
     #[diagnostic(transparent)]
     AlreadyDefined(#[from] policy_set_errors::AlreadyDefined),
     /// Error when linking a template
-    #[error("unable to link template: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
+    Linking(#[from] policy_set_errors::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -729,12 +747,12 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkLinkNotLink(#[from] policy_set_errors::UnlinkLinkNotLinkError),
-    /// Error when converting from JSON format
+    /// Error when converting a policy/template from JSON format
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FromJson(#[from] policy_set_errors::FromJsonError),
-    /// Error when converting to JSON format
-    #[error("Error serializing a policy to JSON: {0}")]
+    FromJson(#[from] PolicyFromJsonError),
+    /// Error when converting a policy/template to JSON format
+    #[error("Error serializing a policy/template to JSON")]
     #[diagnostic(transparent)]
     ToJson(#[from] PolicyToJsonError),
     /// Error during JSON ser/de of the policy set (as opposed to individual policies)
@@ -757,9 +775,27 @@ impl From<ast::PolicySetError> for PolicySetError {
 }
 
 #[doc(hidden)]
+impl From<ast::LinkingError> for PolicySetError {
+    fn from(e: ast::LinkingError) -> Self {
+        Self::Linking(e.into())
+    }
+}
+
+#[doc(hidden)]
 impl From<ast::UnexpectedSlotError> for PolicySetError {
     fn from(_: ast::UnexpectedSlotError) -> Self {
         Self::ExpectedStatic(policy_set_errors::ExpectedStatic::new())
+    }
+}
+
+#[doc(hidden)]
+impl From<est::PolicySetFromJsonError> for PolicySetError {
+    fn from(e: est::PolicySetFromJsonError) -> Self {
+        match e {
+            est::PolicySetFromJsonError::PolicySet(e) => e.into(),
+            est::PolicySetFromJsonError::Linking(e) => e.into(),
+            est::PolicySetFromJsonError::FromJsonError(e) => Self::FromJson(e.into()),
+        }
     }
 }
 
@@ -848,13 +884,26 @@ pub mod policy_to_json_errors {
     }
 }
 
+/// Error when converting a policy or template from JSON format
+#[derive(Debug, Diagnostic, Error)]
+#[error("error deserializing a policy/template from JSON")]
+#[diagnostic(transparent)]
+pub struct PolicyFromJsonError {
+    #[from]
+    pub(crate) inner: cedar_policy_core::est::FromJsonError,
+}
+
 /// Error type for parsing `Context` from JSON
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
-    /// Error deserializing the JSON into a Context
+    /// Error deserializing the JSON into a [`crate::Context`]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    JsonDeserialization(#[from] context_json_errors::ContextJsonDeserializationError),
+    JsonDeserialization(#[from] entities_json_errors::JsonDeserializationError),
+    /// Error constructing the [`crate::Context`] itself
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextCreation(#[from] ContextCreationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -870,8 +919,11 @@ impl ContextJsonError {
 
 #[doc(hidden)]
 impl From<cedar_policy_core::entities::json::ContextJsonDeserializationError> for ContextJsonError {
-    fn from(error: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
-        context_json_errors::ContextJsonDeserializationError::from(error).into()
+    fn from(e: cedar_policy_core::entities::json::ContextJsonDeserializationError) -> Self {
+        match e {
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::JsonDeserialization(e) => Self::JsonDeserialization(e),
+            cedar_policy_core::entities::json::ContextJsonDeserializationError::ContextCreation(e) => Self::ContextCreation(e.into())
+        }
     }
 }
 
@@ -880,15 +932,6 @@ pub mod context_json_errors {
     use super::EntityUid;
     use miette::Diagnostic;
     use thiserror::Error;
-
-    /// Error deserializing the JSON into a Context
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct ContextJsonDeserializationError {
-        #[diagnostic(transparent)]
-        #[from]
-        error: cedar_policy_core::entities::json::ContextJsonDeserializationError,
-    }
 
     /// The supplied action doesn't exist in the supplied schema
     #[derive(Debug, Diagnostic, Error)]
@@ -934,4 +977,190 @@ impl From<cedar_policy_core::ast::RestrictedExpressionParseError>
             ) => e.into(),
         }
     }
+}
+
+/// The request does not conform to the schema
+#[derive(Debug, Diagnostic, Error)]
+pub enum RequestValidationError {
+    /// Request action is not declared in the schema
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredAction(#[from] request_validation_errors::UndeclaredActionError),
+    /// Request principal is of a type not declared in the schema
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredPrincipalType(#[from] request_validation_errors::UndeclaredPrincipalTypeError),
+    /// Request resource is of a type not declared in the schema
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredResourceType(#[from] request_validation_errors::UndeclaredResourceTypeError),
+    /// Request principal is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidPrincipalType(#[from] request_validation_errors::InvalidPrincipalTypeError),
+    /// Request resource is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidResourceType(#[from] request_validation_errors::InvalidResourceTypeError),
+    /// Context does not comply with the shape specified for the request action
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidContext(#[from] request_validation_errors::InvalidContextError),
+    /// Error computing the type of the `Context`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeOfContext(#[from] request_validation_errors::TypeOfContextError),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_validator::RequestValidationError> for RequestValidationError {
+    fn from(e: cedar_policy_validator::RequestValidationError) -> Self {
+        match e {
+            cedar_policy_validator::RequestValidationError::UndeclaredAction(e) => {
+                Self::UndeclaredAction(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType(e) => {
+                Self::UndeclaredPrincipalType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::UndeclaredResourceType(e) => {
+                Self::UndeclaredResourceType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidPrincipalType(e) => {
+                Self::InvalidPrincipalType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidResourceType(e) => {
+                Self::InvalidResourceType(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::InvalidContext(e) => {
+                Self::InvalidContext(e.into())
+            }
+            cedar_policy_validator::RequestValidationError::TypeOfContext(e) => {
+                Self::TypeOfContext(e.into())
+            }
+        }
+    }
+}
+
+/// Error subtypes for [`RequestValidationError`]
+pub mod request_validation_errors {
+    use miette::Diagnostic;
+    use ref_cast::RefCast;
+    use thiserror::Error;
+
+    use crate::{Context, EntityTypeName, EntityUid};
+
+    /// Request action is not declared in the schema
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredActionError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredActionError,
+    );
+
+    impl UndeclaredActionError {
+        /// The action which was not declared in the schema
+        pub fn action(&self) -> &EntityUid {
+            RefCast::ref_cast(self.0.action())
+        }
+    }
+
+    /// Request principal is of a type not declared in the schema
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredPrincipalTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredPrincipalTypeError,
+    );
+
+    impl UndeclaredPrincipalTypeError {
+        /// The principal type which was not declared in the schema
+        pub fn principal_ty(&self) -> &EntityTypeName {
+            RefCast::ref_cast(self.0.principal_ty())
+        }
+    }
+
+    /// Request resource is of a type not declared in the schema
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct UndeclaredResourceTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::UndeclaredResourceTypeError,
+    );
+
+    impl UndeclaredResourceTypeError {
+        /// The resource type which was not declared in the schema
+        pub fn resource_ty(&self) -> &EntityTypeName {
+            RefCast::ref_cast(self.0.resource_ty())
+        }
+    }
+
+    /// Request principal is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidPrincipalTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidPrincipalTypeError,
+    );
+
+    impl InvalidPrincipalTypeError {
+        /// The principal type which is not valid
+        pub fn principal_ty(&self) -> &EntityTypeName {
+            RefCast::ref_cast(self.0.principal_ty())
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            RefCast::ref_cast(self.0.action())
+        }
+    }
+
+    /// Request resource is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidResourceTypeError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidResourceTypeError,
+    );
+
+    impl InvalidResourceTypeError {
+        /// The resource type which is not valid
+        pub fn resource_ty(&self) -> &EntityTypeName {
+            RefCast::ref_cast(self.0.resource_ty())
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            RefCast::ref_cast(self.0.action())
+        }
+    }
+
+    /// Context does not comply with the shape specified for the request action
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidContextError(
+        #[from] cedar_policy_validator::request_validation_errors::InvalidContextError,
+    );
+
+    impl InvalidContextError {
+        /// The context which is not valid
+        pub fn context(&self) -> &Context {
+            RefCast::ref_cast(self.0.context())
+        }
+
+        /// The action which it is not valid for
+        pub fn action(&self) -> &EntityUid {
+            RefCast::ref_cast(self.0.action())
+        }
+    }
+
+    /// Error computing the type of the `Context`
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct TypeOfContextError(#[from] cedar_policy_core::entities::json::GetSchemaTypeError);
 }

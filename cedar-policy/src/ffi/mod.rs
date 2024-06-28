@@ -19,6 +19,6 @@
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
-pub use utils::{DetailedError, PolicySet, Schema, Severity, SourceLabel, SourceLocation};
+pub use utils::*;
 mod validate;
 pub use validate::*;

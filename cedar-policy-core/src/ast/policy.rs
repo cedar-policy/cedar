@@ -1392,21 +1392,21 @@ impl PrincipalConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1515,21 +1515,21 @@ impl ResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
@@ -1702,9 +1702,9 @@ pub enum PrincipalOrResourceConstraint {
     /// Equality constraint
     Eq(EntityReference),
     /// Type constraint,
-    Is(Arc<Name>),
+    Is(Arc<EntityType>),
     /// Type constraint with a hierarchy constraint
-    IsIn(Arc<Name>, EntityReference),
+    IsIn(Arc<EntityType>, EntityReference),
 }
 
 impl PrincipalOrResourceConstraint {
@@ -1734,17 +1734,17 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
     }
 
     /// Type constraint with a hierarchical constraint.
-    pub fn is_entity_type_in(entity_type: Arc<Name>, in_entity: Arc<EntityUID>) -> Self {
+    pub fn is_entity_type_in(entity_type: Arc<EntityType>, in_entity: Arc<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::euid(in_entity))
     }
 
     /// Type constraint, with no hierarchical constraint or slot.
-    pub fn is_entity_type(entity_type: Arc<Name>) -> Self {
+    pub fn is_entity_type(entity_type: Arc<EntityType>) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type)
     }
 
@@ -1806,15 +1806,10 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Get an iterator over all of the entity type names in this constraint.
-    /// The Unspecified entity type does not have a `Name`, so it is excluded
-    /// from this iter.
-    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ EntityType> {
         self.get_euid()
             .into_iter()
-            .filter_map(|euid| match euid.entity_type() {
-                EntityType::Specified(name) => Some(name),
-                EntityType::Unspecified => None,
-            })
+            .map(|euid| euid.entity_type())
             .chain(match self {
                 PrincipalOrResourceConstraint::Is(entity_type)
                 | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type.as_ref()),
@@ -1834,10 +1829,10 @@ impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstrai
             proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Eq =>
                 PrincipalOrResourceConstraint::Eq(EntityReference::from(v.er.as_ref().unwrap())),
             proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is =>
-                PrincipalOrResourceConstraint::Is(Name::from(v.na.as_ref().unwrap()).into()),
+                PrincipalOrResourceConstraint::Is(EntityType::from(v.na.as_ref().unwrap()).into()),
             proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn =>
                 PrincipalOrResourceConstraint::IsIn(
-                    Name::from(v.na.as_ref().unwrap()).into(),
+                    EntityType::from(v.na.as_ref().unwrap()).into(),
                     EntityReference::from(v.er.as_ref().unwrap())
                 )
         }
@@ -1861,12 +1856,12 @@ impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstrai
             }
             PrincipalOrResourceConstraint::Is(na) => {
                 result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is.into();
-                result.na = Some(proto::Name::from(na.as_ref()));
+                result.na = Some(proto::EntityType::from(na.as_ref()));
             }
             PrincipalOrResourceConstraint::IsIn(na, er) => {
                 result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn.into();
                 result.er = Some(proto::EntityReference::from(er));
-                result.na = Some(proto::Name::from(na.as_ref()));
+                result.na = Some(proto::EntityType::from(na.as_ref()));
             }
         }
         result
@@ -1945,14 +1940,8 @@ impl ActionConstraint {
     }
 
     /// Get an iterator over all of the entity types in this constraint.
-    /// The Unspecified entity type does not have a `Name`, so it is excluded
-    /// from this iter.
-    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
-        self.iter_euids()
-            .filter_map(|euid| match euid.entity_type() {
-                EntityType::Specified(name) => Some(name),
-                EntityType::Unspecified => None,
-            })
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ EntityType> {
+        self.iter_euids().map(|euid| euid.entity_type())
     }
 
     /// Check that all of the EUIDs in an action constraint have the type
@@ -2079,15 +2068,14 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 
 /// the Effect of a policy
 #[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Effect {
     /// this is a Permit policy
-    #[serde(rename = "permit")]
     Permit,
     /// this is a Forbid policy
-    #[serde(rename = "forbid")]
     Forbid,
 }
 
@@ -2492,7 +2480,7 @@ mod test {
     #[test]
     fn test_iter_once() {
         let id = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid"),
             None,
         );
@@ -2504,12 +2492,12 @@ mod test {
     #[test]
     fn test_iter_mult() {
         let id1 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid1"),
             None,
         );
         let id2 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")),
+            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
             entity::Eid::new("eid2"),
             None,
         );
@@ -2597,7 +2585,7 @@ mod test {
         assert_eq!(ac2, ActionConstraint::from(&proto::ActionConstraint::from(&ac2)));
 
         let euid1: Arc<EntityUID> = Arc::new(EntityUID::with_eid("friend"));
-        let name1: Arc<Name> = Arc::new(Name::from_normalized_str("B::C::D").unwrap());
+        let name1: Arc<EntityType> = Arc::new(EntityType::from(Name::from_normalized_str("B::C::D").unwrap()));
         let prc1: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
         let prc2: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_in(euid1.to_owned());
         let prc3: PrincipalOrResourceConstraint = PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());

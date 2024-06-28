@@ -40,9 +40,7 @@ use cedar_policy_core::{
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
-use super::schema::{
-    is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
-};
+use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
 /// The main type structure.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
@@ -50,12 +48,14 @@ pub enum Type {
     /// Bottom type. Sub-type of all types.
     Never,
 
-    /// The singleton boolean types: true and false.
+    /// Singleton boolean type true
     True,
+    /// Singleton boolean type false
     False,
 
     /// Primitive types: bool, long, and string.
     Primitive {
+        /// Which primitive type: bool, long, or string
         #[serde(rename = "primitiveType")]
         primitive_type: Primitive,
     },
@@ -71,11 +71,12 @@ pub enum Type {
         element_type: Option<Box<Type>>,
     },
 
-    /// Record and entity types.
+    /// Record and entity types
     EntityOrRecord(EntityRecordKind),
 
-    // Extension types, like "ipaddr".
+    /// Extension types
     ExtensionType {
+        /// Name of the extension type
         name: Name,
     },
 }
@@ -108,21 +109,16 @@ impl Type {
     }
 
     /// Construct a type for a literal EUID. This type will be a named entity
-    /// type for the type of the EntityUID.
+    /// type for the type of the [`EntityUID`].
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
-        match entity.entity_type() {
-            EntityType::Unspecified => Some(Type::any_entity_reference()),
-            EntityType::Specified(name) => {
-                if is_action_entity_type(name) {
-                    schema
-                        .get_action_id(&entity)
-                        .and_then(Type::entity_reference_from_action_id)
-                } else {
-                    schema
-                        .get_entity_type(name)
-                        .map(Type::entity_reference_from_entity_type)
-                }
-            }
+        if entity.entity_type().is_action() {
+            schema
+                .get_action_id(&entity)
+                .map(Type::entity_reference_from_action_id)
+        } else {
+            schema
+                .get_entity_type(entity.entity_type())
+                .map(Type::entity_reference_from_entity_type)
         }
     }
 
@@ -168,28 +164,14 @@ impl Type {
         Type::named_entity_reference(validator_entity_type.name.clone())
     }
 
-    pub(crate) fn entity_reference_from_action_id(
-        validator_action_id: &ValidatorActionId,
-    ) -> Option<Type> {
-        match validator_action_id.name.entity_type() {
-            EntityType::Specified(name) => {
-                Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
-                    name: name.clone(),
-                    attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
-                }))
-            }
-            EntityType::Unspecified => None,
-        }
+    pub(crate) fn entity_reference_from_action_id(validator_action_id: &ValidatorActionId) -> Type {
+        Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+            name: validator_action_id.name.entity_type().clone(),
+            attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
+        })
     }
 
-    pub(crate) fn possibly_unspecified_entity_reference(ety: EntityType) -> Type {
-        match ety {
-            EntityType::Specified(name) => Type::named_entity_reference(name),
-            EntityType::Unspecified => Type::any_entity_reference(),
-        }
-    }
-
-    pub(crate) fn named_entity_reference(name: Name) -> Type {
+    pub(crate) fn named_entity_reference(name: EntityType) -> Type {
         Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB::single_entity(name)))
     }
 
@@ -401,30 +383,13 @@ impl Type {
         }
     }
 
-    /// Return true if we know that any value in this type must be a specified
-    /// entity.
-    pub(crate) fn must_be_specified_entity(ty: &Type) -> bool {
-        matches!(
-            ty,
-            // An unspecified entity has type `AnyEntity`, so `AnyEntity` might
-            // not be specified. Other entity types must be specified.
-            Type::EntityOrRecord(
-                EntityRecordKind::Entity(_) | EntityRecordKind::ActionEntity { .. }
-            )
-            // It is vacuously true that any value in the type `Never` is a
-            // specified entity.
-            | Type::Never
-        )
-    }
-
-    /// Is this validator type "consistent with" the given Core SchemaType.
-    /// Meaning, is there at least some value that could have this SchemaType and
+    /// Is this validator type "consistent with" the given Core `SchemaType`.
+    /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
     pub(crate) fn is_consistent_with(
         &self,
         core_type: &cedar_policy_core::entities::SchemaType,
     ) -> bool {
-        use cedar_policy_core::ast::EntityType as CoreEntityType;
         use cedar_policy_core::entities::SchemaType as CoreSchemaType;
         match core_type {
             CoreSchemaType::Bool => matches!(
@@ -506,9 +471,7 @@ impl Type {
                 },
                 _ => false,
             },
-            CoreSchemaType::Entity {
-                ty: CoreEntityType::Specified(concrete_name),
-            } => match self {
+            CoreSchemaType::Entity { ty: concrete_name } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Entity(lub) => {
                         lub.lub_elements.iter().any(|n| n == concrete_name)
@@ -516,18 +479,6 @@ impl Type {
                     EntityRecordKind::AnyEntity => true,
                     EntityRecordKind::Record { .. } => false,
                     EntityRecordKind::ActionEntity { name, .. } => concrete_name.eq(name),
-                },
-                _ => false,
-            },
-            CoreSchemaType::Entity {
-                ty: CoreEntityType::Unspecified,
-            } => match self {
-                Type::EntityOrRecord(kind) => match kind {
-                    EntityRecordKind::Entity(_) => false, // Entity(lub) is inconsistent with Unspecified
-                    EntityRecordKind::AnyEntity => true,
-                    EntityRecordKind::Record { .. } | EntityRecordKind::ActionEntity { .. } => {
-                        false
-                    }
                 },
                 _ => false,
             },
@@ -611,19 +562,13 @@ impl Type {
             },
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 match restricted_expr.as_euid() {
-                    Some(euid) => match euid.entity_type() {
-                        EntityType::Specified(name) => Ok(lub.contains(name)),
-                        EntityType::Unspecified => Ok(false), // Unspecified can only have the validator type `AnyEntity`, not any specific lub
-                    },
+                    Some(euid) => Ok(lub.contains(euid.entity_type())),
                     None => Ok(false),
                 }
             }
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
                 match restricted_expr.as_euid() {
-                    Some(euid) if euid.is_action() => match euid.entity_type() {
-                        EntityType::Specified(euid_name) => Ok(euid_name == name),
-                        EntityType::Unspecified => Ok(false), // `euid.is_action()` should never be true for an Unspecified, so this should be unreachable, but it's safe to return Ok(false), because Unspecified can only have the validator type `AnyEntity` anyway
-                    },
+                    Some(euid) if euid.is_action() => Ok(euid.entity_type() == name),
                     _ => Ok(false),
                 }
             }
@@ -789,9 +734,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                 "any-entity type is not representable in core::SchemaType: {kind:?}"
             )),
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
-                Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Specified(name),
-                })
+                Ok(CoreSchemaType::Entity { ty: name })
             }
             Type::EntityOrRecord(EntityRecordKind::Record {
                 attrs,
@@ -815,9 +758,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                 open_attrs: open_attributes.is_open(),
             }),
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match lub.into_single_entity() {
-                Some(name) => Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Specified(name),
-                }),
+                Some(name) => Ok(CoreSchemaType::Entity { ty: name }),
                 None => Err(
                     "non-singleton LUB type is not representable in core::SchemaType".to_string(),
                 ),
@@ -833,20 +774,20 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct EntityLUB {
     // INVARIANT: Non-empty set.
-    lub_elements: BTreeSet<Name>,
+    lub_elements: BTreeSet<EntityType>,
 }
 
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    pub(crate) fn single_entity(entity_type_name: Name) -> Self {
+    pub(crate) fn single_entity(entity_type_name: EntityType) -> Self {
         Self {
             lub_elements: [entity_type_name].into_iter().collect(),
         }
     }
 
     /// Check if this LUB is a singleton, and if so, return a reference to its entity type
-    pub fn get_single_entity(&self) -> Option<&Name> {
+    pub fn get_single_entity(&self) -> Option<&EntityType> {
         let mut names = self.lub_elements.iter();
         // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
         #[allow(clippy::expect_used)]
@@ -857,9 +798,9 @@ impl EntityLUB {
         }
     }
 
-    /// Like `get_single_entity()`, but consumes the EntityLUB and produces an
+    /// Like `get_single_entity()`, but consumes the [`EntityLUB`] and produces an
     /// owned entity type name
-    pub fn into_single_entity(self) -> Option<Name> {
+    pub fn into_single_entity(self) -> Option<EntityType> {
         let mut names = self.lub_elements.into_iter();
         // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
         #[allow(clippy::expect_used)]
@@ -919,8 +860,8 @@ impl EntityLUB {
         })
     }
 
-    /// Generate the least upper bound of this EntityLUB and another. This
-    /// returns an EntityLUB for the union of the entity types in both argument
+    /// Generate the least upper bound of this [`EntityLUB`] and another. This
+    /// returns an [`EntityLUB`] for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
     pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
@@ -932,26 +873,26 @@ impl EntityLUB {
         }
     }
 
-    /// Return true if the set of entity types composing this EntityLUB is
-    /// disjoint from th entity types composing another LUB.
+    /// Return true if the set of entity types composing this [`EntityLUB`] is
+    /// disjoint from th entity types composing another [`EntityLUB`].
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
         self.lub_elements.is_disjoint(&other.lub_elements)
     }
 
-    /// Return true if the given entity type `Name` is in the set of entity
-    /// types comprising this LUB.
-    pub(crate) fn contains(&self, ty: &Name) -> bool {
+    /// Return true if the given entity type [`Name`] is in the set of entity
+    /// types comprising this [`EntityLUB`].
+    pub(crate) fn contains(&self, ty: &EntityType) -> bool {
         self.lub_elements.contains(ty)
     }
 
-    /// An iterator over the entity type `Name`s in the set of entity types
-    /// comprising this LUB.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
+    /// An iterator over the entity type [`Name`]s in the set of entity types
+    /// comprising this [`EntityLUB`].
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &EntityType> {
         self.lub_elements.iter()
     }
 
-    // Check if this EntityLUB contains a particular entity type.
-    pub(crate) fn contains_entity_type(&self, ety: &Name) -> bool {
+    // Check if this [`EntityLUB`] contains a particular entity type.
+    pub(crate) fn contains_entity_type(&self, ety: &EntityType) -> bool {
         self.lub_elements.contains(ety)
     }
 }
@@ -960,6 +901,7 @@ impl EntityLUB {
 /// identifier, a flag indicating weather it is required, and a type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct Attributes {
+    /// Attributes map
     pub attrs: BTreeMap<SmolStr, AttributeType>,
 }
 
@@ -1111,11 +1053,11 @@ impl IntoIterator for Attributes {
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
 pub enum OpenTag {
-    // The attributes are open. A value of this type may have attributes other
-    // than those listed.
+    /// The attributes are open. A value of this type may have attributes other
+    /// than those listed.
     OpenAttributes,
-    // The attributes are closed. The attributes for a value of this type must
-    // exactly match the attributes listed in the type.
+    /// The attributes are closed. The attributes for a value of this type must
+    /// exactly match the attributes listed in the type.
     ClosedAttributes,
 }
 
@@ -1131,7 +1073,7 @@ impl OpenTag {
 /// Represents whether a type is an entity type, record type, or could be either
 ///
 /// The subtyping lattice for these types is that
-/// Entity <: AnyEntity. Record does not subtype anything.
+/// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum EntityRecordKind {
     /// A record type, with these attributes
@@ -1151,12 +1093,16 @@ pub enum EntityRecordKind {
     /// represented using the `AnyEntity` record kind.
     ///
     /// Attributes in this case are not stored inline but must be looked up in
-    /// the schema, based on the elements of the EntityLUB.
+    /// the schema, based on the elements of the [`EntityLUB`].
     Entity(EntityLUB),
 
-    ///We special case action entities. They store their attributes directly rather than
-    ///Names
-    ActionEntity { name: Name, attrs: Attributes },
+    /// We special case action entities, which store their attributes directly, like `Record`s do
+    ActionEntity {
+        /// Type name of the action entity
+        name: EntityType,
+        /// Attributes of the action entity
+        attrs: Attributes,
+    },
 }
 
 impl EntityRecordKind {
@@ -1203,6 +1149,8 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get the type of the given attribute in this entity or record, or `None`
+    /// if it doesn't exist (or not known to exist)
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
@@ -1214,6 +1162,7 @@ impl EntityRecordKind {
         }
     }
 
+    /// Get all the attribute names for this entity or record
     pub fn all_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
@@ -1406,19 +1355,18 @@ impl EntityRecordKind {
 
 /// Contains the type of a record attribute and if the attribute is required.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
-    #[serde(rename = "attrType")]
     pub attr_type: Type,
 
     /// True when the attribute must be present. False if it is optional, and so
     /// may not be present in a record or entity.
-    #[serde(rename = "isRequired")]
     pub is_required: bool,
 }
 
 impl AttributeType {
-    /// Construct an AttributeType with some type that may be required or
+    /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter.
     pub fn new(attr_type: Type, is_required: bool) -> Self {
         Self {
@@ -1427,7 +1375,7 @@ impl AttributeType {
         }
     }
 
-    /// Construct an AttributeType for an attribute that must be present given
+    /// Construct an [`AttributeType`] for an attribute that must be present given
     /// the type of the attribute.
     pub fn required_attribute(attr_type: Type) -> Self {
         Self::new(attr_type, true)
@@ -1452,7 +1400,10 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{human_schema::parser::parse_type, ActionBehavior, ValidatorNamespaceDef};
+    use crate::{
+        human_schema::parser::parse_type, schema::try_schema_type_into_validator_type,
+        ActionBehavior,
+    };
     use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
@@ -2169,9 +2120,8 @@ mod test {
         println!("{type_str}");
         let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
-        let type_from_schema_type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            None,
-            parsed_schema_type,
+        let type_from_schema_type = try_schema_type_into_validator_type(
+            parsed_schema_type.qualify_type_references(None),
             Extensions::all_available(),
         )
         .expect("Schema type should have converted to type.")

@@ -133,8 +133,8 @@ pub enum ExprKind<T = ()> {
     Is {
         /// Expression to test. Must evaluate to an Entity.
         expr: Arc<Expr<T>>,
-        /// The entity type `Name` used for the type membership test.
-        entity_type: Name,
+        /// The [`EntityType`] used for the type membership test.
+        entity_type: EntityType,
     },
     /// Set (whose elements may be arbitrary expressions)
     //
@@ -481,7 +481,7 @@ impl Expr {
     }
 
     /// Create an `is` expression.
-    pub fn is_entity_type(expr: Expr, entity_type: Name) -> Self {
+    pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
     }
 
@@ -844,7 +844,7 @@ impl From<&proto::Expr> for Expr {
             proto::expr::expr_kind::ExprKindType::Is => {
                 Expr::is_entity_type(
                     Expr::from(pdata.expr.as_ref().unwrap().as_ref()),
-                    Name::from(pdata.entity_type.as_ref().unwrap())
+                    EntityType::from(pdata.entity_type.as_ref().unwrap())
                 ).with_maybe_source_loc(source_loc)
             }
 
@@ -952,7 +952,7 @@ impl From<&Expr> for proto::Expr {
             ExprKind::Is { expr, entity_type } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Is.into();
                 expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
-                expr_kind.entity_type = Some(proto::Name::from(entity_type))
+                expr_kind.entity_type = Some(proto::EntityType::from(entity_type))
             }
             ExprKind::Set(args) => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Set.into();
@@ -1347,7 +1347,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
-    pub fn is_entity_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+    pub fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,
@@ -1668,21 +1668,18 @@ impl<T> Expr<T> {
 
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Var {
     /// the Principal of the given request
-    #[serde(rename = "principal")]
     Principal,
     /// the Action of the given request
-    #[serde(rename = "action")]
     Action,
     /// the Resource of the given request
-    #[serde(rename = "resource")]
     Resource,
     /// the Context of the given request
-    #[serde(rename = "context")]
     Context,
 }
 

@@ -54,7 +54,7 @@ pub struct Request {
 /// or an unknown in the case of partial evaluation
 #[derive(Debug, Clone, Serialize)]
 pub enum EntityUIDEntry {
-    /// A concrete (but perhaps unspecified) EntityUID
+    /// A concrete EntityUID
     Known {
         /// The concrete `EntityUID`
         euid: Arc<EntityUID>,
@@ -84,7 +84,7 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with a concrete EntityUID and the given source location
-    pub fn concrete(euid: EntityUID, loc: Option<Loc>) -> Self {
+    pub fn known(euid: EntityUID, loc: Option<Loc>) -> Self {
         Self::Known {
             euid: Arc::new(euid),
             loc,
@@ -110,7 +110,7 @@ impl From<&proto::EntityUidEntry> for EntityUIDEntry {
                 Self::Unknown { loc: loc }
             }
             proto::entity_uid_entry::EntityUidEntryType::Known => {
-                EntityUIDEntry::concrete(EntityUID::from(v.euid.as_ref().unwrap()), loc)
+                EntityUIDEntry::known(EntityUID::from(v.euid.as_ref().unwrap()), loc)
             }
         }
     }
@@ -153,9 +153,9 @@ impl Request {
         extensions: Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
-            principal: EntityUIDEntry::concrete(principal.0, principal.1),
-            action: EntityUIDEntry::concrete(action.0, action.1),
-            resource: EntityUIDEntry::concrete(resource.0, resource.1),
+            principal: EntityUIDEntry::known(principal.0, principal.1),
+            action: EntityUIDEntry::known(action.0, action.1),
+            resource: EntityUIDEntry::known(resource.0, resource.1),
             context: Some(context),
         };
         if let Some(schema) = schema {

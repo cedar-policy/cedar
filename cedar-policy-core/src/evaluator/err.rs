@@ -44,11 +44,6 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     EntityAttrDoesNotExist(#[from] evaluation_errors::EntityAttrDoesNotExistError),
 
-    /// Tried to access an attribute of an unspecified entity
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnspecifiedEntityAccess(#[from] evaluation_errors::UnspecifiedEntityAccessError),
-
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
     #[error(transparent)]
@@ -105,7 +100,6 @@ impl EvaluationError {
         match self {
             Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
             Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::UnspecifiedEntityAccess(e) => e.source_loc.as_ref(),
             Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
             Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
             Self::TypeError(e) => e.source_loc.as_ref(),
@@ -129,12 +123,6 @@ impl EvaluationError {
             }
             Self::EntityAttrDoesNotExist(e) => {
                 Self::EntityAttrDoesNotExist(evaluation_errors::EntityAttrDoesNotExistError {
-                    source_loc,
-                    ..e
-                })
-            }
-            Self::UnspecifiedEntityAccess(e) => {
-                Self::UnspecifiedEntityAccess(evaluation_errors::UnspecifiedEntityAccessError {
                     source_loc,
                     ..e
                 })
@@ -196,11 +184,6 @@ impl EvaluationError {
             source_loc,
         }
         .into()
-    }
-
-    /// Construct a [`UnspecifiedEntityAccess`] error
-    pub(crate) fn unspecified_entity_access(attr: SmolStr, source_loc: Option<Loc>) -> Self {
-        evaluation_errors::UnspecifiedEntityAccessError { attr, source_loc }.into()
     }
 
     /// Construct a [`RecordAttrDoesNotExist`] error
@@ -398,34 +381,6 @@ pub mod evaluation_errors {
             }
         }
 
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Tried to access an attribute of an unspecified entity
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("cannot access attribute `{attr}` of unspecified entity")]
-    pub struct UnspecifiedEntityAccessError {
-        /// Name of the attribute we tried to access
-        pub(crate) attr: SmolStr,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for UnspecifiedEntityAccessError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
         fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
         }

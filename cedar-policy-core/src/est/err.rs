@@ -31,7 +31,7 @@ pub enum FromJsonError {
     #[diagnostic(transparent)]
     JsonDeserializationError(#[from] JsonDeserializationError),
     /// Tried to convert an EST representing a template to an AST representing a static policy
-    #[error("tried to convert JSON representing a template to a static policy: {0}")]
+    #[error("tried to convert JSON representing a template to a static policy")]
     #[diagnostic(transparent)]
     TemplateToPolicy(#[from] ast::UnexpectedSlotError),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
@@ -65,14 +65,6 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
-    /// Error reported when a policy set has duplicate ids
-    #[error("error creating policy set: {0}")]
-    #[diagnostic(transparent)]
-    PolicySet(#[from] ast::PolicySetError),
-    /// Error reported when attempting to create a template-link
-    #[error("error linking policy set: {0}")]
-    #[diagnostic(transparent)]
-    Linking(#[from] ast::LinkingError),
     /// Error reported when the extension function name is unknown. Note that
     /// unlike the Cedar policy format, the JSON format has no way to distinguish
     /// between function-style and method-style calls.
@@ -82,6 +74,23 @@ pub enum FromJsonError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
+}
+
+/// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST
+#[derive(Debug, Diagnostic, Error)]
+pub enum PolicySetFromJsonError {
+    /// Error reported when a policy set has duplicate ids
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicySet(#[from] ast::PolicySetError),
+    /// Error reported when attempting to create a template-link
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Linking(#[from] ast::LinkingError),
+    /// Error reported when converting an EST policy or template to an AST
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FromJsonError(#[from] FromJsonError),
 }
 
 /// Errors while linking a policy

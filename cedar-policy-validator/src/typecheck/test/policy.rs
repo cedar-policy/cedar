@@ -37,10 +37,10 @@ use crate::{
     typecheck::{PolicyCheck, Typechecker},
     types::{EntityLUB, Type},
     validation_errors::{AttributeAccess, LubContext, LubHelp},
-    NamespaceDefinition, ValidationMode, ValidationWarning,
+    NamespaceDefinition, RawName, ValidationMode, ValidationWarning,
 };
 
-fn simple_schema_file() -> NamespaceDefinition {
+fn simple_schema_file() -> NamespaceDefinition<RawName> {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {
@@ -793,7 +793,7 @@ fn entity_record_lub_is_none() {
 
 #[test]
 fn optional_attr_fail() {
-    let schema: NamespaceDefinition = serde_json::from_str(
+    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": {
@@ -846,7 +846,7 @@ fn optional_attr_fail() {
 
 #[test]
 fn type_error_is_not_reported_for_every_cross_product_element() {
-    let schema: NamespaceDefinition = serde_json::from_str(
+    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": {
@@ -855,7 +855,13 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
                 "Baz": {},
                 "Buz": {}
             },
-            "actions": { "act": {} }
+            "actions": { "act": {
+                "appliesTo" : {
+                    "principalTypes" : ["Foo", "Bar", "Baz", "Buz"],
+                    "resourceTypes" : ["Foo", "Bar", "Baz", "Buz"]
+                }
+            }
+            }
         }"#,
     )
     .expect("Expected valid schema");
@@ -879,7 +885,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
 
 #[test]
 fn action_groups() {
-    let schema: NamespaceDefinition = serde_json::from_str(
+    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": { "Entity": {} },
@@ -976,9 +982,15 @@ fn action_groups() {
 // Example demonstrating Non-terminating LUB computation
 #[test]
 fn record_entity_lub_non_term() {
-    let schema: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+    let schema: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
     {
         "entityTypes": {
+            "E" : {
+                "shape" : {
+                    "type" : "Record",
+                    "attributes" : {}
+                },
+            },
           "U": {
             "shape": {
               "type": "Record",
@@ -998,7 +1010,7 @@ fn record_entity_lub_non_term() {
           "view": {
             "appliesTo": {
               "principalTypes": ["U"],
-              "resourceTypes": null
+              "resourceTypes": ["E"]
             }
           }
         }
@@ -1029,7 +1041,7 @@ fn record_entity_lub_non_term() {
 
 #[test]
 fn validate_policy_with_typedef_schema() {
-    let namespace_def: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+    let namespace_def: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
     {
         "commonTypes": {
             "SharedAttrs": {
@@ -1050,7 +1062,7 @@ fn validate_policy_with_typedef_schema() {
           "act": {
             "appliesTo": {
               "principalTypes": ["Entity"],
-              "resourceTypes": null
+              "resourceTypes": ["Entity"]
             }
           }
         }

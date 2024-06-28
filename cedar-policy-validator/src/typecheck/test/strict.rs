@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::parser::Loc;
 use cedar_policy_core::{
-    ast::{EntityType, EntityUID, Expr},
+    ast::{EntityUID, Expr},
     parser::parse_policy_template,
 };
 
@@ -34,15 +34,15 @@ use crate::{
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
-    SchemaFragment, ValidationError, ValidationMode,
+    RawName, SchemaFragment, ValidationError, ValidationMode,
 };
 
 use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
-    schema: SchemaFragment,
-    env: &RequestEnv,
+    schema: SchemaFragment<RawName>,
+    env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
 ) {
@@ -63,8 +63,8 @@ fn assert_typechecks_strict(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
-    schema: SchemaFragment,
-    env: &RequestEnv,
+    schema: SchemaFragment<RawName>,
+    env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
     expected_error: ValidationError,
@@ -86,8 +86,8 @@ fn assert_strict_type_error(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_types_must_match(
-    schema: SchemaFragment,
-    env: &RequestEnv,
+    schema: SchemaFragment<RawName>,
+    env: &RequestEnv<'_>,
     e: Expr,
     on_expr: Expr,
     expected_type: Type,
@@ -110,7 +110,7 @@ fn assert_types_must_match(
     )
 }
 
-fn simple_schema_file() -> SchemaFragment {
+fn simple_schema_file() -> SchemaFragment<RawName> {
     serde_json::from_value(json!(
     { "": {
       "entityTypes": {
@@ -138,14 +138,14 @@ fn simple_schema_file() -> SchemaFragment {
 
 fn with_simple_schema_and_request<F>(f: F)
 where
-    F: FnOnce(SchemaFragment, RequestEnv),
+    F: FnOnce(SchemaFragment<RawName>, RequestEnv<'_>),
 {
     f(
         simple_schema_file(),
         RequestEnv::DeclaredAction {
-            principal: &EntityType::Specified("User".parse().unwrap()),
+            principal: &"User".parse().unwrap(),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-            resource: &EntityType::Specified("Photo".parse().unwrap()),
+            resource: &"Photo".parse().unwrap(),
             context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
@@ -704,7 +704,9 @@ fn true_false_set() {
 #[test]
 fn qualified_record_attr() {
     let (schema, _) = SchemaFragment::from_str_natural(
-        r#"action A appliesTo { context: {num_of_things?: Long } };"#,
+        r#"
+        entity Foo;
+        action A appliesTo { context: {num_of_things?: Long }, principal : [Foo], resource : [Foo] };"#,
     )
     .unwrap();
     let p = parse_policy_template(

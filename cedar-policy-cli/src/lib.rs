@@ -95,6 +95,8 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Translate natural policy syntax to JSON (except comments)
+    TranslatePolicy(TranslatePolicyArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
@@ -102,10 +104,28 @@ pub enum Commands {
 }
 
 #[derive(Args, Debug)]
+pub struct TranslatePolicyArgs {
+    /// The direction of translation,
+    #[arg(long)]
+    pub direction: PolicyTranslationDirection,
+    /// Filename to read the policies from.
+    /// If not provided, will default to reading stdin.
+    #[arg(short = 'p', long = "policies", value_name = "FILE")]
+    pub input_file: Option<String>,
+}
+
+/// The direction of translation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum PolicyTranslationDirection {
+    /// Human policy syntax -> JSON
+    HumanToJson,
+}
+
+#[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
     /// The direction of translation,
     #[arg(long)]
-    pub direction: TranslationDirection,
+    pub direction: SchemaTranslationDirection,
     /// Filename to read the schema from.
     /// If not provided, will default to reading stdin.
     #[arg(short = 's', long = "schema", value_name = "FILE")]
@@ -114,7 +134,7 @@ pub struct TranslateSchemaArgs {
 
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum TranslationDirection {
+pub enum SchemaTranslationDirection {
     /// JSON -> Human schema syntax
     JsonToHuman,
     /// Human schema syntax -> JSON
@@ -218,35 +238,17 @@ impl RequestArgs {
                 let qjson: RequestJSON = serde_json::from_str(&jsonstring)
                     .into_diagnostic()
                     .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?;
-                let principal = qjson
-                    .principal
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse principal in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let action = qjson
-                    .action
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse action in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let resource = qjson
-                    .resource
-                    .map(|s| {
-                        s.parse().wrap_err_with(|| {
-                            format!("failed to parse resource in {jsonfile} as entity Uid")
-                        })
-                    })
-                    .transpose()?;
-                let context = Context::from_json_value(
-                    qjson.context,
-                    schema.and_then(|s| Some((s, action.as_ref()?))),
-                )
-                .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
+                let principal = qjson.principal.parse().wrap_err_with(|| {
+                    format!("failed to parse principal in {jsonfile} as entity Uid")
+                })?;
+                let action = qjson.action.parse().wrap_err_with(|| {
+                    format!("failed to parse action in {jsonfile} as entity Uid")
+                })?;
+                let resource = qjson.resource.parse().wrap_err_with(|| {
+                    format!("failed to parse resource in {jsonfile} as entity Uid")
+                })?;
+                let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))
+                    .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Request::new(
                     principal,
                     action,
@@ -299,18 +301,23 @@ impl RequestArgs {
                         })?,
                     },
                 };
-                Request::new(
-                    principal,
-                    action,
-                    resource,
-                    context,
-                    if self.request_validation {
-                        schema
-                    } else {
-                        None
-                    },
-                )
-                .map_err(|e| miette!("{e}"))
+                match (principal, action, resource) {
+                    (Some(principal), Some(action), Some(resource)) => Request::new(
+                        principal,
+                        action,
+                        resource,
+                        context,
+                        if self.request_validation {
+                            schema
+                        } else {
+                            None
+                        },
+                    )
+                    .map_err(|e| miette!("{e}")),
+                    _ => Err(miette!(
+                        "All three (`principal`, `action`, `resource`) variables must be specified"
+                    )),
+                }
             }
         }
     }
@@ -460,13 +467,13 @@ impl FromStr for Arguments {
 struct RequestJSON {
     /// Principal for the request
     #[serde(default)]
-    principal: Option<String>,
+    principal: String,
     /// Action for the request
     #[serde(default)]
-    action: Option<String>,
+    action: String,
     /// Resource for the request
     #[serde(default)]
-    resource: Option<String>,
+    resource: String,
     /// Context for the request
     context: serde_json::Value,
 }
@@ -692,13 +699,39 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_to_human(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+    let output = policy_set.to_json()?.to_string();
+    Ok(output)
+}
+
+fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
+    let translate = match args.direction {
+        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+    };
+    read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
+}
+
+pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
+    match translate_policy_inner(args) {
+        Ok(sf) => {
+            println!("{sf}");
+            CedarExitCode::Success
+        }
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
+    }
+}
+
+fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
     let output = fragment.as_natural()?;
     Ok(output)
 }
 
-fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
     let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
@@ -710,11 +743,12 @@ fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        TranslationDirection::JsonToHuman => translate_to_human,
-        TranslationDirection::HumanToJson => translate_to_json,
+        SchemaTranslationDirection::JsonToHuman => translate_schema_to_human,
+        SchemaTranslationDirection::HumanToJson => translate_schema_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
+
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     match translate_schema_inner(args) {
         Ok(sf) => {

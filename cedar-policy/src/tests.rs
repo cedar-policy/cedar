@@ -169,7 +169,7 @@ permit(principal ==  A :: B
         let result = EntityTypeName::from_str(src);
 
         assert_matches!(result, Err(_));
-        let error = result.err().unwrap();
+        let error = result.unwrap_err();
         expect_err(
             src,
             &Report::new(error),
@@ -243,18 +243,6 @@ permit(principal ==  A :: B
             .parse()
             .expect("failed to roundtrip");
         assert_eq!(reparsed.id().as_ref(), r"b'ob");
-    }
-
-    #[test]
-    fn accessing_unspecified_entity_returns_none() {
-        let c = Context::empty();
-        let request = Request::new(None, None, None, c, None).unwrap();
-        let p = request.principal();
-        let a = request.action();
-        let r = request.resource();
-        assert_matches!(p, None);
-        assert_matches!(a, None);
-        assert_matches!(r, None);
     }
 }
 
@@ -504,7 +492,6 @@ mod scope_constraints_tests {
 /// Tests in this module are adapted from Core's `policy_set.rs` tests
 mod policy_set_tests {
     use super::*;
-    use ast::LinkingError;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -569,7 +556,7 @@ mod policy_set_tests {
 
         assert_matches!(
             r,
-            Err(PolicySetError::Linking(LinkingError::PolicyIdConflict { id })) =>{
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError { inner: ast::LinkingError::PolicyIdConflict { id } })) =>{
                 assert_eq!(id, ast::PolicyID::from_string("id"));
             }
         );
@@ -660,9 +647,9 @@ mod policy_set_tests {
     fn policyset_remove() {
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -917,7 +904,7 @@ mod policy_set_tests {
             ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
                 ast::Type::Entity {
-                    ty: ast::EntityType::Specified("test_entity_type".parse().unwrap()),
+                    ty: "test_entity_type".parse().unwrap(),
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
@@ -951,9 +938,9 @@ mod policy_set_tests {
 
         let authorizer = Authorizer::new();
         let request = Request::new(
-            Some(EntityUid::from_strs("Test", "test")),
-            Some(EntityUid::from_strs("Action", "a")),
-            Some(EntityUid::from_strs("Resource", "b")),
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
             Context::empty(),
             None,
         )
@@ -1334,9 +1321,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy3").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for template; link
@@ -1346,9 +1333,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy0").unwrap(),
                 env.clone(),
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
 
         //fails for static; link
@@ -1364,9 +1351,9 @@ mod policy_set_tests {
                 PolicyId::from_str("policy1").unwrap(),
                 env,
             ),
-            Err(PolicySetError::Linking(
-                LinkingError::PolicyIdConflict { .. }
-            ))
+            Err(PolicySetError::Linking(policy_set_errors::LinkingError {
+                inner: ast::LinkingError::PolicyIdConflict { .. }
+            }))
         );
     }
 }
@@ -1423,10 +1410,10 @@ mod schema_tests {
     #[test]
     fn invalid_schema() {
         assert_matches!(
-            Schema::from_json_value(json!(
+            Schema::from_json_str(
                 // Written as a string because duplicate entity types are detected
                 // by the serde-json string parser.
-                r#""{"": {
+                r#"{"": {
                 "entityTypes": {
                     "Photo": {
                         "memberOfTypes": [ "Album" ],
@@ -1474,8 +1461,14 @@ mod schema_tests {
                     }
                 }
             }}"#
-            )),
-            Err(crate::SchemaError::JsonDeserialization(_))
+            ),
+            Err(e) =>
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("failed to parse schema in JSON format: invalid entry: found duplicate key at line 39 column 17")
+                        .build(),
+                )
         );
     }
 }
@@ -1675,7 +1668,13 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
-                expect_err("", &Report::new(e), &ExpectedErrorMessageBuilder::error(r#"entity does not conform to the schema: `Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#).build());
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#)
+                        .build()
+                );
             }
         }
 
@@ -1734,9 +1733,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#)
+                        .build()
                 );
             }
         }
@@ -1798,9 +1800,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to extraneous attribute"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#)
+                        .build()
                 );
             }
         }
@@ -1809,9 +1814,12 @@ mod entity_validate_tests {
         match validate_entity(entity, &schema) {
             Ok(()) => panic!("expected an error due to unexpected entity type"),
             Err(e) => {
-                assert!(
-                    e.to_string().contains(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#),
-                    "actual error message was {e}",
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#)
+                        .build()
                 );
             }
         }
@@ -2031,9 +2039,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was: `{err}`"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .build()
         );
 
         // another simple type mismatch with expected type
@@ -2064,10 +2075,13 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#)
+                .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+                .build()
         );
 
         // type mismatch where we expect a set and get just a single element
@@ -2095,9 +2109,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .build()
         );
 
         // type mismatch where we just get the wrong entity type
@@ -2128,9 +2145,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .build()
         );
 
         // type mismatch where we're expecting an extension type and get a
@@ -2162,9 +2182,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .build()
         );
 
         // missing a record attribute entirely
@@ -2194,9 +2217,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#)
+                .build()
         );
 
         // record attribute has the wrong type
@@ -2227,9 +2253,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entity::from_json_value(entity, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .build()
         );
 
         let entity = json!(
@@ -2495,9 +2524,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was: `{err}`"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .build()
         );
 
         // another simple type mismatch with expected type
@@ -2530,10 +2562,13 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#)
+                .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+                .build()
         );
 
         // type mismatch where we expect a set and get just a single element
@@ -2563,9 +2598,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .build()
         );
 
         // type mismatch where we just get the wrong entity type
@@ -2598,9 +2636,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .build()
         );
 
         // type mismatch where we're expecting an extension type and get a
@@ -2634,9 +2675,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .build()
         );
 
         // missing a record attribute entirely
@@ -2668,9 +2712,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#)
+                .build()
         );
 
         // record attribute has the wrong type
@@ -2703,9 +2750,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .build()
         );
 
         let entitiesjson = json!(
@@ -2824,9 +2874,12 @@ mod schema_based_parsing_tests {
         );
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#),
-            "actual error message was {err}"
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                .build()
         );
     }
 
@@ -3245,7 +3298,7 @@ mod schema_based_parsing_tests {
                 "parents": []
             }
         ]);
-        let r = Entities::from_json_value(json.clone(), None).err().unwrap();
+        let r = Entities::from_json_value(json.clone(), None).unwrap_err();
         match r {
             EntitiesError::Duplicate(euid) => {
                 expect_err(
@@ -3530,7 +3583,14 @@ fn partial_schema_unsupported() {
     use serde_json::json;
     assert_matches!(
         Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})),
-        Err(e) if e.to_string().contains("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+        Err(e) =>
+            expect_err(
+                "",
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+                    .build(),
+            )
     );
 }
 
@@ -3703,7 +3763,8 @@ mod error_source_tests {
             "true && ([2, 3, 4] in [4, 5, 6])",
             "ip(3)",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let expr = Expression::from_str(src).unwrap();
@@ -3720,7 +3781,8 @@ mod error_source_tests {
             "permit ( principal, action, resource ) when { true && ([2, 3, 4] in [4, 5, 6]) };",
             "permit ( principal, action, resource ) when { ip(3) };",
         ];
-        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let entities = Entities::empty();
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
@@ -3893,9 +3955,9 @@ mod issue_604 {
 }
 
 mod issue_606 {
-    use cedar_policy_core::est::FromJsonError;
-
+    use super::{expect_err, ExpectedErrorMessageBuilder};
     use crate::{PolicyId, Template};
+    use cool_asserts::assert_matches;
 
     #[test]
     fn est_template() {
@@ -3919,16 +3981,21 @@ mod issue_606 {
 
         let tid = PolicyId::new("t0");
         // We should get an error here after trying to construct a template with a slot in the condition
-        let template = Template::from_json(Some(tid), est_json);
-        assert!(matches!(
-            template,
-            Err(FromJsonError::SlotsInConditionClause(_))
-        ));
+        assert_matches!(Template::from_json(Some(tid), est_json.clone()), Err(e) => {
+            expect_err(
+                &est_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                    .source("found template slot ?principal in a `when` clause")
+                    .help("slots are currently unsupported in `when` clauses")
+                    .build(),
+            );
+        });
     }
 }
 
 mod issue_619 {
-    use crate::{eval_expression, Context, Entities, EvalResult, Policy, Request};
+    use crate::{eval_expression, Context, Entities, EntityUid, EvalResult, Policy, Request};
     use cool_asserts::assert_matches;
 
     /// The first issue reported in issue 619.
@@ -3947,9 +4014,17 @@ mod issue_619 {
     /// Another issue from a comment: Ensure the correct error semantics of these expressions
     #[test]
     fn mult_overflows() {
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
         let eval = |expr: &str| {
             eval_expression(
-                &Request::new(None, None, None, Context::empty(), None).unwrap(),
+                &Request::new(
+                    euid.clone(),
+                    euid.clone(),
+                    euid.clone(),
+                    Context::empty(),
+                    None,
+                )
+                .unwrap(),
                 &Entities::empty(),
                 &expr.parse().unwrap(),
             )
@@ -4128,7 +4203,8 @@ mod decimal_ip_constructors {
     }
 
     fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
-        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
+        let r = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
         let e = Entities::empty();
         eval_expression(&r, &e, expr)
     }
@@ -4228,7 +4304,6 @@ mod into_iter_entities {
 }
 
 mod policy_set_est_tests {
-    use cool_asserts::assert_matches;
     use itertools::{Either, Itertools};
 
     use super::*;
@@ -4332,9 +4407,9 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_empty() {
         let empty = serde_json::json!({
-            "templates" : [],
-            "static_policies" : [],
-            "links" : []
+            "templates" : {},
+            "staticPolicies" : {},
+            "templateLinks" : []
         });
         let empty = PolicySet::from_json_value(empty).unwrap();
         assert_eq!(empty, PolicySet::default());
@@ -4343,48 +4418,46 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_single() {
         let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies" :{
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-        ],
-        "links" : [
-        ]});
+                        }
+                    ]
+                }
+            },
+            "templates" : {},
+            "templateLinks" : []
+        });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
         assert_eq!(policyset.templates().count(), 0);
@@ -4395,71 +4468,69 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates() {
         let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates":{
+                "template": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" }
+                    }
+                }
+            ]
+        });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
         assert_eq!(policyset.policies().count(), 2);
@@ -4486,383 +4557,813 @@ mod policy_set_est_tests {
     #[test]
     fn test_est_policyset_decoding_templates_bad_link_name() {
         let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "non_existent",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "non_existent",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" }
+                    }
+                }
+            ]
+        });
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existent").into();
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("failed to find a template with id `non_existent`")
+                .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_empty_env() {
         let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {},
-            }
-        ]});
+                        }
+                    ]
+                }
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {},
+                }
+            ]
+        });
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_principal = vec![SlotId::principal().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if extra_values.is_empty() && unbound_values == just_principal
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("the following slots were not provided as arguments: ?principal")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_dup_links() {
+        let value = serde_json::json!({
+            "staticPolicies" : {},
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                    }
+                },
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                    }
+                }
+            ]
+        });
+
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("template-linked policy id `link` conflicts with an existing policy id")
+                .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_extra_vals() {
         let value = serde_json::json!({
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?resource" : { "type" : "Box", "id" : "ABC" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                        "?resource" : { "type" : "Box", "id" : "ABC" }
+                    }
+                }
+            ]}
+        );
 
-        let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_resource = vec![SlotId::resource().into()];
-        assert_matches!(
-            err,
-            PolicySetError::Linking(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if unbound_values.is_empty() && extra_values == just_resource
+        let err = PolicySet::from_json_value(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("the following slots were provided as arguments, but did not exist in the template: ?resource")
+                .build(),
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_vals() {
         let value = r#" {
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?principal" : { "type" : "User", "id" : "Duplicate" }
+                        }
+                    ]
                 }
-            }
-        ]}"#;
+            },
+            "templates" : {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all"
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                        "?principal" : { "type" : "User", "id" : "Duplicate" }
+                    }
+                }
+            ]}"#;
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("found duplicate key"));
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "error serializing/deserializing policy set to/from JSON",
+            )
+            .source("invalid entry: found duplicate key at line 62 column 21")
+            .build(),
+        );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_euid() {
         let value = r#" {
-            "static_policies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "all"
-                  },
-                  "resource" : {
-                      "op" : "all"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
+                        }
+                    ]
+                }
+            },
+            "templates" : {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all"
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User" }
+                    }
+                }
+            ]}"#;
+
+        let err = PolicySet::from_json_str(value).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error serializing/deserializing policy set to/from JSON")
+                .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 61 column 21"#)
+                .build(),
+        );
+    }
+}
+
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
+mod authorization_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_evaluation_error() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            EntityUid::from_strs("Principal", "p"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "r"),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+
+        let e = r#"[
             {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User" }
+                "uid": {"type":"Principal","id":"p"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"r"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(
+            Some("id0".into()),
+            "permit(principal,action,resource) when {principal.foo == 1};",
+        )
+        .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+        assert_eq!(response.diagnostics().reason().count(), 0);
+        let errs = response.diagnostics().errors().collect::<Vec<_>>();
+        assert_eq!(errs.len(), 1);
+        expect_err(
+            "",
+            &Report::new(errs[0].clone()),
+            &ExpectedErrorMessageBuilder::error(r#"error while evaluating policy `id0`: `Principal::"p"` does not have the attribute `foo`"#)
+                .build(),
+        );
+    }
+}
+
+mod request_validation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Principal": {},
+                    "Resource": {},
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "principalTypes": ["Principal"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        ]}"#;
+        }
+        ))
+        .unwrap()
+    }
 
-        let err = PolicySet::from_json_str(value).err().unwrap().to_string();
-        assert!(err.contains("while parsing a template link, expected a literal entity reference"));
+    #[test]
+    fn undeclared_action() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "undeclared"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"request's action `Action::"undeclared"` is not declared in the schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Undeclared", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "principal type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn undeclared_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Undeclared", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "resource type `Undeclared` is not declared in the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_principal_type() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_resource_type() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Principal", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `Principal` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_context() {
+        let schema = schema();
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "action"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::from_json_value(json!({"foo": 123}), None)
+                .expect("context creation should have succeeded"),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+            )
+            .build(),
+        );
+    }
+}
+
+mod context_creation_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "action": {
+                            "appliesTo": {
+                                "context": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": { "type": "String" },
+                                        "bar": { "type": "Extension", "name": "decimal", "required": false }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ))
+            .unwrap()
+    }
+
+    #[test]
+    fn schema_based_parsing() {
+        let schema = schema();
+
+        // ok
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": { "__extn": { "fn": "decimal", "arg": "1.23" } }}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok - and 1.23 is parsed as a decimal instead of a string
+        Context::from_json_value(
+            json!({"foo": "some string", "bar": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // ok (despite the fact that "foo" has the incorrect type) - the schema for
+        // `Context::from_json_value` is used for schema-based parsing, not validation
+        Context::from_json_value(
+            json!({"foo": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .expect("context creation should have succeeded");
+
+        // error - missing a required attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"xxx": 123}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, expected the record to have an attribute `foo`, but it does not",
+            )
+            .build(),
+        );
+
+        // error - including an undefined attribute is not allowed
+        let err = Context::from_json_value(
+            json!({"foo": "some string", "xxx": "1.23"}),
+            Some((&schema, &EntityUid::from_strs("Action", "action"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                "while parsing context, record attribute `xxx` should not exist according to the schema",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn missing_action() {
+        let schema = schema();
+        let err = Context::from_json_value(
+            json!({"foo": "some string"}),
+            Some((&schema, &EntityUid::from_strs("Action", "foo"))),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"action `Action::"foo"` does not exist in the supplied schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn context_creation_errors() {
+        let err = Context::from_json_value(json!("not_a_record"), None).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(r#"expression is not a record: "not_a_record""#)
+                .build(),
+        );
+
+        let err = Context::from_json_value(
+            json!({"foo": { "__extn": { "fn": "ip", "arg": "not_an_ip_address" }}}),
+            None,
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error while evaluating `ipaddr` extension function: invalid IP address: not_an_ip_address")
+                .build(),
+        );
+
+        let pairs = vec![
+            (
+                String::from("key1"),
+                RestrictedExpression::new_string("foo".into()),
+            ),
+            (String::from("key1"), RestrictedExpression::new_bool(true)),
+        ];
+        let err = Context::from_pairs(pairs).unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("duplicate key `key1` in record literal").build(),
+        );
     }
 }

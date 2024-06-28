@@ -36,10 +36,10 @@ use crate::{
     diagnostics::ValidationError,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    SchemaError, SchemaFragment, ValidationWarning, ValidatorSchema,
+    RawName, SchemaError, SchemaFragment, ValidationWarning, ValidatorSchema,
 };
 
-fn namespaced_entity_type_schema() -> SchemaFragment {
+fn namespaced_entity_type_schema() -> SchemaFragment<RawName> {
     serde_json::from_str(
         r#"
             { "N::S": {
@@ -186,7 +186,7 @@ fn namespaced_entity_wrong_namespace() {
 
 #[test]
 fn namespaced_entity_type_in_attribute() {
-    let schema: SchemaFragment = serde_json::from_str(
+    let schema: SchemaFragment<RawName> = serde_json::from_str(
         r#"{ "N::S":
             {
                 "entityTypes": {
@@ -234,7 +234,7 @@ fn namespaced_entity_type_in_attribute() {
 
 #[test]
 fn namespaced_entity_type_member_of() {
-    let schema: SchemaFragment = serde_json::from_value(serde_json::json!(
+    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": {
@@ -265,7 +265,7 @@ fn namespaced_entity_type_member_of() {
 
 #[test]
 fn namespaced_entity_type_applies_to() {
-    let schema: SchemaFragment = serde_json::from_value(serde_json::json!(
+    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": { },
@@ -291,7 +291,7 @@ fn namespaced_entity_type_applies_to() {
 
 #[test]
 fn multiple_namespaces_literals() {
-    let authorization_model: SchemaFragment = serde_json::from_value(json!(
+    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
         {
             "A": {
                 "entityTypes": {"Foo": {}},
@@ -329,7 +329,7 @@ fn multiple_namespaces_literals() {
 
 #[test]
 fn multiple_namespaces_attributes() {
-    let authorization_model: SchemaFragment = serde_json::from_value(json!(
+    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -377,7 +377,7 @@ fn multiple_namespaces_attributes() {
 
 #[test]
 fn multiple_namespaces_member_of() {
-    let authorization_model: SchemaFragment = serde_json::from_value(json!(
+    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -414,7 +414,7 @@ fn multiple_namespaces_member_of() {
 
 #[test]
 fn multiple_namespaces_applies_to() {
-    let authorization_model: SchemaFragment = serde_json::from_value(json!(
+    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -540,9 +540,16 @@ fn namespaced_entity_is_wrong_type_when() {
 fn multi_namespace_action_eq() {
     let (schema, _) = SchemaFragment::from_str_natural(
         r#"
-            action "Action" appliesTo { context: {} };
-            namespace NS1 { action "Action" appliesTo { context: {} }; }
-            namespace NS2 { action "Action" appliesTo { context: {} }; }
+            entity E;
+            action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
+            namespace NS1 {
+                entity E;
+                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+            }
+            namespace NS2 {
+                entity E;
+                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+            }
         "#,
     )
     .unwrap();
@@ -583,11 +590,13 @@ fn multi_namespace_action_eq() {
 fn multi_namespace_action_in() {
     let (schema, _) = SchemaFragment::from_str_natural(
         r#"
+            entity E;
             namespace NS1 { action "Group"; }
             namespace NS2 { action "Group" in [NS1::Action::"Group"]; }
             namespace NS3 {
                 action "Group" in [NS2::Action::"Group"];
-                action "Action" in [Action::"Group"] appliesTo { context: {} };
+                entity E;
+                action "Action" in [Action::"Group"] appliesTo { context: {}, principal: [E], resource: [E] };
             }
             namespace NS4 { action "Group"; }
         "#,

@@ -154,7 +154,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
 /// (It still can't contain, for instance, spaces or characters like '+'.)
 //
 // For now, internally, `AnyId`s are just owned `SmolString`s.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct AnyId(SmolStr);
 
 impl AnyId {
@@ -174,6 +174,35 @@ impl AnyId {
     /// Get the underlying string
     pub fn into_smolstr(self) -> SmolStr {
         self.0
+    }
+}
+
+struct AnyIdVisitor;
+
+impl<'de> serde::de::Visitor<'de> for AnyIdVisitor {
+    type Value = AnyId;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("any id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        AnyId::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid id `{value}`: {err}")))
+    }
+}
+
+/// Deserialize an `AnyId` using `from_normalized_str`.
+/// This deserialization implementation is used in the JSON policy format.
+impl<'de> Deserialize<'de> for AnyId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(AnyIdVisitor)
     }
 }
 

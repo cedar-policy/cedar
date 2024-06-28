@@ -105,18 +105,12 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .expect("failed to write to tempfile");
 
         let mut entity_args = Vec::new();
-        if let Some(s) = json_request.principal {
-            entity_args.push("--principal".to_string());
-            entity_args.push(value_to_euid_string(s.into()).unwrap());
-        }
-        if let Some(s) = json_request.resource {
-            entity_args.push("--resource".to_string());
-            entity_args.push(value_to_euid_string(s.into()).unwrap());
-        }
-        if let Some(s) = json_request.action {
-            entity_args.push("--action".to_string());
-            entity_args.push(value_to_euid_string(s.into()).unwrap());
-        }
+        entity_args.push("--principal".to_string());
+        entity_args.push(value_to_euid_string(json_request.principal.into()).unwrap());
+        entity_args.push("--resource".to_string());
+        entity_args.push(value_to_euid_string(json_request.resource.into()).unwrap());
+        entity_args.push("--action".to_string());
+        entity_args.push(value_to_euid_string(json_request.action.into()).unwrap());
         if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
         }

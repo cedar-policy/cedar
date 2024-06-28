@@ -17,13 +17,13 @@
 //! This module contains the `is_authorized` entry points that other language
 //! FFIs can call
 #![allow(clippy::module_name_repetitions)]
-use super::utils::{DetailedError, JsonValueWithNoDuplicateKeys, PolicySet, Schema, WithWarnings};
-use crate::{
-    Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
-    Request, SlotId,
-};
+#[cfg(feature = "partial-eval")]
+use super::utils::JsonValueWithNoDuplicateKeys;
+use super::utils::{Context, DetailedError, Entities, EntityUid, PolicySet, Schema, WithWarnings};
+use crate::{Authorizer, Decision, EntityId, EntityTypeName, PolicyId, Request, SlotId};
+use cedar_policy_validator::human_schema::SchemaWarning;
 use itertools::Itertools;
-use miette::{miette, Diagnostic, WrapErr};
+use miette::{miette, Diagnostic};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, MapPreventDuplicates};
 use std::collections::{HashMap, HashSet};
@@ -42,7 +42,7 @@ thread_local!(
 
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
-    match call.get_components() {
+    match call.parse() {
         WithWarnings {
             t: Ok((request, policies, entities)),
             warnings,
@@ -66,6 +66,11 @@ pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
 
 /// Input is a JSON encoding of [`AuthorizationCall`] and output is a JSON
 /// encoding of [`AuthorizationAnswer`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input JSON cannot be deserialized as an
+/// [`AuthorizationCall`].
 pub fn is_authorized_json(json: serde_json::Value) -> Result<serde_json::Value, serde_json::Error> {
     let ans = is_authorized(serde_json::from_value(json)?);
     serde_json::to_value(ans)
@@ -73,17 +78,22 @@ pub fn is_authorized_json(json: serde_json::Value) -> Result<serde_json::Value, 
 
 /// Input and output are strings containing serialized JSON, in the shapes
 /// expected by [`is_authorized_json()`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input cannot be converted to valid JSON or
+/// deserialized as an [`AuthorizationCall`].
 pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = is_authorized(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
 }
 
-/// Basic interface for partial evaluation, using `AuthorizationCall` and
-/// `PartialAuthorizationAnswer` types
+/// Basic interface for partial evaluation, using [`AuthorizationCall`] and
+/// [`PartialAuthorizationAnswer`] types
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
-    match call.get_components_partial() {
+pub fn is_authorized_partial(call: PartialAuthorizationCall) -> PartialAuthorizationAnswer {
+    match call.parse() {
         WithWarnings {
             t: Ok((request, policies, entities)),
             warnings,
@@ -115,6 +125,11 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
 
 /// Input is a JSON encoding of [`AuthorizationCall`] and output is a JSON
 /// encoding of [`PartialAuthorizationAnswer`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input JSON cannot be deserialized as an
+/// [`AuthorizationCall`].
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 pub fn is_authorized_partial_json(
@@ -126,6 +141,11 @@ pub fn is_authorized_partial_json(
 
 /// Input and output are strings containing serialized JSON, in the shapes
 /// expected by [`is_authorized_partial_json()`]
+///
+/// # Errors
+///
+/// Will return `Err` if the input cannot be converted to valid JSON or
+/// deserialized as an [`AuthorizationCall`].
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::Error> {
@@ -442,19 +462,45 @@ pub enum PartialAuthorizationAnswer {
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizationCall {
     /// The principal taking action
-    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    principal: Option<JsonValueWithNoDuplicateKeys>,
+    principal: EntityUid,
     /// The action the principal is taking
-    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    action: JsonValueWithNoDuplicateKeys,
+    action: EntityUid,
     /// The resource being acted on by the principal
-    #[cfg_attr(feature = "wasm", tsify(type = "{type: string, id: string}"))]
-    resource: Option<JsonValueWithNoDuplicateKeys>,
+    resource: EntityUid,
     /// The context details specific to the request
-    #[serde_as(as = "MapPreventDuplicates<_, _>")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    context: Context,
+    /// Optional schema.
+    /// If present, this will inform the parsing: for instance, it will allow
+    /// `__entity` and `__extn` escapes to be implicit, and it will error if
+    /// attributes have the wrong types (e.g., string instead of integer).
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "Schema"))]
+    schema: Option<Schema>,
+    /// If this is `true` and a schema is provided, perform request validation.
+    /// If this is `false`, the schema will only be used for schema-based
+    /// parsing of `context`, and not for request validation.
+    /// If a schema is not provided, this option has no effect.
+    #[serde(default = "constant_true")]
+    validate_request: bool,
+    /// The slice containing entities and policies
+    slice: RecvdSlice,
+}
+
+/// Struct containing the input data for partial authorization
+#[cfg(feature = "partial-eval")]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+pub struct PartialAuthorizationCall {
+    /// The principal taking action. If this field is empty, then the principal is unknown.
+    principal: Option<EntityUid>,
+    /// The action the principal is taking. If this field is empty, then the action is unknown.
+    action: Option<EntityUid>,
+    /// The resource being acted on by the principal. If this field is empty, then the resource is unknown.
+    resource: Option<EntityUid>,
     /// The context details specific to the request
-    context: HashMap<String, JsonValueWithNoDuplicateKeys>,
+    context: Context,
     /// Optional schema.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
@@ -475,186 +521,163 @@ fn constant_true() -> bool {
     true
 }
 
-/// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
-/// appropriate error to `errs` and returns `None`.
-fn parse_entity_uid(
-    entity_uid_json: JsonValueWithNoDuplicateKeys,
-    category: &str,
-    errs: &mut Vec<miette::Report>,
-) -> Option<EntityUid> {
-    match EntityUid::from_json(entity_uid_json.into())
-        .wrap_err_with(|| format!("Failed to parse {category}"))
-    {
-        Ok(euid) => Some(euid),
-        Err(e) => {
-            errs.push(e);
-            None
-        }
-    }
-}
-
-/// Parses the given JSON context into a [`Context`], or if it fails, adds
-/// appropriate error(s) to `errs` and returns an empty context.
-fn parse_context(
-    context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
-    schema_ref: Option<&crate::Schema>,
-    action_ref: Option<&EntityUid>,
-    errs: &mut Vec<miette::Report>,
-) -> Context {
-    match serde_json::to_value(context_map) {
-        Ok(json) => {
-            match Context::from_json_value(
-                json,
-                match (schema_ref, action_ref) {
-                    (Some(s), Some(a)) => Some((s, a)),
-                    _ => None,
-                },
-            ) {
-                Ok(context) => context,
-                Err(e) => {
-                    errs.push(miette::Report::new(e));
-                    Context::empty()
-                }
-            }
-        }
-        Err(e) => {
-            errs.push(miette!("Failed to parse context: {e}"));
-            Context::empty()
-        }
+fn build_error<T>(
+    errs: Vec<miette::Report>,
+    warnings: Vec<SchemaWarning>,
+) -> WithWarnings<Result<T, Vec<miette::Report>>> {
+    WithWarnings {
+        t: Err(errs),
+        warnings: warnings.into_iter().map(Into::into).collect(),
     }
 }
 
 impl AuthorizationCall {
-    fn get_components(
+    fn parse(
         self,
-    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<miette::Report>>> {
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, crate::Entities), Vec<miette::Report>>>
+    {
         let mut errs = vec![];
         let mut warnings = vec![];
-        let schema = match self.schema.map(Schema::parse).transpose() {
-            Ok(None) => None,
-            Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings.map(miette::Report::new));
-                Some(schema)
-            }
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let principal = self
+        let maybe_schema = self
+            .schema
+            .map(|schema| {
+                schema.parse().map(|(schema, new_warnings)| {
+                    warnings.extend(new_warnings);
+                    schema
+                })
+            })
+            .transpose()
+            .map_err(|e| errs.push(e));
+        let maybe_principal = self
             .principal
-            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
-        let action = parse_entity_uid(self.action, "action", &mut errs);
-        let resource = self
+            .parse(Some("principal"))
+            .map_err(|e| errs.push(e));
+        let maybe_action = self.action.parse(Some("action")).map_err(|e| errs.push(e));
+        let maybe_resource = self
             .resource
-            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
-        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
+            .parse(Some("resource"))
+            .map_err(|e| errs.push(e));
 
-        let request = match Request::new(
-            principal,
-            action,
-            resource,
-            context,
-            if self.validate_request {
-                schema.as_ref()
-            } else {
-                None
-            },
-        ) {
-            Ok(req) => Some(req),
+        let (Ok(schema), Ok(principal), Ok(action), Ok(resource)) =
+            (maybe_schema, maybe_principal, maybe_action, maybe_resource)
+        else {
+            // At least one of the `errs.push(e)` statements above must have been reached
+            return build_error(errs, warnings);
+        };
+
+        let context = match self.context.parse(schema.as_ref(), Some(&action)) {
+            Ok(context) => context,
             Err(e) => {
-                errs.push(miette::Report::new(e));
-                None
-            }
-        };
-        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
-            Ok((policies, entities)) => (Some(policies), Some(entities)),
-            Err(es) => {
-                errs.extend(es);
-                (None, None)
+                return build_error(vec![e], warnings);
             }
         };
 
-        match (errs.is_empty(), request, policies, entities) {
-            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
-                t: Ok((req, policies, entities)),
-                warnings,
-            },
-            _ => WithWarnings {
-                t: Err(errs),
-                warnings,
-            },
+        let schema_opt = if self.validate_request {
+            schema.as_ref()
+        } else {
+            None
+        };
+        let request = match Request::new(principal, action, resource, context, schema_opt) {
+            Ok(request) => request,
+            Err(e) => {
+                return build_error(vec![e.into()], warnings);
+            }
+        };
+
+        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
+            Ok((policies, entities)) => (policies, entities),
+            Err(errs) => {
+                return build_error(errs, warnings);
+            }
+        };
+
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings: warnings.into_iter().map(Into::into).collect(),
         }
     }
+}
 
-    #[cfg(feature = "partial-eval")]
-    fn get_components_partial(
+#[cfg(feature = "partial-eval")]
+impl PartialAuthorizationCall {
+    fn parse(
         self,
-    ) -> WithWarnings<Result<(Request, crate::PolicySet, Entities), Vec<miette::Report>>> {
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, crate::Entities), Vec<miette::Report>>>
+    {
         let mut errs = vec![];
         let mut warnings = vec![];
-        let schema = match self.schema.map(Schema::parse).transpose() {
-            Ok(None) => None,
-            Ok(Some((schema, new_warnings))) => {
-                warnings.extend(new_warnings.map(miette::Report::new));
-                Some(schema)
-            }
+        let maybe_schema = self
+            .schema
+            .map(|schema| {
+                schema.parse().map(|(schema, new_warnings)| {
+                    warnings.extend(new_warnings);
+                    schema
+                })
+            })
+            .transpose()
+            .map_err(|e| errs.push(e));
+        let maybe_principal = self
+            .principal
+            .map(|uid| uid.parse(Some("principal")))
+            .transpose()
+            .map_err(|e| errs.push(e));
+        let maybe_action = self
+            .action
+            .map(|uid| uid.parse(Some("action")))
+            .transpose()
+            .map_err(|e| errs.push(e));
+        let maybe_resource = self
+            .resource
+            .map(|uid| uid.parse(Some("resource")))
+            .transpose()
+            .map_err(|e| errs.push(e));
+
+        let (Ok(schema), Ok(principal), Ok(action), Ok(resource)) =
+            (maybe_schema, maybe_principal, maybe_action, maybe_resource)
+        else {
+            // At least one of the `errs.push(e)` statements above must have been reached
+            return build_error(errs, warnings);
+        };
+
+        let context = match self.context.parse(schema.as_ref(), action.as_ref()) {
+            Ok(context) => context,
             Err(e) => {
-                errs.push(e);
-                None
+                return build_error(vec![e], warnings);
             }
         };
-        let principal = self
-            .principal
-            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
-        let action = parse_entity_uid(self.action, "action", &mut errs);
-        let resource = self
-            .resource
-            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
-        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
+
+        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
+            Ok((policies, entities)) => (policies, entities),
+            Err(errs) => {
+                return build_error(errs, warnings);
+            }
+        };
 
         let mut b = Request::builder();
-        if principal.is_some() {
-            b = b.principal(principal);
+        if let Some(p) = principal {
+            b = b.principal(p);
         }
-        if action.is_some() {
-            b = b.action(action);
+        if let Some(a) = action {
+            b = b.action(a);
         }
-        if resource.is_some() {
-            b = b.resource(resource);
+        if let Some(r) = resource {
+            b = b.resource(r);
         }
         b = b.context(context);
-        let request = if self.validate_request {
-            match schema.as_ref() {
-                Some(schema_ref) => match b.schema(schema_ref).build() {
-                    Ok(req) => Some(req),
-                    Err(e) => {
-                        errs.push(miette::Report::new(e));
-                        None
-                    }
-                },
-                None => Some(b.build()),
-            }
-        } else {
-            Some(b.build())
-        };
-        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
-            Ok((policies, entities)) => (Some(policies), Some(entities)),
-            Err(e) => {
-                errs.extend(e);
-                (None, None)
-            }
+
+        let request = match schema {
+            Some(schema) if self.validate_request => match b.schema(&schema).build() {
+                Ok(request) => request,
+                Err(e) => {
+                    return build_error(vec![e.into()], warnings);
+                }
+            },
+            _ => b.build(),
         };
 
-        match (errs.is_empty(), request, policies, entities) {
-            (true, Some(req), Some(policies), Some(entities)) => WithWarnings {
-                t: Ok((req, policies, entities.partial())),
-                warnings,
-            },
-            _ => WithWarnings {
-                t: Err(errs),
-                warnings,
-            },
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings: warnings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -747,8 +770,7 @@ struct RecvdSlice {
     policies: PolicySet,
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
-    #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
-    entities: JsonValueWithNoDuplicateKeys,
+    entities: Entities,
 
     /// Optional template policies.
     #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
@@ -758,7 +780,7 @@ struct RecvdSlice {
     template_instantiations: Option<Vec<TemplateLink>>,
 }
 
-fn parse_link(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> {
+fn parse_link(v: &Link) -> Result<(SlotId, crate::EntityUid), miette::Report> {
     let slot = match v.slot.as_str() {
         "?principal" => SlotId::principal(),
         "?resource" => SlotId::resource(),
@@ -771,7 +793,7 @@ fn parse_link(v: &Link) -> Result<(SlotId, EntityUid), miette::Report> {
         Ok(eid) => eid,
         Err(err) => match err {},
     };
-    let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
+    let entity_uid = crate::EntityUid::from_type_name_and_id(type_name, eid);
     Ok((slot, entity_uid))
 }
 
@@ -798,7 +820,7 @@ impl RecvdSlice {
     fn try_into(
         self,
         schema: Option<&crate::Schema>,
-    ) -> Result<(crate::PolicySet, Entities), Vec<miette::Report>> {
+    ) -> Result<(crate::PolicySet, crate::Entities), Vec<miette::Report>> {
         let Self {
             policies,
             entities,
@@ -815,11 +837,11 @@ impl RecvdSlice {
                 crate::PolicySet::new()
             }
         };
-        let entities = match Entities::from_json_value(entities.into(), schema) {
+        let entities = match entities.parse(schema) {
             Ok(entities) => entities,
             Err(e) => {
-                errs.push(miette::Report::new(e));
-                Entities::empty()
+                errs.push(e);
+                crate::Entities::empty()
             }
         };
 
@@ -924,7 +946,7 @@ mod test {
         let (policies, entities) = rslice.try_into(None).expect("parse failed");
         assert!(policies.is_empty());
         entities
-            .get(&EntityUid::from_type_name_and_id(
+            .get(&crate::EntityUid::from_type_name_and_id(
                 "user".parse().unwrap(),
                 "alice".parse().unwrap(),
             ))
@@ -932,7 +954,7 @@ mod test {
                 || panic!("Missing user::alice Entity"),
                 |alice| {
                     assert!(entities.is_ancestor_of(
-                        &EntityUid::from_type_name_and_id(
+                        &crate::EntityUid::from_type_name_and_id(
                             "user".parse().unwrap(),
                             "bob".parse().unwrap()
                         ),
@@ -995,7 +1017,8 @@ mod test {
             }
         });
 
-        assert_is_not_authorized_json(call);
+        let msg = "failed to parse principal";
+        assert_is_authorized_json_is_failure(call, msg);
     }
 
     #[test]
@@ -1779,7 +1802,7 @@ mod test {
             }
         }"#;
         assert_matches!(is_authorized_json_str(call), Err(e) => {
-            assert!(e.to_string().contains("found duplicate key"));
+            assert!(e.to_string() == "the key `is_authenticated` occurs two or more times in the same JSON object at line 17 column 13");
         });
     }
 

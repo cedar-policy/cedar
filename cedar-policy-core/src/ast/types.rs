@@ -40,8 +40,8 @@ pub enum Type {
     Entity {
         /// Entity type.
         ///
-        /// Entities can be unspecified or nominally typed. Unspecified entity types
-        /// are equal and nominal entity types are equal if they have the same typename.
+        /// Entities are nominally typed.
+        /// Nominal entity types are equal if they have the same typename.
         ty: EntityType,
     },
     /// Extension type. This is different from entity type.
@@ -65,9 +65,7 @@ pub enum Type {
 impl Type {
     /// Shorthand for constructing an entity type.
     pub fn entity_type(name: Name) -> Self {
-        Type::Entity {
-            ty: EntityType::Specified(name),
-        }
+        Type::Entity { ty: name.into() }
     }
 }
 
@@ -79,10 +77,7 @@ impl std::fmt::Display for Type {
             Self::String => write!(f, "string"),
             Self::Set => write!(f, "set"),
             Self::Record => write!(f, "record"),
-            Self::Entity { ty } => match ty {
-                EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Specified(name) => write!(f, "(entity of type `{}`)", name),
-            },
+            Self::Entity { ty } => write!(f, "(entity of type `{ty}`)"),
             Self::Extension { name } => write!(f, "{}", name),
         }
     }

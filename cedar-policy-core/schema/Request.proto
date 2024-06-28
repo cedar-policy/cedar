@@ -48,13 +48,7 @@ message EntityUid {
 }
 
 message EntityType {
-    EntityTypeType ty = 1;
     Name name = 2;
-
-    enum EntityTypeType {
-        Unspecified = 0;
-        Specified = 1; // Expects (name: Name)
-    }
 }
 
 // alias Id = string
@@ -131,14 +125,14 @@ message EntityReference {
 message PrincipalOrResourceConstraint {
     PrincipalOrResourceConstraintType ty = 1;
     EntityReference er = 2;
-    Name na = 3;
+    EntityType na = 3;
 
     enum PrincipalOrResourceConstraintType {
         Any = 0;
         In = 1; // Expects EntityReference
         Eq = 2; // Expects EntityReference
-        Is = 3; // Expects Name
-        IsIn = 4; // Expects Name and EntityReference
+        Is = 3; // Expects EntityType
+        IsIn = 4; // Expects EntityType and EntityReference
     }
 }
 
@@ -186,7 +180,7 @@ message Expr {
         string attr = 19;
         // alias Patterns = repeated PatternElem
         repeated PatternElem pattern = 20;
-        Name entity_type = 21;
+        EntityType entity_type = 21;
         map<string, Expr> record = 22;
 
         enum ExprKindType {
@@ -203,7 +197,7 @@ message Expr {
             GetAttr = 10; // Expects (expr: Expr, attr: string)
             HasAttr = 11; // Expects (expr: Expr, attr: string)
             Like = 12; // Expects (expr: Expr, pattern: Pattern)
-            Is = 13; // Expects (expr: Expr, entity_type: Name)
+            Is = 13; // Expects (expr: Expr, entity_type: EntityType)
             Set = 14; // Expects (args: repeated Expr)
             Record = 15; // Expects (record: map<string, Expr>)
         }
