@@ -16,6 +16,7 @@
 
 fn main() {
     generate_parsers();
+    generate_schemas();
 }
 
 /// Reads parser grammar files (.lalrpop) and generates Rust modules
@@ -26,6 +27,12 @@ fn generate_parsers() {
         .process_dir("src/parser/")
         .expect("parser synth");
 
-    prost_build::compile_protos(&["./schema/Request.proto"], &["./schema"]).unwrap();
+    
 
+}
+
+// Reads protobuf schema files (.proto) and generates Rust modules
+fn generate_schemas() {
+    prost_build::compile_protos(&["./schema/Request.proto"], &["./schema"])
+        .expect("Prost protobuf compilation error;");
 }
