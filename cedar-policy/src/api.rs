@@ -182,9 +182,9 @@ impl Entity {
                 (
                     k.to_string(),
                     match v {
-                        ast::PartialValue::Value(val) => RestrictedExpression(
-                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
-                        ),
+                        ast::PartialValue::Value(val) => {
+                            RestrictedExpression(ast::RestrictedExpr::from(val))
+                        }
                         ast::PartialValue::Residual(exp) => {
                             RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
                         }
@@ -906,7 +906,7 @@ impl PartialResponse {
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
     pub fn reauthorize(
-        &mut self,
+        &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
         auth: &Authorizer,
         es: &Entities,
@@ -3383,6 +3383,61 @@ impl Context {
     ) -> Result<impl ContextSchema, ContextJsonError> {
         cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
             .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
+    }
+
+    /// Merge this [`Context`] with another context (or iterator over
+    /// `(String, RestrictedExpression)` pairs), returning an error if the two
+    /// contain overlapping keys
+    pub fn merge(
+        self,
+        other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, ContextCreationError> {
+        Self::from_pairs(self.into_iter().chain(other_context))
+    }
+}
+
+/// Utilities for implementing `IntoIterator` for `Context`
+mod context {
+    use super::{ast, RestrictedExpression};
+
+    /// `IntoIter` iterator for `Context`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <ast::Context as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = (String, RestrictedExpression);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(|(k, v)| {
+                (
+                    k.to_string(),
+                    match v {
+                        ast::PartialValue::Value(val) => {
+                            RestrictedExpression(ast::RestrictedExpr::from(val))
+                        }
+                        ast::PartialValue::Residual(exp) => {
+                            // `exp` is guaranteed to be a valid `RestrictedExpr`
+                            // since it was originally stored in a `Context`
+                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
+                        }
+                    },
+                )
+            })
+        }
+    }
+}
+
+impl IntoIterator for Context {
+    type Item = (String, RestrictedExpression);
+
+    type IntoIter = context::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            inner: self.0.into_iter(),
+        }
     }
 }
 

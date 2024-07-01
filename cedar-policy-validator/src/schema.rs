@@ -2283,10 +2283,15 @@ mod test {
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": { },
-                "entityTypes": { },
+                "entityTypes": {
+                    "User": {},
+                    "Folder" :{}
+                },
                 "actions": {
                     "A": {
                         "appliesTo": {
+                            "principalTypes" : ["User"],
+                            "resourceTypes" : ["Folder"],
                             "context": {
                                 "type": "Record",
                                 "attributes": {

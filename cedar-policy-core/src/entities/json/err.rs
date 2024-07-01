@@ -81,10 +81,10 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingImpliedConstructor(MissingImpliedConstructor),
-    /// The same key appears two or more times in a single record literal
+    /// The same key appears two or more times in a single record
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateKeyInRecordLiteral(DuplicateKeyInRecordLiteral),
+    DuplicateKey(DuplicateKey),
     /// Error when evaluating an entity attribute
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -209,11 +209,11 @@ impl JsonDeserializationError {
         })
     }
 
-    pub(crate) fn duplicate_key_in_record_literal(
+    pub(crate) fn duplicate_key(
         ctx: JsonDeserializationErrorContext,
         key: impl Into<SmolStr>,
     ) -> Self {
-        Self::DuplicateKeyInRecordLiteral(DuplicateKeyInRecordLiteral {
+        Self::DuplicateKey(DuplicateKey {
             ctx: Box::new(ctx),
             key: key.into(),
         })
@@ -353,9 +353,9 @@ pub struct UnexpectedRecordAttr {
 }
 
 #[derive(Debug, Error, Diagnostic)]
-#[error("{}, duplicate key `{}` in record literal", .ctx, .key)]
-/// Error type for recordc literals having duplicate keys
-pub struct DuplicateKeyInRecordLiteral {
+#[error("{}, duplicate key `{}` in record", .ctx, .key)]
+/// Error type for records having duplicate keys
+pub struct DuplicateKey {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
     /// The key that appeared two or more times
