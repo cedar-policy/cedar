@@ -58,3 +58,10 @@ jobs:
     with:
       cedar_policy_ref: ${{ github.ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  run-integration-tests:
+    needs: get-branch-name
+    uses: ./.github/workflows/run_integration_tests_reusable.yml
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_integration_tests_ref:  ${{ needs.get-branch-name.outputs.branch_name }}
