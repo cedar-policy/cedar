@@ -378,10 +378,10 @@ impl From<&proto::Entities> for Entities {
 
 impl From<&Entities> for proto::Entities {
     fn from(v: &Entities) -> Self {
-        let entities: Vec<proto::Entity> = v.entities
-            .values()
-            .map(proto::Entity::from)
-            .collect();
+        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
+        for entity in v.entities.values() {
+            entities.push(proto::Entity::from(entity));
+        }
 
         #[cfg(feature = "partial-eval")]
         if v.mode == Mode::Partial {

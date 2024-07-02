@@ -134,22 +134,21 @@ impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
 
 impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     fn from(v: &LiteralPolicySet) -> Self {
-        let templates: HashMap<String, proto::TemplateBody> = v.templates
-            .iter()
-            .map(|(key, value)| (
+        let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
+        for (key, value) in &v.templates {
+            templates.insert(
                 String::from(key.as_ref()),
                 proto::TemplateBody::from(value)
-            ))
-            .collect();
+            );
+        }
 
-        let links: HashMap<String, proto::LiteralPolicy> = v.links
-            .iter()
-            .map(|(key, value)| (
+        let mut links: HashMap<String, proto::LiteralPolicy> = HashMap::with_capacity(v.links.len());
+        for (key, value) in &v.links {
+            links.insert(
                 String::from(key.as_ref()),
                 proto::LiteralPolicy::from(value)
-            ))
-            .collect();
-
+            );
+        }
 
         Self {
             templates: templates,
@@ -160,21 +159,21 @@ impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
 
 impl From<&PolicySet> for proto::LiteralPolicySet {
     fn from(v: &PolicySet) -> Self {
-        let templates: HashMap<String, proto::TemplateBody> = v.templates
-            .iter()
-            .map(|(key, value)| (
+        let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
+        for (key, value) in &v.templates {
+            templates.insert(
                 String::from(key.as_ref()),
                 proto::TemplateBody::from(value.as_ref())
-            ))
-            .collect();
+            );
+        }
 
-        let links: HashMap<String, proto::LiteralPolicy> = v.links
-            .iter()
-            .map(|(key, value)| (
+        let mut links: HashMap<String, proto::LiteralPolicy> = HashMap::with_capacity(v.links.len());
+        for (key, value) in &v.links {
+            links.insert(
                 String::from(key.as_ref()),
                 proto::LiteralPolicy::from(value)
-            ))
-            .collect();
+            );
+        }
 
         Self {
             templates: templates,

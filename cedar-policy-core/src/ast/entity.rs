@@ -603,18 +603,17 @@ impl From<&proto::Entity> for Entity {
 
 impl From<&Entity> for proto::Entity {
     fn from(v: &Entity) -> Self {
-        let attrs: HashMap<String, proto::Expr> = v.attrs
-            .iter()
-            .map(|(key, value)| (
-                key.to_string(),
-                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned())))
-            ))
-            .collect();
-    
-        let ancestors: Vec<proto::EntityUid> = v.ancestors
-            .iter()
-            .map(proto::EntityUid::from)
-            .collect();
+        let mut attrs: HashMap<String, proto::Expr> = HashMap::with_capacity(v.attrs.len());
+        for (key, value) in &v.attrs {
+            attrs.insert(
+                key.to_string(), 
+                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))));
+        }
+
+        let mut ancestors: Vec<proto::EntityUid> = Vec::with_capacity(v.ancestors.len());
+        for ancestor in &v.ancestors {
+            ancestors.push(proto::EntityUid::from(ancestor));
+        }
 
         Self {
             uid: Some(proto::EntityUid::from(&v.uid)),

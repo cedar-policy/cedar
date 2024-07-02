@@ -109,6 +109,11 @@ impl Pattern {
     pub fn iter(&self) -> impl Iterator<Item = &PatternElem> {
         self.elems.iter()
     }
+
+    /// Length of elems vector
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
 }
 
 impl std::fmt::Display for Pattern {

@@ -258,10 +258,10 @@ impl From<&proto::Name> for Name {
 
 impl From<&Name> for proto::Name {
     fn from(v: &Name) -> Self {
-        let path: Vec<String> = v.path.as_ref()
-            .iter()
-            .map(|value| String::from(value.as_ref()))
-            .collect();
+        let mut path: Vec<String> = Vec::with_capacity(v.path.as_ref().len());
+        for value in v.path.as_ref() {
+            path.push(String::from(value.as_ref()));
+        }
 
         Self {
             id: String::from(v.id.as_ref()),

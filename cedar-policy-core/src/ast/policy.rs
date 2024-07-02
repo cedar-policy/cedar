@@ -1995,10 +1995,11 @@ impl From<&ActionConstraint> for proto::ActionConstraint {
             }
             ActionConstraint::In(euids) => {
                 result.ty = proto::action_constraint::ActionConstraintType::In.into();
-                result.euids = euids
-                    .iter()
-                    .map(|value| proto::EntityUid::from(value.as_ref()))
-                    .collect();
+                let mut peuids: Vec<proto::EntityUid> = Vec::with_capacity(euids.len());
+                for value in euids {
+                    peuids.push(proto::EntityUid::from(value.as_ref()));
+                }
+                result.euids = peuids;
             }
             ActionConstraint::Eq(euid) => {
                 result.ty = proto::action_constraint::ActionConstraintType::Eq.into();

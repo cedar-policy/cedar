@@ -926,10 +926,11 @@ impl From<&Expr> for proto::Expr {
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::ExtensionFunctionApp.into();
                 expr_kind.fn_name = Some(proto::Name::from(fn_name));
-                expr_kind.args = args.as_ref()
-                    .into_iter()
-                    .map(proto::Expr::from)
-                    .collect();
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(args.as_ref().len());
+                for value in args.as_ref() {
+                    pargs.push(proto::Expr::from(value));
+                }
+                expr_kind.args = pargs;
             }
             ExprKind::GetAttr { expr, attr } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::GetAttr.into();
@@ -944,10 +945,11 @@ impl From<&Expr> for proto::Expr {
             ExprKind::Like { expr, pattern } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Like.into();
                 expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
-                expr_kind.pattern = pattern.iter()
-                    .map(proto::expr::expr_kind::PatternElem::from)
-                    .collect();
-
+                let mut ppattern: Vec<proto::expr::expr_kind::PatternElem> = Vec::with_capacity(pattern.len());
+                for value in pattern.iter() {
+                    ppattern.push(proto::expr::expr_kind::PatternElem::from(value));
+                }
+                expr_kind.pattern = ppattern;
             }
             ExprKind::Is { expr, entity_type } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Is.into();
@@ -956,10 +958,11 @@ impl From<&Expr> for proto::Expr {
             }
             ExprKind::Set(args) => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Set.into();
-                expr_kind.args = args.as_ref()
-                    .into_iter()
-                    .map(proto::Expr::from)
-                    .collect();
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(args.as_ref().len());
+                for arg in args.as_ref() {
+                    pargs.push(proto::Expr::from(arg));
+                }
+                expr_kind.args = pargs;
             }
             ExprKind::Record(record) => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Record.into();
