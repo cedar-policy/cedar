@@ -64,13 +64,13 @@ impl<'a> entities::Schema for CoreSchema<'a> {
 
     fn entity_types_with_basename<'b>(
         &'b self,
-        basename: &'b ast::Id,
+        basename: &'b ast::UnreservedId,
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
         Box::new(
             self.schema
                 .entity_types()
                 .filter_map(move |(entity_type, _)| {
-                    if entity_type.name().basename() == basename {
+                    if &entity_type.name().basename() == basename {
                         Some(entity_type.clone())
                     } else {
                         None

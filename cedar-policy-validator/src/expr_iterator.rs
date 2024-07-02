@@ -139,7 +139,7 @@ fn text_in_entity_type<'a>(
     loc: Option<&'a Loc>,
     ty: &'a EntityType,
 ) -> impl IntoIterator<Item = TextKind<'a>> {
-    text_in_name(loc, ty.name()).collect::<Vec<_>>()
+    text_in_name(loc, ty.name().as_ref()).collect::<Vec<_>>()
 }
 
 fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item = TextKind<'a>> {

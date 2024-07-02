@@ -38,7 +38,7 @@ pub static ACTION_ENTITY_TYPE: &str = "Action";
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(transparent)]
-pub struct EntityType(Name);
+pub struct EntityType(UnreservedName);
 
 impl EntityType {
     /// Is this an Action entity type?
@@ -46,48 +46,48 @@ impl EntityType {
     /// base name for the type, so this will return true for any entity type named
     /// `Action` regardless of namespaces.
     pub fn is_action(&self) -> bool {
-        self.0.basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+        self.0.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
     }
 
     /// The name of this entity type
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> &UnreservedName {
         &self.0
     }
 
     /// The source location of this entity type
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc()
+        self.0.as_ref().loc()
     }
 
     /// Calls [`Name::qualify_with`] on the underlying [`Name`]
-    pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
+    pub fn qualify_with(&self, namespace: Option<&UnreservedName>) -> Self {
         Self(self.0.qualify_with(namespace))
     }
 
     /// Wraps [`Name::from_normalized_str`]
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
-        Name::from_normalized_str(src).map(Self)
+        Name::from_normalized_str(src)
+            .and_then(|n| n.try_into().map(Self).map_err(ParseErrors::singleton))
     }
 }
 
-impl From<Name> for EntityType {
-    fn from(n: Name) -> Self {
+impl From<UnreservedName> for EntityType {
+    fn from(n: UnreservedName) -> Self {
         Self(n)
     }
 }
 
 impl AsRef<Name> for EntityType {
     fn as_ref(&self) -> &Name {
-        &self.0
+        self.0.as_ref()
     }
 }
 
 impl FromStr for EntityType {
-    type Err = <Name as FromStr>::Err;
+    type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let name: Name = s.parse()?;
-        Ok(Self(name))
+        s.parse().map(Self)
     }
 }
 
@@ -165,7 +165,7 @@ impl EntityUID {
     /// The type of entities created with the above `with_eid()`.
     #[cfg(test)]
     pub(crate) fn test_entity_type() -> EntityType {
-        let name = Name::parse_unqualified_name("test_entity_type")
+        let name = UnreservedName::parse_unqualified_name("test_entity_type")
             .expect("test_entity_type should be a valid identifier");
         EntityType(name)
     }
@@ -178,7 +178,7 @@ impl EntityUID {
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
-            ty: EntityType(Name::parse_unqualified_name(typename)?),
+            ty: EntityType(UnreservedName::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
             loc: None,
         })
@@ -609,14 +609,14 @@ mod test {
     fn test_euid_equality() {
         let e1 = EntityUID::with_eid("foo");
         let e2 = EntityUID::from_components(
-            Name::parse_unqualified_name("test_entity_type")
+            UnreservedName::parse_unqualified_name("test_entity_type")
                 .expect("should be a valid identifier")
                 .into(),
             Eid("foo".into()),
             None,
         );
         let e3 = EntityUID::from_components(
-            Name::parse_unqualified_name("Unspecified")
+            UnreservedName::parse_unqualified_name("Unspecified")
                 .expect("should be a valid identifier")
                 .into(),
             Eid("foo".into()),

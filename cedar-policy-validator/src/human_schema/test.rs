@@ -1165,13 +1165,18 @@ mod parser_tests {
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
+    use cool_asserts::assert_matches;
 
     use crate::{
+        human_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
         types::{EntityLUB, Type},
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
     use cedar_policy_core::ast as cedar_ast;
 
+    // We allow translation schemas that violate RFC 52 to `SchemaFragment`
+    // The violations are reported during further translation to
+    // `ValidatorSchema`
     #[test]
     fn use_reserved_namespace() {
         let schema = SchemaFragment::from_str_natural(
@@ -1179,17 +1184,14 @@ mod translator_tests {
           namespace __cedar {}
         "#,
         );
-        assert!(schema.is_err(), "__cedar namespace shouldn't be allowed");
+        assert!(schema.is_ok());
 
         let schema = SchemaFragment::from_str_natural(
             r#"
           namespace __cedar::Foo {}
         "#,
         );
-        assert!(
-            schema.is_err(),
-            "__cedar::Foo namespace shouldn't be allowed"
-        );
+        assert!(schema.is_ok());
     }
 
     #[test]
@@ -1377,7 +1379,7 @@ mod translator_tests {
         for (name, et) in validator_schema.entity_types() {
             if name.to_string() == "A::C" || name.to_string() == "X::Y" {
                 assert!(et.descendants.contains(&cedar_ast::EntityType::from(
-                    cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()
+                    cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap()
                 )));
             } else {
                 assert!(et.descendants.is_empty());
@@ -1466,7 +1468,7 @@ mod translator_tests {
             schema.try_into().expect("should be a valid schema");
         let et = validator_schema
             .get_entity_type(&cedar_ast::EntityType::from(
-                cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap(),
+                cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap(),
             ))
             .unwrap();
         let attr = et.attr("foo").unwrap();
@@ -1769,6 +1771,50 @@ mod translator_tests {
         "#,
         );
         assert!(schema.is_err());
+    }
+
+    // Note that we do not throw any errors during the human-readable to JSON
+    // translation. An error will be raised if the translated JSON schema is
+    // further processed into `ValidatorSchema`
+    #[test]
+    fn reserved_namespace() {
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Ok(()));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar::A {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Ok(()));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"
+                entity __cedar;
+        "#,
+            )
+            .unwrap(),
+        )
+        .map(|_| ());
+
+        // The result is Ok here because we want to report the error later
+        // in the schema parsing pipeline
+        assert_matches!(schema, Ok(_));
     }
 }
 

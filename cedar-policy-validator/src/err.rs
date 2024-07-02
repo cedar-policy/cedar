@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{ast::EntityUID, transitive_closure};
+use cedar_policy_core::{
+    ast::{EntityUID, ReservedNameError},
+    transitive_closure,
+};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -212,6 +215,10 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
+    /// The schema used a reserved namespace or typename (as of this writing, just `__cedar`).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedName(#[from] ReservedNameError),
     /// Common type names conflict with primitive types.
     #[error(transparent)]
     #[diagnostic(transparent)]

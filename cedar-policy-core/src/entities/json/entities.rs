@@ -282,7 +282,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = schema
-                            .entity_types_with_basename(etype.name().basename())
+                            .entity_types_with_basename(&etype.name().basename())
                             .collect();
                         JsonDeserializationError::EntitySchemaConformance(
                             UnexpectedEntityTypeError {

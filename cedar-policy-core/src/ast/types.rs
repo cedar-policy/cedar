@@ -17,6 +17,8 @@
 use crate::ast::{EntityType, Name};
 use serde::{Deserialize, Serialize};
 
+use super::UnreservedName;
+
 /// This represents the runtime type of a Cedar value.
 /// Nominal types: two entity types are equal if they have the same Name.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
@@ -64,7 +66,7 @@ pub enum Type {
 
 impl Type {
     /// Shorthand for constructing an entity type.
-    pub fn entity_type(name: Name) -> Self {
+    pub fn entity_type(name: UnreservedName) -> Self {
         Type::Entity { ty: name.into() }
     }
 }

@@ -798,7 +798,12 @@ impl ExprOrSpecial<'_> {
     }
 
     fn into_entity_type(self) -> Result<ast::EntityType> {
-        self.into_name().map(ast::EntityType::from)
+        self.into_unreserved_name().map(ast::EntityType::from)
+    }
+
+    fn into_unreserved_name(self) -> Result<ast::UnreservedName> {
+        self.into_name()
+            .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
     fn into_name(self) -> Result<ast::Name> {
@@ -807,7 +812,7 @@ impl ExprOrSpecial<'_> {
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
             Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
-            Self::Name { name, .. } => Ok(name),
+            Self::Name { ref name, .. } => Ok(name.clone()),
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
@@ -1448,6 +1453,11 @@ impl Node<Option<cst::Name>> {
         }
     }
 
+    pub(crate) fn to_unreserved_name(&self) -> Result<ast::UnreservedName> {
+        self.to_name()
+            .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
+    }
+
     pub(crate) fn to_name(&self) -> Result<ast::Name> {
         let name = self.try_as_inner()?;
 
@@ -1529,7 +1539,7 @@ impl Node<Option<cst::Ref>> {
 
         match refr {
             cst::Ref::Uid { path, eid } => {
-                let maybe_path = path.to_name().map(ast::EntityType::from);
+                let maybe_path = path.to_unreserved_name().map(ast::EntityType::from);
                 let maybe_eid = eid.as_valid_string().and_then(|s| {
                     to_unescaped_string(s).map_err(|escape_errs| {
                         ParseErrors::new_from_nonempty(
@@ -1651,8 +1661,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
     }
 }
 fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
-    let eid = ast::Eid::new(n);
-    ast::EntityUID::from_components(p, eid, Some(loc))
+    ast::EntityUID::from_components(p, ast::Eid::new(n), Some(loc))
 }
 fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).val(r)
@@ -1821,6 +1830,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
+    use ast::{Name, ReservedNameError};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4331,6 +4341,26 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        assert_matches!(parse_expr(r#"__cedar::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"__cedar::A::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"principal is __cedar::A"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
     }
 
     #[test]

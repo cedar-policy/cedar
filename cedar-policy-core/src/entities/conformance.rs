@@ -64,7 +64,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = self
                     .schema
-                    .entity_types_with_basename(etype.name().basename())
+                    .entity_types_with_basename(&etype.name().basename())
                     .collect();
                 UnexpectedEntityTypeError {
                     uid: uid.clone(),

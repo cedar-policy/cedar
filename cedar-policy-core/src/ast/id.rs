@@ -19,6 +19,10 @@ use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
+use super::{Name, ReservedNameError};
+
+const RESERVED_ID: &str = "__cedar";
+
 /// Identifiers. Anything in `Id` should be a valid identifier, this means it
 /// does not contain, for instance, spaces or characters like '+'; and also is
 /// not one of the Cedar reserved identifiers (at time of writing,
@@ -50,6 +54,13 @@ impl Id {
     pub fn into_smolstr(self) -> SmolStr {
         self.0
     }
+
+    /// Return if the `Id` is reserved (i.e., `__cedar`)
+    /// Note that it does not test if the `Id` string is a reserved keyword
+    /// as the parser already ensures that it is not
+    pub fn is_reserved(&self) -> bool {
+        self.as_ref() == RESERVED_ID
+    }
 }
 
 impl AsRef<str> for Id {
@@ -76,6 +87,39 @@ impl std::str::FromStr for Id {
 impl FromNormalizedStr for Id {
     fn describe_self() -> &'static str {
         "Id"
+    }
+}
+
+/// An `Id` that is not equal to `__cedar`, as specified by RFC 52
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+pub struct UnreservedId(pub(crate) Id);
+
+impl From<UnreservedId> for Id {
+    fn from(value: UnreservedId) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<Id> for UnreservedId {
+    type Error = ReservedNameError;
+    fn try_from(value: Id) -> Result<Self, Self::Error> {
+        if value.is_reserved() {
+            Err(ReservedNameError(Name::unqualified_name(value)))
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+impl AsRef<str> for UnreservedId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+impl std::fmt::Display for UnreservedId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

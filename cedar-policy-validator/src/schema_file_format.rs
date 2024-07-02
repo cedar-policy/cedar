@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{Id, Name, ReservedNameError, UnreservedName},
     entities::CedarValueJson,
     FromNormalizedStr,
 };
@@ -37,7 +37,7 @@ use crate::{
     human_schema::{
         self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
-    HumanSchemaError, HumanSyntaxParseError, RawName,
+    HumanSchemaError, HumanSyntaxParseError, RawName, RawUnreservedName,
 };
 
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
@@ -198,24 +198,30 @@ impl<N> NamespaceDefinition<N> {
 
 impl NamespaceDefinition<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> NamespaceDefinition<Name> {
-        NamespaceDefinition {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<NamespaceDefinition<UnreservedName>, ReservedNameError> {
+        Ok(NamespaceDefinition {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
-                .collect(),
-            entity_types: self
-                .entity_types
-                .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
-                .collect(),
+                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
+            entity_types:
+                self.entity_types
+                    .into_iter()
+                    .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                    .collect::<std::result::Result<
+                        HashMap<Id, EntityType<UnreservedName>>,
+                        ReservedNameError,
+                    >>()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
-                .collect(),
-        }
+                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
+                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
+        })
     }
 }
 
@@ -247,15 +253,18 @@ pub struct EntityType<N> {
 
 impl EntityType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> EntityType<Name> {
-        EntityType {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<EntityType<UnreservedName>, ReservedNameError> {
+        Ok(EntityType {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
-                .collect(),
-            shape: self.shape.qualify_type_references(ns),
-        }
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+            shape: self.shape.qualify_type_references(ns)?,
+        })
     }
 }
 
@@ -299,8 +308,11 @@ impl<N> Default for AttributesOrContext<N> {
 
 impl AttributesOrContext<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> AttributesOrContext<Name> {
-        AttributesOrContext(self.0.qualify_type_references(ns))
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<AttributesOrContext<UnreservedName>, ReservedNameError> {
+        Ok(AttributesOrContext(self.0.qualify_type_references(ns)?))
     }
 }
 
@@ -336,18 +348,25 @@ pub struct ActionType<N> {
 
 impl ActionType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionType<Name> {
-        ActionType {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ActionType<UnreservedName>, ReservedNameError> {
+        Ok(ActionType {
             attributes: self.attributes,
             applies_to: self
                 .applies_to
-                .map(|applyspec| applyspec.qualify_type_references(ns)),
-            member_of: self.member_of.map(|v| {
-                v.into_iter()
-                    .map(|aeuid| aeuid.qualify_type_references(ns))
-                    .collect()
-            }),
-        }
+                .map(|applyspec| applyspec.qualify_type_references(ns))
+                .transpose()?,
+            member_of: self
+                .member_of
+                .map(|v| {
+                    Ok(v.into_iter()
+                        .map(|aeuid| Ok(aeuid.qualify_type_references(ns)?))
+                        .collect::<std::result::Result<Vec<_>, _>>()?)
+                })
+                .transpose()?,
+        })
     }
 }
 
@@ -379,20 +398,23 @@ pub struct ApplySpec<N> {
 
 impl ApplySpec<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ApplySpec<Name> {
-        ApplySpec {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ApplySpec<UnreservedName>, ReservedNameError> {
+        Ok(ApplySpec {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
-                .collect(),
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
-                .collect(),
-            context: self.context.qualify_type_references(ns),
-        }
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+            context: self.context.qualify_type_references(ns)?,
+        })
     }
 }
 
@@ -436,11 +458,17 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
 
 impl ActionEntityUID<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
-        ActionEntityUID {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<ActionEntityUID<UnreservedName>, ReservedNameError> {
+        Ok(ActionEntityUID {
             id: self.id,
-            ty: self.ty.map(|rname| rname.qualify_with(ns)),
-        }
+            ty: self
+                .ty
+                .map(|rname| Ok(RawUnreservedName::try_from(rname)?.qualify_with(ns)))
+                .transpose()?,
+        })
     }
 }
 
@@ -525,12 +553,15 @@ impl<N> SchemaType<N> {
 
 impl SchemaType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<SchemaType<UnreservedName>, ReservedNameError> {
         match self {
-            Self::Type(stv) => SchemaType::Type(stv.qualify_type_references(ns)),
-            Self::TypeDef { type_name } => SchemaType::TypeDef {
-                type_name: type_name.qualify_with(ns),
-            },
+            Self::Type(stv) => Ok(SchemaType::Type(stv.qualify_type_references(ns)?)),
+            Self::TypeDef { type_name } => Ok(SchemaType::TypeDef {
+                type_name: RawUnreservedName::try_from(type_name)?.qualify_with(ns),
+            }),
         }
     }
 
@@ -939,35 +970,41 @@ pub enum SchemaTypeVariant<N> {
 
 impl SchemaTypeVariant<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
+    pub fn qualify_type_references(
+        self,
+        ns: Option<&UnreservedName>,
+    ) -> std::result::Result<SchemaTypeVariant<UnreservedName>, ReservedNameError> {
         match self {
-            Self::Boolean => SchemaTypeVariant::Boolean,
-            Self::Long => SchemaTypeVariant::Long,
-            Self::String => SchemaTypeVariant::String,
-            Self::Entity { name } => SchemaTypeVariant::Entity {
-                name: name.qualify_with(ns),
-            },
+            Self::Boolean => Ok(SchemaTypeVariant::Boolean),
+            Self::Long => Ok(SchemaTypeVariant::Long),
+            Self::String => Ok(SchemaTypeVariant::String),
+            Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
+                name: RawUnreservedName::try_from(name)?.qualify_with(ns),
+            }),
             Self::Record {
                 attributes,
                 additional_attributes,
-            } => SchemaTypeVariant::Record {
-                attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, TypeOfAttribute { ty, required })| {
-                        (
-                            attr,
-                            TypeOfAttribute {
-                                ty: ty.qualify_type_references(ns),
-                                required,
-                            },
-                        )
-                    },
-                )),
+            } => Ok(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(
+                    attributes
+                        .into_iter()
+                        .map(|(attr, TypeOfAttribute { ty, required })| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    ty: ty.qualify_type_references(ns)?,
+                                    required,
+                                },
+                            ))
+                        })
+                        .collect::<std::result::Result<Vec<_>, ReservedNameError>>()?,
+                ),
                 additional_attributes,
-            },
-            Self::Set { element } => SchemaTypeVariant::Set {
-                element: Box::new(element.qualify_type_references(ns)),
-            },
-            Self::Extension { name } => SchemaTypeVariant::Extension { name },
+            }),
+            Self::Set { element } => Ok(SchemaTypeVariant::Set {
+                element: Box::new(element.qualify_type_references(ns)?),
+            }),
+            Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
         }
     }
 

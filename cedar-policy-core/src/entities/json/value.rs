@@ -18,10 +18,6 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::ast::{
-    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
-    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
-};
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
     json::err::{EscapeKind, TypeMismatchError},
@@ -29,6 +25,13 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
+use crate::{
+    ast::{
+        expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+        ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
+    },
+    entities::UnreservedName,
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -199,7 +202,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            Name::from_normalized_str(&e.entity_type)?.into(),
+            UnreservedName::from_normalized_str(&e.entity_type)?.into(),
             Eid::new(e.id),
             None,
         ))

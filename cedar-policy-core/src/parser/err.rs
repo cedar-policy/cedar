@@ -27,7 +27,7 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast;
+use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -368,6 +368,10 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
+    /// Returned when an entity type contains a reserved namespace or typename (as of this writing, just `__cedar`)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedNamespace(#[from] ReservedNameError),
     /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _` in the policy scope
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]

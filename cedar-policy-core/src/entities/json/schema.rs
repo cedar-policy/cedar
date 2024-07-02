@@ -15,7 +15,8 @@
  */
 
 use super::SchemaType;
-use crate::ast::{Entity, EntityType, EntityUID, Id, Name};
+use crate::ast::{Entity, EntityType, EntityUID};
+use crate::entities::{UnreservedId, UnreservedName};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -42,7 +43,7 @@ pub trait Schema {
     /// given basename (in the sense of `Name::basename()`).
     fn entity_types_with_basename<'a>(
         &'a self,
-        basename: &'a Id,
+        basename: &'a UnreservedId,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a>;
 
     /// Get all the actions declared in the schema
@@ -63,7 +64,7 @@ impl Schema for NoEntitiesSchema {
     }
     fn entity_types_with_basename<'a>(
         &'a self,
-        _basename: &'a Id,
+        _basename: &'a UnreservedId,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
         Box::new(std::iter::empty())
     }
@@ -100,11 +101,11 @@ impl Schema for AllEntitiesNoAttrsSchema {
     }
     fn entity_types_with_basename<'a>(
         &'a self,
-        basename: &'a Id,
+        basename: &'a UnreservedId,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
-        Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
-            basename.clone(),
-        ))))
+        Box::new(std::iter::once(EntityType::from(
+            UnreservedName::unqualified_name(basename.clone()),
+        )))
     }
     fn action_entities(&self) -> std::iter::Empty<Arc<Entity>> {
         std::iter::empty()

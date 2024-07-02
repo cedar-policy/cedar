@@ -16,15 +16,19 @@
 
 use super::id::Id;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
+use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::parser::err::ParseErrors;
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
-use super::PrincipalOrResource;
+use super::{PrincipalOrResource, UnreservedId};
+use thiserror::Error;
 
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
@@ -188,6 +192,15 @@ impl Name {
     /// Test if a `Name` is an `Id`
     pub fn is_unqualified(&self) -> bool {
         self.path.is_empty()
+    }
+
+    /// Test if a `Name` is reserved
+    /// i.e., any of its components matches `__cedar`
+    pub fn is_reserved(&self) -> bool {
+        self.path
+            .iter()
+            .chain(std::iter::once(&self.id))
+            .any(|id| id.is_reserved())
     }
 }
 
@@ -373,6 +386,103 @@ mod vars_test {
     }
 }
 
+/// A newtype which indicates that the contained `Name` does not contain
+/// reserved `__cedar`, as specified by RFC 52
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct UnreservedName(pub(crate) Name);
+
+impl Display for UnreservedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for UnreservedName {
+    type Err = ParseErrors;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let n: Name = s.parse()?;
+        n.try_into().map_err(ParseErrors::singleton)
+    }
+}
+
+impl FromNormalizedStr for UnreservedName {
+    fn describe_self() -> &'static str {
+        "Unreserved name"
+    }
+}
+
+impl UnreservedName {
+    /// Qualify the name with an optional namespace
+    /// This method has the same behavior as `Name::qualify_with` except that
+    /// the `namespace` argument is a `Option<&UnreservedName>`
+    pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
+        Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
+    }
+
+    /// Create a `UnreservedName` with no path (no namespaces).
+    /// Returns an error if `s` is not a valid identifier.
+    pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
+        Name::parse_unqualified_name(s).and_then(|n| n.try_into().map_err(ParseErrors::singleton))
+    }
+
+    /// Create a `UnreservedName` with no path (no namespaces).
+    pub fn unqualified_name(id: UnreservedId) -> Self {
+        Self(Name::unqualified_name(id.0))
+    }
+
+    /// Get the basename of the `UnreservedName` (ie, with namespaces stripped).
+    pub fn basename(&self) -> UnreservedId {
+        // PANIC SAFETY: `UnreservedName` should consist of `UnreservedId`s
+        #![allow(clippy::unwrap_used)]
+        self.0.basename().clone().try_into().unwrap()
+    }
+}
+
+/// Error occurred when a reserved name is used
+#[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic, Hash)]
+#[error("Use reserved name `{0}` containing `__cedar`")]
+pub struct ReservedNameError(pub(crate) Name);
+
+impl From<ReservedNameError> for ParseError {
+    fn from(value: ReservedNameError) -> Self {
+        ParseError::ToAST(ToASTError::new(
+            value.clone().into(),
+            match &value.0.loc {
+                Some(loc) => loc.clone(),
+                None => {
+                    let name_str = value.0.to_string();
+                    Loc::new(0..(name_str.len()), name_str.into())
+                }
+            },
+        ))
+    }
+}
+
+impl TryFrom<Name> for UnreservedName {
+    type Error = ReservedNameError;
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.is_reserved() {
+            Err(ReservedNameError(value))
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+impl From<UnreservedName> for Name {
+    fn from(value: UnreservedName) -> Self {
+        value.0
+    }
+}
+
+impl AsRef<Name> for UnreservedName {
+    fn as_ref(&self) -> &Name {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -425,5 +535,16 @@ mod test {
                 .qualify_with(None)
                 .to_smolstr()
         )
+    }
+
+    #[test]
+    fn test_reserved() {
+        for n in ["__cedar", "__cedar::A", "__cedar::A::B"] {
+            assert!(Name::from_normalized_str(n).unwrap().is_reserved());
+        }
+
+        for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
+            assert!(!Name::from_normalized_str(n).unwrap().is_reserved());
+        }
     }
 }
