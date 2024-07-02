@@ -1128,6 +1128,46 @@ impl Node<Option<cst::Member>> {
         }
     }
 
+    /// Construct an attribute access or method call on an expression. This also
+    /// handles function calls, but a function call of an arbitrary expression
+    /// is always an error.
+    fn build_expr_accessor<'a>(
+        &self,
+        head: ast::Expr,
+        next: &mut AstAccessor,
+        tail: &'a mut [AstAccessor],
+    ) -> Result<(ast::Expr, &'a mut [AstAccessor])> {
+        use AstAccessor::*;
+        match (next, tail) {
+            // trying to "call" an expression as a function like `(1 + 1)("foo")`. Always an error.
+            (Call(_), _) => Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
+
+            // method call on arbitrary expression like `[].contains(1)`
+            (Field(id), [Call(args), rest @ ..]) => {
+                // move the expr and args out of the slice
+                let args = std::mem::take(args);
+                // move the id out of the slice as well, to avoid cloning the internal string
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((id.to_meth(head, args, &self.loc)?, rest))
+            }
+
+            // field of arbitrary expr like `(principal.foo).bar`
+            (Field(id), rest) => {
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((
+                    construct_expr_attr(head, id.to_smolstr(), self.loc.clone()),
+                    rest,
+                ))
+            }
+
+            // index into arbitrary expr like `(principal.foo)["bar"]`
+            (Index(i), rest) => {
+                let i = mem::take(i);
+                Ok((construct_expr_attr(head, i, self.loc.clone()), rest))
+            }
+        }
+    }
+
     fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let mem = self.try_as_inner()?;
 
@@ -1137,198 +1177,115 @@ impl Node<Option<cst::Member>> {
         // Return errors in case parsing failed for any element
         let (prim, mut accessors) = flatten_tuple_2(maybe_prim, maybe_accessors)?;
 
-        // `head` will store the current translated expression
-        let mut head = prim;
-        // `tail` will store what remains to be translated
-        let mut tail = &mut accessors[..];
-
-        // This algorithm is essentially an iterator over the accessor slice, but the
-        // pattern match should be easier to read, since we have to check multiple elements
-        // at once. We use `mem::replace` to "deconstruct" the slice as we go, filling it
-        // with empty data and taking ownership of its contents.
-        // The loop returns on the first error observed.
-        loop {
+        let (mut head, mut tail) = {
             use AstAccessor::*;
             use ExprOrSpecial::*;
-            match (&mut head, tail) {
-                // no accessors left - we're done
-                (_, []) => break Ok(head),
-                // function call
-                (Name { name, .. }, [Call(a), rest @ ..]) => {
-                    // move the vec out of the slice, we won't use the slice after
-                    let args = std::mem::take(a);
-                    // replace the object `name` refers to with a default value since it won't be used afterwards
-                    let nn = mem::replace(
-                        name,
-                        ast::Name::unqualified_name(ast::UnreservedId::empty()),
-                    );
-                    head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
-                }
-                // variable call - error
-                (Var { var, .. }, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::VariableCall(*var)).into())
-                }
-                // arbitrary call - error
-                (_, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into())
-                }
-                // method call on name - error
-                (Name { name, .. }, [Field(f), Call(_), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
-                        .into())
-                }
-                // method call on variable
-                (Var { var, loc: var_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    // move var and args out of the slice
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let args = std::mem::take(a);
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
+            match (prim, accessors.as_mut_slice()) {
+                // no accessors, return head immediately.
+                (prim, []) => return Ok(prim),
 
-                    head = id
-                        .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
-                        .map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })?;
-                    tail = rest;
+                // Any access on an arbitrary expression. We will handle the
+                // possibility of multiple chained accesses on this expression
+                // in the loop at the end of this function.
+                (Expr { expr, .. }, [next, rest @ ..]) => {
+                    self.build_expr_accessor(expr, next, rest)?
                 }
-                // method call on arbitrary expression
-                (Expr { expr, .. }, [Field(i), Call(a), rest @ ..]) => {
-                    // move the expr and args out of the slice
-                    let args = std::mem::take(a);
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
-                }
-                // method call on string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    let args = std::mem::take(a);
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
+                // String literals are handled the same ways as expressions
+                (StrLit { lit, loc }, [next, rest @ ..]) => {
+                    let str_lit_expr = match to_unescaped_string(lit) {
+                        Ok(s) => construct_expr_string(s, loc.clone()),
                         Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
+                            return Err(ParseErrors::new_from_nonempty(
+                                escape_errs
+                                    .map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                            ))
                         }
                     };
-                    head = maybe_expr.and_then(|e| {
-                        id.to_meth(e, args, &self.loc).map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })
-                    })?;
-                    tail = rest;
+                    self.build_expr_accessor(str_lit_expr, next, rest)?
                 }
-                // access on arbitrary name - error
-                (Name { name, .. }, [Field(f), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidAccess(
-                            name.clone(),
-                            f.to_string().into(),
-                        ))
-                        .into())
+
+                // function call
+                (Name { name, .. }, [Call(args), rest @ ..]) => {
+                    // move the vec out of the slice, we won't use the slice after
+                    let args = std::mem::take(args);
+                    (name.into_func(args, self.loc.clone())?, rest)
                 }
-                (Name { name, .. }, [Index(i), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
-                        .into())
+                // variable function call - error
+                (Var { var, .. }, [Call(_), ..]) => {
+                    return Err(self.to_ast_err(ToASTErrorKind::VariableCall(var)).into());
                 }
-                // attribute of variable
+
+                // method call on name - error
+                (Name { name, .. }, [Field(f), Call(_), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
+                        .into());
+                }
+                // method call on variable
+                (Var { var, loc: var_loc }, [Field(id), Call(args), rest @ ..]) => {
+                    let args = std::mem::take(args);
+                    // move the id out of the slice as well, to avoid cloning the internal string
+                    let id = mem::replace(id, ast::UnreservedId::empty());
+                    (
+                        id.to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)?,
+                        rest,
+                    )
+                }
+
+                // attribute access on a variable
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
                     let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(
+                    (
+                        construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
                             id.to_smolstr(),
                             self.loc.clone(),
                         ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                        rest,
+                    )
                 }
-                // field of arbitrary expr
-                (Expr { expr, .. }, [Field(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                // attribute access on an arbitrary name - error
+                (Name { name, .. }, [Field(f), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidAccess(
+                            name.clone(),
+                            f.to_string().into(),
+                        ))
+                        .into());
                 }
-                // field of string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                // index style attribute access on an arbitrary name - error
+                (Name { name, .. }, [Index(i), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
+                        .into());
                 }
-                // index into var
+
+                // index style attribute access on a variable
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(
+                    let i = mem::take(i);
+                    (
+                        construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            s,
+                            i,
                             self.loc.clone(),
                         ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into arbitrary expr
-                (Expr { expr, .. }, [Index(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(expr, s, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Index(i), rest @ ..]) => {
-                    let id = mem::take(i);
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                        rest,
+                    )
                 }
             }
+        };
+
+        // After processing the first element, we know that `head` is always an
+        // expression, so we repeatedly apply `build_expr_access` on head
+        // without need to consider the other cases until we've consumed the
+        // list of accesses.
+        while let [next, rest @ ..] = tail {
+            (head, tail) = self.build_expr_accessor(head, next, rest)?;
         }
+        Ok(ExprOrSpecial::Expr {
+            expr: head,
+            loc: self.loc.clone(),
+        })
     }
 }
 
