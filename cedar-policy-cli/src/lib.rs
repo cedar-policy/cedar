@@ -99,6 +99,9 @@ pub enum Commands {
     TranslatePolicy(TranslatePolicyArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
+    /// Visualize a set of JSON entities to the graphviz format.
+    /// Warning: Entity visualization is best-effort and not well tested.
+    Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
 }
@@ -381,6 +384,12 @@ pub struct AuthorizeArgs {
     pub timing: bool,
 }
 
+#[derive(Args, Debug)]
+pub struct VisualizeArgs {
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum PolicyFormat {
     /// The standard human-readable Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
@@ -645,6 +654,19 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
+    }
+}
+
+pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
+    match load_entities(&args.entities_file, None) {
+        Ok(entities) => {
+            println!("{}", entities.to_dot_str());
+            CedarExitCode::Success
+        }
+        Err(report) => {
+            eprintln!("{report:?}");
+            CedarExitCode::Failure
+        }
     }
 }
 
