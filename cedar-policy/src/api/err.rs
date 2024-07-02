@@ -213,7 +213,11 @@ pub mod human_schema_errors {
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct ParseError(#[from] pub(super) cedar_policy_validator::HumanSyntaxParseError);
+    pub struct ParseError {
+        /// The errors reported by the parser
+        #[from]
+        pub errors: cedar_policy_validator::HumanSyntaxParseError,
+    }
 
     /// IO error while parsing a human-readable schema
     #[derive(Debug, Error, Diagnostic)]
@@ -247,8 +251,8 @@ impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
             cedar_policy_validator::HumanSchemaError::IO(e) => {
                 human_schema_errors::IoError(e).into()
             }
-            cedar_policy_validator::HumanSchemaError::Parsing(e) => {
-                human_schema_errors::ParseError(e).into()
+            cedar_policy_validator::HumanSchemaError::Parsing(errors) => {
+                human_schema_errors::ParseError { errors }.into()
             }
         }
     }

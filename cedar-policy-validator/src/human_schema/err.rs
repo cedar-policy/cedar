@@ -190,8 +190,14 @@ impl ParseErrors {
         Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
 
+    /// (Borrowed) Iterator over reported parse errors
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter()
+    }
+
+    /// Iterator over reported parse errors
+    pub fn into_iter(self) -> impl Iterator<Item = ParseError> {
+        self.0.into_iter()
     }
 }
 
@@ -260,6 +266,10 @@ impl ToJsonSchemaErrors {
 
     pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
         self.0.iter()
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = ToJsonSchemaError> {
+        self.0.into_iter()
     }
 }
 
