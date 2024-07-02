@@ -18,10 +18,6 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::ast::{
-    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
-    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
-};
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
     json::err::{EscapeKind, TypeMismatchError},
@@ -29,6 +25,13 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
+use crate::{
+    ast::{
+        expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+        ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
+    },
+    entities::Expr,
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -262,6 +265,16 @@ impl CedarValueJson {
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
             Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
             Self::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
+        }
+    }
+
+    // PANIC SAFETY MODEL CHECKED
+    #[allow(clippy::indexing_slicing)]
+    fn extract_arg<'a, T>(args: &'a [T], name: &Name) -> Result<&'a T, JsonSerializationError> {
+        match args.len() {
+            0 => Err(JsonSerializationError::call_0_args(name.clone())),
+            1 => Ok(&args[0]),
+            _ => Err(JsonSerializationError::call_2_or_more_args(name.clone())),
         }
     }
 
@@ -842,4 +855,23 @@ pub enum ExtnValueJson {
     // This is listed last so that it has lowest priority when deserializing.
     // If one of the above forms fits, we use that.
     ImplicitConstructor(CedarValueJson),
+}
+
+#[cfg(kani)]
+mod proof {
+    use super::*;
+    use crate::ast::Id;
+    fn safe_indexing() {
+        let args_len: usize = kani::any();
+        kani::assume(args_len < 100);
+        let mut args: Vec<i32> = vec![];
+        for _ in 0..args_len {
+            args.push(kani::any());
+        }
+        let id: Id = "foo".parse().unwrap();
+        let name = Name::unqualified_name(id);
+
+        // All we care is that this doesn't panic
+        let _ = CedarValueJson::extract_arg(&args, &name);
+    }
 }

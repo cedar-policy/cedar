@@ -42,6 +42,17 @@ pub struct Expr<T = ()> {
     data: T,
 }
 
+#[cfg(kani)]
+impl kani::Arbitrary for Expr {
+    fn any() -> Self {
+        Self {
+            expr_kind: todo!(),
+            source_loc: None,
+            data: (),
+        }
+    }
+}
+
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
 #[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]

@@ -251,6 +251,36 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
     }
 }
 
+#[cfg(kani)]
+mod proof {
+
+    struct MockStr;
+
+    impl MockStr {
+        pub fn mock_find(s: &str) -> Option<usize> {
+            let decision: bool = kani::any();
+            if decision {
+                let index = kani::any();
+                kani::assume(index < s.len());
+                Some(index)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn correct() {
+        let bytes: [u8; 3] = kani::any();
+        if let Ok(s) = std::str::from_utf8(&bytes) {
+            let pat: char = kani::any();
+            // Just don't panic
+            let _ = super::contains_at_least_two(s, pat);
+        }
+    }
+}
+
 /// To try to avoid confusion, we currently refuse to parse IPv4 embeded in IPv6.
 /// Specificially, we reject string reprsentations of IPv4-Compatible IPv6 addresses and IPv4-Mapped IPv6 addresses (https://doc.rust-lang.org/std/net/struct.Ipv6Addr.html#embedding-ipv4-addresses).
 /// These addresses mix colon and dot notation: (e.g., "::ffff:192.168.0.1" and "::127.0.0.1")
