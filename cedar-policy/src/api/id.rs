@@ -17,7 +17,7 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
-use crate::entities_json_errors::JsonDeserializationError;
+pub use crate::entities_json_errors::JsonDeserializationError;
 use crate::ParseErrors;
 use cedar_policy_core::ast;
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
@@ -232,13 +232,11 @@ impl EntityUid {
     /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
     #[allow(clippy::result_large_err)]
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+    pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        Ok::<Self, JsonDeserializationError>(
-            parsed
-                .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
-                .into(),
-        )
+        Ok(parsed
+            .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+            .into())
     }
 
     /// Testing utility for creating `EntityUids` a bit easier
