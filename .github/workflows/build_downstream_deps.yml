@@ -51,3 +51,10 @@ jobs:
     with:
       cedar_policy_ref: ${{ github.ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-wasm:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_wasm_example_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
