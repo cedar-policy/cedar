@@ -22,5 +22,5 @@ pub mod fmt;
 pub mod parser;
 mod test;
 pub mod to_json_schema;
-pub use err::ParseError;
 pub use err::{schema_warnings, SchemaWarning};
+pub use err::{ParseError, ParseErrors, ToJsonSchemaError, ToJsonSchemaErrors};

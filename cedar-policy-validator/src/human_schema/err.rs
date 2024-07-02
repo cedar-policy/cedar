@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::iter::{Chain, Once};
+use std::vec;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -178,6 +180,7 @@ impl Diagnostic for ParseError {
 pub struct ParseErrors(Box<NonEmpty<ParseError>>);
 
 impl ParseErrors {
+    /// Creates a new [`ParseErrors`] ensuring it contains at least one error by construction
     pub fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
         let mut nv = NonEmpty::singleton(first);
         let mut v = rest.into_iter().collect::<Vec<_>>();
@@ -185,7 +188,9 @@ impl ParseErrors {
         Self(Box::new(nv))
     }
 
-    pub fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
+    /// Attempt to create a [`ParseErrors`] from an iterator over [`ParseError`]s.
+    /// Returns [`None`] if the iterator is empty
+    pub fn try_from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
         let v = i.into_iter().collect::<Vec<_>>();
         Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
@@ -194,9 +199,13 @@ impl ParseErrors {
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter()
     }
+}
 
-    /// Iterator over reported parse errors
-    pub fn into_iter(self) -> impl Iterator<Item = ParseError> {
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = Chain<Once<ParseError>, vec::IntoIter<ParseError>>;
+
+    fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
@@ -256,20 +265,20 @@ impl Diagnostic for ParseErrors {
     }
 }
 
+/// Collection of [`ToJsonSchemaError`]
+// This struct is publicly exposed
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
 
 impl ToJsonSchemaErrors {
+    /// Constructor
     pub fn new(errs: NonEmpty<ToJsonSchemaError>) -> Self {
         Self(errs)
     }
 
+    /// (Borrowed) iterator over the errors
     pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
         self.0.iter()
-    }
-
-    pub fn into_iter(self) -> impl Iterator<Item = ToJsonSchemaError> {
-        self.0.into_iter()
     }
 }
 
@@ -354,79 +363,323 @@ impl Diagnostic for ToJsonSchemaErrors {
 }
 
 /// For errors during schema format conversion
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+// This enum is publicly exposed
+#[derive(Clone, Debug, Error, PartialEq, Eq, Diagnostic)]
 pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate keys
-    #[error("duplicate keys: {key}")]
-    DuplicateKeys { key: SmolStr, loc1: Loc, loc2: Loc },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateKeys(#[from] DuplicateKeys),
     /// Error raised when there are duplicate declarations
-    #[error("duplicate declarations: {decl}")]
-    DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
-    #[error("duplicate context declaration. Action may have at most one context declaration")]
-    DuplicateContext { loc1: Loc, loc2: Loc },
-    #[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
-    DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
-    #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
-    NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateDeclarations(#[from] DuplicateDeclarations),
+    /// Error raised when there are duplicate context declarations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateContext(DuplicateContext),
+    /// Error raised when there are duplicate `principal` or `resource` declarations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicatePrincipalOrResource(#[from] DuplicatePrincipalOrResource),
+    /// Error raised when there are duplicate `principal` or `resource` declarations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoPrincipalOrResource(#[from] NoPrincipalOrResource),
 
     /// Error raised when there are duplicate namespace IDs
-    #[error("Duplicate namespace IDs: `{namespace_id}`")]
-    DuplicateNameSpaces {
-        namespace_id: SmolStr,
-        loc1: Option<Loc>,
-        loc2: Option<Loc>,
-    },
-    /// Invalid type name
-    #[error("Unknown type name: `{}`", .0.node)]
-    UnknownTypeName(Node<SmolStr>),
-    #[error("Use reserved namespace `__cedar`")]
-    UseReservedNamespace(Loc),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateNameSpaces(#[from] DuplicateNameSpaces),
+    /// Error raised when a type is used without being defined
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownTypeName(#[from] UnknownTypeName),
+    /// Use of a reserved namespace
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UseReservedNamespace(#[from] UseReservedNamespace),
+}
+
+/// Error raised when there are duplicate keys
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("duplicate keys: {key}")]
+pub struct DuplicateKeys {
+    key: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl DuplicateKeys {
+    /// The duplicated key
+    pub fn key(&'_ self) -> impl AsRef<str> + '_ {
+        self.key.as_ref()
+    }
+}
+
+impl Diagnostic for DuplicateKeys {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let l1 = LabeledSpan::underline(self.loc1.span);
+        let l2 = LabeledSpan::underline(self.loc2.span);
+        Some(Box::new(vec![l1, l2].into_iter()))
+    }
+}
+
+/// Error raised when there are duplicate declarations
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
+#[error("duplicate declarations: {decl}")]
+pub struct DuplicateDeclarations {
+    decl: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl DuplicateDeclarations {
+    /// Name of the declaration that was duplicated
+    pub fn decl(&'_ self) -> impl AsRef<str> + '_ {
+        self.decl.as_ref()
+    }
+}
+
+impl Diagnostic for DuplicateDeclarations {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let l1 = LabeledSpan::underline(self.loc1.span);
+        let l2 = LabeledSpan::underline(self.loc2.span);
+        Some(Box::new(vec![l1, l2].into_iter()))
+    }
+}
+
+/// Error raised for duplicate context declarations
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
+#[error("duplicate context declaration. Action may have at most one context declaration")]
+pub struct DuplicateContext {
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl Diagnostic for DuplicateContext {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let l1 = LabeledSpan::underline(self.loc1.span);
+        let l2 = LabeledSpan::underline(self.loc2.span);
+        Some(Box::new(vec![l1, l2].into_iter()))
+    }
+}
+
+/// Error raised when there are duplicate `principal` or `resource` declarations
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
+pub struct DuplicatePrincipalOrResource {
+    kind: PR,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl DuplicatePrincipalOrResource {
+    #[cfg(test)]
+    pub(crate) fn kind(&self) -> PR {
+        self.kind
+    }
+}
+
+impl Diagnostic for DuplicatePrincipalOrResource {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let l1 = LabeledSpan::underline(self.loc1.span);
+        let l2 = LabeledSpan::underline(self.loc2.span);
+        Some(Box::new(vec![l1, l2].into_iter()))
+    }
+}
+
+/// Error raised when there are duplicate namespace IDs
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("Duplicate namespace IDs: `{namespace_id}`")]
+pub struct DuplicateNameSpaces {
+    namespace_id: SmolStr,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
+}
+
+impl DuplicateNameSpaces {
+    pub fn namespace_id(&'_ self) -> impl AsRef<str> + '_ {
+        self.namespace_id.as_ref()
+    }
+}
+
+impl Diagnostic for DuplicateNameSpaces {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let mut v = vec![];
+
+        if let Some(l1) = self.loc1.as_ref() {
+            v.push(LabeledSpan::underline(l1.span));
+        }
+
+        if let Some(l2) = self.loc2.as_ref() {
+            v.push(LabeledSpan::underline(l2.span));
+        }
+
+        Some(Box::new(v.into_iter()))
+    }
+}
+/// Error raised when a type is used without being defined
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("Unknown type name: `{}`", .0.node)]
+pub struct UnknownTypeName(Node<SmolStr>);
+
+impl UnknownTypeName {
+    /// Get the name that was invalid
+    pub fn name(&'_ self) -> impl AsRef<str> + '_ {
+        self.0.node.as_ref()
+    }
+}
+
+impl Diagnostic for UnknownTypeName {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(
+            vec![LabeledSpan::underline(self.0.loc.span)].into_iter(),
+        ))
+    }
+}
+
+/// Use of a reserved namespace
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("Use reserved namespace `__cedar`")]
+pub struct UseReservedNamespace(Loc);
+
+impl Diagnostic for UseReservedNamespace {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(
+            vec![LabeledSpan::underline(self.0.span)].into_iter(),
+        ))
+    }
 }
 
 impl ToJsonSchemaError {
+    /// Creates a duplicate keys error
     pub fn duplicate_keys(key: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateKeys { key, loc1, loc2 }
+        Self::DuplicateKeys(DuplicateKeys { key, loc1, loc2 })
     }
+
+    /// Creates a duplicate declarations error
     pub fn duplicate_decls(decl: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateDeclarations { decl, loc1, loc2 }
+        Self::DuplicateDeclarations(DuplicateDeclarations { decl, loc1, loc2 })
     }
-    pub fn duplicate_namespace(namespace_id: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateNameSpaces {
+
+    /// Creates a duplicate namespaces error
+    pub fn duplicate_namespace(
+        namespace_id: SmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
+        Self::DuplicateNameSpaces(DuplicateNameSpaces {
             namespace_id,
-            loc1: Some(loc1),
-            loc2: Some(loc2),
-        }
+            loc1,
+            loc2,
+        })
+    }
+
+    /// Creates a duplicate context error
+    pub fn duplicate_context(loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateContext(DuplicateContext { loc1, loc2 })
+    }
+
+    /// Creates a duplicate principal error
+    pub fn duplicate_principal(loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            kind: PR::Principal,
+            loc1,
+            loc2,
+        })
+    }
+
+    /// Creates a duplicate resource error
+    pub fn duplicate_resource(loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            kind: PR::Resource,
+            loc1,
+            loc2,
+        })
+    }
+
+    /// Creates a no principal error
+    pub fn no_principal(name: SmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Principal,
+            name,
+            loc,
+        })
+    }
+
+    /// Creates a no resource error
+    pub fn no_resource(name: SmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Resource,
+            name,
+            loc,
+        })
+    }
+
+    /// Create an unknown type name error
+    pub fn unknown_type_name(name: Node<SmolStr>) -> Self {
+        Self::UnknownTypeName(UnknownTypeName(name))
+    }
+
+    /// Create a reserved namespace use error
+    pub fn use_reserved_namespace(loc: Loc) -> Self {
+        Self::UseReservedNamespace(UseReservedNamespace(loc))
     }
 }
 
-impl Diagnostic for ToJsonSchemaError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match self {
-            ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
-            | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
-                vec![
-                    LabeledSpan::underline(loc1.span),
-                    LabeledSpan::underline(loc2.span),
-                ]
-                .into_iter(),
-            )),
-            ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
-                Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
-                    Some(LabeledSpan::underline(loc.as_ref()?.span))
-                })))
-            }
-            ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(node.loc.span),
-            ))),
-            ToJsonSchemaError::UseReservedNamespace(loc)
-            | ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
-                Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
-            }
-        }
+/// Error raised when an action does not define a `principal` or `resource`
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
+pub struct NoPrincipalOrResource {
+    kind: PR,
+    name: SmolStr,
+    loc: Loc,
+}
+
+impl NoPrincipalOrResource {
+    /// Get the name of the action that raised this error
+    pub fn name(&'_ self) -> impl AsRef<str> + '_ {
+        self.name.as_ref()
     }
 }
+
+impl Diagnostic for NoPrincipalOrResource {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(
+            vec![LabeledSpan::underline(self.loc.span)].into_iter(),
+        ))
+    }
+}
+
+// impl Diagnostic for ToJsonSchemaError {
+//     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+//         match self {
+//             ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
+//             | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
+//             | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
+//             | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
+//                 vec![
+//                     LabeledSpan::underline(loc1.span),
+//                     LabeledSpan::underline(loc2.span),
+//                 ]
+//                 .into_iter(),
+//             )),
+//             ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
+//                 Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
+//                     Some(LabeledSpan::underline(loc.as_ref()?.span))
+//                 })))
+//             }
+//             ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
+//                 LabeledSpan::underline(node.loc.span),
+//             ))),
+//             ToJsonSchemaError::UseReservedNamespace(loc)
+//             | ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
+//                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
+//             }
+//         }
+//     }
+// }
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {

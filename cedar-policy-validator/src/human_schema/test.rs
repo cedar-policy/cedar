@@ -29,7 +29,7 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        human_schema::{self, ast::PR, err::ToJsonSchemaError},
+        human_schema::{self, ast::PR, err::DuplicatePrincipalOrResource, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
         NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
@@ -293,10 +293,7 @@ mod demo_tests {
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Principal,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Principal
                         )
                     })
                 );
@@ -329,10 +326,7 @@ mod demo_tests {
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Resource,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Resource
                         )
                     }));
             }));

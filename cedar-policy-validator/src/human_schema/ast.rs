@@ -295,7 +295,7 @@ pub struct AttrDecl {
 }
 
 /// The target of a [`PRAppDecl`]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PR {
     /// Applies to the `principal` variable
     Principal,

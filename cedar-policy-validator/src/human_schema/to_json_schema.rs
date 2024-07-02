@@ -149,7 +149,7 @@ impl<'a> ConversionContext<'a> {
         // Ensure we aren't using a reserved namespace
         match n.name.as_ref() {
             Some(name) if name.node.is_cedar() || name.node.is_in_cedar() => {
-                Err(ToJsonSchemaError::UseReservedNamespace(name.loc.clone()))
+                Err(ToJsonSchemaError::use_reserved_namespace(name.loc.clone()))
             }
             _ => Ok(()),
         }?;
@@ -260,10 +260,10 @@ impl<'a> ConversionContext<'a> {
                     loc,
                 } => match context {
                     Some(existing_context) => {
-                        return Err(ToJsonSchemaError::DuplicateContext {
-                            loc1: existing_context.loc,
-                            loc2: loc,
-                        }
+                        return Err(ToJsonSchemaError::duplicate_context(
+                            existing_context.loc,
+                            loc,
+                        )
                         .into());
                     }
                     None => {
@@ -286,12 +286,9 @@ impl<'a> ConversionContext<'a> {
                     loc,
                 } => match principal_types {
                     Some(existing_tys) => {
-                        return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
-                            kind: PR::Principal,
-                            loc1: existing_tys.loc,
-                            loc2: loc,
-                        }
-                        .into())
+                        return Err(
+                            ToJsonSchemaError::duplicate_principal(existing_tys.loc, loc).into(),
+                        )
                     }
                     None => {
                         principal_types = Some(Node::with_source_loc(
@@ -312,12 +309,9 @@ impl<'a> ConversionContext<'a> {
                     loc,
                 } => match resource_types {
                     Some(existing_tys) => {
-                        return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
-                            kind: PR::Resource,
-                            loc1: existing_tys.loc,
-                            loc2: loc,
-                        }
-                        .into())
+                        return Err(
+                            ToJsonSchemaError::duplicate_resource(existing_tys.loc, loc).into()
+                        )
                     }
                     None => {
                         resource_types = Some(Node::with_source_loc(
@@ -330,19 +324,17 @@ impl<'a> ConversionContext<'a> {
         }
         Ok(ApplySpec {
             resource_types: resource_types
-                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
-                .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
-                    kind: PR::Resource,
-                    name: action_info.0.clone(),
-                    loc: action_info.1.clone(),
-                })?,
+                .map(|node| node.node.into_iter().collect())
+                .ok_or(ToJsonSchemaError::no_resource(
+                    action_info.0.clone(),
+                    action_info.1.clone(),
+                ))?,
             principal_types: principal_types
-                .map(|node| node.node.into_iter().map(|name| name.into()).collect())
-                .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
-                    kind: PR::Principal,
-                    name: action_info.0.clone(),
-                    loc: action_info.1.clone(),
-                })?,
+                .map(|node| node.node.into_iter().collect())
+                .ok_or(ToJsonSchemaError::no_principal(
+                    action_info.0.clone(),
+                    action_info.1.clone(),
+                ))?,
             context: context.map(|c| c.node).unwrap_or_default(),
         })
     }
@@ -486,7 +478,7 @@ impl<'a> ConversionContext<'a> {
         } else if is_unqualified_or_cedar {
             search_cedar_namespace(base, loc)
         } else {
-            Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
+            Err(ToJsonSchemaError::unknown_type_name(Node::with_source_loc(
                 name.to_smolstr(),
                 loc,
             )))
@@ -502,7 +494,7 @@ impl<'a> ConversionContext<'a> {
             Ok(&self.cedar_namespace)
         } else {
             self.names.get(name).ok_or_else(|| {
-                ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
+                ToJsonSchemaError::unknown_type_name(Node::with_source_loc(
                     self.current_namespace_name
                         .as_ref()
                         .map_or("".into(), |n| n.to_smolstr()),
@@ -550,7 +542,7 @@ fn search_cedar_namespace(name: Id, loc: Loc) -> Result<SchemaType<RawName>, ToJ
         other if EXTENSIONS.contains(&other) => {
             Ok(SchemaType::Type(SchemaTypeVariant::Extension { name }))
         }
-        _ => Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
+        _ => Err(ToJsonSchemaError::unknown_type_name(Node::with_source_loc(
             name.to_smolstr(),
             loc,
         ))),
@@ -607,11 +599,11 @@ where
     let mut map: HashMap<N, Node<()>> = HashMap::new();
     for (key, node) in i {
         match map.entry(key.clone()) {
-            Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateDeclarations {
-                decl: key.to_smolstr(),
-                loc1: entry.get().loc.clone(),
-                loc2: node.loc,
-            }),
+            Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_decls(
+                key.to_smolstr(),
+                entry.get().loc.clone(),
+                node.loc,
+            )),
             Entry::Vacant(entry) => {
                 entry.insert(node);
                 Ok(())
@@ -687,11 +679,11 @@ fn update_namespace_record(
     record: NamespaceRecord,
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {
-        Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateNameSpaces {
-            namespace_id: name.map_or("".into(), |n| n.to_smolstr()),
-            loc1: record.loc,
-            loc2: entry.get().loc.clone(),
-        }
+        Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_namespace(
+            name.map_or("".into(), |n| n.to_smolstr()),
+            record.loc,
+            entry.get().loc.clone(),
+        )
         .into()),
         Entry::Vacant(entry) => {
             entry.insert(record);

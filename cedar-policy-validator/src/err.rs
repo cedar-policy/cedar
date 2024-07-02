@@ -41,10 +41,10 @@ pub enum HumanSchemaError {
 #[error("error parsing schema: {errs}")]
 pub struct HumanSyntaxParseError {
     /// Underlying parse error(s)
-    pub errs: human_schema::parser::HumanSyntaxParseErrors,
+    errs: human_schema::parser::HumanSyntaxParseErrors,
     /// Did the schema look like it was intended to be JSON format instead of
     /// human?
-    pub suspect_json_format: bool,
+    suspect_json_format: bool,
 }
 
 impl Diagnostic for HumanSyntaxParseError {
@@ -104,9 +104,15 @@ impl HumanSyntaxParseError {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
+    /// Underlying parse error(s)
+    pub fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
         &self.errs
+    }
+
+    /// Did the schema look like it was intended to be JSON format instead of
+    /// human?
+    pub fn suspect_json_format(&self) -> bool {
+        self.suspect_json_format
     }
 }
 

@@ -68,7 +68,7 @@ fn parse_collect_errors<'a, P, T>(
             return Err(ParseErrors::new(e.into(), errors));
         }
     };
-    match ParseErrors::from_iter(errors) {
+    match ParseErrors::try_from_iter(errors) {
         Some(errors) => Err(errors),
         // No Errors: good to return parse
         None => Ok(parsed),
