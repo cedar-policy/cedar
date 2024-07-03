@@ -29,7 +29,7 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        human_schema::{self, ast::PR, err::DuplicatePrincipalOrResource, err::ToJsonSchemaError},
+        human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
         NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
