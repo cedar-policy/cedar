@@ -219,59 +219,6 @@ pub mod human_schema_errors {
         pub errors: cedar_policy_validator::HumanSyntaxParseError,
     }
 
-    /// Errors parsing a schema in human-readable syntax
-    #[derive(Debug, Error, Diagnostic)]
-    #[error(transparent)]
-    pub enum HumanSyntaxParseError {
-        /// Syntax Error(s)
-        #[error(transparent)]
-        #[diagnostic(transparent)]
-        Syntax(#[from] SyntaxError),
-        /// Error converting schema into internal representation
-        #[error(transparent)]
-        #[diagnostic(transparent)]
-        ToJsonSchema(#[from] ToJsonSchemaErrors),
-        /// IO Errors while parsing
-        #[error(transparent)]
-        #[diagnostic(transparent)]
-        IoError(#[from] IoError),
-    }
-
-    /// Errors parsing a schema
-    #[derive(Debug, Error, Diagnostic)]
-    #[error(transparent)]
-    pub struct SyntaxError {
-        #[from]
-        errs: cedar_policy_validator::human_schema::ParseErrors,
-    }
-
-    impl SyntaxError {
-        /// Iterate over the errors
-        pub fn iter(
-            &self,
-        ) -> impl Iterator<Item = &cedar_policy_validator::human_schema::ParseError> {
-            self.errs.iter()
-        }
-    }
-
-    /// Errors converting schema into internal representation
-    #[derive(Debug, Error, Diagnostic)]
-    #[error(transparent)]
-    pub struct ToJsonSchemaErrors {
-        #[from]
-        errs: cedar_policy_validator::human_schema::ToJsonSchemaErrors,
-    }
-
-    impl ToJsonSchemaErrors {
-        /// Iterate over the errors
-        pub fn iter(
-            &self,
-        ) -> impl Iterator<Item = &cedar_policy_validator::human_schema::ToJsonSchemaError>
-        {
-            self.errs.iter()
-        }
-    }
-
     /// IO error while parsing a human-readable schema
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
