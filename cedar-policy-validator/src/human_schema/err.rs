@@ -652,35 +652,6 @@ impl Diagnostic for NoPrincipalOrResource {
     }
 }
 
-// impl Diagnostic for ToJsonSchemaError {
-//     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-//         match self {
-//             ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
-//             | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
-//             | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
-//             | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
-//                 vec![
-//                     LabeledSpan::underline(loc1.span),
-//                     LabeledSpan::underline(loc2.span),
-//                 ]
-//                 .into_iter(),
-//             )),
-//             ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
-//                 Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
-//                     Some(LabeledSpan::underline(loc.as_ref()?.span))
-//                 })))
-//             }
-//             ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
-//                 LabeledSpan::underline(node.loc.span),
-//             ))),
-//             ToJsonSchemaError::UseReservedNamespace(loc)
-//             | ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
-//                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
-//             }
-//         }
-//     }
-// }
-
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
     use cedar_policy_core::parser::Loc;
