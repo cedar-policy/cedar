@@ -18,7 +18,6 @@
 
 use std::{collections::HashSet, fmt::Display};
 
-use cedar_policy_core::ast::Name;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
@@ -26,10 +25,11 @@ use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{
-    ActionType, EntityType, NamespaceDefinition, SchemaFragment, SchemaType, SchemaTypeVariant,
+    ActionType, EntityType, NamespaceDefinition, RawName, SchemaFragment, SchemaType,
+    SchemaTypeVariant,
 };
 
-impl Display for SchemaFragment {
+impl<N: Display> Display for SchemaFragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
@@ -41,7 +41,7 @@ impl Display for SchemaFragment {
     }
 }
 
-impl Display for NamespaceDefinition {
+impl<N: Display> Display for NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
             writeln!(f, "type {n} = {ty};")?
@@ -56,7 +56,7 @@ impl Display for NamespaceDefinition {
     }
 }
 
-impl Display for SchemaType {
+impl<N: Display> Display for SchemaType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SchemaType::Type(ty) => match ty {
@@ -103,7 +103,7 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std
     write!(f, "[{contents}]")
 }
 
-impl Display for EntityType {
+impl<N: Display> Display for EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
             write!(f, " in ")?;
@@ -120,7 +120,7 @@ impl Display for EntityType {
     }
 }
 
-impl Display for ActionType {
+impl<N: Display> Display for ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(parents) = self
             .member_of
@@ -183,8 +183,8 @@ impl NameCollisionsError {
 }
 
 /// Convert a [`SchemaFragment`] to a string containing human schema syntax
-pub fn json_schema_to_custom_schema_str(
-    json_schema: &SchemaFragment,
+pub fn json_schema_to_custom_schema_str<N: Display>(
+    json_schema: &SchemaFragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
@@ -192,8 +192,8 @@ pub fn json_schema_to_custom_schema_str(
             .entity_types
             .keys()
             .map(|ty_name| {
-                Name::unqualified_name(ty_name.clone())
-                    .prefix_namespace_if_unqualified(name.as_ref())
+                RawName::new(ty_name.clone())
+                    .qualify_with(name.as_ref())
                     .to_smolstr()
             })
             .collect();
@@ -201,8 +201,8 @@ pub fn json_schema_to_custom_schema_str(
             .common_types
             .keys()
             .map(|ty_name| {
-                Name::unqualified_name(ty_name.clone())
-                    .prefix_namespace_if_unqualified(name.as_ref())
+                RawName::new(ty_name.clone())
+                    .qualify_with(name.as_ref())
                     .to_smolstr()
             })
             .collect();

@@ -27,7 +27,8 @@ use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
     types::{EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinition, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
+    ValidatorSchema,
 };
 
 // Placeholder policy id for use when typechecking an expression directly.
@@ -103,9 +104,9 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
 }
 
-/// Assert that every ValidationError in the expected list of type errors appears
+/// Assert that every [`ValidationError`] in the expected list of type errors appears
 /// in the expected list of type errors, and that the expected number of
-/// type errors were generated. Equality of types in ValidationErrors is
+/// type errors were generated. Equality of types in [`ValidationError`]s is
 /// determined in the same way as in `assert_types_eq`.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_expected_type_errors(
@@ -335,7 +336,7 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     });
 }
 
-pub(crate) fn empty_schema_file() -> NamespaceDefinition {
+pub(crate) fn empty_schema_file() -> NamespaceDefinition<RawName> {
     NamespaceDefinition::new([], [])
 }
 

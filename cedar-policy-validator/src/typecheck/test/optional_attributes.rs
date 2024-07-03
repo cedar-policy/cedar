@@ -26,15 +26,15 @@ use smol_str::SmolStr;
 
 use crate::{
     diagnostics::ValidationError, types::EntityLUB, validation_errors::AttributeAccess,
-    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, ValidationWarning,
+    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, RawName, ValidationWarning,
 };
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
 };
 
-fn schema_with_optionals() -> NamespaceDefinition {
-    serde_json::from_str::<NamespaceDefinition>(
+fn schema_with_optionals() -> NamespaceDefinition<RawName> {
+    serde_json::from_str::<NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {
@@ -539,7 +539,7 @@ fn in_list_no_effect() {
 
 #[test]
 fn record_optional_attrs() {
-    let schema = serde_json::from_str::<NamespaceDefinition>(
+    let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {
@@ -621,7 +621,7 @@ fn record_optional_attrs() {
 
 #[test]
 fn action_attrs_passing() {
-    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes>(
+    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes<RawName>>(
         r#"
         {
             "entityTypes": {
@@ -719,7 +719,7 @@ fn action_attrs_passing() {
 
 #[test]
 fn action_attrs_failing() {
-    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes>(
+    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes<RawName>>(
         r#"
         {
             "entityTypes": {

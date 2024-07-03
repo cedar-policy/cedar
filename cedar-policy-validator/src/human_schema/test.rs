@@ -31,7 +31,7 @@ mod demo_tests {
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
     use itertools::Itertools;
@@ -340,7 +340,7 @@ mod demo_tests {
 
     #[test]
     fn empty_appliesto() {
-        let action = ActionType {
+        let action = ActionType::<RawName> {
             attributes: None,
             applies_to: None,
             member_of: None,
@@ -424,19 +424,19 @@ namespace Baz {action "Foo" appliesTo {
             common_types: HashMap::new(),
             entity_types: HashMap::from([(
                 "a".parse().unwrap(),
-                EntityType {
+                EntityType::<RawName> {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: AttributesOrContext::<RawName>::default(),
                 },
             )]),
             actions: HashMap::from([(
                 "j".to_smolstr(),
-                ActionType {
+                ActionType::<RawName> {
                     attributes: None,
-                    applies_to: Some(ApplySpec {
+                    applies_to: Some(ApplySpec::<RawName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: AttributesOrContext::default(),
+                        context: AttributesOrContext::<RawName>::default(),
                     }),
                     member_of: None,
                 },
@@ -615,22 +615,21 @@ namespace Baz {action "Foo" appliesTo {
         }
     }
 
-    fn assert_has_type(e: &TypeOfAttribute, expected: SchemaTypeVariant) {
+    fn assert_has_type<N: std::fmt::Debug + PartialEq>(
+        e: &TypeOfAttribute<N>,
+        expected: SchemaTypeVariant<N>,
+    ) {
         assert!(e.required, "Attribute was not required");
-        match &e.ty {
-            crate::SchemaType::Type(t) => assert_eq!(t, &expected),
-            _ => panic!("Wrong type"),
-        }
+        assert_matches!(&e.ty, crate::SchemaType::Type(t) => assert_eq!(t, &expected));
     }
 
-    fn assert_empty_records(etyp: &EntityType) {
-        match &etyp.shape.0 {
+    fn assert_empty_records<N: std::fmt::Debug>(etyp: &EntityType<N>) {
+        assert_matches!(&etyp.shape.0,
             crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
-            }) => assert!(attributes.is_empty(), "Record should be empty"),
-            _ => panic!("Should have an empty record"),
-        }
+            }) => assert!(attributes.is_empty(), "Record should be empty")
+        );
     }
 
     #[test]
@@ -1180,14 +1179,17 @@ mod translator_tests {
           namespace __cedar {}
         "#,
         );
-        assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
+        assert!(schema.is_err(), "__cedar namespace shouldn't be allowed");
 
         let schema = SchemaFragment::from_str_natural(
             r#"
           namespace __cedar::Foo {}
         "#,
         );
-        assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
+        assert!(
+            schema.is_err(),
+            "__cedar::Foo namespace shouldn't be allowed"
+        );
     }
 
     #[test]

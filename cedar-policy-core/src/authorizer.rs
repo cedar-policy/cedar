@@ -34,7 +34,7 @@ extern crate tsify;
 
 mod err;
 mod partial_response;
-pub use err::AuthorizationError;
+pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
@@ -90,7 +90,7 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> PartialResponse {
-        let eval = Evaluator::new(q, entities, &self.extensions);
+        let eval = Evaluator::new(q.clone(), entities, &self.extensions);
         let mut true_permits = vec![];
         let mut true_forbids = vec![];
         let mut false_permits = vec![];
@@ -150,6 +150,7 @@ impl Authorizer {
             false_forbids,
             residual_forbids,
             errors,
+            Arc::new(q),
         )
     }
 }
