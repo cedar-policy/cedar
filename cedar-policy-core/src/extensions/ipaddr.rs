@@ -242,12 +242,42 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {
         Some(i) => {
-            // PANIC SAFETY `i` is guaranteed to be < `s.len()`, so this won't panic
+            // For this slicing operation not to panic, two preconditoins must be met:
+            // 1) `i + 1` must be <= `s.len()`
+            //     This is met because `i` comes from `s.find()` meaning it must be < `s.len()`
+            // 2) `i + 1` must be a character boundary
+            //     This is met because we use `c.len_utf()` which is guaranteed to be the length of
+            //     `c`, since Rust strings use UTF8
+            // The above is checked by [`proof::contains_at_least_two_correct`], which proves
+            // safety for strings up to length 4
+            // PANIC SAFETY: (see above)
             #[allow(clippy::indexing_slicing)]
-            let idx = s[i + 1..].find(c);
+            let idx = s[i + c.len_utf8()..].find(c);
             idx.is_some()
         }
         None => false,
+    }
+}
+
+#[cfg(kani)]
+mod proof {
+
+    /// Prove that `contains_two_correct` does not panic for strings with length <= 4 
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn contains_at_least_two_correct() {
+        let mut buf: Vec<u8> = vec![];
+        let len: usize = kani::any();
+        kani::assume(len <= 4);
+        for i in 0..len {
+            let c = kani::any();
+            buf.push(c);
+        }
+        if let Ok(s) = std::str::from_utf8(buf.as_slice()) {
+            let pat = kani::any();
+            // Just don't panic
+            let _ = super::contains_at_least_two(s, pat);
+        }
     }
 }
 
@@ -1134,5 +1164,10 @@ mod tests {
         assert!(contains_at_least_two(":::", ':'));
         assert!(contains_at_least_two("::", ':'));
         assert!(!contains_at_least_two(":", ':'));
+    }
+
+    #[test]
+    fn test_contains_two_multibyte() {
+        assert!(!contains_at_least_two("\u{f1b}", '\u{f1b}'));
     }
 }
