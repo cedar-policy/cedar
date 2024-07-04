@@ -345,7 +345,7 @@ impl PoliciesArgs {
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
             PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
-            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
             add_template_links_to_set(links_filename, &mut pset)?;
@@ -1177,9 +1177,11 @@ fn read_human_policy_set(
     rename_from_id_annotation(ps)
 }
 
-/// Read a policy or template, in Cedar JSON (EST) syntax, from the file given
+/// Read a static policy or a policy template, in Cedar JSON (EST) syntax, from the file given
 /// in `filename`, or from stdin if `filename` is `None`.
-fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_json_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "JSON policy";
     let json_source = read_from_file_or_stdin(filename, context)?;
     let json: serde_json::Value = serde_json::from_str(&json_source).into_diagnostic()?;
