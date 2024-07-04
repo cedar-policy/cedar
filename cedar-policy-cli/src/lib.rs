@@ -1189,7 +1189,7 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
         Report::new(err).with_source_code(NamedSource::new(name, json_source.clone()))
     };
 
-    match Policy::from_json(None, json.clone()).map_err(err_to_report) {
+    match Policy::from_json(None, json.clone()) {
         Ok(policy) => PolicySet::from_policies([policy])
             .wrap_err_with(|| format!("failed to create policy set from {context}")),
         Err(_) => match Template::from_json(None, json).map_err(err_to_report) {
