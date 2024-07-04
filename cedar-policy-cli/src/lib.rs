@@ -344,7 +344,7 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
             PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
@@ -1160,7 +1160,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
 
 /// Read a policy set, in Cedar human syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_human_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
