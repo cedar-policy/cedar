@@ -997,8 +997,9 @@ fn test_require_policies_for_write() {
 }
 
 #[test]
-fn test_check_parse_json_policy() {
-    let json_policy: &str = "sample-data/tiny_sandboxes/check_parse/policy.cedar.json";
+fn test_check_parse_json_static_policy() {
+    let json_static_policy: &str =
+        "sample-data/tiny_sandboxes/check_parse/static_policy.cedar.json";
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
@@ -1006,7 +1007,23 @@ fn test_check_parse_json_policy() {
         .arg("--policy-format")
         .arg("json")
         .arg("-p")
-        .arg(json_policy)
+        .arg(json_static_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_template() {
+    let json_policy_template: &str =
+        "sample-data/tiny_sandboxes/check_parse/policy_template.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy_template)
         .assert()
         .code(0);
 }
