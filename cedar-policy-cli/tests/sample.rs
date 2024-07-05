@@ -19,6 +19,7 @@
 // PANIC SAFETY tests
 #![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
@@ -28,6 +29,8 @@ use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
     EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
 };
+
+use rstest::rstest;
 
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
@@ -113,27 +116,6 @@ fn run_link_test(
     };
     let output = link(&cmd);
     assert_eq!(output, expected);
-}
-
-// PANIC SAFETY: this is all test code
-#[allow(clippy::expect_used)]
-// PANIC SAFETY: this is all test code
-#[allow(clippy::unwrap_used)]
-#[track_caller]
-fn run_format_test(policies_file: &str) {
-    let original = std::fs::read_to_string(policies_file).unwrap();
-    let format_cmd = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
-        .arg("format")
-        .arg("-p")
-        .arg(policies_file)
-        .assert();
-    let formatted =
-        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
-    assert_eq!(
-        original, formatted,
-        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
-    );
 }
 
 fn run_authorize_test_context(
@@ -465,11 +447,114 @@ fn test_authorize_samples() {
     );
 }
 
+#[rstest]
+#[case(
+    "sample-data/doesnotexist.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/doesnotexist.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains misspelled entity type.
+#[case(
+    "sample-data/sandbox_a/policies_1_bad.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_2.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_a/policies_3.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_4.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains an access to an optional attribute without a `has` check.
+#[case(
+    "sample-data/sandbox_b/policies_5_bad.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_b/policies_5.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_6.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample3/policy.cedar",
+    "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/policy.cedar",
+    "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/policy.cedar",
+    "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/policy.cedar",
+    "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/policy.cedar",
+    "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample8/policy.cedar",
+    "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
 #[track_caller]
-fn run_validate_test(
-    policies_file: impl Into<String>,
-    schema_file: impl Into<String>,
-    exit_code: CedarExitCode,
+fn test_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
 ) {
     let policies_file = policies_file.into();
     let schema_file = schema_file.into();
@@ -508,118 +593,100 @@ fn run_validate_test(
     assert_eq!(exit_code, output, "{:#?}", cmd)
 }
 
-#[test]
-fn test_validate_samples() {
-    run_validate_test(
-        "sample-data/doesnotexist.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Failure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1.cedar",
-        "sample-data/doesnotexist.json",
-        CedarExitCode::Failure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "parse error",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "1 + \"type error\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "[\"a\",true,10].contains(10)",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case("sample-data/tiny_sandboxes/sample2/request.json",
+        "sample-data/tiny_sandboxes/sample2/entity.json",
+        "resource.owner",
         CedarExitCode::Success,
-    );
-    // Contains misspelled entity type.
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1_bad.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_2.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
+        EvalResult::EntityUid("User::\"bob\"".parse().unwrap()),)]
+#[case("sample-data/tiny_sandboxes/sample3/request.json",
+        "sample-data/tiny_sandboxes/sample3/entity.json",
+        "if 10 > 5 then \"good\" else \"bad\"",
         CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_3.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_4.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    // Contains an access to an optional attribute without a `has` check.
-    run_validate_test(
-        "sample-data/sandbox_b/policies_5_bad.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_5.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_6.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample1/policy.cedar",
-        "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample2/policy.cedar",
-        "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample3/policy.cedar",
-        "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample4/policy.cedar",
-        "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample5/policy.cedar",
-        "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample6/policy.cedar",
-        "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample7/policy.cedar",
-        "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample8/policy.cedar",
-        "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample9/policy.cedar",
-        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
-        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
-}
-
-fn run_evaluate_test(
-    request_json_file: impl Into<String>,
-    entities_file: impl Into<String>,
-    expression: impl Into<String>,
-    exit_code: CedarExitCode,
-    expected: EvalResult,
+        EvalResult::String("good".to_owned()),)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/request.json",
+    "sample-data/tiny_sandboxes/sample4/entity.json",
+    "resource.owner == User::\"bob\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/request.json",
+    "sample-data/tiny_sandboxes/sample5/entity.json",
+    "principal.addr.isLoopback()",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/request.json",
+    "sample-data/tiny_sandboxes/sample6/entity.json",
+    "principal.account.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/request.json",
+    "sample-data/tiny_sandboxes/sample7/entity.json",
+    "context.role.contains(\"admin\")",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+fn test_evaluate_samples(
+    #[case] request_json_file: impl Into<String>,
+    #[case] entities_file: impl Into<String>,
+    #[case] expression: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
+    #[case] expected: EvalResult,
 ) {
     let cmd = EvaluateArgs {
         schema_file: None,
@@ -638,115 +705,6 @@ fn run_evaluate_test(
     let output = evaluate(&cmd);
     assert_eq!(exit_code, output.0, "{:#?}", cmd,);
     assert_eq!(expected, output.1, "{:#?}", cmd,);
-}
-
-#[test]
-fn test_evaluate_samples() {
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "parse error",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "1 + \"type error\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "[\"a\",true,10].contains(10)",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal.age >= 17",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    let v = "User::\"bob\"".parse();
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample2/request.json",
-        "sample-data/tiny_sandboxes/sample2/entity.json",
-        "resource.owner",
-        CedarExitCode::Success,
-        EvalResult::EntityUid(v.unwrap()),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample3/request.json",
-        "sample-data/tiny_sandboxes/sample3/entity.json",
-        "if 10 > 5 then \"good\" else \"bad\"",
-        CedarExitCode::Success,
-        EvalResult::String("good".to_owned()),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample4/request.json",
-        "sample-data/tiny_sandboxes/sample4/entity.json",
-        "resource.owner == User::\"bob\"",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample5/request.json",
-        "sample-data/tiny_sandboxes/sample5/entity.json",
-        "principal.addr.isLoopback()",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample6/request.json",
-        "sample-data/tiny_sandboxes/sample6/entity.json",
-        "principal.account.age >= 17",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample7/request.json",
-        "sample-data/tiny_sandboxes/sample7/entity.json",
-        "context.role.contains(\"admin\")",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
 }
 
 #[test]
@@ -922,11 +880,27 @@ fn test_link_samples() {
     );
 }
 
-#[test]
-fn test_format_samples() {
-    use glob::glob;
-    let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
-    ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
+#[rstest]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
+#[track_caller]
+fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
+    let policies_file = path.to_str().unwrap();
+    let original = std::fs::read_to_string(policies_file).unwrap();
+    let format_cmd = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(policies_file)
+        .assert();
+    let formatted =
+        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
+    assert_eq!(
+        original, formatted,
+        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
+    );
 }
 
 #[test]
