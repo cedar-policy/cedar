@@ -96,11 +96,11 @@ Edit the template to add a when clause so it looks like the following:
 ```cedar
 @id("AccessVacation")
 permit(
- principal in ?principal,
- action == Action::"view",
- resource == Photo::"VacationPhoto94.jpg"
+    principal in ?principal,
+    action == Action::"view",
+    resource == Photo::"VacationPhoto94.jpg"
 ) when {
- principal has department && principal.department == "research"
+    principal has department && principal.department == "research"
 };
 ```
 
@@ -125,7 +125,7 @@ cargo run authorize \
     --resource 'Photo::"VacationPhoto94.jpg"' \
     --policies policies_edited.cedar \
     --entities entities.json \
-    --template-linked ./linked
+    g--template-linked ./linked
 ```
 
 But Alice should now be denied.
