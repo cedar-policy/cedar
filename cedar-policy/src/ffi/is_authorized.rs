@@ -579,30 +579,23 @@ impl AuthorizationCall {
         } else {
             None
         };
-        let request = match Request::new(principal, action, resource, context, schema_opt) {
-            Ok(request) => request,
-            Err(e) => {
-                return build_error(vec![e.into()], warnings);
-            }
-        };
+        let maybe_request = Request::new(principal, action, resource, context, schema_opt)
+            .map_err(|e| errs.push(e.into()));
+        let maybe_entities = self
+            .entities
+            .parse(schema.as_ref())
+            .map_err(|e| errs.push(e));
+        let maybe_policies = self.policies.parse().map_err(|es| errs.extend(es));
 
-        let entities = match self.entities.parse(schema.as_ref()) {
-            Ok(entities) => entities,
-            Err(e) => {
-                return build_error(vec![e], warnings);
-            }
-        };
-
-        let policies = match self.policies.parse() {
-            Ok(policies) => policies,
-            Err(errs) => {
+        match (maybe_request, maybe_policies, maybe_entities) {
+            (Ok(request), Ok(policies), Ok(entities)) => WithWarnings {
+                t: Ok((request, policies, entities)),
+                warnings: warnings.into_iter().map(Into::into).collect(),
+            },
+            _ => {
+                // At least one of the `errs.push(e)` statements above must have been reached
                 return build_error(errs, warnings);
             }
-        };
-
-        WithWarnings {
-            t: Ok((request, policies, entities)),
-            warnings: warnings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -655,19 +648,11 @@ impl PartialAuthorizationCall {
             }
         };
 
-        let entities = match self.entities.parse(schema.as_ref()) {
-            Ok(entities) => entities,
-            Err(e) => {
-                return build_error(vec![e], warnings);
-            }
-        };
-
-        let policies = match self.policies.parse() {
-            Ok(policies) => policies,
-            Err(errs) => {
-                return build_error(errs, warnings);
-            }
-        };
+        let maybe_entities = self
+            .entities
+            .parse(schema.as_ref())
+            .map_err(|e| errs.push(e));
+        let maybe_policies = self.policies.parse().map_err(|es| errs.extend(es));
 
         let mut b = Request::builder();
         if let Some(p) = principal {
@@ -681,19 +666,22 @@ impl PartialAuthorizationCall {
         }
         b = b.context(context);
 
-        let request = match schema {
-            Some(schema) if self.validate_request => match b.schema(&schema).build() {
-                Ok(request) => request,
-                Err(e) => {
-                    return build_error(vec![e.into()], warnings);
-                }
-            },
-            _ => b.build(),
+        let maybe_request = match schema {
+            Some(schema) if self.validate_request => {
+                b.schema(&schema).build().map_err(|e| errs.push(e.into()))
+            }
+            _ => Ok(b.build()),
         };
 
-        WithWarnings {
-            t: Ok((request, policies, entities)),
-            warnings: warnings.into_iter().map(Into::into).collect(),
+        match (maybe_request, maybe_policies, maybe_entities) {
+            (Ok(request), Ok(policies), Ok(entities)) => WithWarnings {
+                t: Ok((request, policies, entities)),
+                warnings: warnings.into_iter().map(Into::into).collect(),
+            },
+            _ => {
+                // At least one of the `errs.push(e)` statements above must have been reached
+                return build_error(errs, warnings);
+            }
         }
     }
 }
