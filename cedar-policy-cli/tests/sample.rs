@@ -616,12 +616,100 @@ fn test_validate_samples() {
     );
 }
 
-fn run_evaluate_test(
-    request_json_file: impl Into<String>,
-    entities_file: impl Into<String>,
-    expression: impl Into<String>,
-    exit_code: CedarExitCode,
-    expected: EvalResult,
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "parse error",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "1 + \"type error\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "[\"a\",true,10].contains(10)",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case("sample-data/tiny_sandboxes/sample2/request.json",
+        "sample-data/tiny_sandboxes/sample2/entity.json",
+        "resource.owner",
+        CedarExitCode::Success,
+        EvalResult::EntityUid("User::\"bob\"".parse().unwrap()),)]
+#[case("sample-data/tiny_sandboxes/sample3/request.json",
+        "sample-data/tiny_sandboxes/sample3/entity.json",
+        "if 10 > 5 then \"good\" else \"bad\"",
+        CedarExitCode::Success,
+        EvalResult::String("good".to_owned()),)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/request.json",
+    "sample-data/tiny_sandboxes/sample4/entity.json",
+    "resource.owner == User::\"bob\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/request.json",
+    "sample-data/tiny_sandboxes/sample5/entity.json",
+    "principal.addr.isLoopback()",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/request.json",
+    "sample-data/tiny_sandboxes/sample6/entity.json",
+    "principal.account.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/request.json",
+    "sample-data/tiny_sandboxes/sample7/entity.json",
+    "context.role.contains(\"admin\")",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+fn test_evaluate_samples(
+    #[case] request_json_file: impl Into<String>,
+    #[case] entities_file: impl Into<String>,
+    #[case] expression: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
+    #[case] expected: EvalResult,
 ) {
     let cmd = EvaluateArgs {
         schema_file: None,
@@ -640,115 +728,6 @@ fn run_evaluate_test(
     let output = evaluate(&cmd);
     assert_eq!(exit_code, output.0, "{:#?}", cmd,);
     assert_eq!(expected, output.1, "{:#?}", cmd,);
-}
-
-#[test]
-fn test_evaluate_samples() {
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "parse error",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "1 + \"type error\"",
-        CedarExitCode::Failure,
-        EvalResult::Bool(false),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal in UserGroup::\"jane_friends\"",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "[\"a\",true,10].contains(10)",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample1/request.json",
-        "sample-data/tiny_sandboxes/sample1/entity.json",
-        "principal.age >= 17",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    let v = "User::\"bob\"".parse();
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample2/request.json",
-        "sample-data/tiny_sandboxes/sample2/entity.json",
-        "resource.owner",
-        CedarExitCode::Success,
-        EvalResult::EntityUid(v.unwrap()),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample3/request.json",
-        "sample-data/tiny_sandboxes/sample3/entity.json",
-        "if 10 > 5 then \"good\" else \"bad\"",
-        CedarExitCode::Success,
-        EvalResult::String("good".to_owned()),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample4/request.json",
-        "sample-data/tiny_sandboxes/sample4/entity.json",
-        "resource.owner == User::\"bob\"",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample5/request.json",
-        "sample-data/tiny_sandboxes/sample5/entity.json",
-        "principal.addr.isLoopback()",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample6/request.json",
-        "sample-data/tiny_sandboxes/sample6/entity.json",
-        "principal.account.age >= 17",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
-
-    run_evaluate_test(
-        "sample-data/tiny_sandboxes/sample7/request.json",
-        "sample-data/tiny_sandboxes/sample7/entity.json",
-        "context.role.contains(\"admin\")",
-        CedarExitCode::Success,
-        EvalResult::Bool(true),
-    );
 }
 
 #[test]
