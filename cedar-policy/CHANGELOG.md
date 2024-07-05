@@ -22,7 +22,7 @@ Cedar Language Version: 4.0
 
 ### Changed
 
-- The API around `Request::new` has changed to remove the `Option`s 
+- The API around `Request::new` has changed to remove the `Option`s
   around the entity type arguments.
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
@@ -35,6 +35,7 @@ Cedar Language Version: 4.0
 - Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
+- Changed FFI to error on typos or unexpected fields in the input JSON.
 
 ### Removed
 
