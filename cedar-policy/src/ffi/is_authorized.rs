@@ -460,6 +460,7 @@ pub enum PartialAuthorizationAnswer {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizationCall {
     /// The principal taking action
     principal: EntityUid,
@@ -766,6 +767,7 @@ impl From<Links> for Vec<Link> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 struct RecvdSlice {
     policies: PolicySet,
     /// JSON object containing the entities data, in "natural JSON" form -- same
