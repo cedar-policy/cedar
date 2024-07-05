@@ -447,11 +447,114 @@ fn test_authorize_samples() {
     );
 }
 
+#[rstest]
+#[case(
+    "sample-data/doesnotexist.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/doesnotexist.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains misspelled entity type.
+#[case(
+    "sample-data/sandbox_a/policies_1_bad.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_2.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_a/policies_3.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_4.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains an access to an optional attribute without a `has` check.
+#[case(
+    "sample-data/sandbox_b/policies_5_bad.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_b/policies_5.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_6.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample3/policy.cedar",
+    "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/policy.cedar",
+    "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/policy.cedar",
+    "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/policy.cedar",
+    "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/policy.cedar",
+    "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample8/policy.cedar",
+    "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
 #[track_caller]
-fn run_validate_test(
-    policies_file: impl Into<String>,
-    schema_file: impl Into<String>,
-    exit_code: CedarExitCode,
+fn test_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
 ) {
     let policies_file = policies_file.into();
     let schema_file = schema_file.into();
@@ -488,112 +591,6 @@ fn run_validate_test(
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)
-}
-
-#[test]
-fn test_validate_samples() {
-    run_validate_test(
-        "sample-data/doesnotexist.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Failure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1.cedar",
-        "sample-data/doesnotexist.json",
-        CedarExitCode::Failure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    // Contains misspelled entity type.
-    run_validate_test(
-        "sample-data/sandbox_a/policies_1_bad.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_2.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_a/policies_3.cedar",
-        "sample-data/sandbox_a/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_4.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    // Contains an access to an optional attribute without a `has` check.
-    run_validate_test(
-        "sample-data/sandbox_b/policies_5_bad.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_5.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/sandbox_b/policies_6.cedar",
-        "sample-data/sandbox_b/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample1/policy.cedar",
-        "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample2/policy.cedar",
-        "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample3/policy.cedar",
-        "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample4/policy.cedar",
-        "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample5/policy.cedar",
-        "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample6/policy.cedar",
-        "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample7/policy.cedar",
-        "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample8/policy.cedar",
-        "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample9/policy.cedar",
-        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
-        CedarExitCode::Success,
-    );
-    run_validate_test(
-        "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
-        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
-        CedarExitCode::ValidationFailure,
-    );
 }
 
 #[rstest]
