@@ -999,7 +999,7 @@ fn test_require_policies_for_write() {
 #[test]
 fn test_check_parse_json_static_policy() {
     let json_static_policy: &str =
-        "sample-data/tiny_sandboxes/check_parse/static_policy.cedar.json";
+        "sample-data/tiny_sandboxes/json-check-parse/static_policy.cedar.json";
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
@@ -1015,7 +1015,7 @@ fn test_check_parse_json_static_policy() {
 #[test]
 fn test_check_parse_json_policy_template() {
     let json_policy_template: &str =
-        "sample-data/tiny_sandboxes/check_parse/policy_template.cedar.json";
+        "sample-data/tiny_sandboxes/json-check-parse/policy_template.cedar.json";
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
@@ -1030,8 +1030,8 @@ fn test_check_parse_json_policy_template() {
 
 #[test]
 fn test_authorize_json_policy() {
-    let json_policy: &str = "sample-data/tiny_sandboxes/authorize/policy.cedar.json";
-    let entities: &str = "sample-data/tiny_sandboxes/authorize/entity.json";
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-authorize/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json-authorize/entity.json";
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
