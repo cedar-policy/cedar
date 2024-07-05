@@ -29,6 +29,8 @@ use cedar_policy_cli::{
     EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
 };
 
+use rstest::rstest;
+
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
         policies: PoliciesArgs {
