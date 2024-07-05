@@ -19,6 +19,7 @@
 // PANIC SAFETY tests
 #![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
@@ -115,27 +116,6 @@ fn run_link_test(
     };
     let output = link(&cmd);
     assert_eq!(output, expected);
-}
-
-// PANIC SAFETY: this is all test code
-#[allow(clippy::expect_used)]
-// PANIC SAFETY: this is all test code
-#[allow(clippy::unwrap_used)]
-#[track_caller]
-fn run_format_test(policies_file: &str) {
-    let original = std::fs::read_to_string(policies_file).unwrap();
-    let format_cmd = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
-        .arg("format")
-        .arg("-p")
-        .arg(policies_file)
-        .assert();
-    let formatted =
-        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
-    assert_eq!(
-        original, formatted,
-        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
-    );
 }
 
 fn run_authorize_test_context(
@@ -903,11 +883,27 @@ fn test_link_samples() {
     );
 }
 
-#[test]
-fn test_format_samples() {
-    use glob::glob;
-    let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
-    ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
+#[rstest]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
+#[track_caller]
+fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
+    let policies_file = path.to_str().unwrap();
+    let original = std::fs::read_to_string(policies_file).unwrap();
+    let format_cmd = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("format")
+        .arg("-p")
+        .arg(policies_file)
+        .assert();
+    let formatted =
+        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
+    assert_eq!(
+        original, formatted,
+        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
+    );
 }
 
 #[test]
