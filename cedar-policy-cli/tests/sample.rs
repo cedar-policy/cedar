@@ -1023,6 +1023,62 @@ fn test_require_policies_for_write() {
 }
 
 #[test]
+fn test_check_parse_json_static_policy() {
+    let json_static_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/static_policy.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_static_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_template() {
+    let json_policy_template: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_template.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy_template)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_authorize_json_policy() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-authorize/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json-authorize/entity.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("authorize")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .assert()
+        .code(0);
+}
+
+#[test]
 fn test_translate_policy() {
     let human_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
