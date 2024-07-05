@@ -125,7 +125,7 @@ cargo run authorize \
     --resource 'Photo::"VacationPhoto94.jpg"' \
     --policies policies_edited.cedar \
     --entities entities.json \
-    g--template-linked ./linked
+    --template-linked ./linked
 ```
 
 But Alice should now be denied.
