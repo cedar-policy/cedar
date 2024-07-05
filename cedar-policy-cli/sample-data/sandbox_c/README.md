@@ -22,11 +22,11 @@ Let's see if `alice` can view `VacationPhoto94.jpg`:
 
 ```shell
 cargo run authorize \
- --principal 'User::"alice"' \
- --action 'Action::"view"' \
- --resource 'Photo::"VacationPhoto94.jpg"' \
- --policies policies.cedar \
- --entities entities.json
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"' \
+    --policies policies.cedar \
+    --entities entities.json
 ```
 
 We should get `DENY`, as there is no policy that allows this.
@@ -50,11 +50,11 @@ Let's link this template to give `alice` access:
 
 ```shell
 cargo run link \
- --policies policies.cedar \
- --template-linked ./linked \
- --template-id "AccessVacation" \
- --new-id "AliceAccess" \
- --arguments '{ "?principal" : "User::\"alice\"" }'
+    --policies policies.cedar \
+    --template-linked ./linked \
+    --template-id "AccessVacation" \
+    --new-id "AliceAccess" \
+    --arguments '{ "?principal" : "User::\"alice\"" }'
 ```
 
 This will fill the Slot `?principal` with `User::\"alice\"` in the template with ID "AccessVacation".
@@ -64,12 +64,12 @@ We can re-run the request with our linked file:
 
 ```shell
 cargo run authorize \
- --principal 'User::"alice"' \
- --action 'Action::"view"' \
- --resource 'Photo::"VacationPhoto94.jpg"' \
- --policies policies.cedar \
- --entities entities.json \
- --template-linked ./linked
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"' \
+    --policies policies.cedar \
+    --entities entities.json \
+    --template-linked ./linked
 ```
 
 And we should now get `ALLOW`.
@@ -78,11 +78,11 @@ Let's also give `bob` access:
 
 ```shell
 cargo run link \
- --policies policies.cedar \
- --template-linked ./linked \
- --template-id "AccessVacation" \
- --new-id "BobAccess" \
- --arguments '{ "?principal" : "User::\"bob\"" }'
+    --policies policies.cedar \
+    --template-linked ./linked \
+    --template-id "AccessVacation" \
+    --new-id "BobAccess" \
+    --arguments '{ "?principal" : "User::\"bob\"" }'
 ```
 
 And now both `bob` and `alice` have access.
@@ -108,24 +108,24 @@ Now we can re-run our requests:
 
 ```shell
 cargo run authorize \
- --principal 'User::"bob"' \
- --action 'Action::"view"' \
- --resource 'Photo::"VacationPhoto94.jpg"' \
- --policies policies_edited.cedar \
- --entities entities.json \
- --template-linked ./linked
+    --principal 'User::"bob"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"' \
+    --policies policies_edited.cedar \
+    --entities entities.json \
+    --template-linked ./linked
 ```
 
 Bob should still have access, as his entity has the attribute set.
 
 ```shell
 cargo run authorize \
- --principal 'User::"alice"' \
- --action 'Action::"view"' \
- --resource 'Photo::"VacationPhoto94.jpg"' \
- --policies policies_edited.cedar \
- --entities entities.json \
- --template-linked ./linked
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"' \
+    --policies policies_edited.cedar \
+    --entities entities.json \
+    --template-linked ./linked
 ```
 
 But Alice should now be denied.
