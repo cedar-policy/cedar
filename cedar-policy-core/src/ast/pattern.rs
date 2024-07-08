@@ -20,10 +20,6 @@ use serde::{Deserialize, Serialize};
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
 #[derive(Deserialize, Serialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
-// We need special serialization for patterns because Rust's unicode escape
-// sequences (e.g., `\u{1234}`) can appear in serialized strings and it's difficult
-// to parse these into characters in the formal model. Instead we serialize the
-// unicode values of Rust characters.
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
