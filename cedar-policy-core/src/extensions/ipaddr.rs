@@ -275,7 +275,7 @@ mod proof {
     fn contains_at_least_two_correct() {
         let buf: [u8; 6] = kani::any();
         let len: usize = kani::any();
-        kani::assume(len <= 4);
+        kani::assume(len <= 6);
         let slice = &buf[0..len];
         if let Ok(s) = std::str::from_utf8(slice) {
             let pat = kani::any();
