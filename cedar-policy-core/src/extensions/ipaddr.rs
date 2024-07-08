@@ -269,7 +269,7 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
 #[cfg(kani)]
 mod proof {
 
-    /// Prove that `contains_two_correct` does not panic for strings with length <= 4
+    /// Prove that `contains_two_correct` does not panic for strings with length <= 6
     #[kani::proof]
     #[kani::unwind(7)]
     fn contains_at_least_two_correct() {
