@@ -2651,6 +2651,328 @@ mod test {
     }
 }
 
+/// Tests described in https://github.com/cedar-policy/cedar/issues/579
+///
+/// We test all possible (position, scenario) pairs where:
+///
+/// position is all places a typename can occur in a schema:
+/// A. Inside a context attribute type
+/// B. Inside an entity attribute type
+/// C. Inside an action attribute type
+/// D. As an entity parent type
+/// E. In an action `appliesTo` declaration
+/// F. Inside the body of a common-type definition
+/// G. In an action parent declaration?
+///
+/// and scenario is all the ways a typename can resolve:
+/// 1. the typename is written without a namespace
+///     a. and that typename is declared in the current namespace (but not the empty namespace)
+///         1. as an entity type
+///         2. as a common type
+///     b. and that typename is declared in the empty namespace (but not the current namespace)
+///         1. as an entity type
+///         2. as a common type
+///     c. and that typename is not declared in either the current namespace or the empty namespace
+/// 2. the typename is written _with_ the current namespace explicit
+///     a. and that typename is declared in the current namespace (but not the empty namespace)
+///         1. as an entity type
+///         2. as a common type
+///     b. and that typename is declared in the empty namespace (but not the current namespace)
+///         1. as an entity type
+///         2. as a common type
+///     c. and that typename is not declared in either the current namespace or the empty namespace
+/// 3. the typename is written _with_ an explicit namespace NS (not the current namespace)
+///     a. and that typename is declared in the current namespace
+///         1. as an entity type
+///         2. as a common type
+///     b. and that typename is declared in the empty namespace (but not the current namespace or NS)
+///         1. as an entity type
+///         2. as a common type
+///     c. and that typename is declared in NS (and also the current namespace)
+///         1. as an entity type
+///         2. as a common type
+///     d. and that typename is not declared in the current namespace, the empty namespace, or NS
+///
+/// We also repeat all of these tests with both the human syntax and the JSON syntax.
+/// The JSON syntax distinguishes syntactically between entity and common type _references_;
+/// we only do the test for the more sensible one. (For instance, for 1a1, we
+/// only test an entity type reference, not a common type reference.)
+#[cfg(test)]
+mod test_579 {
+    use cedar_policy_core::extensions::Extensions;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+    use super::{SchemaWarning, ValidatorSchema};
+
+    /// Transform the output of functions like
+    /// `ValidatorSchema::from_str_natural()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
+    /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
+    /// `assert_matches`, `.unwrap_err()`, etc
+    fn collect_warnings<A, B, E>(r: Result<(A, impl Iterator<Item = B>), E>) -> Result<(A, Vec<B>), E> {
+        r.map(|(a, iter)| (a, iter.collect()))
+    }
+
+    #[track_caller]
+    fn assert_parses_successfully_human(s: &str) -> (ValidatorSchema, Vec<SchemaWarning>) {
+        collect_warnings(ValidatorSchema::from_str_natural(s, Extensions::all_available()))
+            .map_err(miette::Report::new)
+            .unwrap()
+    }
+
+    #[track_caller]
+    fn assert_parses_successfully_json(v: serde_json::Value) -> ValidatorSchema {
+        ValidatorSchema::from_json_value(v, Extensions::all_available())
+            .map_err(miette::Report::new)
+            .unwrap()
+    }
+
+    #[track_caller]
+    fn assert_parse_error_human(s: &str, e: &ExpectedErrorMessage<'_>) {
+        assert_matches!(collect_warnings(ValidatorSchema::from_str_natural(s, Extensions::all_available())), Err(err) => {
+            expect_err(s, &miette::Report::new(err), e);
+        });
+    }
+
+    #[track_caller]
+    fn assert_parse_error_json(v: serde_json::Value, e: &ExpectedErrorMessage<'_>) {
+        assert_matches!(ValidatorSchema::from_json_value(v.clone(), Extensions::all_available()), Err(err) => {
+            expect_err(&v, &miette::Report::new(err), e);
+        });
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1a1_human() {
+        let human_schema = r#"
+        namespace NS1 {
+            entity User, Resource;
+            entity MyType;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};
+        }
+        "#;
+        assert_parses_successfully_human(&human_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1a1_json() {
+        let json_schema = json!({
+            "NS1": {
+                "entityTypes": {
+                    "User": { "memberOfTypes": [] },
+                    "Resource": { "memberOfTypes": [] },
+                    "MyType": { "memberOfTypes": [] },
+                },
+                "actions": {
+                    "Read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "Entity", "name": "MyType" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_parses_successfully_json(json_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1a2_human() {
+        let human_schema = r#"
+        namespace NS1 {
+            entity User, Resource;
+            type MyType = String;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};
+        }
+        "#;
+        assert_parses_successfully_human(&human_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1a2_json() {
+        let json_schema = json!({
+            "NS1": {
+                "entityTypes": {
+                    "User": { "memberOfTypes": [] },
+                    "Resource": { "memberOfTypes": [] },
+                },
+                "commonTypes": {
+                    "MyType": { "type": "String" },
+                },
+                "actions": {
+                    "Read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "MyType" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_parses_successfully_json(json_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1b1_human() {
+        let human_schema = r#"
+        entity MyType;
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};
+        }
+        "#;
+        assert_parses_successfully_human(&human_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1b1_json() {
+        let json_schema = json!({
+            "": {
+                "entityTypes": {
+                    "MyType": { "memberOfTypes": [] }
+                },
+                "actions": {}
+            },
+            "NS1": {
+                "entityTypes": {
+                    "User": { "memberOfTypes": [] },
+                    "Resource": { "memberOfTypes": [] },
+                },
+                "actions": {
+                    "Read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "Entity", "name": "MyType" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_parses_successfully_json(json_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1b2_human() {
+        let human_schema = r#"
+        type MyType = String;
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};
+        }
+        "#;
+        assert_parses_successfully_human(&human_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1b2_json() {
+        let json_schema = json!({
+            "": {
+                "commonTypes": {
+                    "MyType": { "type": "String" }
+                },
+                "entityTypes": {},
+                "actions": {},
+            },
+            "NS1": {
+                "entityTypes": {
+                    "User": { "memberOfTypes": [] },
+                    "Resource": { "memberOfTypes": [] },
+                },
+                "actions": {
+                    "Read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "MyType" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_parses_successfully_json(json_schema);
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1c_human() {
+        let human_schema = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};
+        }
+        "#;
+        assert_parse_error_human(
+            human_schema,
+            &ExpectedErrorMessageBuilder::error("error parsing schema: Unknown type name: `MyType`")
+                .exactly_one_underline("MyType")
+                .build(),
+        );
+    }
+
+    /// See comments on this module.
+    #[test]
+    fn A1c_json() {
+        let json_schema = json!({
+            "NS1": {
+                "entityTypes": {
+                    "User": { "memberOfTypes": [] },
+                    "Resource": { "memberOfTypes": [] },
+                },
+                "actions": {
+                    "Read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "MyType" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_parse_error_json(
+            json_schema,
+            &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+                .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+                .build(),
+        );
+    }
+}
+
 #[cfg(test)]
 mod test_resolver {
     use std::collections::HashMap;
