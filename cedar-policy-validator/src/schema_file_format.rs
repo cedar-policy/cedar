@@ -490,26 +490,6 @@ impl<N> SchemaType<N> {
         }
     }
 
-    /// Is this [`SchemaType`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a `TypeDef` because we can't
-    /// easily properly check the type of a typedef, accounting for namespaces,
-    /// without first converting to a [`crate::types::Type`].
-    pub fn is_extension(&self) -> Option<bool> {
-        match self {
-            Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
-            Self::Type(SchemaTypeVariant::Set { element }) => element.is_extension(),
-            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
-                .values()
-                .try_fold(false, |a, e| match e.ty.is_extension() {
-                    Some(true) => Some(true),
-                    Some(false) => Some(a),
-                    None => None,
-                }),
-            Self::Type(_) => Some(false),
-            Self::TypeDef { .. } => None,
-        }
-    }
-
     /// Is this [`SchemaType`] an empty record? This function is used by the `Display`
     /// implementation to avoid printing unnecessary entity/action data.
     pub fn is_empty_record(&self) -> bool {

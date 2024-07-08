@@ -681,8 +681,10 @@ pub(crate) fn try_schema_type_into_validator_type(
             Ok(Type::named_entity_reference(name.into()).into())
         }
         SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
+            // don't allow the `partial_evaluation` extension type in schemas
+            let is_pe = name.as_ref() == "partial_evaluation";
             let extension_type_name = Name::unqualified_name(name);
-            if extensions.ext_names().contains(&extension_type_name) {
+            if extensions.ext_names().contains(&extension_type_name) && !is_pe {
                 Ok(Type::extension(extension_type_name).into())
             } else {
                 let suggested_replacement = fuzzy_search(
@@ -690,6 +692,7 @@ pub(crate) fn try_schema_type_into_validator_type(
                     &extensions
                         .ext_names()
                         .map(|n| n.to_string())
+                        .filter(|s| s != "partial_evaluation") // never suggest specifically `partial_evaluation`
                         .collect::<Vec<_>>(),
                 );
                 Err(SchemaError::UnknownExtensionType(
