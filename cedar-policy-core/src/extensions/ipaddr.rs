@@ -242,7 +242,7 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {
         Some(i) => {
-            // For this slicing operation not to panic, two preconditoins must be met:
+            // For this slicing operation not to panic, two preconditions must be met:
             // 1) `i + c.len_utf()` must be <= `s.len()`
             //     This is met because:
             //     i := s.find(c) meaning:
