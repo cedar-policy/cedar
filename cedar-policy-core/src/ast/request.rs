@@ -242,7 +242,7 @@ impl Context {
                 let evaluator = RestrictedEvaluator::new(&extensions);
                 let pval = evaluator.partial_interpret(expr)?;
                 // The invariant on `from_restricted_partial_val_unchecked`
-                // is satisfied because `expr` is restricted (by INVARIANT(restricted)),
+                // is satisfied because `expr` is a restricted expression,
                 // and must still be restricted after `partial_interpret`.
                 // The function call cannot return `Err` because `expr` is a
                 // record, and partially evaluating a record expression will
@@ -250,7 +250,7 @@ impl Context {
                 // PANIC SAFETY: See above
                 #[allow(clippy::expect_used)]
                 Ok(Self::from_restricted_partial_val_unchecked(pval).expect(
-                    "`TryInto::<Context>::try_into` should succeed when called on a record.",
+                    "`from_restricted_partial_val_unchecked` should succeed when called on a record.",
                 ))
             }
             _ => Err(ContextCreationError::not_a_record(expr.to_owned().into())),
@@ -335,30 +335,34 @@ impl Context {
     /// already a `Context::Value`, then this returns `self` unchanged and will
     /// not error. Otherwise delegate to [`Expr::substitute`].
     pub fn substitute(self, mapping: &HashMap<SmolStr, Value>) -> Result<Self, EvaluationError> {
-        if let Context::Residual(ref residual_context) = self {
-            // From Invariant(Restricted), `residual_context` contains only
-            // restricted expressions, so `Expr::record_arc` of the attributes
-            // will also be a restricted expression. This doesn't change after
-            // substitution, so we know `expr` must be a restricted expression.
-            let expr = Expr::record_arc(residual_context.clone()).substitute(mapping);
-            let expr = BorrowedRestrictedExpr::new_unchecked(&expr);
+        match self {
+            Context::Residual(residual_context) => {
+                // From Invariant(Restricted), `residual_context` contains only
+                // restricted expressions, so `Expr::record_arc` of the attributes
+                // will also be a restricted expression. This doesn't change after
+                // substitution, so we know `expr` must be a restricted expression.
+                let expr = Expr::record_arc(residual_context).substitute(mapping);
+                let expr = BorrowedRestrictedExpr::new_unchecked(&expr);
 
-            let extns = Extensions::all_available();
-            let eval = RestrictedEvaluator::new(&extns);
-            let partial_value = eval.partial_interpret(expr)?;
+                let extns = Extensions::all_available();
+                let eval = RestrictedEvaluator::new(&extns);
+                let partial_value = eval.partial_interpret(expr)?;
 
-            // The invariant on `from_restricted_partial_val_unchecked`
-            // is satisfied because `expr` is restricted and must still be
-            // restricted after `partial_interpret`.
-            // `TryInto<Context>::try_into` cannot fail because because `expr`
-            // was constructed as a record, and substitution and partial
-            // evaluation does not change this. This is
-            // PANIC SAFETY: See above
-            #[allow(clippy::expect_used)]
-            Ok(Self::from_restricted_partial_val_unchecked(partial_value)
-                .expect("`TryInto::<Context>::try_into` should succeed when called on a record."))
-        } else {
-            Ok(self)
+                // The invariant on `from_restricted_partial_val_unchecked`
+                // is satisfied because `expr` is restricted and must still be
+                // restricted after `partial_interpret`.
+                // The function call cannot fail because because `expr` was
+                // constructed as a record, and substitution and partial
+                // evaluation does not change this.
+                // PANIC SAFETY: See above
+                #[allow(clippy::expect_used)]
+                Ok(
+                    Self::from_restricted_partial_val_unchecked(partial_value).expect(
+                        "`from_restricted_partial_val_unchecked` should succeed when called on a record.",
+                    ),
+                )
+            }
+            Context::Value(_) => Ok(self),
         }
     }
 
@@ -383,7 +387,7 @@ impl Context {
                     // an unknown in `e`. It is a record, so there must be an
                     // unknown in one of the attributes expressions, satisfying
                     // INVARIANT(unknown). From the invariant on this function,
-                    // `e` is a valid restricted expressions, satisfying
+                    // `e` is a valid restricted expression, satisfying
                     // INVARIANT(restricted).
                     Ok(Context::Residual(attrs.clone()))
                 } else {
@@ -446,7 +450,7 @@ impl From<Context> for PartialValue {
             Context::Value(attrs) => Value::record_arc(attrs, None).into(),
             Context::Residual(attrs) => {
                 // A `PartialValue::Residual` must contain an unknown in the
-                // expression. By INVARIANT(unknown), at least on expr in
+                // expression. By INVARIANT(unknown), at least one expr in
                 // `attrs` contains an unknown, so the `record_arc` expression
                 // contains at least one unknown.
                 PartialValue::Residual(ExprBuilder::new().record_arc(attrs))
@@ -463,7 +467,7 @@ impl std::default::Default for Context {
 
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", Into::<PartialValue>::into(self.clone()))
+        write!(f, "{}", PartialValue::from(self.clone()))
     }
 }
 
