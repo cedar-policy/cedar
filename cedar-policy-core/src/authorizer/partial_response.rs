@@ -22,16 +22,10 @@ use std::sync::Arc;
 
 use super::{
     err::{ConcretizationError, ReauthorizationError},
-    Annotations, AuthorizationError, Authorizer, BorrowedRestrictedExpr, Context, Decision, Effect,
-    EntityUIDEntry, Expr, PartialValue, Policy, PolicySet, PolicySetError, Request, Response,
-    Value,
+    Annotations, AuthorizationError, Authorizer, Context, Decision, Effect, EntityUIDEntry, Expr,
+    Policy, PolicySet, PolicySetError, Request, Response, Value,
 };
-use crate::{
-    ast::PolicyID,
-    entities::Entities,
-    evaluator::{EvaluationError, RestrictedEvaluator},
-    extensions::Extensions,
-};
+use crate::{ast::PolicyID, entities::Entities, evaluator::EvaluationError};
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
 
@@ -436,25 +430,9 @@ impl PartialResponse {
         }
 
         // We need to replace unknowns in the partial context as well
-        if let Some(ref ctx) = context {
-            if let PartialValue::Residual(residual) = ctx.clone().into() {
-                let expr = residual.substitute(mapping);
-                let extns = Extensions::all_available();
-                let eval = RestrictedEvaluator::new(&extns);
-                let partial_value = eval.partial_interpret
-                    // Substituting a partial context should produce a
-                    // restricted expression because a partial context is a
-                    // restricted expression and remains so after unknown
-                    // substitution, by the inductive definition of restricted
-                    // expressions
-                    (BorrowedRestrictedExpr::new_unchecked(&expr))?;
-                // Using the unchecked constructor of `Context` is justified
-                // because partially evaluating a context should yield a record
-                context = Some(TryInto::<Context>::try_into(partial_value).expect(
-                    "`TryInto::<Context>::try_into` should succeed when called on a record.",
-                ));
-            }
-        }
+        context = context
+            .map(|context| context.substitute(mapping))
+            .transpose()?;
 
         Ok(Request {
             principal,
@@ -593,6 +571,7 @@ mod test {
             ActionConstraint, EntityUID, PrincipalConstraint, ResourceConstraint, RestrictedExpr,
             Unknown,
         },
+        extensions::Extensions,
         parser::parse_policyset,
         FromNormalizedStr,
     };
