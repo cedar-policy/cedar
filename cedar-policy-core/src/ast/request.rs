@@ -22,7 +22,6 @@ use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::Serialize;
-use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -396,12 +395,12 @@ impl IntoIterator for Context {
 impl From<Context> for RestrictedExpr {
     fn from(value: Context) -> Self {
         match value {
-            Context::Value(record) => Value::record_arc(record, None).into(),
-            Context::Residual(record) => {
+            Context::Value(attrs) => Value::record_arc(attrs, None).into(),
+            Context::Residual(attrs) => {
                 // By INVARIANT(restricted), all attributes expressions are
                 // restricted expressions, so the result of `record_arc` will be
                 // a restricted expression.
-                RestrictedExpr::new_unchecked(Expr::record_arc(record))
+                RestrictedExpr::new_unchecked(Expr::record_arc(attrs))
             }
         }
     }
@@ -410,9 +409,7 @@ impl From<Context> for RestrictedExpr {
 impl From<Context> for PartialValue {
     fn from(ctx: Context) -> PartialValue {
         match ctx {
-            Context::Value(attrs) => {
-                PartialValue::Value(Value::new(ValueKind::Record(attrs), None))
-            }
+            Context::Value(attrs) => Value::record_arc(attrs, None).into(),
             Context::Residual(attrs) => {
                 // A `PartialValue::Residual` must contain an unknown in the
                 // expression. By INVARIANT(unknown), at least on expr in
