@@ -178,6 +178,7 @@ impl Default for ValidationSettings {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
