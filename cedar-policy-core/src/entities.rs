@@ -22,7 +22,7 @@ use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 /// Module for checking that entities conform with a schema
@@ -49,7 +49,7 @@ use err::*;
 /// FFI layer in DRT. All others use (and should use) the `from_json_*()` and
 /// `write_to_json()` methods as necessary.
 #[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Entities {
     /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
     /// be serialized to a JSON string. This is a limitation of the JSON format.
@@ -3262,5 +3262,41 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
+    }
+}
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::iter;
+    use smol_str::SmolStr;
+
+    #[test]
+    fn json_roundtrip() {
+        // Check that the roundtrip property holds for an Entities struct with a single entity
+        let attrs: HashMap<SmolStr, RestrictedExpr> = (1..=3)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect();
+        let entity: Entity = Entity::new(
+        r#"Foo::"bar""#.parse().unwrap(),
+            attrs,
+            HashSet::new(),
+            &Extensions::none()
+        ).unwrap();
+
+        let mut entities: Entities = Entities::new();
+        entities = entities.add_entities(
+            iter::once(entity),
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::none()
+        ).unwrap();
+
+        let entities_string = serde_json::to_string(&entities)
+            .expect("Failed to serialize to JSON string");
+        let entities_rt: Entities = serde_json::from_str(entities_string.as_ref())
+            .expect("Failed to deserialize from JSON str");
+        assert_eq!(entities, entities_rt);
     }
 }

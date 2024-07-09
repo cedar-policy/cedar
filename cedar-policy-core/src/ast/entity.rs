@@ -293,7 +293,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Eid {
 }
 
 /// Entity datatype
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Entity {
     /// UID
     uid: EntityUID,
@@ -542,7 +542,7 @@ impl std::fmt::Display for Entity {
 /// (Extension values can't be directly serialized, but can be serialized as
 /// `RestrictedExpr`)
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PartialValueSerializedAsExpr(
     #[serde_as(as = "TryFromInto<RestrictedExpr>")] PartialValue,
 );

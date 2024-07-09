@@ -21,7 +21,7 @@ use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -32,7 +32,7 @@ use super::{
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -51,7 +51,7 @@ pub struct Request {
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
     Known {
@@ -208,7 +208,7 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Context {
     /// Context is internally represented as a `PartialValue`
     ///
@@ -519,5 +519,38 @@ mod test {
                 ContextCreationError::NotARecord { .. }
             ))
         );
+    }
+
+    #[test]
+    fn serde_json_roundtrip() {
+        // Check roundtrip property for a Request struct 
+        let context: Context = Context::from_expr(
+            RestrictedExpr::record([
+                    ("foo".into(), RestrictedExpr::val(42),)
+                ])
+                .expect("Error creating restricted record.")
+                .as_borrowed()
+            ,
+            Extensions::none()
+        ).expect("Error creating context");
+
+        let request = Request::new_unchecked(
+            EntityUIDEntry::Known{ euid: Arc::new(EntityUID::with_eid("andrew")), loc: None },
+            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("read")), loc: None },
+            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("book")), loc: None },
+            Some(context.clone())
+        );
+
+        let request_string: String = serde_json::to_string(&request)
+            .expect("Failed to serialize to JSON string");
+        let request_rt: Request = serde_json::from_str(request_string.as_ref())
+            .expect("Failed to deserialize from JSON string");
+
+        // PartialEq not implemented for Request, compare fields individually
+        // ignores Loc fields
+        assert_eq!(request.principal().uid(), request_rt.principal().uid());
+        assert_eq!(request.action().uid(), request_rt.action().uid());
+        assert_eq!(request.resource().uid(), request_rt.resource().uid());
+        assert_eq!(request.context(), request_rt.context());
     }
 }

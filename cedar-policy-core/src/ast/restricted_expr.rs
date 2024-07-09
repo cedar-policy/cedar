@@ -285,6 +285,16 @@ impl TryFrom<PartialValue> for RestrictedExpr {
     }
 }
 
+impl From<RestrictedExpr> for PartialValue {
+    fn from(e: RestrictedExpr) -> Self {
+        let value_result = Value::try_from(e.0.to_owned());
+        match value_result {
+            Ok(v) => PartialValue::Value(v),
+            Err(_) => PartialValue::Residual(e.0.to_owned())
+        } 
+    }
+}
+
 /// Errors when converting `PartialValue` to `RestrictedExpr`
 #[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum PartialValueToRestrictedExprError {

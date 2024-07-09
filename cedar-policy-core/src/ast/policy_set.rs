@@ -502,11 +502,14 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
+            ActionConstraint, Annotation, Annotations, AnyId, Effect, EntityType, Expr,
+            Name, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+            TemplateBody
         },
-        parser,
+        FromNormalizedStr, parser,
     };
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[test]
     fn link_conflicts() {
@@ -897,5 +900,45 @@ mod test {
         );
         assert!(pset.get(&tid1).is_none());
         assert_eq!(pset.all_templates().count(), 4);
+    }
+
+    #[test]
+    fn serde_json_roundtrip() {
+        // Test the roundtrip property of a PolicySet with a single policy
+        let annotation1: Annotation = Annotation { val: "".into(), loc: None };
+        let pc: PrincipalConstraint = PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
+        let ac: ActionConstraint = ActionConstraint::Eq(EntityUID::with_eid("read").into());
+        let et: EntityType = EntityType::from(Name::from_normalized_str("photo").unwrap());
+        let rc: ResourceConstraint = ResourceConstraint { constraint: PrincipalOrResourceConstraint::is_entity_type(et.into()) };
+
+        let tb: TemplateBody = TemplateBody::new(
+            PolicyID::from_string("template"),
+            None,
+            Annotations::from_iter(vec![(AnyId::from_str("read").expect(""), annotation1)]),
+            Effect::Permit,
+            pc,
+            ac,
+            rc,
+            Expr::val(true)
+        );
+
+        let policy: Policy = Policy::from_when_clause(
+            Effect::Permit, 
+            Expr::val(true),
+            PolicyID::from_string("alice"),
+            None
+        );
+
+        let mut ps: PolicySet = PolicySet::new();
+        ps.add_template(Template::from(tb))
+            .expect("Failed to add template to policy set.");
+        ps.add(policy)
+            .expect("Failed to add policy to policy set.");
+
+        let ps_string = serde_json::to_string(&ps)
+            .expect("Failed to serialize to JSON string");
+        let ps_rt: PolicySet = serde_json::from_str(ps_string.as_ref())
+            .expect("Failed to deserialize from JSON str");
+        assert_eq!(ps, ps_rt);
     }
 }
