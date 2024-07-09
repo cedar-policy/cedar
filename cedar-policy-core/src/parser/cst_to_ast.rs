@@ -3620,7 +3620,7 @@ mod tests {
                     "expected an entity uid or matching template slot, found name `User`",
                 )
                 .help(
-                    "try using `is` to test for an entity type"
+                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
                 )
                 .exactly_one_underline("User").build(),
             ),
@@ -3638,7 +3638,7 @@ mod tests {
                     "expected an entity uid or matching template slot, found name `File`",
                 )
                 .help(
-                    "try using `is` to test for an entity type"
+                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
                 )
                 .exactly_one_underline("File").build(),
             ),
@@ -4204,7 +4204,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"alice"`"#
             ).help(
-                "try including the entity type if you intended this string to be an entity identifier"
+                "try including the entity type if you intended this string to be an entity uid"
             ).exactly_one_underline(r#""alice""#).build());
         });
         let p_src = r#"permit(principal in "bob_friends", action, resource);"#;
@@ -4212,7 +4212,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"bob_friends"`"#
             ).help(
-                "try including the entity type if you intended this string to be an entity identifier"
+                "try including the entity type if you intended this string to be an entity uid"
             ).exactly_one_underline(r#""bob_friends""#).build());
         });
         let p_src = r#"permit(principal, action, resource in "jane_photos");"#;
@@ -4220,7 +4220,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"jane_photos"`"#
             ).help(
-                "try including the entity type if you intended this string to be an entity identifier"
+                "try including the entity type if you intended this string to be an entity uid"
             ).exactly_one_underline(r#""jane_photos""#).build());
         });
         let p_src = r#"permit(principal, action in ["view_actions"], resource);"#;
@@ -4228,7 +4228,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid, found literal `"view_actions"`"#
             ).help(
-                "try including the entity type if you intended this string to be an entity identifier"
+                "try including the entity type if you intended this string to be an entity uid"
             ).exactly_one_underline(r#""view_actions""#).build());
         });
     }
@@ -4240,7 +4240,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `User`"
             ).help(
-                "try using `is` to test for an entity type"
+                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
             ).exactly_one_underline("User").build());
         });
         let p_src = r#"permit(principal in Group, action, resource);"#;
@@ -4248,7 +4248,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Group`"
             ).help(
-                "try using `is` to test for an entity type"
+                "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
             ).exactly_one_underline("Group").build());
         });
         let p_src = r#"permit(principal, action, resource in Album);"#;
@@ -4256,7 +4256,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Album`"
             ).help(
-                "try using `is` to test for an entity type"
+                "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
             ).exactly_one_underline("Album").build());
         });
         // Testing for absence of help message because actions scope doesn't support `is`.
@@ -4275,7 +4275,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `&&` expression"
             ).help(
-                "The policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition.",
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition",
             ).exactly_one_underline(r#"User::"alice" && principal in Group::"jane_friends""#).build());
         });
     }
@@ -4288,7 +4288,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `||` expression"
             ).help(
-                "The policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy.",
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy",
             ).exactly_one_underline(r#"User::"alice" || principal == User::"bob""#).build());
         });
     }

@@ -205,7 +205,7 @@ impl Node<Option<cst::Primary>> {
                         T::err_str(),
                         found,
                         match lit {
-                            Literal::Str(_) => Some("try including the entity type if you intended this string to be an entity identifier"),
+                            Literal::Str(_) => Some("try including the entity type if you intended this string to be an entity uid"),
                             _ => None,
                         }
                     ))
@@ -222,7 +222,7 @@ impl Node<Option<cst::Primary>> {
                         T::err_str(),
                         found,
                         if var != ast::Var::Action {
-                            Some("try using `is` to test for an entity type".to_string())
+                            Some("try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid".to_string())
                         } else {
                             // We don't allow `is` in the action scope, so we won't suggest trying it.
                             None
@@ -233,7 +233,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
-                // immediately if we see a set when we don't except one.
+                // immediately if we see a set when we don't expect one.
                 let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
                 let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
                 Ok(create_multiple_refs(v))
@@ -359,7 +359,7 @@ impl Node<Option<cst::Or>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `||` expression",
-                    Some("The policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy."),
+                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy"),
                 ))
                 .into()),
         }
@@ -376,7 +376,7 @@ impl Node<Option<cst::And>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `&&` expression",
-                    Some("The policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition."),
+                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition"),
                 ))
                 .into()),
         }
