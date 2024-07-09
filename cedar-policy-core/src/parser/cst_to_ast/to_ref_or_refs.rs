@@ -225,7 +225,7 @@ impl Node<Option<cst::Primary>> {
                             Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
                         } else {
                             // We don't allow `is` in the action scope, so we won't suggest trying it.
-                            None
+                            Some("try including an identifier string if you intended this name to be an entity uid".to_string())
                         },
                     ))
                     .into())
