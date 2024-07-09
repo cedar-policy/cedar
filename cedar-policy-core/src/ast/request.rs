@@ -241,12 +241,15 @@ impl Context {
             ExprKind::Record { .. } => {
                 let evaluator = RestrictedEvaluator::new(&extensions);
                 let pval = evaluator.partial_interpret(expr)?;
-                // `TryInto<Context>::try_into` cannot fail because `expr` is a
+                // The invariant on `from_restricted_partial_val_unchecked`
+                // is satisfied because `expr` is restricted (by INVARIANT(restricted)),
+                // and must still be restricted after `partial_interpret`.
+                // The function call cannot return `Err` because `expr` is a
                 // record, and partially evaluating a record expression will
                 // yield a record expression or a record value.
                 // PANIC SAFETY: See above
                 #[allow(clippy::expect_used)]
-                Ok(pval.try_into().expect(
+                Ok(Self::from_restricted_partial_val_unchecked(pval).expect(
                     "`TryInto::<Context>::try_into` should succeed when called on a record.",
                 ))
             }
@@ -333,29 +336,60 @@ impl Context {
     /// not error. Otherwise delegate to [`Expr::substitute`].
     pub fn substitute(self, mapping: &HashMap<SmolStr, Value>) -> Result<Self, EvaluationError> {
         if let Context::Residual(ref residual_context) = self {
-            // From Invariant(Restricted) `residual_context` contains only
-            // restricted expressions, so `Expr::record_arc` of the map will
-            // still be a restricted expression. Restricted expressions are
-            // still restricted expressions after unknown substitution, so
-            // `expr` must be a restricted expression.
+            // From Invariant(Restricted), `residual_context` contains only
+            // restricted expressions, so `Expr::record_arc` of the attributes
+            // will also be a restricted expression. This doesn't change after
+            // substitution, so we know `expr` must be a restricted expression.
             let expr = Expr::record_arc(residual_context.clone()).substitute(mapping);
             let expr = BorrowedRestrictedExpr::new_unchecked(&expr);
 
             let extns = Extensions::all_available();
             let eval = RestrictedEvaluator::new(&extns);
-            // From invariant on `partial_interpret`, `partial_value` is either
-            // a value or residual which is a valid restricted expression.
             let partial_value = eval.partial_interpret(expr)?;
 
+            // The invariant on `from_restricted_partial_val_unchecked`
+            // is satisfied because `expr` is restricted and must still be
+            // restricted after `partial_interpret`.
             // `TryInto<Context>::try_into` cannot fail because because `expr`
-            // was constructed as a record, and partially evaluating a record
-            // expression will yield a record expression or a record value.
+            // was constructed as a record, and substitution and partial
+            // evaluation does not change this. This is
             // PANIC SAFETY: See above
             #[allow(clippy::expect_used)]
-            Ok(TryInto::<Context>::try_into(partial_value)
+            Ok(Self::from_restricted_partial_val_unchecked(partial_value)
                 .expect("`TryInto::<Context>::try_into` should succeed when called on a record."))
         } else {
             Ok(self)
+        }
+    }
+
+    /// Convert a [`PartialValue`] into a context. Return `Err` when the partial
+    /// value is not a Record value or Record expression.
+    ///
+    /// INVARIANT: if `value` is a residual, then it must be a valid restricted expression.
+    fn from_restricted_partial_val_unchecked(
+        value: PartialValue,
+    ) -> Result<Self, ContextCreationError> {
+        match value {
+            PartialValue::Value(v) => {
+                if let ValueKind::Record(attrs) = v.value {
+                    Ok(Context::Value(attrs))
+                } else {
+                    Err(ContextCreationError::not_a_record(v.into()))
+                }
+            }
+            PartialValue::Residual(e) => {
+                if let ExprKind::Record(attrs) = e.expr_kind() {
+                    // From the invariant on `PartialValue::Residual`, there is
+                    // an unknown in `e`. It is a record, so there must be an
+                    // unknown in one of the attributes expressions, satisfying
+                    // INVARIANT(unknown). From the invariant on this function,
+                    // `e` is a valid restricted expressions, satisfying
+                    // INVARIANT(restricted).
+                    Ok(Context::Residual(attrs.clone()))
+                } else {
+                    Err(ContextCreationError::not_a_record(e))
+                }
+            }
         }
     }
 }
@@ -416,35 +450,6 @@ impl From<Context> for PartialValue {
                 // `attrs` contains an unknown, so the `record_arc` expression
                 // contains at least one unknown.
                 PartialValue::Residual(ExprBuilder::new().record_arc(attrs))
-            }
-        }
-    }
-}
-
-/// Convert a [`PartialValue`] into a context. Return `Err` when the partial
-/// value is not a Record value or Record expression.
-impl TryFrom<PartialValue> for Context {
-    type Error = ContextCreationError;
-
-    fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
-        match value {
-            PartialValue::Value(v) => {
-                if let ValueKind::Record(attrs) = v.value {
-                    Ok(Context::Value(attrs))
-                } else {
-                    Err(ContextCreationError::not_a_record(v.into()))
-                }
-            }
-            PartialValue::Residual(e) => {
-                if let ExprKind::Record(attrs) = e.expr_kind() {
-                    // From the invariant on `PartialValue::Residual`, there is
-                    // an unknown in `e`. It is a record, so there must be an
-                    // unknown in one of the attributes expressions, satisfying
-                    // INVARIANT(unknown).
-                    Ok(Context::Residual(attrs.clone()))
-                } else {
-                    Err(ContextCreationError::not_a_record(e))
-                }
             }
         }
     }
