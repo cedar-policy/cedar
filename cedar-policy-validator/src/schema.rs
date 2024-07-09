@@ -209,8 +209,9 @@ impl ValidatorSchema {
     pub fn from_file_natural(
         r: impl std::io::Read,
         extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r)?;
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
+    {
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -219,11 +220,12 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] from a string containing Cedar "natural"
     /// schema syntax.
-    pub fn from_str_natural(
+    pub fn from_str_natural<'a>(
         src: &str,
-        extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src)?;
+        extensions: Extensions<'a>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    {
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;

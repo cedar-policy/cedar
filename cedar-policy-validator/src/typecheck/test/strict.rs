@@ -17,20 +17,19 @@
 //! Contains test for strict typechecking.
 // GRCOV_STOP_COVERAGE
 
-use cedar_policy_core::ast::PolicyID;
 use cool_asserts::assert_matches;
 use serde_json::json;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use cedar_policy_core::parser::Loc;
 use cedar_policy_core::{
-    ast::{EntityUID, Expr},
-    parser::parse_policy_template,
+    ast::{EntityUID, Expr, PolicyID},
+    extensions::Extensions,
+    parser::{parse_policy_template, Loc},
 };
 
-use crate::typecheck::Typechecker;
 use crate::{
+    typecheck::Typechecker,
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
@@ -707,6 +706,7 @@ fn qualified_record_attr() {
         r#"
         entity Foo;
         action A appliesTo { context: {num_of_things?: Long }, principal : [Foo], resource : [Foo] };"#,
+        Extensions::all_available(),
     )
     .unwrap();
     let p = parse_policy_template(

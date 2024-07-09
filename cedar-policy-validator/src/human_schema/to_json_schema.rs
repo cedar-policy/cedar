@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use cedar_policy_core::{
     ast::{Id, Name},
+    extensions::Extensions,
     parser::{Loc, Node},
 };
 use itertools::Either;
@@ -36,7 +37,7 @@ use crate::{
 use super::{
     ast::{
         ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
+        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, PR,
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
@@ -48,6 +49,7 @@ use super::{
 ///     * A vector of name collisions, that are essentially warnings
 pub fn custom_schema_to_json_schema(
     schema: Schema,
+    extensions: Extensions<'_>,
 ) -> Result<(SchemaFragment<RawName>, impl Iterator<Item = SchemaWarning>), ToJsonSchemaErrors> {
     // First pass, figure out what each name is bound to
     let (qualified_namespaces, unqualified_namespace) =
@@ -58,19 +60,33 @@ pub fn custom_schema_to_json_schema(
         .collect::<Vec<_>>();
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
-    let warnings = compute_namespace_warnings(&names).collect::<Vec<_>>();
+    let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(
         all_namespaces
             .into_iter()
-            .map(|ns| convert_namespace(&names, ns)),
+            .map(|ns| convert_namespace(&names, ns, extensions)),
     )?
     .collect();
-    Ok((SchemaFragment(fragment), warnings.into_iter()))
+    Ok((
+        SchemaFragment(fragment),
+        warnings.collect::<Vec<_>>().into_iter(),
+    ))
+}
+
+/// Is the given [`Id`] the name of a valid extension type, given the currently active [`Extensions`]
+fn is_valid_ext_type(ty: &Id, extensions: Extensions<'_>) -> bool {
+    extensions
+        .ext_types()
+        .filter(|ext_ty| ext_ty.is_unqualified()) // if there are any qualified extension type names, we don't care, because we're looking for an unqualified name `ty`
+        .any(|ext_ty| ty == ext_ty.basename())
 }
 
 /// Convert a custom type AST into the JSON representation of the type.
 /// Conversion is done in an empty context.
-pub fn custom_type_to_json_type(ty: Node<Type>) -> Result<SchemaType<RawName>, ToJsonSchemaErrors> {
+pub fn custom_type_to_json_type(
+    ty: Node<Type>,
+    extensions: Extensions<'_>,
+) -> Result<SchemaType<RawName>, ToJsonSchemaErrors> {
     let names = HashMap::from([(None, NamespaceRecord::default())]);
     let context = ConversionContext::new(
         &names,
@@ -78,6 +94,7 @@ pub fn custom_type_to_json_type(ty: Node<Type>) -> Result<SchemaType<RawName>, T
             name: None,
             decls: vec![],
         },
+        extensions,
     );
     context.convert_type(ty)
 }
@@ -112,10 +129,11 @@ fn split_unqualified_namespace(
 fn convert_namespace(
     names: &HashMap<Option<Name>, NamespaceRecord>,
     namespace: Namespace,
+    extensions: Extensions<'_>,
 ) -> Result<(Option<Name>, NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
-    let r = ConversionContext::new(names, &namespace);
-    let def = r.convert_namespace(namespace)?;
-    Ok((r.current_namespace_name, def))
+    let cc = ConversionContext::new(names, &namespace, extensions);
+    let def = cc.convert_namespace(namespace)?;
+    Ok((cc.current_namespace_name, def))
 }
 
 /// The "context" for converting a piece of schema syntax into the JSON representation
@@ -126,6 +144,7 @@ struct ConversionContext<'a> {
     names: &'a HashMap<Option<Name>, NamespaceRecord>,
     current_namespace_name: Option<Name>,
     cedar_namespace: NamespaceRecord,
+    extensions: Extensions<'a>,
 }
 
 impl<'a> ConversionContext<'a> {
@@ -133,11 +152,13 @@ impl<'a> ConversionContext<'a> {
     fn new(
         names: &'a HashMap<Option<Name>, NamespaceRecord>,
         current_namespace: &Namespace,
+        extensions: Extensions<'a>,
     ) -> Self {
         Self {
             names,
             current_namespace_name: current_namespace.name(),
             cedar_namespace: NamespaceRecord::default(), // The `__cedar` namespace is empty (besides primitives)
+            extensions,
         }
     }
 
@@ -484,7 +505,7 @@ impl<'a> ConversionContext<'a> {
                 name: name.into(),
             }))
         } else if is_unqualified_or_cedar {
-            search_cedar_namespace(base, loc)
+            search_cedar_namespace(base, loc, self.extensions)
         } else {
             Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
                 name.to_smolstr(),
@@ -542,12 +563,16 @@ where
 }
 
 /// Search the cedar namespace, the things that live here are cedar builtins, unless overridden within a context.
-fn search_cedar_namespace(name: Id, loc: Loc) -> Result<SchemaType<RawName>, ToJsonSchemaError> {
+fn search_cedar_namespace(
+    name: Id,
+    loc: Loc,
+    extensions: Extensions<'_>,
+) -> Result<SchemaType<RawName>, ToJsonSchemaError> {
     match name.as_ref() {
         "Long" => Ok(SchemaType::Type(SchemaTypeVariant::Long)),
         "String" => Ok(SchemaType::Type(SchemaTypeVariant::String)),
         "Bool" => Ok(SchemaType::Type(SchemaTypeVariant::Boolean)),
-        other if EXTENSIONS.contains(&other) => {
+        _ if is_valid_ext_type(&name, extensions) => {
             Ok(SchemaType::Type(SchemaTypeVariant::Extension { name }))
         }
         _ => Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
@@ -621,13 +646,19 @@ where
     Ok(map)
 }
 
-fn compute_namespace_warnings(
-    fragment: &HashMap<Option<Name>, NamespaceRecord>,
-) -> impl Iterator<Item = SchemaWarning> + '_ {
-    fragment.values().flat_map(make_warning_for_shadowing)
+fn compute_namespace_warnings<'a>(
+    fragment: &'a HashMap<Option<Name>, NamespaceRecord>,
+    extensions: Extensions<'a>,
+) -> impl Iterator<Item = SchemaWarning> + 'a {
+    fragment
+        .values()
+        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions))
 }
 
-fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = SchemaWarning> {
+fn make_warning_for_shadowing<'a>(
+    n: &'a NamespaceRecord,
+    extensions: Extensions<'a>,
+) -> impl Iterator<Item = SchemaWarning> + 'a {
     let mut warnings = vec![];
     for (common_name, common_src_node) in n.common_types.iter() {
         // Check if it shadows a entity name in the same namespace
@@ -640,25 +671,28 @@ fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = Schem
             .into();
             warnings.push(warning);
         }
-        // Check if it shadows a bultin
-        if let Some(warning) = shadows_builtin((common_name, common_src_node)) {
+        // Check if it shadows a builtin
+        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions) {
             warnings.push(warning);
         }
     }
-    let entity_shadows = n.entities.iter().filter_map(shadows_builtin);
-    warnings
-        .into_iter()
-        .chain(entity_shadows)
-        .collect::<Vec<_>>()
-        .into_iter()
+    let entity_shadows = n
+        .entities
+        .iter()
+        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions));
+    warnings.into_iter().chain(entity_shadows)
 }
 
 fn extract_name<N: Clone>(n: Node<N>) -> (N, Node<()>) {
     (n.node.clone(), n.map(|_| ()))
 }
 
-fn shadows_builtin((name, node): (&Id, &Node<()>)) -> Option<SchemaWarning> {
-    if EXTENSIONS.contains(&name.as_ref()) || BUILTIN_TYPES.contains(&name.as_ref()) {
+fn shadows_builtin(
+    name: &Id,
+    node: &Node<()>,
+    extensions: Extensions<'_>,
+) -> Option<SchemaWarning> {
+    if is_valid_ext_type(name, extensions) || BUILTIN_TYPES.contains(&name.as_ref()) {
         Some(
             schema_warnings::ShadowsBuiltinWarning {
                 name: name.to_smolstr(),

@@ -2118,7 +2118,7 @@ mod test {
     fn assert_type_display_roundtrip(ty: Type) {
         let type_str = ty.to_string();
         println!("{type_str}");
-        let parsed_schema_type = parse_type(&type_str)
+        let parsed_schema_type = parse_type(&type_str, Extensions::all_available())
             .expect("String representation should have parsed into a schema type");
         let type_from_schema_type = try_schema_type_into_validator_type(
             parsed_schema_type.qualify_type_references(None),

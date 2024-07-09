@@ -25,6 +25,7 @@ use std::vec;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID, StaticPolicy},
+    extensions::Extensions,
     parser::parse_policy,
 };
 
@@ -555,6 +556,7 @@ fn multi_namespace_action_eq() {
                 action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
             }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -604,6 +606,7 @@ fn multi_namespace_action_in() {
             }
             namespace NS4 { action "Group"; }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -673,6 +676,7 @@ fn test_cedar_policy_642() {
             };
         }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -699,6 +703,7 @@ fn multi_namespace_action_group_cycle() {
             namespace B { action "Act" in A::Action::"Act"; }
             namespace C { action "Act" in B::Action::"Act"; }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
     assert_matches!(
