@@ -56,9 +56,15 @@ impl Extension {
         self.functions.get(name)
     }
 
-    /// Get an iterator over the function names
+    /// Iterate over the functions
     pub fn funcs(&self) -> impl Iterator<Item = &ExtensionFunction> {
         self.functions.values()
+    }
+
+    /// Iterate over the extension types that can be produced by any functions
+    /// in this extension
+    pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.funcs().flat_map(|func| func.ext_types())
     }
 }
 
@@ -318,6 +324,14 @@ impl ExtensionFunction {
             ExtensionOutputValue::Known(v) => Ok(PartialValue::Value(v)),
             ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
+    }
+
+    /// Iterate over the extension types that could be produced by this
+    /// function, if any
+    pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.return_type
+            .iter()
+            .flat_map(|ret_ty| ret_ty.contained_ext_types())
     }
 }
 
