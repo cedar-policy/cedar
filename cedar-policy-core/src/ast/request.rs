@@ -28,8 +28,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprBuilder, ExprKind, ExpressionConstructionError,
-    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
+    RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -453,7 +453,7 @@ impl From<Context> for PartialValue {
                 // expression. By INVARIANT(unknown), at least one expr in
                 // `attrs` contains an unknown, so the `record_arc` expression
                 // contains at least one unknown.
-                PartialValue::Residual(ExprBuilder::new().record_arc(attrs))
+                PartialValue::Residual(Expr::record_arc(attrs))
             }
         }
     }
