@@ -344,8 +344,8 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
-            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+            PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
             add_template_links_to_set(links_filename, &mut pset)?;
@@ -1160,7 +1160,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
 
 /// Read a policy set, in Cedar human syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_human_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
@@ -1175,9 +1177,11 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
     rename_from_id_annotation(ps)
 }
 
-/// Read a policy or template, in Cedar JSON (EST) syntax, from the file given
+/// Read a static policy or a policy template, in Cedar JSON (EST) syntax, from the file given
 /// in `filename`, or from stdin if `filename` is `None`.
-fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_json_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "JSON policy";
     let json_source = read_from_file_or_stdin(filename, context)?;
     let json: serde_json::Value = serde_json::from_str(&json_source).into_diagnostic()?;
@@ -1189,7 +1193,7 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
         Report::new(err).with_source_code(NamedSource::new(name, json_source.clone()))
     };
 
-    match Policy::from_json(None, json.clone()).map_err(err_to_report) {
+    match Policy::from_json(None, json.clone()) {
         Ok(policy) => PolicySet::from_policies([policy])
             .wrap_err_with(|| format!("failed to create policy set from {context}")),
         Err(_) => match Template::from_json(None, json).map_err(err_to_report) {

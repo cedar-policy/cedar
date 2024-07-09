@@ -73,6 +73,14 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().map(|ext| ext.name())
     }
 
+    /// Get all extension type names declared by active extensions.
+    ///
+    /// (More specifically, all extension type names such that any function in
+    /// an active extension could produce a value of that extension type.)
+    pub fn ext_types(&self) -> impl Iterator<Item = &Name> {
+        self.extensions.iter().flat_map(|ext| ext.ext_types())
+    }
+
     /// Get the extension function with the given name, from these extensions.
     ///
     /// Returns an error if the function is not defined by any extension, or if

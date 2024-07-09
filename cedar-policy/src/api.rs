@@ -1218,7 +1218,10 @@ impl SchemaFragment {
     pub fn from_file_natural(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(
+            r,
+            Extensions::all_available(),
+        )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1232,7 +1235,10 @@ impl SchemaFragment {
     pub fn from_str_natural(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(
+            src,
+            Extensions::all_available(),
+        )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1242,7 +1248,7 @@ impl SchemaFragment {
         ))
     }
 
-    /// Create a `SchemaFragment` directly from a file.
+    /// Create a [`SchemaFragment`] directly from a file.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
@@ -1271,7 +1277,7 @@ impl SchemaFragment {
 impl TryInto<Schema> for SchemaFragment {
     type Error = SchemaError;
 
-    /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
+    /// Convert [`SchemaFragment`] into a [`Schema`]. To build the [`Schema`] we
     /// need to have all entity types defined, so an error will be returned if
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
