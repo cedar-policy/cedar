@@ -222,7 +222,7 @@ impl Node<Option<cst::Primary>> {
                         T::err_str(),
                         found,
                         if var != ast::Var::Action {
-                            Some("try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid".to_string())
+                            Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
                         } else {
                             // We don't allow `is` in the action scope, so we won't suggest trying it.
                             None

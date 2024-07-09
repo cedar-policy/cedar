@@ -3620,7 +3620,7 @@ mod tests {
                     "expected an entity uid or matching template slot, found name `User`",
                 )
                 .help(
-                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
                 )
                 .exactly_one_underline("User").build(),
             ),
@@ -3638,7 +3638,7 @@ mod tests {
                     "expected an entity uid or matching template slot, found name `File`",
                 )
                 .help(
-                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
                 )
                 .exactly_one_underline("File").build(),
             ),
@@ -4240,7 +4240,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `User`"
             ).help(
-                    "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
             ).exactly_one_underline("User").build());
         });
         let p_src = r#"permit(principal in Group, action, resource);"#;
@@ -4248,7 +4248,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Group`"
             ).help(
-                "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
+                "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
             ).exactly_one_underline("Group").build());
         });
         let p_src = r#"permit(principal, action, resource in Album);"#;
@@ -4256,7 +4256,7 @@ mod tests {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Album`"
             ).help(
-                "try using `is` to test for an entity type or including an identifier string you intended this name to be an entity uid"
+                "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
             ).exactly_one_underline("Album").build());
         });
         // Testing for absence of help message because actions scope doesn't support `is`.
