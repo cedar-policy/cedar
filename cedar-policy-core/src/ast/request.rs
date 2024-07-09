@@ -220,7 +220,7 @@ pub enum Context {
     /// the record attributes.
     /// INVARIANT(restricted): Each `Expr` in this map must be a `RestrictedExpr`.
     /// INVARIANT(unknown): At least one `Expr` must contain an `unknown`.
-    Residual(Arc<BTreeMap<SmolStr, Expr>>),
+    RestrictedResidual(Arc<BTreeMap<SmolStr, Expr>>),
 }
 
 impl Context {
@@ -321,7 +321,7 @@ impl Context {
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             ),
-            Context::Residual(record) => Box::new(
+            Context::RestrictedResidual(record) => Box::new(
                 Arc::unwrap_or_clone(record)
                     .into_iter()
                     // By INVARIANT(restricted), all attributes expressions are
@@ -336,7 +336,7 @@ impl Context {
     /// not error. Otherwise delegate to [`Expr::substitute`].
     pub fn substitute(self, mapping: &HashMap<SmolStr, Value>) -> Result<Self, EvaluationError> {
         match self {
-            Context::Residual(residual_context) => {
+            Context::RestrictedResidual(residual_context) => {
                 // From Invariant(Restricted), `residual_context` contains only
                 // restricted expressions, so `Expr::record_arc` of the attributes
                 // will also be a restricted expression. This doesn't change after
@@ -389,7 +389,7 @@ impl Context {
                     // INVARIANT(unknown). From the invariant on this function,
                     // `e` is a valid restricted expression, satisfying
                     // INVARIANT(restricted).
-                    Ok(Context::Residual(attrs.clone()))
+                    Ok(Context::RestrictedResidual(attrs.clone()))
                 } else {
                     Err(ContextCreationError::not_a_record(e))
                 }
@@ -434,7 +434,7 @@ impl From<Context> for RestrictedExpr {
     fn from(value: Context) -> Self {
         match value {
             Context::Value(attrs) => Value::record_arc(attrs, None).into(),
-            Context::Residual(attrs) => {
+            Context::RestrictedResidual(attrs) => {
                 // By INVARIANT(restricted), all attributes expressions are
                 // restricted expressions, so the result of `record_arc` will be
                 // a restricted expression.
@@ -448,7 +448,7 @@ impl From<Context> for PartialValue {
     fn from(ctx: Context) -> PartialValue {
         match ctx {
             Context::Value(attrs) => Value::record_arc(attrs, None).into(),
-            Context::Residual(attrs) => {
+            Context::RestrictedResidual(attrs) => {
                 // A `PartialValue::Residual` must contain an unknown in the
                 // expression. By INVARIANT(unknown), at least one expr in
                 // `attrs` contains an unknown, so the `record_arc` expression
