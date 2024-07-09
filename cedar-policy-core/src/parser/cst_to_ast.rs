@@ -3618,7 +3618,11 @@ mod tests {
                 r#"permit(principal is User in User, action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found name `User`",
-                ).exactly_one_underline("User").build(),
+                )
+                .help(
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
+                )
+                .exactly_one_underline("User").build(),
             ),
             (
                 r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
@@ -3632,7 +3636,11 @@ mod tests {
                 r#"permit(principal, action, resource is File in File);"#,
                 ExpectedErrorMessageBuilder::error(
                     "expected an entity uid or matching template slot, found name `File`",
-                ).exactly_one_underline("File").build(),
+                )
+                .help(
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
+                )
+                .exactly_one_underline("File").build(),
             ),
             (
                 r#"permit(principal, action, resource is File::"file" in Folder::"folder");"#,
@@ -4190,11 +4198,161 @@ mod tests {
     }
 
     #[test]
+    fn scope_compare_to_string() {
+        let p_src = r#"permit(principal == "alice", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"alice"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""alice""#).build());
+        });
+        let p_src = r#"permit(principal in "bob_friends", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"bob_friends"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""bob_friends""#).build());
+        });
+        let p_src = r#"permit(principal, action, resource in "jane_photos");"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"jane_photos"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""jane_photos""#).build());
+        });
+        let p_src = r#"permit(principal, action in ["view_actions"], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid, found literal `"view_actions"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""view_actions""#).build());
+        });
+    }
+
+    #[test]
+    fn scope_compare_to_name() {
+        let p_src = r#"permit(principal == User, action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found name `User`"
+            ).help(
+                    "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
+            ).exactly_one_underline("User").build());
+        });
+        let p_src = r#"permit(principal in Group, action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found name `Group`"
+            ).help(
+                "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
+            ).exactly_one_underline("Group").build());
+        });
+        let p_src = r#"permit(principal, action, resource in Album);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found name `Album`"
+            ).help(
+                "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
+            ).exactly_one_underline("Album").build());
+        });
+        // Testing for absence of help message because actions scope doesn't support `is`.
+        let p_src = r#"permit(principal, action == Action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid, found name `Action`"
+            ).exactly_one_underline("Action").build());
+        });
+    }
+
+    #[test]
+    fn scope_and() {
+        let p_src = r#"permit(principal == User::"alice" && principal in Group::"jane_friends", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found a `&&` expression"
+            ).help(
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition",
+            ).exactly_one_underline(r#"User::"alice" && principal in Group::"jane_friends""#).build());
+        });
+    }
+
+    #[test]
+    fn scope_or() {
+        let p_src =
+            r#"permit(principal == User::"alice" || principal == User::"bob", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found a `||` expression"
+            ).help(
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy",
+            ).exactly_one_underline(r#"User::"alice" || principal == User::"bob""#).build());
+        });
+    }
+
+    #[test]
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
+    }
+
+    #[test]
+    fn scope_unexpected_nested_sets() {
+        let policy = r#"
+            permit (
+                principal == [[User::"alice"]],
+                action,
+                resource
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid or template slot, found set of entity uids",
+                ).exactly_one_underline(r#"[[User::"alice"]]"#).build());
+            }
+        );
+
+        let policy = r#"
+            permit (
+                principal,
+                action,
+                resource == [[?resource]]
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid or template slot, found set of entity uids",
+                ).exactly_one_underline("[[?resource]]").build());
+            }
+        );
+
+        let policy = r#"
+            permit (
+                principal,
+                action in [[[Action::"act"]]],
+                resource
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "expected single entity uid, found set of entity uids",
+                ).exactly_one_underline(r#"[[Action::"act"]]"#).build());
+            }
+        );
     }
 
     #[test]
