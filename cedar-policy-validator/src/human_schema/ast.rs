@@ -29,9 +29,6 @@ use smol_str::ToSmolStr;
 
 use crate::{RawName, SchemaTypeVariant};
 
-const IPADDR_EXTENSION: &str = "ipaddr";
-const DECIMAL_EXTENSION: &str = "decimal";
-pub const EXTENSIONS: [&str; 2] = [IPADDR_EXTENSION, DECIMAL_EXTENSION];
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
