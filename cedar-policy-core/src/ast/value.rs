@@ -123,6 +123,14 @@ impl Value {
         }
     }
 
+    /// Create a record with the given attributes/value mapping.
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> Self {
+        Self {
+            value: ValueKind::record_arc(pairs),
+            loc,
+        }
+    }
+
     /// Return the `Value`, but with the given `Loc` (or `None`)
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         Self { loc, ..self }
@@ -182,6 +190,11 @@ impl ValueKind {
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
         ))
+    }
+
+    /// Create a record with the given attributes/value mapping.
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>) -> Self {
+        Self::Record(pairs)
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`

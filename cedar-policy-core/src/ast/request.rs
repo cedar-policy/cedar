@@ -22,6 +22,7 @@ use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::Serialize;
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -210,13 +211,16 @@ impl std::fmt::Display for Request {
 
 /// `Context` field of a `Request`
 #[derive(Debug, Clone, PartialEq, Serialize)]
+// Serialization is used for differential testing, which requires that `Context`
+// is serialized as a `RestrictedExpr`.
+#[serde(into = "RestrictedExpr")]
 pub enum Context {
     /// The context is a concrete value.
     Value(Arc<BTreeMap<SmolStr, Value>>),
     /// The context is a residual expression, containing some unknown value in
     /// the record attributes.
-    /// INVARIANT(Restricted): Each `Expr` in this map must be a `RestrictedExpr`.
-    /// INVARIANT(Unknown): At least one `Expr` must contain an `unknown`.
+    /// INVARIANT(restricted): Each `Expr` in this map must be a `RestrictedExpr`.
+    /// INVARIANT(unknown): At least one `Expr` must contain an `unknown`.
     Residual(Arc<BTreeMap<SmolStr, Expr>>),
 }
 
@@ -389,6 +393,20 @@ impl IntoIterator for Context {
     }
 }
 
+impl From<Context> for RestrictedExpr {
+    fn from(value: Context) -> Self {
+        match value {
+            Context::Value(record) => Value::record_arc(record, None).into(),
+            Context::Residual(record) => {
+                // By INVARIANT(restricted), all attributes expressions are
+                // restricted expressions, so the result of `record_arc` will be
+                // a restricted expression.
+                RestrictedExpr::new_unchecked(Expr::record_arc(record))
+            }
+        }
+    }
+}
+
 impl From<Context> for PartialValue {
     fn from(ctx: Context) -> PartialValue {
         match ctx {
@@ -397,7 +415,7 @@ impl From<Context> for PartialValue {
             }
             Context::Residual(attrs) => {
                 // A `PartialValue::Residual` must contain an unknown in the
-                // expression. By INVARIANT(Unknown), at least on expr in
+                // expression. By INVARIANT(unknown), at least on expr in
                 // `attrs` contains an unknown, so the `record_arc` expression
                 // contains at least one unknown.
                 PartialValue::Residual(ExprBuilder::new().record_arc(attrs))
