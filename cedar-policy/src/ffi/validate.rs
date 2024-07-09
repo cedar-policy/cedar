@@ -104,6 +104,7 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationCall {
     /// Validation settings
     #[serde(default)]
@@ -154,6 +155,7 @@ impl ValidationCall {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationSettings {
     /// Whether validation is enabled. If this flag is set to `false`, then
     /// only parsing is performed. The default value is `true`.
@@ -176,6 +178,7 @@ impl Default for ValidationSettings {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
