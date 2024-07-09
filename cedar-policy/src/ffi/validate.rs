@@ -224,7 +224,7 @@ mod test {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Failure`]
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Success`]
     /// with no errors
     #[track_caller]
     fn assert_validates_without_errors(json: serde_json::Value) {
@@ -235,7 +235,7 @@ mod test {
         });
     }
 
-    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Failure`]
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Success`]
     /// and return the enclosed errors
     #[track_caller]
     fn assert_validates_with_errors(json: serde_json::Value) -> Vec<ValidationError> {

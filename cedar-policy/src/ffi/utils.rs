@@ -350,7 +350,8 @@ impl Template {
     expecting = "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys)"
 )]
 pub enum StaticPolicySet {
-    /// Multiple policies as a concatenated string
+    /// Multiple policies as a concatenated string. Requires policies in the
+    /// Cedar (non-JSON) format.
     Concatenated(String),
     /// Multiple policies as a set
     Set(Vec<Policy>),
