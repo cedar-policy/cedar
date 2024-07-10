@@ -4259,11 +4259,12 @@ mod tests {
                 "try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid"
             ).exactly_one_underline("Album").build());
         });
-        // Testing for absence of help message because actions scope doesn't support `is`.
         let p_src = r#"permit(principal, action == Action, resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid, found name `Action`"
+            ).help(
+                "try including an identifier string if you intended this name to be an entity uid"
             ).exactly_one_underline("Action").build());
         });
     }
