@@ -233,25 +233,25 @@ mod test {
         forbid(principal, action, resource);
         "#;
 
-        let p1 = parser::parse_policy(Some("1".into()), p1_src).unwrap();
+        let p1 = parser::parse_policy(Some(PolicyID::from_string("1")), p1_src).unwrap();
         pset.add_static(p1).unwrap();
 
         let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
-        pset.add_static(parser::parse_policy(Some("2".into()), p2_src).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), p2_src).unwrap())
             .unwrap();
 
         let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
-        pset.add_static(parser::parse_policy(Some("3".into()), p3_src).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), p3_src).unwrap())
             .unwrap();
 
         let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
-        pset.add_static(parser::parse_policy(Some("4".into()), p4_src).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("4")), p4_src).unwrap())
             .unwrap();
 
         let ans = a.is_authorized(q, &pset, &entities);
@@ -407,15 +407,15 @@ mod test {
         };
         "#;
 
-        pset.add_static(parser::parse_policy(Some("1".to_string()), src1).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
             .unwrap();
-        pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
 
-        pset.add_static(parser::parse_policy(Some("3".to_string()), src3).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), src3).unwrap())
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
@@ -454,9 +454,9 @@ mod test {
             unknown("test")
         };
         "#;
-        pset.add_static(parser::parse_policy(Some("1".to_string()), src1).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
             .unwrap();
-        pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
@@ -501,7 +501,7 @@ mod test {
         permit(principal, action, resource) when { false };
         "#;
 
-        pset.add_static(parser::parse_policy(Some("1".into()), src1).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
             .unwrap();
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
@@ -510,7 +510,7 @@ mod test {
         forbid(principal, action, resource) when { unknown("a") };
         "#;
 
-        pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
@@ -522,9 +522,9 @@ mod test {
         permit(principal, action, resource) when { true };
         "#;
 
-        pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), src3).unwrap())
             .unwrap();
-        pset.add_static(parser::parse_policy(Some("4".into()), src4).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("4")), src4).unwrap())
             .unwrap();
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
@@ -566,9 +566,9 @@ mod test {
         forbid(principal, action, resource) when { true };
         "#;
 
-        pset.add_static(parser::parse_policy(Some("1".into()), src1).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
             .unwrap();
-        pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
@@ -580,7 +580,7 @@ mod test {
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
 
-        pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
+        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), src3).unwrap())
             .unwrap();
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));

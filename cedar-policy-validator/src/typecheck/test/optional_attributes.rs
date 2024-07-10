@@ -78,7 +78,7 @@ fn assert_policy_typecheck_fails_optional_schema(
 #[test]
 fn simple_and_guard_principal() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -88,7 +88,7 @@ fn simple_and_guard_principal() {
 #[test]
 fn simple_and_guard_resource() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { resource has name && resource.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -98,7 +98,7 @@ fn simple_and_guard_resource() {
 #[test]
 fn principal_and_resource_in_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { resource has name && principal has age && resource.name == "foo" && principal.age == 1};"#,
     )
     .expect("Policy should parse.");
@@ -108,7 +108,7 @@ fn principal_and_resource_in_effect() {
 #[test]
 fn and_branches_union() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name && principal has age) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -118,7 +118,7 @@ fn and_branches_union() {
 #[test]
 fn and_rhs_true_has_lhs_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name && true) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -128,7 +128,7 @@ fn and_rhs_true_has_lhs_effect() {
 #[test]
 fn and_lhs_true_has_rhs_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (true && principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -138,7 +138,7 @@ fn and_lhs_true_has_rhs_effect() {
 #[test]
 fn and_branches_use_prior_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" && principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
@@ -148,7 +148,7 @@ fn and_branches_use_prior_effect() {
 #[test]
 fn and_short_circuit_without_error() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has age || (false && principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
@@ -158,7 +158,7 @@ fn and_short_circuit_without_error() {
 #[test]
 fn or_branches_intersect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name || principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -168,7 +168,7 @@ fn or_branches_intersect() {
 #[test]
 fn or_lhs_false_has_rhs_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (false || principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -178,7 +178,7 @@ fn or_lhs_false_has_rhs_effect() {
 #[test]
 fn or_rhs_false_has_lhs_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name || false) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -188,7 +188,7 @@ fn or_rhs_false_has_lhs_effect() {
 #[test]
 fn or_branches_use_prior_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" || principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
@@ -198,7 +198,7 @@ fn or_branches_use_prior_effect() {
 #[test]
 fn then_guarded_access_by_test() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { if principal has name then principal.name == "foo" else false };"#,
     )
     .expect("Policy should parse.");
@@ -208,7 +208,7 @@ fn then_guarded_access_by_test() {
 #[test]
 fn then_guarded_access_by_prior_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then principal.name == "foo" else false) };"#,
     )
     .expect("Policy should parse.");
@@ -218,7 +218,7 @@ fn then_guarded_access_by_prior_effect() {
 #[test]
 fn else_guarded_access_by_prior_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then false else principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
@@ -228,7 +228,7 @@ fn else_guarded_access_by_prior_effect() {
 #[test]
 fn if_true_short_circuit_without_error() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if true then principal.name == "foo" else principal.age == 1)};"#,
     )
     .expect("Policy should parse.");
@@ -238,7 +238,7 @@ fn if_true_short_circuit_without_error() {
 #[test]
 fn if_false_short_circuit_without_error() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if false then principal.age == 1 else principal.name == "foo")};"#,
     )
     .expect("Policy should parse.");
@@ -248,7 +248,7 @@ fn if_false_short_circuit_without_error() {
 #[test]
 fn if_then_else_then_else_same() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -267,7 +267,7 @@ fn if_then_else_then_else_same() {
 #[test]
 fn if_then_else_can_use_guard_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -286,7 +286,7 @@ fn if_then_else_can_use_guard_effect() {
 #[test]
 fn if_then_else_guard_union_then_equal_else() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -304,7 +304,7 @@ fn if_then_else_guard_union_then_equal_else() {
 #[test]
 fn guarded_has_true_short_circuits() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -335,7 +335,7 @@ fn assert_name_access_fails(policy: StaticPolicy) {
 #[test]
 fn unguarded_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -345,7 +345,7 @@ fn unguarded_access_fails() {
 #[test]
 fn else_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { if principal has name then false else principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -355,7 +355,7 @@ fn else_access_fails() {
 #[test]
 fn or_rhs_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name || principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -365,7 +365,7 @@ fn or_rhs_access_fails() {
 #[test]
 fn or_lhs_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.name == "foo" || principal has name };"#,
     )
     .expect("Policy should parse.");
@@ -375,7 +375,7 @@ fn or_lhs_access_fails() {
 #[test]
 fn or_branches_empty_intersect_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name || principal has age) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -385,7 +385,7 @@ fn or_branches_empty_intersect_fails() {
 #[test]
 fn and_lhs_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.name == "foo" && principal has name };"#,
     )
     .expect("Policy should parse.");
@@ -395,7 +395,7 @@ fn and_lhs_access_fails() {
 #[test]
 fn if_then_else_else_access_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -411,7 +411,7 @@ fn if_then_else_else_access_fails() {
 #[test]
 fn if_then_else_as_guard_empty_intersect_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(principal, action, resource)
         when {
@@ -430,7 +430,7 @@ fn if_then_else_as_guard_empty_intersect_fails() {
 #[test]
 fn resource_effect_access_principal_fails() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { resource has name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -440,7 +440,7 @@ fn resource_effect_access_principal_fails() {
 #[test]
 fn not_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { !(principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -450,7 +450,7 @@ fn not_no_effect() {
 #[test]
 fn true_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { true && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -460,7 +460,7 @@ fn true_no_effect() {
 #[test]
 fn set_contains_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].contains(principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -470,7 +470,7 @@ fn set_contains_no_effect() {
 #[test]
 fn contains_all_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].containsAll([principal has name]) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -480,7 +480,7 @@ fn contains_all_no_effect() {
 #[test]
 fn contains_any_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].containsAny([principal has name]) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -490,7 +490,7 @@ fn contains_any_no_effect() {
 #[test]
 fn like_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { "foo" like "bar" && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -500,7 +500,7 @@ fn like_no_effect() {
 #[test]
 fn record_attr_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { {name: true}.name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -510,7 +510,7 @@ fn record_attr_no_effect() {
 #[test]
 fn record_attr_has_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { {name: true} has name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -520,7 +520,7 @@ fn record_attr_has_no_effect() {
 #[test]
 fn in_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in resource && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -530,7 +530,7 @@ fn in_no_effect() {
 #[test]
 fn in_list_no_effect() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in [resource] && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -573,14 +573,14 @@ fn record_optional_attrs() {
     .expect("Expected valid schema.");
 
     let passing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.record has name && principal.record.name == "foo" };"#,
     )
     .expect("Policy should parse.");
     assert_policy_typechecks(schema.clone(), passing_policy);
 
     let failing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.record has other && principal.record.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -601,7 +601,7 @@ fn record_optional_attrs() {
     );
 
     let failing_policy2 = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.record has name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -669,14 +669,14 @@ fn action_attrs_passing() {
     .expect("Expected valid schema.");
 
     let passing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action in [Action::"view", Action::"edit"], resource) when { action.isReadOnly };"#,
     )
     .expect("Policy should parse.");
     assert_policy_typechecks(schema.clone(), passing_policy);
 
     let passing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"edit", resource) when { action.canUndo };"#,
     )
     .expect("Policy should parse.");
@@ -685,7 +685,7 @@ fn action_attrs_passing() {
     //This doesn't work when the UB of two ActionEntities is AnyEntity
 
     // let passing_policy = parse_policy(
-    //     Some("0".to_string()),
+    //     Some(PolicyID::from_string("0")),
     //     r#"
     //     permit(
     //         principal == User::"bob",
@@ -701,7 +701,7 @@ fn action_attrs_passing() {
     // assert_policy_typechecks(schema.clone(), passing_policy);
 
     let passing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(
             principal == User::"bob",
@@ -766,7 +766,7 @@ fn action_attrs_failing() {
     .expect("Expected valid schema.");
 
     let failing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"view", resource) when { action.canUndo };"#,
     )
     .expect("Policy should parse.");
@@ -785,7 +785,7 @@ fn action_attrs_failing() {
     // No error is returned, but the typechecker identifies that `action has ""`
     // is always false.
     let failing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"view", resource) when { action has "" };"#,
     )
     .expect("Policy should parse.");
@@ -801,7 +801,7 @@ fn action_attrs_failing() {
     // Fails because OtherNamespace::Action::"view" is not defined in the schema.
     // However, this will be detected by a different pass, so no error is reported.
     let failing_policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
         permit(
             principal,

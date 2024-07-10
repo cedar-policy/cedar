@@ -2203,7 +2203,7 @@ mod test {
     #[test]
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
-        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+        assert_matches!(parse_policy(Some(PolicyID::from_string("id")), policy_str), Err(e) => {
             expect_exactly_one_error(policy_str, &e, &ExpectedErrorMessageBuilder::error(
                 "expected a static policy, got a template containing the slot ?principal"
                 )
@@ -2215,7 +2215,7 @@ mod test {
 
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
-        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+        assert_matches!(parse_policy(Some(PolicyID::from_string("id")), policy_str), Err(e) => {
             expect_some_error_matches(policy_str, &e, &ExpectedErrorMessageBuilder::error(
                 "expected a static policy, got a template containing the slot ?principal"
                 )

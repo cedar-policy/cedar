@@ -313,9 +313,9 @@ impl From<ast::EntityUID> for EntityUid {
 
 /// Unique ids assigned to policies and templates.
 ///
-/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string.
-/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
+/// A [`PolicyId`] can can be constructed using [`PolicyId::new`] or by calling
+/// `parse()` on a string. The `parse()` implementation is [`Infallible`], so
+/// the parsed [`EntityId`] can be extracted safely.
 /// Examples:
 /// ```
 /// # use cedar_policy::PolicyId;

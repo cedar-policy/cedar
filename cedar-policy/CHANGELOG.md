@@ -35,7 +35,9 @@ Cedar Language Version: 4.0
 - Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
-- Changed the FFI to error on typos or unexpected fields in the input JSON.
+- Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
+- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
+  instead of `Option<String>` to set the policy id (#1055, resolving #1049)
 
 ### Removed
 

@@ -261,13 +261,13 @@ mod test {
         let validator = Validator::new(schema);
 
         let policy_a_src = r#"permit(principal in foo_type::"a", action == Action::"actin", resource == bar_type::"b");"#;
-        let policy_a = parser::parse_policy(Some("pola".to_string()), policy_a_src)
+        let policy_a = parser::parse_policy(Some(PolicyID::from_string("pola")), policy_a_src)
             .expect("Test Policy Should Parse");
         set.add_static(policy_a.clone())
             .expect("Policy already present in PolicySet");
 
         let policy_b_src = r#"permit(principal in foo_tye::"a", action == Action::"action", resource == br_type::"b");"#;
-        let policy_b = parser::parse_policy(Some("polb".to_string()), policy_b_src)
+        let policy_b = parser::parse_policy(Some(PolicyID::from_string("polb")), policy_b_src)
             .expect("Test Policy Should Parse");
         set.add_static(policy_b.clone())
             .expect("Policy already present in PolicySet");
@@ -357,7 +357,7 @@ mod test {
         let validator = Validator::new(schema);
 
         let t = parser::parse_policy_template(
-            Some("template".to_string()),
+            Some(PolicyID::from_string("template")),
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");

@@ -4222,7 +4222,7 @@ pub mod test {
     #[test]
     fn template_interp() {
         let t = parse_policy_template(
-            Some("template".to_string()),
+            Some(PolicyID::from_string("template")),
             r#"permit(principal == ?principal, action, resource);"#,
         )
         .expect("Parse Error");

@@ -40,7 +40,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Or individually
     // Note the id!
     let alice_view = Policy::parse(
-        Some("added policy".to_string()),
+        Some(PolicyId::new("added policy")),
         r#"
         permit(
             principal == User::"alice",
@@ -395,7 +395,7 @@ fn policy_annotations() {
         .parse()
         .unwrap();
     // need a new id to include in set
-    let t = t.new_id(PolicyId::from_str("new_template_id").unwrap());
+    let t = t.new_id(PolicyId::new("new_template_id"));
     assert_eq!(t.annotation("tanno"), Some("good annotation"));
     assert_eq!(t.annotations().next(), Some(("tanno", "good annotation")));
 

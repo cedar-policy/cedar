@@ -178,7 +178,7 @@ fn entity_literal_typechecks() {
 #[test]
 fn policy_checked_in_multiple_envs() {
     let t = parse_policy_template(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
     ).expect("Policy should parse.");
 
@@ -206,7 +206,7 @@ fn policy_checked_in_multiple_envs() {
     );
 
     let t = parse_policy_template(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"delete_group", resource) when { resource.file_type == "jpg" };"#
     ).expect("Policy should parse.");
     let schema = simple_schema_file()
@@ -239,7 +239,7 @@ fn policy_checked_in_multiple_envs() {
 #[test]
 fn policy_single_action_attribute_access() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
         ).expect("Policy should parse."));
 }
@@ -250,7 +250,7 @@ fn policy_principal_action_attribute_access() {
     // principal condition refines this to User, so we can access the age
     // attribute.
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal == User::"alice", action == Action::"view_photo", resource) when { principal.age > 21 };"#
         ).expect("Policy should parse."));
 }
@@ -259,7 +259,7 @@ fn policy_principal_action_attribute_access() {
 fn policy_action_multiple_principal_attribute_access() {
     // The attribute name is defined for User and Group.
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view_photo", resource) when { principal.name == "alice" };"#
         ).expect("Policy should parse."));
 }
@@ -270,7 +270,7 @@ fn policy_no_conditions_attribute_access() {
     // so the action condition isn't required either.
     assert_policy_typechecks_simple_schema(
         parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { principal.name == "alice" };"#,
         )
         .expect("Policy should parse."),
@@ -283,7 +283,7 @@ fn policy_resource_narrows_principal() {
     // "view_photo", so we know the action is "delete_group", which only
     // accepts User as the principal.
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource == Group::"jane_friends") when { principal.age > 22};"#
         ).expect("Policy should parse."));
 }
@@ -291,7 +291,7 @@ fn policy_resource_narrows_principal() {
 #[test]
 fn policy_action_in() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource in Album::"vacation_photos") when { resource.file_type == "png" };"#
         ).expect("Policy should parse."));
 }
@@ -300,7 +300,7 @@ fn policy_action_in() {
 fn policy_invalid_attribute() {
     assert_policy_typecheck_fails_simple_schema(
             parse_policy(
-                Some("0".to_string()),
+                Some(PolicyID::from_string("0")),
                 r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#
             ).expect("Policy should parse."),
             vec![
@@ -319,7 +319,7 @@ fn policy_invalid_attribute() {
 fn policy_invalid_attribute_2() {
     assert_policy_typecheck_fails_simple_schema(
             parse_policy(
-                Some("0".to_string()),
+                Some(PolicyID::from_string("0")),
                 r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#
             ).expect("Policy should parse."),
             vec![
@@ -338,7 +338,7 @@ fn policy_invalid_attribute_2() {
 fn policy_context_invalid_attribute() {
     assert_policy_typecheck_fails_simple_schema(
         parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view_photo", resource) when { context.fake };"#,
         )
         .expect("Policy should parse."),
@@ -358,7 +358,7 @@ fn policy_context_invalid_attribute() {
 #[test]
 fn policy_entity_type_attr() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view_photo", resource) when { resource.owner.age > 0 };"#
         ).expect("Policy should parse."));
 }
@@ -366,7 +366,7 @@ fn policy_entity_type_attr() {
 #[test]
 fn policy_entity_type_action_in() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action in Action::"view_photo", resource) when { resource.owner.age > 0 };"#
         ).expect("Policy should parse."));
 }
@@ -374,7 +374,7 @@ fn policy_entity_type_action_in() {
 #[test]
 fn policy_entity_type_action_in_body() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { action in Action::"view_photo" && resource.owner.age > 0 };"#
         ).expect("Policy should parse."));
 }
@@ -382,7 +382,7 @@ fn policy_entity_type_action_in_body() {
 #[test]
 fn policy_entity_type_action_in_set() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action in [Action::"view_photo"], resource) when { resource.owner.age > 0 };"#
         ).expect("Policy should parse."));
 }
@@ -390,7 +390,7 @@ fn policy_entity_type_action_in_set() {
 #[test]
 fn policy_entity_type_principal_in_set() {
     assert_policy_typechecks_permissive_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { principal in [User::"admin", Group::"admin"] || true};"#
         ).expect("Policy should parse."));
 }
@@ -398,7 +398,7 @@ fn policy_entity_type_principal_in_set() {
 #[test]
 fn policy_entity_type_principal_in_set_user_only() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { principal in [User::"admin"] && principal.age == 0};"#
         ).expect("Policy should parse."));
 }
@@ -406,7 +406,7 @@ fn policy_entity_type_principal_in_set_user_only() {
 #[test]
 fn policy_lub_entity_type_attr() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view_photo", resource) when { resource.owner.favorite.file_type == "png" };"#
         ).expect("Policy should parse."));
 }
@@ -414,7 +414,7 @@ fn policy_lub_entity_type_attr() {
 #[test]
 fn policy_impossible_scope() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal == Group::"foo", action == Action::"delete_group", resource);"#,
     )
     .expect("Policy should parse.");
@@ -430,7 +430,7 @@ fn policy_impossible_scope() {
 #[test]
 fn policy_impossible_literal_euids() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { Group::"foo" in User::"bar" };"#,
     )
     .expect("Policy should parse.");
@@ -446,7 +446,7 @@ fn policy_impossible_literal_euids() {
 #[test]
 fn policy_impossible_not_has() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { ! ({name: "alice"} has name)};"#,
     )
     .expect("Policy should parse.");
@@ -462,7 +462,7 @@ fn policy_impossible_not_has() {
 #[test]
 fn policy_if_entities_lub() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { (if principal.name == "foo" then User::"alice" else User::"bob").age > 21};"#
         ).expect("Policy should parse."));
 }
@@ -470,7 +470,7 @@ fn policy_if_entities_lub() {
 #[test]
 fn policy_in_action_impossible() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { User::"alice" in [action] };"#,
     )
     .expect("Policy should parse.");
@@ -483,7 +483,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { User::"alice" in [Action::"view_photo"] };"#,
     )
     .expect("Policy should parse.");
@@ -496,7 +496,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in [action] };"#,
     )
     .expect("Policy should parse.");
@@ -509,7 +509,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in action };"#,
     )
     .expect("Policy should parse.");
@@ -522,7 +522,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in Action::"view_photo" };"#,
     )
     .expect("Policy should parse.");
@@ -535,7 +535,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Action::"delete_group"] };"#,
     )
     .expect("Policy should parse.");
@@ -548,7 +548,7 @@ fn policy_in_action_impossible() {
     );
 
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Photo::"bar"] };"#,
     )
     .expect("Policy should parse.");
@@ -564,7 +564,7 @@ fn policy_in_action_impossible() {
 #[test]
 fn policy_action_in_impossible() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { action in [User::"alice"] };"#,
     )
     .expect("Policy should parse.");
@@ -580,7 +580,7 @@ fn policy_action_in_impossible() {
 #[test]
 fn policy_entity_has_then_get() {
     assert_policy_typechecks_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { principal has age && principal.age > 0};"#,
         ).expect("Policy should parse."));
 }
@@ -588,7 +588,7 @@ fn policy_entity_has_then_get() {
 #[test]
 fn policy_entity_top_has() {
     assert_policy_typechecks_permissive_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { (if principal.name == "foo" then principal else resource) has name || true };"#,
         ).expect("Policy should parse."));
 }
@@ -596,7 +596,7 @@ fn policy_entity_top_has() {
 #[test]
 fn entity_lub_access_attribute() {
     assert_policy_typechecks_permissive_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Group::"alice_friends").name like "foo"};"#
         ).expect("Policy should parse."));
 }
@@ -604,7 +604,7 @@ fn entity_lub_access_attribute() {
 #[test]
 fn entity_lub_no_common_attributes_is_entity() {
     assert_policy_typechecks_permissive_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { principal in (if 1 > 0 then User::"alice" else Photo::"vacation.jpg")};"#
         ).expect("Policy should parse."));
 }
@@ -612,7 +612,7 @@ fn entity_lub_no_common_attributes_is_entity() {
 #[test]
 fn entity_lub_cant_access_attribute_not_shared() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource == Group::"foo") when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name == "bob"};"#,
     )
     .expect("Policy should parse.");
@@ -636,7 +636,7 @@ fn entity_lub_cant_access_attribute_not_shared() {
 #[test]
 fn entity_attribute_recommendation() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#
     ).expect("Policy should parse");
     let expected = ValidationError::unsafe_attribute_access(
@@ -655,7 +655,7 @@ fn entity_attribute_recommendation() {
 #[test]
 fn entity_lub_no_common_attributes_might_have_declared_attribute() {
     assert_policy_typechecks_permissive_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has age || true };"#
         ).expect("Policy should parse."));
 }
@@ -663,7 +663,7 @@ fn entity_lub_no_common_attributes_might_have_declared_attribute() {
 #[test]
 fn entity_lub_cant_have_undeclared_attribute() {
     let p = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has foo};"#,
     )
     .expect("Policy should parse.");
@@ -773,7 +773,7 @@ fn is_action() {
 #[test]
 fn entity_record_lub_is_none() {
     assert_policy_typecheck_fails_simple_schema(parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else {name: "bob"}).name == "jane" };"#
         ).expect("Policy should parse."),
         vec![
@@ -825,7 +825,7 @@ fn optional_attr_fail() {
     )
     .expect("Expected valid schema");
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
@@ -866,7 +866,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
     )
     .expect("Expected valid schema");
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { 1 > true };"#,
     )
     .expect("Policy should parse.");
@@ -903,7 +903,7 @@ fn action_groups() {
     assert_policy_typechecks(
         schema.clone(),
         parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action in Action::"group", resource);"#,
         )
         .expect("Policy should parse."),
@@ -912,7 +912,7 @@ fn action_groups() {
     assert_policy_typechecks(
         schema.clone(),
         parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action in Action::"act", resource);"#,
         )
         .expect("Policy should parse."),
@@ -923,7 +923,7 @@ fn action_groups() {
     // by their Uid without considering the type, so `Entity::"group"` might
     // have been treated the same as `Action::"group"` in some cases.
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { action in Entity::"group" };"#,
     )
     .expect("Policy should parse.");
@@ -937,7 +937,7 @@ fn action_groups() {
     );
 
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { action in Entity::"act" };"#,
     )
     .expect("Policy should parse.");
@@ -951,7 +951,7 @@ fn action_groups() {
     );
 
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { Entity::"group" in action };"#,
     )
     .expect("Policy should parse.");
@@ -965,7 +965,7 @@ fn action_groups() {
     );
 
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { Entity::"act" in action };"#,
     )
     .expect("Policy should parse.");
@@ -1072,7 +1072,7 @@ fn validate_policy_with_typedef_schema() {
     assert_policy_typechecks(
         namespace_def,
         parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"act", resource) when { principal.flag };"#,
         )
         .expect("Policy should parse."),

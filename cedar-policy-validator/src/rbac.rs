@@ -1461,7 +1461,7 @@ mod test {
         .try_into()
         .unwrap();
         let policy = parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal == a::"p", action, resource == a::"r");"#,
         )
         .unwrap();
@@ -1476,7 +1476,7 @@ mod test {
 #[cfg(feature = "partial-validate")]
 mod partial_schema {
     use cedar_policy_core::{
-        ast::{StaticPolicy, Template},
+        ast::{PolicyID, StaticPolicy, Template},
         parser::parse_policy,
     };
 
@@ -1508,21 +1508,21 @@ mod partial_schema {
     #[test]
     fn undeclared_entity_type_partial_schema() {
         let policy = parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal == User::"alice", action, resource);"#,
         )
         .unwrap();
         assert_validates_with_empty_schema(policy);
 
         let policy = parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action == Action::"view", resource);"#,
         )
         .unwrap();
         assert_validates_with_empty_schema(policy);
 
         let policy = parse_policy(
-            Some("0".to_string()),
+            Some(PolicyID::from_string("0")),
             r#"permit(principal, action, resource == Photo::"party.jpg");"#,
         )
         .unwrap();
