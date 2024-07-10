@@ -392,7 +392,6 @@ mod tests {
                     .build(),
             );
         }
-        // Lots of errors! All of them are "unrecognized token" errors from the text->CST parser
         expect_n_errors(src, &errs, 2);
         assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
     }
