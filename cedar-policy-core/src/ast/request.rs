@@ -229,6 +229,38 @@ impl Context {
         Self::Value(Arc::new(BTreeMap::new()))
     }
 
+    /// Create a `Context` from a `PartialValue` without checking that the
+    /// residual is a restricted expression.  This function does check that the
+    /// value or residual is a record and returns `Err` when it is not.
+    ///
+    /// INVARIANT: if `value` is a residual, then it must be a valid restricted expression.
+    fn from_restricted_partial_val_unchecked(
+        value: PartialValue,
+    ) -> Result<Self, ContextCreationError> {
+        match value {
+            PartialValue::Value(v) => {
+                if let ValueKind::Record(attrs) = v.value {
+                    Ok(Context::Value(attrs))
+                } else {
+                    Err(ContextCreationError::not_a_record(v.into()))
+                }
+            }
+            PartialValue::Residual(e) => {
+                if let ExprKind::Record(attrs) = e.expr_kind() {
+                    // From the invariant on `PartialValue::Residual`, there is
+                    // an unknown in `e`. It is a record, so there must be an
+                    // unknown in one of the attributes expressions, satisfying
+                    // INVARIANT(unknown). From the invariant on this function,
+                    // `e` is a valid restricted expression, satisfying
+                    // INVARIANT(restricted).
+                    Ok(Context::RestrictedResidual(attrs.clone()))
+                } else {
+                    Err(ContextCreationError::not_a_record(e))
+                }
+            }
+        }
+    }
+
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
     ///
     /// `extensions` provides the `Extensions` which should be active for
@@ -363,37 +395,6 @@ impl Context {
                 )
             }
             Context::Value(_) => Ok(self),
-        }
-    }
-
-    /// Convert a [`PartialValue`] into a context. Return `Err` when the partial
-    /// value is not a Record value or Record expression.
-    ///
-    /// INVARIANT: if `value` is a residual, then it must be a valid restricted expression.
-    fn from_restricted_partial_val_unchecked(
-        value: PartialValue,
-    ) -> Result<Self, ContextCreationError> {
-        match value {
-            PartialValue::Value(v) => {
-                if let ValueKind::Record(attrs) = v.value {
-                    Ok(Context::Value(attrs))
-                } else {
-                    Err(ContextCreationError::not_a_record(v.into()))
-                }
-            }
-            PartialValue::Residual(e) => {
-                if let ExprKind::Record(attrs) = e.expr_kind() {
-                    // From the invariant on `PartialValue::Residual`, there is
-                    // an unknown in `e`. It is a record, so there must be an
-                    // unknown in one of the attributes expressions, satisfying
-                    // INVARIANT(unknown). From the invariant on this function,
-                    // `e` is a valid restricted expression, satisfying
-                    // INVARIANT(restricted).
-                    Ok(Context::RestrictedResidual(attrs.clone()))
-                } else {
-                    Err(ContextCreationError::not_a_record(e))
-                }
-            }
         }
     }
 }
