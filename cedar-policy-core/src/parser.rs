@@ -373,21 +373,9 @@ mod tests {
             unless { resource in principal.account };
         "#;
         let errs = parse_policyset(src).expect_err("expected parsing to fail");
-        // Lots of errors! All of them are "unrecognized token" errors from the text->CST parser
-        expect_n_errors(src, &errs, 16);
-        assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
         let unrecognized_tokens = vec![
             ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"), 
-            ("if", "expected `(`"), 
-            ("c", "expected `(`"), 
-            ("but", "expected `(`"), 
-            ("not", "expected `(`"), 
-            ("z", "expected `(`"), 
-            ("}", "expected `(`"), 
-            ("{", "expected `(`"), 
-            ("else", "expected `(`"), 
-            ("d", "expected `(`"), 
-            ("f", "expected `(`"),
+            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
         ];
         for (token, label) in unrecognized_tokens {
             expect_some_error_matches(
@@ -398,6 +386,8 @@ mod tests {
                     .build(),
             );
         }
+        expect_n_errors(src, &errs, 2);
+        assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
     }
 
     #[test]

@@ -112,7 +112,7 @@ pub Policy: Node<Option<cst::Policy>> = {
     ";"
     <r:@R>
     => Node::with_source_loc(Some(cst::Policy{ annotations,effect,variables,conds }), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
+    <l:@L> <err:!> ";" <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
 }
 
 // VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]

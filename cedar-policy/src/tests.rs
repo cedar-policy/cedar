@@ -3662,11 +3662,8 @@ mod issue_326 {
         use std::str::FromStr;
 
         let src = r"
-            permit (
-                principal
-                action
-                resource
-            );
+            permit(principal action resource);
+            permit(principal, action resource);
         ";
         assert_matches!(PolicySet::from_str(src), Err(e) => {
             assert!(e.to_string().contains("unexpected token `action`"), "actual error message was {e}");
