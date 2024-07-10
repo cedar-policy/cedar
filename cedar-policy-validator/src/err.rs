@@ -249,7 +249,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, UnreservedName},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -566,7 +566,7 @@ pub mod schema_errors {
     #[derive(Error, Debug)]
     #[error("unknown extension type `{actual}`")]
     pub struct UnknownExtensionTypeError {
-        pub(crate) actual: Name,
+        pub(crate) actual: UnreservedName,
         pub(crate) suggested_replacement: Option<String>,
     }
 

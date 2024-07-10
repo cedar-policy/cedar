@@ -69,7 +69,7 @@ pub enum FromJsonError {
     /// unlike the Cedar policy format, the JSON format has no way to distinguish
     /// between function-style and method-style calls.
     #[error("invalid extension function: `{0}`")]
-    UnknownExtensionFunction(ast::Name),
+    UnknownExtensionFunction(ast::UnreservedName),
     /// Returned when an entity uid used as an action does not have the type `Action`
     #[error(transparent)]
     #[diagnostic(transparent)]

@@ -32,7 +32,8 @@ use std::{
 
 use cedar_policy_core::{
     ast::{
-        BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
+        BorrowedRestrictedExpr, EntityType, EntityUID, PartialValue, RestrictedExpr,
+        UnreservedName, Value,
     },
     entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
@@ -77,7 +78,7 @@ pub enum Type {
     /// Extension types
     ExtensionType {
         /// Name of the extension type
-        name: Name,
+        name: UnreservedName,
     },
 }
 
@@ -179,7 +180,7 @@ impl Type {
         Type::EntityOrRecord(EntityRecordKind::AnyEntity)
     }
 
-    pub(crate) fn extension(name: Name) -> Type {
+    pub(crate) fn extension(name: UnreservedName) -> Type {
         Type::ExtensionType { name }
     }
 
@@ -1596,7 +1597,7 @@ mod test {
 
     #[test]
     fn test_extension_lub() {
-        let ipaddr: Name = "ipaddr".parse().expect("should be a valid identifier");
+        let ipaddr: UnreservedName = "ipaddr".parse().expect("should be a valid identifier");
         assert_least_upper_bound_empty_schema(
             Type::extension(ipaddr.clone()),
             Type::extension(ipaddr.clone()),
@@ -2203,7 +2204,8 @@ mod test {
     #[test]
     #[cfg(feature = "ipaddr")]
     fn text_extension_type_dislay() {
-        let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
+        let ipaddr =
+            UnreservedName::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(Type::extension(ipaddr));
     }
 }

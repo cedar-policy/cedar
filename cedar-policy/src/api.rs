@@ -2973,16 +2973,20 @@ impl RestrictedExpression {
     }
 }
 
-fn decimal_extension_name() -> ast::Name {
+fn decimal_extension_name() -> ast::UnreservedName {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("decimal".parse().unwrap())
+        .try_into()
+        .unwrap()
 }
 
-fn ip_extension_name() -> ast::Name {
+fn ip_extension_name() -> ast::UnreservedName {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("ip".parse().unwrap())
+        .try_into()
+        .unwrap()
 }
 
 impl FromStr for RestrictedExpression {

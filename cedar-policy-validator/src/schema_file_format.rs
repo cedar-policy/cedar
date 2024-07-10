@@ -141,10 +141,10 @@ impl SchemaFragment<RawName> {
     }
 
     /// Parse the schema (in natural schema syntax) from a reader
-    pub fn from_file_natural<'a>(
+    pub fn from_file_natural(
         mut file: impl std::io::Read,
-        extensions: Extensions<'a>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+        extensions: Extensions<'_>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
     {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
@@ -367,9 +367,9 @@ impl ActionType<RawName> {
             member_of: self
                 .member_of
                 .map(|v| {
-                    Ok(v.into_iter()
-                        .map(|aeuid| Ok(aeuid.qualify_type_references(ns)?))
-                        .collect::<std::result::Result<Vec<_>, _>>()?)
+                    v.into_iter()
+                        .map(|aeuid| aeuid.qualify_type_references(ns))
+                        .collect::<std::result::Result<Vec<_>, _>>()
                 })
                 .transpose()?,
         })

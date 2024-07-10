@@ -426,7 +426,7 @@ impl ActionFragment {
             .member_of
             .unwrap_or_default()
             .into_iter()
-            .map(|parent| Ok(parse_action_id_with_namespace(parent, schema_namespace)?))
+            .map(|parent| parse_action_id_with_namespace(parent, schema_namespace))
             .collect::<std::result::Result<HashSet<EntityUID>, ReservedNameError>>()?;
 
         let (attribute_types, attributes) = Self::convert_attr_jsonval_map_to_attributes(
@@ -449,14 +449,14 @@ impl ActionFragment {
         types: Vec<RawName>,
         namespace: Option<&UnreservedName>,
     ) -> std::result::Result<HashSet<EntityType>, ReservedNameError> {
-        Ok(types
+        types
             .into_iter()
             .map(|ty| {
                 Ok(RawUnreservedName::try_from(ty)?
                     .qualify_with(namespace)
                     .into())
             })
-            .collect::<std::result::Result<HashSet<_>, _>>()?)
+            .collect::<std::result::Result<HashSet<_>, _>>()
     }
 
     fn convert_attr_jsonval_map_to_attributes(
@@ -694,7 +694,7 @@ pub(crate) fn try_schema_type_into_validator_type(
             Ok(Type::named_entity_reference(name.into()).into())
         }
         SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
-            let extension_type_name = Name::unqualified_name(name);
+            let extension_type_name = UnreservedName::try_from(Name::unqualified_name(name))?;
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
             } else {

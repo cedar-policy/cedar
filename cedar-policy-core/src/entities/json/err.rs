@@ -18,11 +18,11 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, Name,
-    PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PartialValue,
+    PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
-use crate::entities::ReservedNameError;
+use crate::entities::{ReservedNameError, UnreservedName};
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
@@ -480,11 +480,11 @@ pub enum JsonSerializationError {
 }
 
 impl JsonSerializationError {
-    pub(crate) fn call_0_args(func: Name) -> Self {
+    pub(crate) fn call_0_args(func: UnreservedName) -> Self {
         Self::ExtnCall0Arguments(ExtnCall0Arguments { func })
     }
 
-    pub(crate) fn call_2_or_more_args(func: Name) -> Self {
+    pub(crate) fn call_2_or_more_args(func: UnreservedName) -> Self {
         Self::ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments { func })
     }
 
@@ -509,7 +509,7 @@ impl JsonSerializationError {
 ))]
 pub struct ExtnCall0Arguments {
     /// Name of the function which was called with 0 arguments
-    func: Name,
+    func: UnreservedName,
 }
 
 /// Error type for extension functions called w/ 2+ arguments
@@ -518,7 +518,7 @@ pub struct ExtnCall0Arguments {
 #[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]
 pub struct ExtnCall2OrMoreArguments {
     /// Name of the function called w/ 2 or more arguments
-    func: Name,
+    func: UnreservedName,
 }
 
 /// Error type for using a reserved key in a record

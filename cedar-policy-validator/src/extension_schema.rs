@@ -15,15 +15,15 @@
  */
 
 use crate::types::Type;
-use cedar_policy_core::ast::{Expr, Name};
+use cedar_policy_core::ast::{Expr, UnreservedName};
 use std::collections::HashMap;
 
 /// Type information for a Cedar extension.
 pub struct ExtensionSchema {
     /// Name of the extension
-    name: Name,
+    name: UnreservedName,
     /// Type information for extension functions
-    function_types: HashMap<Name, ExtensionFunctionType>,
+    function_types: HashMap<UnreservedName, ExtensionFunctionType>,
 }
 
 impl std::fmt::Debug for ExtensionSchema {
@@ -35,7 +35,7 @@ impl std::fmt::Debug for ExtensionSchema {
 impl ExtensionSchema {
     /// Create a new `ExtensionSchema`
     pub fn new(
-        name: Name,
+        name: UnreservedName,
         function_types: impl IntoIterator<Item = ExtensionFunctionType>,
     ) -> Self {
         Self {
@@ -48,11 +48,11 @@ impl ExtensionSchema {
     }
 
     /// Get the name of the extension
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> &UnreservedName {
         &self.name
     }
 
-    pub fn get_function_type(&self, name: &Name) -> Option<&ExtensionFunctionType> {
+    pub fn get_function_type(&self, name: &UnreservedName) -> Option<&ExtensionFunctionType> {
         self.function_types.get(name)
     }
 }
@@ -66,7 +66,7 @@ pub(crate) type ArgumentCheckFn = Box<dyn Fn(&[Expr]) -> Result<(), String>>;
 /// Type information for a single extension function.
 pub struct ExtensionFunctionType {
     /// Function name
-    name: Name,
+    name: UnreservedName,
     /// Argument types
     argument_types: Vec<Type>,
     /// Return type
@@ -78,7 +78,7 @@ pub struct ExtensionFunctionType {
 impl ExtensionFunctionType {
     /// Create a new `ExtensionFunctionType`
     pub fn new(
-        name: Name,
+        name: UnreservedName,
         argument_types: Vec<Type>,
         return_type: Type,
         check_arguments: Option<ArgumentCheckFn>,
@@ -92,7 +92,7 @@ impl ExtensionFunctionType {
     }
 
     /// Get the name of the extension function
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> &UnreservedName {
         &self.name
     }
 

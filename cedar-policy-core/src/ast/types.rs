@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityType, Name};
+use crate::ast::EntityType;
 use serde::{Deserialize, Serialize};
 
 use super::UnreservedName;
@@ -60,7 +60,7 @@ pub enum Type {
         /// name an extension type "bool", "long", "string", "map", or "set".
         /// Not because Cedar can't handle it, but because it would lead to
         /// confusion.
-        name: Name,
+        name: UnreservedName,
     },
 }
 

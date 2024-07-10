@@ -703,7 +703,7 @@ impl Expr {
                             .into_iter()
                             .next()
                             .expect("already checked that len was 1");
-                        let fn_name: ast::Name = fn_name.parse().map_err(|errs| {
+                        let fn_name: ast::UnreservedName = fn_name.parse().map_err(|errs| {
                             JsonDeserializationError::parse_escape(
                                 EscapeKind::Extension,
                                 fn_name,

@@ -17,7 +17,7 @@
 //! This module contains type information for all of the standard Cedar extensions.
 
 use cedar_policy_core::{
-    ast::{Name, RestrictedExpr, Value},
+    ast::{RestrictedExpr, UnreservedName, Value},
     evaluator::{EvaluationError, RestrictedEvaluator},
     extensions::Extensions,
 };
@@ -47,7 +47,7 @@ pub fn all_available_extension_schemas() -> Vec<ExtensionSchema> {
 /// Evaluates ane extension function on a single string literal argument. Used
 /// to validate arguments to extension constructor functions.
 fn eval_extension_constructor(
-    constructor_name: Name,
+    constructor_name: UnreservedName,
     lit_str_arg: SmolStr,
 ) -> Result<Value, EvaluationError> {
     let exts = Extensions::all_available();

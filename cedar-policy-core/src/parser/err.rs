@@ -246,11 +246,11 @@ pub enum ToASTErrorKind {
     /// Returned when a policy attempts to call a method function-style
     #[error("`{0}` is a method, not a function")]
     #[diagnostic(help("use a method-style call `e.{0}(..)`"))]
-    FunctionCallOnMethod(ast::Id),
+    FunctionCallOnMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function in the method style
     #[error("`{0}` is a function, not a method")]
     #[diagnostic(help("use a function-style call `{0}(..)`"))]
-    MethodCallOnFunction(ast::Id),
+    MethodCallOnFunction(ast::UnreservedId),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
@@ -298,13 +298,13 @@ pub enum ToASTErrorKind {
     VariableCall(ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
-    NoMethods(ast::Name, ast::Id),
+    NoMethods(ast::UnreservedName, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
     #[error("`{0}` is not a valid method")]
     UnknownMethod(String),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a valid function")]
-    UnknownFunction(ast::Name),
+    UnknownFunction(ast::UnreservedName),
     /// Returned when a policy attempts to write an entity literal
     #[error("invalid entity literal: {0}")]
     #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]

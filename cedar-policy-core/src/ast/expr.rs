@@ -100,7 +100,7 @@ pub enum ExprKind<T = ()> {
     /// Ideally, we find some way to make this non-representable.
     ExtensionFunctionApp {
         /// Extension function to apply
-        fn_name: Name,
+        fn_name: UnreservedName,
         /// Args to apply the function to
         args: Arc<Vec<Expr<T>>>,
     },
@@ -441,7 +441,7 @@ impl Expr {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(fn_name: Name, args: Vec<Expr>) -> Self {
+    pub fn call_extension_fn(fn_name: UnreservedName, args: Vec<Expr>) -> Self {
         ExprBuilder::new().call_extension_fn(fn_name, args)
     }
 
@@ -1028,7 +1028,7 @@ impl<T> ExprBuilder<T> {
     /// `Name` on `args`
     pub fn call_extension_fn(
         self,
-        fn_name: Name,
+        fn_name: UnreservedName,
         args: impl IntoIterator<Item = Expr<T>>,
     ) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {

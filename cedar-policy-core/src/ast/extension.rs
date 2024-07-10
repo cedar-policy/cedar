@@ -31,14 +31,17 @@ use std::sync::Arc;
 /// allow this long-term.)
 pub struct Extension {
     /// Name of the extension
-    name: Name,
+    name: UnreservedName,
     /// Extension functions. These are legal to call in Cedar expressions.
-    functions: HashMap<Name, ExtensionFunction>,
+    functions: HashMap<UnreservedName, ExtensionFunction>,
 }
 
 impl Extension {
     /// Create a new `Extension` with the given name and extension functions
-    pub fn new(name: Name, functions: impl IntoIterator<Item = ExtensionFunction>) -> Self {
+    pub fn new(
+        name: UnreservedName,
+        functions: impl IntoIterator<Item = ExtensionFunction>,
+    ) -> Self {
         Self {
             name,
             functions: functions.into_iter().map(|f| (f.name.clone(), f)).collect(),
@@ -46,13 +49,13 @@ impl Extension {
     }
 
     /// Get the name of the extension
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> &UnreservedName {
         &self.name
     }
 
     /// Look up a function by name, or return `None` if the extension doesn't
     /// provide a function with that name
-    pub fn get_func(&self, name: &Name) -> Option<&ExtensionFunction> {
+    pub fn get_func(&self, name: &UnreservedName) -> Option<&ExtensionFunction> {
         self.functions.get(name)
     }
 
@@ -63,7 +66,7 @@ impl Extension {
 
     /// Iterate over the extension types that can be produced by any functions
     /// in this extension
-    pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
+    pub fn ext_types(&self) -> impl Iterator<Item = &UnreservedName> + '_ {
         self.funcs().flat_map(|func| func.ext_types())
     }
 }
@@ -112,7 +115,7 @@ pub type ExtensionFunctionObject =
 /// expressions.
 pub struct ExtensionFunction {
     /// Name of the function
-    name: Name,
+    name: UnreservedName,
     /// Which `CallStyle` should be used when calling this function
     style: CallStyle,
     /// The actual function, which takes an `&[Value]` and returns a `Value`,
@@ -133,7 +136,7 @@ pub struct ExtensionFunction {
 impl ExtensionFunction {
     /// Create a new `ExtensionFunction` taking any number of arguments
     fn new(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: ExtensionFunctionObject,
         return_type: Option<SchemaType>,
@@ -150,7 +153,7 @@ impl ExtensionFunction {
 
     /// Create a new `ExtensionFunction` taking no arguments
     pub fn nullary(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: Box<dyn Fn() -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
         return_type: SchemaType,
@@ -177,7 +180,7 @@ impl ExtensionFunction {
 
     /// Create a new `ExtensionFunction` taking one argument, that never returns a value
     pub fn unary_never(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
         arg_type: Option<SchemaType>,
@@ -201,7 +204,7 @@ impl ExtensionFunction {
 
     /// Create a new `ExtensionFunction` taking one argument
     pub fn unary(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
         return_type: SchemaType,
@@ -226,7 +229,7 @@ impl ExtensionFunction {
 
     /// Create a new `ExtensionFunction` taking two arguments
     pub fn binary(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: Box<
             dyn Fn(Value, Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
@@ -253,7 +256,7 @@ impl ExtensionFunction {
 
     /// Create a new `ExtensionFunction` taking three arguments
     pub fn ternary(
-        name: Name,
+        name: UnreservedName,
         style: CallStyle,
         func: Box<
             dyn Fn(Value, Value, Value) -> evaluator::Result<ExtensionOutputValue>
@@ -282,7 +285,7 @@ impl ExtensionFunction {
     }
 
     /// Get the `Name` of the `ExtensionFunction`
-    pub fn name(&self) -> &Name {
+    pub fn name(&self) -> &UnreservedName {
         &self.name
     }
 
@@ -328,7 +331,7 @@ impl ExtensionFunction {
 
     /// Iterate over the extension types that could be produced by this
     /// function, if any
-    pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
+    pub fn ext_types(&self) -> impl Iterator<Item = &UnreservedName> + '_ {
         self.return_type
             .iter()
             .flat_map(|ret_ty| ret_ty.contained_ext_types())
@@ -351,7 +354,7 @@ pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwind
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
     /// return the same typename here.
-    fn typename(&self) -> Name;
+    fn typename(&self) -> UnreservedName;
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {
@@ -368,7 +371,7 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 /// `RestrictedExpr` for instance)
 pub struct ExtensionValueWithArgs {
     value: Arc<dyn InternalExtensionValue>,
-    pub(crate) constructor: Name,
+    pub(crate) constructor: UnreservedName,
     /// Args are stored in `RestrictedExpr` form, just because that's most
     /// convenient for reconstructing a `RestrictedExpr` that reproduces this
     /// extension value
@@ -379,7 +382,7 @@ impl ExtensionValueWithArgs {
     /// Create a new `ExtensionValueWithArgs`
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        constructor: Name,
+        constructor: UnreservedName,
         args: Vec<RestrictedExpr>,
     ) -> Self {
         Self {
@@ -395,12 +398,12 @@ impl ExtensionValueWithArgs {
     }
 
     /// Get the typename of this extension value
-    pub fn typename(&self) -> Name {
+    pub fn typename(&self) -> UnreservedName {
         self.value.typename()
     }
 
     /// Get the constructor and args that can reproduce this value
-    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
+    pub fn constructor_and_args(&self) -> (&UnreservedName, &[RestrictedExpr]) {
         (&self.constructor, &self.args)
     }
 }

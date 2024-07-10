@@ -23,7 +23,7 @@ pub mod ipaddr;
 pub mod decimal;
 pub mod partial_evaluation;
 
-use crate::ast::{Extension, ExtensionFunction, Name};
+use crate::ast::{Extension, ExtensionFunction, UnreservedName};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
 use miette::Diagnostic;
@@ -69,7 +69,7 @@ impl<'a> Extensions<'a> {
     }
 
     /// Get the names of all active extensions.
-    pub fn ext_names(&self) -> impl Iterator<Item = &Name> {
+    pub fn ext_names(&self) -> impl Iterator<Item = &UnreservedName> {
         self.extensions.iter().map(|ext| ext.name())
     }
 
@@ -77,7 +77,7 @@ impl<'a> Extensions<'a> {
     ///
     /// (More specifically, all extension type names such that any function in
     /// an active extension could produce a value of that extension type.)
-    pub fn ext_types(&self) -> impl Iterator<Item = &Name> {
+    pub fn ext_types(&self) -> impl Iterator<Item = &UnreservedName> {
         self.extensions.iter().flat_map(|ext| ext.ext_types())
     }
 
@@ -85,7 +85,7 @@ impl<'a> Extensions<'a> {
     ///
     /// Returns an error if the function is not defined by any extension, or if
     /// it is defined multiple times.
-    pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
+    pub fn func(&self, name: &UnreservedName) -> Result<&ExtensionFunction> {
         // NOTE: in the future, we could build a single HashMap of function
         // name to ExtensionFunction, combining all extension functions
         // into one map, to make this lookup faster.
@@ -221,7 +221,7 @@ impl ExtensionFunctionLookupError {
 
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
-    use crate::ast::Name;
+    use crate::ast::UnreservedName;
     use crate::entities::SchemaType;
     use crate::parser::Loc;
     use miette::Diagnostic;
@@ -236,7 +236,7 @@ pub mod extension_function_lookup_errors {
     #[error("extension function `{name}` does not exist")]
     pub struct FuncDoesNotExistError {
         /// Name of the function that doesn't exist
-        pub(crate) name: Name,
+        pub(crate) name: UnreservedName,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
@@ -264,7 +264,7 @@ pub mod extension_function_lookup_errors {
     #[error("extension function `{name}` is defined {num_defs} times")]
     pub struct FuncMultiplyDefinedError {
         /// Name of the function that was multiply defined
-        pub(crate) name: Name,
+        pub(crate) name: UnreservedName,
         /// How many times that function is defined
         pub(crate) num_defs: usize,
         /// Source location
@@ -294,7 +294,7 @@ pub mod extension_function_lookup_errors {
     #[error("extension function `{name}` has no return type")]
     pub struct HasNoTypeError {
         /// Name of the function that has no return type
-        pub(crate) name: Name,
+        pub(crate) name: UnreservedName,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }

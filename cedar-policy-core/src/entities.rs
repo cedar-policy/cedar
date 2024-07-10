@@ -2029,13 +2029,13 @@ mod schema_based_parsing_tests {
                     open_attrs: false,
                 }),
                 "home_ip" => Some(SchemaType::Extension {
-                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                    name: UnreservedName::parse_unqualified_name("ipaddr").expect("valid"),
                 }),
                 "work_ip" => Some(SchemaType::Extension {
-                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                    name: UnreservedName::parse_unqualified_name("ipaddr").expect("valid"),
                 }),
                 "trust_score" => Some(SchemaType::Extension {
-                    name: Name::parse_unqualified_name("decimal").expect("valid"),
+                    name: UnreservedName::parse_unqualified_name("decimal").expect("valid"),
                 }),
                 "tricky" => Some(SchemaType::Record {
                     attrs: [
@@ -2245,14 +2245,14 @@ mod schema_based_parsing_tests {
         assert_eq!(
             parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                Name::parse_unqualified_name("ip").expect("valid"),
+                UnreservedName::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("222.222.222.101")]
             ))),
         );
         assert_eq!(
             parsed.get("work_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                Name::parse_unqualified_name("ip").expect("valid"),
+                UnreservedName::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("2.2.2.0/24")]
             ))),
         );
@@ -2262,7 +2262,7 @@ mod schema_based_parsing_tests {
                 .cloned()
                 .map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                Name::parse_unqualified_name("decimal").expect("valid"),
+                UnreservedName::parse_unqualified_name("decimal").expect("valid"),
                 vec![RestrictedExpr::val("5.7")]
             ))),
         );

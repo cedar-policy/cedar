@@ -18,7 +18,7 @@
 // GRCOV_STOP_COVERAGE
 
 use crate::{diagnostics::ValidationError, types::Type};
-use cedar_policy_core::ast::{Expr, Name};
+use cedar_policy_core::ast::Expr;
 use std::str::FromStr;
 
 use super::test_utils::{
@@ -28,7 +28,10 @@ use super::test_utils::{
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typechecks() {
-    let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
+    use cedar_policy_core::ast::UnreservedName;
+
+    let ipaddr_name =
+        UnreservedName::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let expr = Expr::from_str("ip(\"127.0.0.1\")").expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::extension(ipaddr_name));
     let expr = Expr::from_str("ip(\"1:2:3:4::/48\").isIpv4()").expect("parsing should succeed");
@@ -41,7 +44,10 @@ fn ip_extension_typechecks() {
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typecheck_fails() {
-    let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
+    use cedar_policy_core::ast::UnreservedName;
+
+    let ipaddr_name =
+        UnreservedName::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let expr = Expr::from_str("ip(3)").expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
@@ -92,8 +98,10 @@ fn ip_extension_typecheck_fails() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typechecks() {
+    use cedar_policy_core::ast::UnreservedName;
+
     let decimal_name =
-        Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
+        UnreservedName::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let expr = Expr::from_str("decimal(\"1.23\")").expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::extension(decimal_name));
     let expr = Expr::from_str("decimal(\"1.23\").lessThan(decimal(\"1.24\"))")
@@ -113,8 +121,10 @@ fn decimal_extension_typechecks() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typecheck_fails() {
+    use cedar_policy_core::ast::UnreservedName;
+
     let decimal_name =
-        Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
+        UnreservedName::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let expr = Expr::from_str("decimal(3)").expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,

@@ -20,7 +20,7 @@
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
-use cedar_policy_core::ast::{Expr, ExprKind, Literal, Name};
+use cedar_policy_core::ast::{Expr, ExprKind, Literal, UnreservedName};
 use cedar_policy_core::extensions::decimal;
 use itertools::Itertools;
 
@@ -33,8 +33,8 @@ use super::eval_extension_constructor;
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_types(fname: &Name, decimal_ty: &Type) -> Vec<types::Type> {
-    if !fname.is_unqualified() {
+fn get_argument_types(fname: &UnreservedName, decimal_ty: &Type) -> Vec<types::Type> {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected decimal extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -48,8 +48,8 @@ fn get_argument_types(fname: &Name, decimal_ty: &Type) -> Vec<types::Type> {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_return_type(fname: &Name, decimal_ty: &Type) -> Type {
-    if !fname.is_unqualified() {
+fn get_return_type(fname: &UnreservedName, decimal_ty: &Type) -> Type {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected decimal extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -63,8 +63,8 @@ fn get_return_type(fname: &Name, decimal_ty: &Type) -> Type {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
-    if !fname.is_unqualified() {
+fn get_argument_check(fname: &UnreservedName) -> Option<ArgumentCheckFn> {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected decimal extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -106,7 +106,10 @@ pub fn extension_schema() -> ExtensionSchema {
 /// Extra validation step for the `decimal` function.
 /// Note we already checked that `exprs` contains correct number of arguments,
 /// these arguments have the correct types, and that they are all literals.
-fn validate_decimal_string(decimal_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+fn validate_decimal_string(
+    decimal_constructor_name: UnreservedName,
+    exprs: &[Expr],
+) -> Result<(), String> {
     match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
         Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
             eval_extension_constructor(decimal_constructor_name, s.clone())

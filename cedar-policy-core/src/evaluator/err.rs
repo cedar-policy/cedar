@@ -246,7 +246,7 @@ impl EvaluationError {
 
     /// Construct a [`WrongNumArguments`] error
     pub(crate) fn wrong_num_arguments(
-        function_name: Name,
+        function_name: UnreservedName,
         expected: usize,
         actual: usize,
         source_loc: Option<Loc>,
@@ -267,7 +267,7 @@ impl EvaluationError {
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
     pub(crate) fn failed_extension_function_application(
-        extension_name: Name,
+        extension_name: UnreservedName,
         msg: String,
         source_loc: Option<Loc>,
     ) -> Self {
@@ -294,7 +294,7 @@ impl EvaluationError {
 
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
-    use crate::ast::{BinaryOp, EntityUID, Expr, Name, SlotId, Type, UnaryOp, Value};
+    use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
     use crate::parser::Loc;
     use itertools::Itertools;
     use miette::Diagnostic;
@@ -302,6 +302,8 @@ pub mod evaluation_errors {
     use smol_str::SmolStr;
     use std::sync::Arc;
     use thiserror::Error;
+
+    use super::UnreservedName;
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //
@@ -496,7 +498,7 @@ pub mod evaluation_errors {
     #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
     pub struct WrongNumArgumentsError {
         /// arguments to this function
-        pub(crate) function_name: Name,
+        pub(crate) function_name: UnreservedName,
         /// expected number of arguments
         pub(crate) expected: usize,
         /// actual number of arguments
@@ -652,7 +654,7 @@ pub mod evaluation_errors {
     #[error("error while evaluating `{extension_name}` extension function: {msg}")]
     pub struct ExtensionFunctionExecutionError {
         /// Name of the extension throwing the error
-        pub(crate) extension_name: Name,
+        pub(crate) extension_name: UnreservedName,
         /// Error message from the extension
         pub(crate) msg: String,
         /// Source location

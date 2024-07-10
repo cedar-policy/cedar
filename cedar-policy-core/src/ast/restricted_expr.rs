@@ -15,8 +15,8 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
-    Value, ValueKind,
+    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, PartialValue, Unknown,
+    UnreservedName, Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -131,7 +131,7 @@ impl RestrictedExpr {
 
     /// Create a `RestrictedExpr` which calls the given extension function
     pub fn call_extension_fn(
-        function_name: Name,
+        function_name: UnreservedName,
         args: impl IntoIterator<Item = RestrictedExpr>,
     ) -> Self {
         // Extension-function calls are valid restricted-exprs if their
@@ -228,7 +228,10 @@ impl RestrictedExpr {
     /// an extension function call
     pub fn as_extn_fn_call(
         &self,
-    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'_>>)> {
+    ) -> Option<(
+        &UnreservedName,
+        impl Iterator<Item = BorrowedRestrictedExpr<'_>>,
+    )> {
         match self.expr_kind() {
             ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
                 fn_name,
@@ -438,7 +441,10 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// an extension function call
     pub fn as_extn_fn_call(
         &self,
-    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'_>>)> {
+    ) -> Option<(
+        &UnreservedName,
+        impl Iterator<Item = BorrowedRestrictedExpr<'_>>,
+    )> {
         match self.expr_kind() {
             ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
                 fn_name,

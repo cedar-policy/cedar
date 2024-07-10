@@ -1367,7 +1367,7 @@ mod translator_tests {
                                 "wrong type for attr `ip`"
                             ),
                             "bandwidth" => assert!(
-                                matches!(&attr.attr_type, crate::types::Type::ExtensionType { name } if name.clone() == cedar_policy_core::ast::Name::from_normalized_str("decimal").unwrap()),
+                                matches!(&attr.attr_type, crate::types::Type::ExtensionType { name } if name.clone() == cedar_policy_core::ast::UnreservedName::from_normalized_str("decimal").unwrap()),
                                 "wrong type for attr `bandwidth`"
                             ),
                             _ => unreachable!("unexpected attr: {attr_name}"),

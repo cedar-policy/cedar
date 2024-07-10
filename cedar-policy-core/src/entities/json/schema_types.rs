@@ -15,9 +15,10 @@
  */
 
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Name, PartialValue, Type, Unknown,
+    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, PartialValue, Type, Unknown,
     Value, ValueKind,
 };
+use crate::entities::UnreservedName;
 use crate::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError, Extensions,
 };
@@ -61,7 +62,7 @@ pub enum SchemaType {
         ///
         /// Cedar has nominal typing, so two values have the same type iff
         /// they have the same typename here.
-        name: Name,
+        name: UnreservedName,
     },
 }
 
@@ -170,7 +171,7 @@ impl SchemaType {
     }
 
     /// Iterate over all extension function types contained in this SchemaType
-    pub fn contained_ext_types(&self) -> Box<dyn Iterator<Item = &Name> + '_> {
+    pub fn contained_ext_types(&self) -> Box<dyn Iterator<Item = &UnreservedName> + '_> {
         match self {
             Self::Extension { name } => Box::new(std::iter::once(name)),
             Self::Set { element_ty } => element_ty.contained_ext_types(),
