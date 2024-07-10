@@ -1210,9 +1210,9 @@ fn read_json_policy_set(
                 Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
             },
         },
-        JsonPolicyType::PolicySet => {
-            PolicySet::from_json_value(json).map_err(|err| add_json_source(Report::new(err)))
-        }
+        JsonPolicyType::PolicySet => PolicySet::from_json_value(json)
+            .map_err(|err| add_json_source(Report::new(err)))
+            .wrap_err_with(|| format!("failed to create policy set from {context}")),
     }
 }
 
