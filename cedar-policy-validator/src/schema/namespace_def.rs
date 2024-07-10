@@ -139,6 +139,22 @@ impl ValidatorNamespaceDef<ConditionalName> {
         })
     }
 
+    /// Construct a new [`ValidatorNamespaceDef<ConditionalName>`] containing
+    /// only the given common-type definitions, which are already given in
+    /// terms of [`ConditionalName`]s.
+    pub fn from_common_typedefs(
+        namespace: Option<Name>,
+        typedefs: HashMap<Id, SchemaType<ConditionalName>>,
+    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName>> {
+        let type_defs = TypeDefs::from_conditionalname_typedefs(typedefs, namespace.as_ref())?;
+        Ok(ValidatorNamespaceDef {
+            namespace,
+            type_defs,
+            entity_types: EntityTypesDef::new(),
+            actions: ActionsDef::new(),
+        })
+    }
+
     /// Convert this [`ValidatorNamespaceDef<ConditionalName>`] into a
     /// [`ValidatorNamespaceDef<Name>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
@@ -255,6 +271,31 @@ impl TypeDefs<ConditionalName> {
         Ok(Self { type_defs })
     }
 
+    /// Construct a [`TypeDefs<ConditionalName>`] by converting the structures
+    /// used by the schema format to those used internally by the validator; but
+    /// unlike `from_raw_typedefs()`, this function allows you to directly
+    /// supply [`ConditionalName`]s in the typedefs
+    pub(crate) fn from_conditionalname_typedefs(
+        input_type_defs: HashMap<Id, SchemaType<ConditionalName>>,
+        schema_namespace: Option<&Name>,
+    ) -> crate::err::Result<Self> {
+        let mut type_defs = HashMap::with_capacity(input_type_defs.len());
+        for (id, schema_ty) in input_type_defs {
+            let name = RawName::new(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            match type_defs.entry(name) {
+                Entry::Vacant(ventry) => {
+                    ventry.insert(schema_ty);
+                }
+                Entry::Occupied(oentry) => {
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
+                        oentry.key().clone(),
+                    )));
+                }
+            }
+        }
+        Ok(Self { type_defs })
+    }
+
     /// Convert this [`TypeDefs<ConditionalName>`] into a [`TypeDefs<Name>`] by
     /// fully-qualifying all typenames that appear anywhere in any definitions.
     ///
@@ -295,6 +336,15 @@ impl TypeDefs<ConditionalName> {
 #[derive(Debug)]
 pub struct EntityTypesDef<N> {
     pub(super) entity_types: HashMap<EntityType, EntityTypeFragment<N>>,
+}
+
+impl<N> EntityTypesDef<N> {
+    /// Construct an empty [`EntityTypesDef`] defining no entity types.
+    pub fn new() -> Self {
+        Self {
+            entity_types: HashMap::new(),
+        }
+    }
 }
 
 impl EntityTypesDef<ConditionalName> {
@@ -454,6 +504,15 @@ impl EntityTypeFragment<ConditionalName> {
 #[derive(Debug)]
 pub struct ActionsDef<N> {
     pub(super) actions: HashMap<EntityUID, ActionFragment<N>>,
+}
+
+impl<N> ActionsDef<N> {
+    /// Construct an empty [`ActionsDef`] defining no entity types.
+    pub fn new() -> Self {
+        Self {
+            actions: HashMap::new(),
+        }
+    }
 }
 
 impl ActionsDef<ConditionalName> {

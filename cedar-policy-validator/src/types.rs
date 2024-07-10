@@ -2203,7 +2203,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "ipaddr")]
-    fn text_extension_type_dislay() {
+    fn text_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(Type::extension(ipaddr));
     }

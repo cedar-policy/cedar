@@ -112,8 +112,13 @@ impl RawName {
     ///         (in any schema fragment)
     ///     2. Itself in the empty namespace, if that name is declared in the schema
     ///         (in any schema fragment)
-    ///     3. Itself in the `__cedar` namespace, if that name is valid (i.e., is
-    ///         the name of a primitive or extension type)
+    ///
+    /// Note that if the [`RawName`] is the name of a primitive or extension
+    /// type (without explicit `__cedar`), it will resolve via (2) above,
+    /// because the primitive/extension type names will be added as defined
+    /// typedefs in the empty namespace (aliasing to the real `__cedar`
+    /// definitions), assuming the user didn't themselves define those names
+    /// in the empty namespace.
     pub fn conditionally_qualify_with(
         self,
         ns: Option<&Name>,
@@ -128,18 +133,13 @@ impl RawName {
                     nonempty![
                         self.clone().qualify_with(Some(ns)),
                         self.clone().qualify_with(None),
-                        self.clone().qualify_with(Some(&Name::__cedar())),
                     ]
                 }
                 None => {
                     // Same as the above case, but since the current/active
-                    // namespace is the empty namespace, the first two
-                    // possibilities are the same; so we only have the first
-                    // and third possibility
-                    nonempty![
-                        self.clone().qualify_with(None),
-                        self.clone().qualify_with(Some(&Name::__cedar())),
-                    ]
+                    // namespace is the empty namespace, the two possibilities
+                    // are the same; there is only one possibility
+                    nonempty![self.clone().qualify_with(None)]
                 }
             }
         } else {

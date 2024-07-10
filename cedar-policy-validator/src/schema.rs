@@ -282,26 +282,49 @@ impl ValidatorSchema {
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName>>,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
-        let fragments = fragments
+        let mut fragments = fragments
             .into_iter()
             // All schemas implicitly include the following fragment as well,
             // defining the items in the `__cedar` namespace.
             .chain(std::iter::once(cedar_fragment(extensions)))
             .collect::<Vec<_>>();
 
-        // First build the sets of all entity and common type definitions
+        // Build the sets of all entity and common type definitions
         // (fully-qualified `Name`s) in all fragments.
         let all_entity_defs = fragments
             .iter()
             .flat_map(|f| f.0.iter())
             .flat_map(|ns_def| ns_def.all_declared_entity_type_names().cloned())
             .collect::<HashSet<Name>>();
-        let all_common_defs = fragments
+        let mut all_common_defs = fragments
             .iter()
             .flat_map(|f| f.0.iter())
             .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
             .collect::<HashSet<Name>>();
-        println!("all_common_defs: {}", all_common_defs.iter().join(", "));
+
+        // Add aliases for primitive and extension typenames in the empty namespace,
+        // so that they can be accessed without `__cedar`.
+        // (Only add each alias if it doesn't conflict with a user declaration --
+        // if it does conflict, we won't add the alias and the user needs to use
+        // `__cedar` to refer to the primitive/extension type.)
+        // In the future, if we support some kind of `use` keyword to make names
+        // available in the empty namespace, we'd probably add that here.
+        for tyname in primitive_types()
+            .map(Name::unqualified_name)
+            .chain(extensions.ext_types().cloned())
+        {
+            if !all_entity_defs.contains(&tyname) && !all_common_defs.contains(&tyname) {
+                assert!(
+                    tyname.is_unqualified(),
+                    "expected all primitive and extension type names to be unqualified"
+                );
+                fragments.push(single_alias_in_empty_namespace(
+                    tyname.basename().clone(),
+                    tyname.qualify_with(Some(&Name::__cedar())),
+                ));
+                all_common_defs.insert(tyname);
+            }
+        }
 
         // Now use `all_entity_defs` and `all_common_defs` to resolve all
         // [`ConditionalName`] type references into fully-qualified [`Name`]
@@ -748,44 +771,67 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 /// Get a `ValidatorSchemaFragment` describing the items that implicitly exist
 /// in the `__cedar` namespace.
 fn cedar_fragment(extensions: Extensions<'_>) -> ValidatorSchemaFragment<ConditionalName> {
-    ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_namespace_definition(
+    let mut common_types = HashMap::from_iter([
+        (
+            Id::from_str("Bool").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::Boolean),
+        ),
+        (
+            Id::from_str("Long").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::Long),
+        ),
+        (
+            Id::from_str("String").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::String),
+        ),
+    ]);
+    for ext_type in extensions.ext_types() {
+        assert!(
+            ext_type.is_unqualified(),
+            "expected extension type names to be unqualified"
+        );
+        let ext_type = ext_type.basename().clone();
+        common_types.insert(
+            ext_type.clone(),
+            SchemaType::Type(SchemaTypeVariant::Extension { name: ext_type }),
+        );
+    }
+
+    ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_typedefs(
         Some(Name::parse_unqualified_name("__cedar").unwrap()),
-        NamespaceDefinition {
-            common_types: {
-                let mut common_types = HashMap::from_iter([
-                    (
-                        Id::from_str("Bool").unwrap(),
-                        SchemaType::Type(SchemaTypeVariant::Boolean),
-                    ),
-                    (
-                        Id::from_str("Long").unwrap(),
-                        SchemaType::Type(SchemaTypeVariant::Long),
-                    ),
-                    (
-                        Id::from_str("String").unwrap(),
-                        SchemaType::Type(SchemaTypeVariant::String),
-                    ),
-                ]);
-                for ext_type in extensions.ext_types() {
-                    assert!(
-                        ext_type.is_unqualified(),
-                        "expected extension type names to be unqualified"
-                    );
-                    let ext_type = ext_type.basename().clone();
-                    common_types.insert(
-                        ext_type.clone(),
-                        SchemaType::Type(SchemaTypeVariant::Extension { name: ext_type }),
-                    );
-                }
-                common_types
-            },
-            actions: HashMap::new(),
-            entity_types: HashMap::new(),
-        },
-        ActionBehavior::ProhibitAttributes,
-        Extensions::all_available(),
+        common_types,
     )
     .unwrap()])
+}
+
+/// Get a `ValidatorSchemaFragment` containing just one common-type definition,
+/// defining the unqualified name `id` in the empty namespace as an alias for
+/// the fully-qualified name `def`. (This will eventually cause an error if
+/// `def` is not defined somewhere.)
+fn single_alias_in_empty_namespace(
+    id: Id,
+    def: Name,
+) -> ValidatorSchemaFragment<ConditionalName> {
+    ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_typedefs(
+        None,
+        HashMap::from_iter([(
+            id,
+            SchemaType::EntityOrCommonTypeRef {
+                type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
+            },
+        )]),
+    )
+    .unwrap()])
+}
+
+/// Get the names of all primitive types, as unqualified `Id`s
+fn primitive_types() -> impl Iterator<Item = Id> {
+    [
+        Id::from_str("Bool").unwrap(),
+        Id::from_str("Long").unwrap(),
+        Id::from_str("String").unwrap(),
+    ]
+    .into_iter()
 }
 
 /// A common type reference resolver.
@@ -3012,9 +3058,8 @@ mod test_579 {
         "#;
         assert_parse_error_human(
             human_schema,
-            &ExpectedErrorMessageBuilder::error(
-                "error parsing schema: Unknown type name: `MyType`",
-            )
+            &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` or `MyType` refers to anything that has been declared")
             .exactly_one_underline("MyType")
             .build(),
         );
