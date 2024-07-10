@@ -1225,8 +1225,8 @@ fn get_json_policy_type(json: &serde_json::Value) -> Result<JsonPolicyType> {
     let has_any_policy_property = policy_properties.iter().any(json_has_property);
 
     match (has_any_policy_set_property, has_any_policy_property) {
-        (false, false) => Err(miette!("Cannot determine if json policy is a single policy or a policy set. Found no matching properties from any of those schemas.")),
-        (true, true) => Err(miette!("Cannot determine if json policy is a single policy or a policy set. Found matching properties from both schemas.")),
+        (false, false) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found no matching properties from either format")),
+        (true, true) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found matching properties from both formats")),
         (true, _) => Ok(JsonPolicyType::PolicySet),
         (_, true) => Ok(JsonPolicyType::SinglePolicy),
     }

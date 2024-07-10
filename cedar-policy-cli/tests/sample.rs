@@ -1058,7 +1058,7 @@ fn test_check_parse_json_policy_mixed_properties() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "matching properties from both schemas",
+            "matching properties from both formats",
         ));
 }
 
