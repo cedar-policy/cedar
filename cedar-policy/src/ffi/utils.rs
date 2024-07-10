@@ -33,6 +33,7 @@ extern crate tsify;
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct DetailedError {
     /// Main error message, including both the `miette` "message" and the
     /// `miette` "causes" (uses `miette`'s default `Display` output)
@@ -84,6 +85,7 @@ impl From<miette::Severity> for Severity {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct SourceLabel {
     /// Text of the label (if any)
     pub label: Option<String>,
@@ -97,6 +99,7 @@ pub struct SourceLabel {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct SourceLocation {
     /// Start of the source location (in bytes)
     pub start: usize,
@@ -408,6 +411,7 @@ impl Default for StaticPolicySet {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct TemplateLink {
     /// Id of the template to link against
     template_id: PolicyId,
@@ -441,6 +445,7 @@ impl TemplateLink {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct PolicySet {
     /// static policies
     #[serde(default)]

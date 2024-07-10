@@ -156,6 +156,7 @@ pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -169,6 +170,7 @@ pub struct Response {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Diagnostics {
     /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
@@ -239,6 +241,7 @@ impl Diagnostics {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -291,6 +294,7 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ResidualResponse {
     decision: Option<Decision>,
     satisfied: HashSet<PolicyId>,
@@ -458,6 +462,7 @@ pub enum PartialAuthorizationAnswer {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizationCall {
     /// The principal taking action
     principal: EntityUid,
@@ -492,6 +497,7 @@ pub struct AuthorizationCall {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct PartialAuthorizationCall {
     /// The principal taking action. If this field is empty, then the principal is unknown.
     principal: Option<EntityUid>,
@@ -594,7 +600,7 @@ impl AuthorizationCall {
             },
             _ => {
                 // At least one of the `errs.push(e)` statements above must have been reached
-                return build_error(errs, warnings);
+                build_error(errs, warnings)
             }
         }
     }
@@ -680,7 +686,7 @@ impl PartialAuthorizationCall {
             },
             _ => {
                 // At least one of the `errs.push(e)` statements above must have been reached
-                return build_error(errs, warnings);
+                build_error(errs, warnings)
             }
         }
     }
@@ -1642,8 +1648,7 @@ mod partial_test {
                     "ID1": "permit(principal == User::\"alice\", action, resource);"
                 }
             },
-            "entities": [],
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_authorized_json_partial(call);
@@ -1666,8 +1671,7 @@ mod partial_test {
                     "ID1": "permit(principal == User::\"alice\", action, resource);"
                 }
             },
-            "entities": [],
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_not_authorized_json_partial(call);
@@ -1690,8 +1694,7 @@ mod partial_test {
                     "ID1": "permit(principal == User::\"alice\", action, resource);"
                 }
             },
-            "entities": [],
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_residual(call, &HashSet::from(["ID1"]));
@@ -1714,8 +1717,7 @@ mod partial_test {
                     "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
                 }
             },
-            "entities": [],
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_residual(call, &HashSet::from(["ID1"]));
@@ -1739,8 +1741,7 @@ mod partial_test {
                     "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
                 }
             },
-            "entities": [],
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_residual(call, &HashSet::from(["ID1"]));
