@@ -1122,7 +1122,7 @@ mod tests {
     fn error_recovery() {
         // After hitting an unexpected `!`, the parser skips ahead until it
         // finds a `;`, skipping over the body of the policy where it used to
-        // emit a lot of useless pares errors, after which it attempts to parse
+        // emit a lot of useless parse errors, after which it attempts to parse
         // another policy. There is no error in that policy, so it reports
         // exactly one error.
         let src = r#"
@@ -1138,7 +1138,7 @@ mod tests {
                 .build(),
         );
 
-        // Now there is another error which should be also be reported.
+        // Now there is another error which should also be reported.
         let src = r#"
             permit(principal, action, !) when { principal.foo == resource.bar};
             permit(principal, action, +);
