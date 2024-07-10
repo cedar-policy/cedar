@@ -22,8 +22,8 @@ Cedar Language Version: 4.0
 
 ### Changed
 
-- The API around `Request::new` has changed to remove the `Option`s 
-  around the entity type arguments.
+- The API around `Request::new` has changed to remove the `Option`s
+  around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
 - Finalized the `ffi` module which was preview-released in 3.2.0.
@@ -35,6 +35,9 @@ Cedar Language Version: 4.0
 - Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
+- Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
+- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
+  instead of `Option<String>` to set the policy id (#1055, resolving #1049)
 
 ### Removed
 

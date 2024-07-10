@@ -20,17 +20,15 @@
 #[cfg(feature = "partial-eval")]
 use super::utils::JsonValueWithNoDuplicateKeys;
 use super::utils::{Context, DetailedError, Entities, EntityUid, PolicySet, Schema, WithWarnings};
-use crate::{Authorizer, Decision, EntityId, EntityTypeName, PolicyId, Request, SlotId};
+use crate::{Authorizer, Decision, PolicyId, Request};
 use cedar_policy_validator::human_schema::SchemaWarning;
-use itertools::Itertools;
-use miette::{miette, Diagnostic};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, MapPreventDuplicates};
-use std::collections::{HashMap, HashSet};
+use serde_with::serde_as;
+#[cfg(feature = "partial-eval")]
+use std::collections::HashMap;
+use std::collections::HashSet;
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
-use std::str::FromStr;
-use thiserror::Error;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -158,6 +156,7 @@ pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -171,6 +170,7 @@ pub struct Response {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Diagnostics {
     /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
@@ -241,6 +241,7 @@ impl Diagnostics {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizationError {
     /// Id of the policy where the error (or warning) occurred
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -293,6 +294,7 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ResidualResponse {
     decision: Option<Decision>,
     satisfied: HashSet<PolicyId>,
@@ -460,6 +462,7 @@ pub enum PartialAuthorizationAnswer {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizationCall {
     /// The principal taking action
     principal: EntityUid,
@@ -481,8 +484,10 @@ pub struct AuthorizationCall {
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
     validate_request: bool,
-    /// The slice containing entities and policies
-    slice: RecvdSlice,
+    /// The set of policies to use during authorization
+    policies: PolicySet,
+    /// The set of entities to use during authorization
+    entities: Entities,
 }
 
 /// Struct containing the input data for partial authorization
@@ -492,6 +497,7 @@ pub struct AuthorizationCall {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct PartialAuthorizationCall {
     /// The principal taking action. If this field is empty, then the principal is unknown.
     principal: Option<EntityUid>,
@@ -513,8 +519,10 @@ pub struct PartialAuthorizationCall {
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
     validate_request: bool,
-    /// The slice containing entities and policies
-    slice: RecvdSlice,
+    /// The set of policies to use during authorization
+    policies: PolicySet,
+    /// The set of entities to use during authorization
+    entities: Entities,
 }
 
 fn constant_true() -> bool {
@@ -577,23 +585,23 @@ impl AuthorizationCall {
         } else {
             None
         };
-        let request = match Request::new(principal, action, resource, context, schema_opt) {
-            Ok(request) => request,
-            Err(e) => {
-                return build_error(vec![e.into()], warnings);
-            }
-        };
+        let maybe_request = Request::new(principal, action, resource, context, schema_opt)
+            .map_err(|e| errs.push(e.into()));
+        let maybe_entities = self
+            .entities
+            .parse(schema.as_ref())
+            .map_err(|e| errs.push(e));
+        let maybe_policies = self.policies.parse().map_err(|es| errs.extend(es));
 
-        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
-            Ok((policies, entities)) => (policies, entities),
-            Err(errs) => {
-                return build_error(errs, warnings);
+        match (maybe_request, maybe_policies, maybe_entities) {
+            (Ok(request), Ok(policies), Ok(entities)) => WithWarnings {
+                t: Ok((request, policies, entities)),
+                warnings: warnings.into_iter().map(Into::into).collect(),
+            },
+            _ => {
+                // At least one of the `errs.push(e)` statements above must have been reached
+                build_error(errs, warnings)
             }
-        };
-
-        WithWarnings {
-            t: Ok((request, policies, entities)),
-            warnings: warnings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -646,12 +654,11 @@ impl PartialAuthorizationCall {
             }
         };
 
-        let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
-            Ok((policies, entities)) => (policies, entities),
-            Err(errs) => {
-                return build_error(errs, warnings);
-            }
-        };
+        let maybe_entities = self
+            .entities
+            .parse(schema.as_ref())
+            .map_err(|e| errs.push(e));
+        let maybe_policies = self.policies.parse().map_err(|es| errs.extend(es));
 
         let mut b = Request::builder();
         if let Some(p) = principal {
@@ -665,199 +672,22 @@ impl PartialAuthorizationCall {
         }
         b = b.context(context);
 
-        let request = match schema {
-            Some(schema) if self.validate_request => match b.schema(&schema).build() {
-                Ok(request) => request,
-                Err(e) => {
-                    return build_error(vec![e.into()], warnings);
-                }
+        let maybe_request = match schema {
+            Some(schema) if self.validate_request => {
+                b.schema(&schema).build().map_err(|e| errs.push(e.into()))
+            }
+            _ => Ok(b.build()),
+        };
+
+        match (maybe_request, maybe_policies, maybe_entities) {
+            (Ok(request), Ok(policies), Ok(entities)) => WithWarnings {
+                t: Ok((request, policies, entities)),
+                warnings: warnings.into_iter().map(Into::into).collect(),
             },
-            _ => b.build(),
-        };
-
-        WithWarnings {
-            t: Ok((request, policies, entities)),
-            warnings: warnings.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-///
-/// Entity UID as strings.
-///
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-struct EntityUIDStrings {
-    ty: String,
-    eid: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-struct Link {
-    slot: String,
-    value: EntityUIDStrings,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-struct TemplateLink {
-    /// Template ID to fill in
-    template_id: String,
-
-    /// Policy ID for resulting linked policy
-    result_policy_id: String,
-
-    /// Links for all slots in policy template `template_id`
-    instantiations: Links,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "Vec<Link>")]
-#[serde(into = "Vec<Link>")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-struct Links(Vec<Link>);
-
-/// Error returned for duplicate slot ids
-#[derive(Debug, Clone, Diagnostic, Error)]
-pub enum DuplicateLinkError {
-    /// Duplicate values for the same slot
-    #[error("duplicate values for the slot(s): {}", .0.iter().map(|s| format!("`{s}`")).join(", "))]
-    Duplicates(Vec<String>),
-}
-
-impl TryFrom<Vec<Link>> for Links {
-    type Error = DuplicateLinkError;
-
-    fn try_from(links: Vec<Link>) -> Result<Self, Self::Error> {
-        let mut slots = links.iter().map(|link| &link.slot).collect::<Vec<_>>();
-        slots.sort();
-        let duplicates = slots
-            .into_iter()
-            .dedup_with_count()
-            .filter_map(|(count, slot)| if count == 1 { None } else { Some(slot) })
-            .cloned()
-            .collect::<Vec<_>>();
-        if duplicates.is_empty() {
-            Ok(Self(links))
-        } else {
-            Err(DuplicateLinkError::Duplicates(duplicates))
-        }
-    }
-}
-
-impl From<Links> for Vec<Link> {
-    fn from(value: Links) -> Self {
-        value.0
-    }
-}
-
-/// policies must either be a single policy per entry, or only one entry with more than one policy
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
-struct RecvdSlice {
-    policies: PolicySet,
-    /// JSON object containing the entities data, in "natural JSON" form -- same
-    /// format as expected by EntityJsonParser
-    entities: Entities,
-
-    /// Optional template policies.
-    #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
-    templates: Option<HashMap<String, String>>,
-
-    /// Optional template links
-    template_instantiations: Option<Vec<TemplateLink>>,
-}
-
-fn parse_link(v: &Link) -> Result<(SlotId, crate::EntityUid), miette::Report> {
-    let slot = match v.slot.as_str() {
-        "?principal" => SlotId::principal(),
-        "?resource" => SlotId::resource(),
-        _ => {
-            return Err(miette!("Slot must be ?principal or ?resource"));
-        }
-    };
-    let type_name = EntityTypeName::from_str(v.value.ty.as_str()).map_err(miette::Report::new)?;
-    let eid = match EntityId::from_str(v.value.eid.as_str()) {
-        Ok(eid) => eid,
-        Err(err) => match err {},
-    };
-    let entity_uid = crate::EntityUid::from_type_name_and_id(type_name, eid);
-    Ok((slot, entity_uid))
-}
-
-fn parse_links(policies: &mut crate::PolicySet, link: TemplateLink) -> Result<(), miette::Report> {
-    let template_id = PolicyId::from_str(link.template_id.as_str());
-    let link_id = PolicyId::from_str(link.result_policy_id.as_str());
-    match (template_id, link_id) {
-        (Err(never), _) | (_, Err(never)) => match never {},
-        (Ok(template_id), Ok(link_id)) => {
-            let mut vals = HashMap::new();
-            for i in link.instantiations.0 {
-                let (slot, euid) = parse_link(&i)?;
-                vals.insert(slot, euid);
+            _ => {
+                // At least one of the `errs.push(e)` statements above must have been reached
+                build_error(errs, warnings)
             }
-            policies
-                .link(template_id, link_id, vals)
-                .map_err(miette::Report::new)
-        }
-    }
-}
-
-impl RecvdSlice {
-    #[allow(clippy::too_many_lines)]
-    fn try_into(
-        self,
-        schema: Option<&crate::Schema>,
-    ) -> Result<(crate::PolicySet, crate::Entities), Vec<miette::Report>> {
-        let Self {
-            policies,
-            entities,
-            templates,
-            template_instantiations,
-        } = self;
-
-        let mut errs = Vec::new();
-
-        let mut policies: crate::PolicySet = match policies.parse(templates) {
-            Ok(policies) => policies,
-            Err(e) => {
-                errs.extend(e);
-                crate::PolicySet::new()
-            }
-        };
-        let entities = match entities.parse(schema) {
-            Ok(entities) => entities,
-            Err(e) => {
-                errs.push(e);
-                crate::Entities::empty()
-            }
-        };
-
-        if let Some(links) = template_instantiations {
-            for link in links {
-                match parse_links(&mut policies, link) {
-                    Ok(()) => (),
-                    Err(e) => errs.push(e),
-                }
-            }
-        }
-
-        if errs.is_empty() {
-            Ok((policies, entities))
-        } else {
-            Err(errs)
         }
     }
 }
@@ -865,15 +695,18 @@ impl RecvdSlice {
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
+
+    use crate::ffi::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    /// Assert that `is_authorized_json()` returns Allow with no errors
+    /// Assert that [`is_authorized_json()`] returns `Allow` with no errors
     #[track_caller]
     fn assert_is_authorized_json(json: serde_json::Value) {
-        let ans_val = is_authorized_json(json).unwrap();
+        let ans_val =
+            is_authorized_json(json).expect("expected input to parse as an `AuthorizationCall`");
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
             assert_eq!(response.decision(), Decision::Allow);
@@ -882,10 +715,11 @@ mod test {
         });
     }
 
-    /// Assert that `is_authorized_json()` returns Deny with no errors
+    /// Assert that [`is_authorized_json()`] returns `Deny` with no errors
     #[track_caller]
     fn assert_is_not_authorized_json(json: serde_json::Value) {
-        let ans_val = is_authorized_json(json).unwrap();
+        let ans_val =
+            is_authorized_json(json).expect("expected input to parse as an `AuthorizationCall`");
         let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(AuthorizationAnswer::Success { response, .. }) => {
             assert_eq!(response.decision(), Decision::Deny);
@@ -894,81 +728,31 @@ mod test {
         });
     }
 
-    /// Assert that `is_authorized_json()` returns
-    /// `AuthorizationAnswer::Failure` where some error contains the expected
-    /// string `err` (in its main error message)
+    /// Assert that [`is_authorized_json_str()`] returns a `serde_json::Error`
+    /// error with a message that matches `msg`
     #[track_caller]
-    fn assert_is_authorized_json_is_failure(json: serde_json::Value, err: &str) {
-        let ans_val =
-            is_authorized_json(json).expect("expected it to at least parse into AuthorizationCall");
-        let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => {
-            assert!(
-                errors.iter().any(|e| e.message.contains(err)),
-                "Expected to see error(s) containing `{err}`, but saw {errors:?}",
-            );
+    fn assert_is_authorized_json_str_is_failure(call: &str, msg: &str) {
+        assert_matches!(is_authorized_json_str(call), Err(e) => {
+            assert_eq!(e.to_string(), msg);
         });
     }
 
-    #[test]
-    fn test_slice_convert() {
-        let entities = serde_json::json!(
-            [
-                {
-                    "uid" : {
-                        "type" : "user",
-                        "id" : "alice"
-                    },
-                    "attrs": { "foo": "bar" },
-                    "parents" : [
-                        {
-                            "type" : "user",
-                            "id" : "bob"
-                        }
-                    ]
-                },
-                {
-                    "uid" : {
-                        "type" : "user",
-                        "id" : "bob"
-                    },
-                    "attrs": {},
-                    "parents": []
-                }
-            ]
-        );
-        let rslice = RecvdSlice {
-            policies: PolicySet::Map(HashMap::new()),
-            entities: entities.into(),
-            templates: None,
-            template_instantiations: None,
-        };
-        let (policies, entities) = rslice.try_into(None).expect("parse failed");
-        assert!(policies.is_empty());
-        entities
-            .get(&crate::EntityUid::from_type_name_and_id(
-                "user".parse().unwrap(),
-                "alice".parse().unwrap(),
-            ))
-            .map_or_else(
-                || panic!("Missing user::alice Entity"),
-                |alice| {
-                    assert!(entities.is_ancestor_of(
-                        &crate::EntityUid::from_type_name_and_id(
-                            "user".parse().unwrap(),
-                            "bob".parse().unwrap()
-                        ),
-                        &alice.uid()
-                    ));
-                },
-            );
+    /// Assert that [`is_authorized_json()`] returns [`AuthorizationAnswer::Failure`]
+    /// and return the enclosed errors
+    #[track_caller]
+    fn assert_is_authorized_json_is_failure(json: serde_json::Value) -> Vec<DetailedError> {
+        let ans_val =
+            is_authorized_json(json).expect("expected input to parse as an `AuthorizationCall`");
+        let result: Result<AuthorizationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(AuthorizationAnswer::Failure { errors, .. }) => errors)
     }
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_matches!(is_authorized_json_str("iefjieoafiaeosij"), Err(e) => {
-            assert!(e.to_string().contains("expected value"));
-        });
+        assert_is_authorized_json_str_is_failure(
+            "iefjieoafiaeosij",
+            "expected value at line 1 column 1",
+        );
     }
 
     #[test]
@@ -987,12 +771,9 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {},
-             "entities": []
-            }
+            "policies": {},
+            "entities": []
         });
-
         assert_is_not_authorized_json(call);
     }
 
@@ -1009,16 +790,20 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal == User::\"alice\", action, resource);"
-             },
-             "entities": []
-            }
+            "policies": {
+                "staticPolicies": {
+                    "ID1": "permit(principal == User::\"alice\", action, resource);"
+                }
+            },
+            "entities": []
         });
-
-        let msg = "failed to parse principal";
-        assert_is_authorized_json_is_failure(call, msg);
+        // unspecified entities are no longer supported
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(
+            &errs,
+            "failed to parse principal: in uid field of <unknown entity>, expected a literal entity reference, but got `null`",
+            Some("literal entity references can be made with `{ \"type\": \"SomeType\", \"id\": \"SomeId\" }`"),
+        );
     }
 
     #[test]
@@ -1037,14 +822,13 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal == User::\"alice\", action, resource);"
-             },
-             "entities": []
-            }
+            "policies": {
+                "staticPolicies": {
+                    "ID1": "permit(principal == User::\"alice\", action, resource);"
+                }
+            },
+            "entities": []
         });
-
         assert_is_authorized_json(call);
     }
 
@@ -1064,12 +848,11 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": "permit(principal == User::\"alice\", action, resource);",
-             "entities": []
-            }
+            "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action, resource);"
+            },
+            "entities": []
         });
-
         assert_is_authorized_json(call);
     }
 
@@ -1094,12 +877,11 @@ mod test {
                 "__extn" : { "fn" : "ip", "arg" : "222.222.222.222" }
              }
             },
-            "slice": {
-             "policies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };",
-             "entities": []
-            }
+            "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };"
+            },
+            "entities": []
         });
-
         assert_is_authorized_json(call);
     }
 
@@ -1119,8 +901,9 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };",
+            "policies": {
+                "staticPolicies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };"
+            },
              "entities": [
               {
                "uid": {
@@ -1167,7 +950,6 @@ mod test {
                "parents": []
               }
              ]
-            }
         });
         assert_is_authorized_json(call);
     }
@@ -1188,14 +970,14 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {
-              "ID0": "permit(principal == User::\"jerry\", action, resource == Photo::\"doorx\");",
-              "ID1": "permit(principal == User::\"tom\", action, resource == Photo::\"doory\");",
-              "ID2": "permit(principal == User::\"alice\", action, resource == Photo::\"door\");"
-             },
-             "entities": []
-            }
+            "policies": {
+                "staticPolicies": {
+                    "ID0": "permit(principal == User::\"jerry\", action, resource == Photo::\"doorx\");",
+                    "ID1": "permit(principal == User::\"tom\", action, resource == Photo::\"doory\");",
+                    "ID2": "permit(principal == User::\"alice\", action, resource == Photo::\"door\");"
+                }
+            },
+            "entities": []
         });
         assert_is_authorized_json(call);
     }
@@ -1216,8 +998,9 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };",
+            "policies": {
+                "staticPolicies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };"
+            },
              "entities": [
               {
                "uid": {
@@ -1264,7 +1047,6 @@ mod test {
                "parents": []
               }
              ]
-            }
         });
         assert_is_authorized_json(call);
     }
@@ -1285,13 +1067,13 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {
-              "ID0": "permit(principal, action, resource);",
-              "ID1": "forbid(principal == User::\"alice\", action, resource == Photo::\"door\");"
-             },
+            "policies": {
+                "staticPolicies": {
+                    "ID0": "permit(principal, action, resource);",
+                    "ID1": "forbid(principal == User::\"alice\", action, resource == Photo::\"door\");"
+                }
+            },
              "entities": []
-            }
         });
         assert_is_not_authorized_json(call);
     }
@@ -1312,12 +1094,11 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": "permit(principal, action, resource);forbid(principal == User::\"alice\", action, resource);",
+            "policies": {
+                "staticPolicies": "permit(principal, action, resource);\nforbid(principal == User::\"alice\", action, resource);"
+            },
              "entities": []
-            }
         });
-
         assert_is_not_authorized_json(call);
     }
 
@@ -1337,11 +1118,10 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": "permit(principal == ?principal, action, resource);",
-             "entities": [],
-             "templates": {}
-            }
+            "policies": {
+                "staticPolicies": "permit(principal == ?principal, action, resource);"
+            },
+            "entities": []
         });
         assert_is_not_authorized_json(call);
     }
@@ -1362,13 +1142,12 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {},
-             "entities": [],
-             "templates": {
-              "ID0": "permit(principal == ?principal, action, resource);"
-             }
-            }
+            "policies": {
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                }
+            },
+            "entities": [],
         });
         assert_is_not_authorized_json(call);
     }
@@ -1389,28 +1168,21 @@ mod test {
              "id": "door"
             },
             "context": {},
-            "slice": {
-             "policies": {},
-             "entities": [],
-             "templates": {
-              "ID0": "permit(principal == ?principal, action, resource);"
-             },
-             "templateInstantiations": [
-              {
-               "templateId": "ID0",
-               "resultPolicyId": "ID0_User_alice",
-               "instantiations": [
-                {
-                 "slot": "?principal",
-                 "value": {
-                  "ty": "User",
-                  "eid": "alice"
-                 }
-                }
-               ]
-              }
-             ]
-            }
+            "policies": {
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "templateLinks": [
+                    {
+                        "templateId": "ID0",
+                        "newId": "ID0_User_alice",
+                        "values": {
+                            "?principal": { "type": "User", "id": "alice" }
+                        }
+                    }
+                ]
+            },
+            "entities": []
         });
         assert_is_authorized_json(call);
     }
@@ -1431,16 +1203,21 @@ mod test {
                 "id" : "door"
             },
             "context" : {},
-            "slice" : {
-                "policies" : { "ID0": "permit(principal, action, resource);" },
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : []
-            }
+            "policies": {
+                "staticPolicies": {
+                    "ID0": "permit(principal, action, resource);"
+                },
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                }
+            },
+            "entities" : []
         });
-        assert_is_authorized_json_is_failure(
-            call,
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(
+            &errs,
             "failed to add template with id `ID0` to policy set: duplicate template or policy id `ID0`",
+            None,
         );
     }
 
@@ -1460,37 +1237,30 @@ mod test {
                 "id" : "door"
             },
             "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
+            "policies" : {
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "templateLinks" : [
                     {
                         "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
+                        "newId" : "ID1",
+                        "values" : { "?principal": { "type" : "User", "id" : "alice" } }
                     },
                     {
                         "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
+                        "newId" : "ID1",
+                        "values" : { "?principal": { "type" : "User", "id" : "alice" } }
                     }
                 ]
-            }
+            },
+            "entities" : [],
         });
-        assert_is_authorized_json_is_failure(
-            call,
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(
+            &errs,
             "unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+            None,
         );
     }
 
@@ -1510,27 +1280,26 @@ mod test {
                 "id" : "door"
             },
             "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
+            "policies" : {
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "templateLinks" : [
                     {
                         "templateId" : "ID0",
-                        "resultPolicyId" : "ID0",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
+                        "newId" : "ID0",
+                        "values" : { "?principal": { "type" : "User", "id" : "alice" } }
                     }
                 ]
-            }
+            },
+            "entities" : []
+
         });
-        assert_is_authorized_json_is_failure(
-            call,
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(
+            &errs,
             "unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
+            None,
         );
     }
 
@@ -1550,186 +1319,126 @@ mod test {
                 "id" : "door"
             },
             "context" : {},
-            "slice" : {
-                "policies" : { "ID1": "permit(principal, action, resource);" },
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
+            "policies" : {
+                "staticPolicies" : {
+                    "ID1": "permit(principal, action, resource);"
+                },
+                "templates": {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "templateLinks" : [
                     {
                         "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
+                        "newId" : "ID1",
+                        "values" : { "?principal": { "type" : "User", "id" : "alice" } }
                     }
                 ]
-            }
+            },
+            "entities" : []
         });
-        assert_is_authorized_json_is_failure(
-            call,
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(
+            &errs,
             "unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+            None,
         );
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_policy_ids() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
-            "slice" : {
-                "policies" : {
-                  "ID0": "permit(principal, action, resource);",
-                  "ID0": "permit(principal, action, resource);"
-                },
-                "entities" : [],
-                "templates" : {},
-                "templateInstantiations" : [ ]
-            }
+            "policies" : {
+                "staticPolicies" : {
+                    "ID0": "permit(principal, action, resource);",
+                    "ID0": "permit(principal, action, resource);"
+                }
+            },
+            "entities" : [],
         }"#;
-        assert_matches!(is_authorized_json_str(call), Err(e) => {
-            assert!(e.to_string().contains("policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"));
-        });
+        assert_is_authorized_json_str_is_failure(
+            call,
+            "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys) at line 20 column 13",
+        );
     }
 
     #[test]
     fn test_authorized_fails_on_duplicate_template_ids() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
+            "policies" : {
                 "templates" : {
                     "ID0": "permit(principal == ?principal, action, resource);",
                     "ID0": "permit(principal == ?principal, action, resource);"
-                },
-                "templateInstantiations" : [ ]
-            }
+                }
+            },
+            "entities" : []
         }"#;
-        assert_matches!(is_authorized_json_str(call), Err(e) => {
-            assert!(e.to_string().contains("found duplicate key"));
-        });
+        assert_is_authorized_json_str_is_failure(
+            call,
+            "invalid entry: found duplicate key at line 19 column 17",
+        );
     }
 
     #[test]
-    fn test_authorized_fails_on_duplicate_slot_link1() {
-        let call = json!({
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+    fn test_authorized_fails_on_duplicate_slot_link() {
+        let call = r#"{
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
-                    {
-                        "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            },
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
+            "policies" : {
+                "templates" : {
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "templateLinks" : [{
+                    "templateId" : "ID0",
+                    "newId" : "ID1",
+                    "values" : {
+                        "?principal": { "type" : "User", "id" : "alice" },
+                        "?principal": { "type" : "User", "id" : "alice" }
                     }
-                ]
-            }
-        });
-        assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`"));
-        });
-    }
-
-    #[test]
-    fn test_authorized_fails_on_duplicate_slot_link2() {
-        let call = json!({
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
-            "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
-                    {
-                        "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            },
-                            {
-                                "slot" : "?resource",
-                                "value" : { "ty" : "Box", "eid" : "box" }
-                            },
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            }
-                        ]
-                    }
-                ]
-            }
-        });
-        assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`"));
-        });
-    }
-
-    #[test]
-    fn test_authorized_fails_on_duplicate_slot_link3() {
-        let call = json!({
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
-            "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
-                "templateInstantiations" : [
-                    {
-                        "templateId" : "ID0",
-                        "resultPolicyId" : "ID1",
-                        "instantiations" : [
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "User", "eid" : "alice" }
-                            },
-                            {
-                                "slot" : "?resource",
-                                "value" : { "ty" : "Box", "eid" : "box" }
-                            },
-                            {
-                                "slot": "?principal",
-                                "value": { "ty" : "Team", "eid" : "bob" }
-                            },
-                            {
-                                "slot" : "?resource",
-                                "value" : { "ty" : "Box", "eid" : "box2" }
-                            }
-                        ]
-                    }
-                ]
-            }
-        });
-        assert_matches!(is_authorized_json(call), Err(e) => {
-            assert!(e.to_string().contains("duplicate values for the slot(s): `?principal`, `?resource`"));
-        });
+                }]
+            },
+            "entities" : [],
+        }"#;
+        assert_is_authorized_json_str_is_failure(
+            call,
+            "invalid entry: found duplicate key at line 25 column 21",
+        );
     }
 
     #[test]
@@ -1748,31 +1457,28 @@ mod test {
                 "id" : "door"
             },
             "context" : {},
-            "slice" : {
-                "policies" : {},
-                "entities" : [
-                    {
-                        "uid": {
-                            "type" : "User",
-                            "id" : "alice"
-                        },
-                        "attrs": {},
-                        "parents": []
+            "policies" : {},
+            "entities" : [
+                {
+                    "uid": {
+                        "type" : "User",
+                        "id" : "alice"
                     },
-                    {
-                        "uid": {
-                            "type" : "User",
-                            "id" : "alice"
-                        },
-                        "attrs": {},
-                        "parents": []
-                    }
-                ],
-                "templates" : {},
-                "templateInstantiations" : []
-            }
+                    "attrs": {},
+                    "parents": []
+                },
+                {
+                    "uid": {
+                        "type" : "User",
+                        "id" : "alice"
+                    },
+                    "attrs": {},
+                    "parents": []
+                }
+            ]
         });
-        assert_is_authorized_json_is_failure(call, r#"duplicate entity entry `User::"alice"`"#);
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(&errs, r#"duplicate entity entry `User::"alice"`"#, None);
     }
 
     #[test]
@@ -1794,16 +1500,13 @@ mod test {
                 "is_authenticated": true,
                 "is_authenticated": false
             },
-            "slice" : {
-                "policies" : {},
-                "entities" : [],
-                "templates" : {},
-                "templateInstantiations" : []
-            }
+            "policies" : {},
+            "entities" : [],
         }"#;
-        assert_matches!(is_authorized_json_str(call), Err(e) => {
-            assert!(e.to_string() == "the key `is_authenticated` occurs two or more times in the same JSON object at line 17 column 13");
-        });
+        assert_is_authorized_json_str_is_failure(
+            call,
+            "the key `is_authenticated` occurs two or more times in the same JSON object at line 17 column 13",
+        );
     }
 
     #[test]
@@ -1822,15 +1525,11 @@ mod test {
                 "id": "door",
             },
             "context": {},
-            "slice": {
-                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
-                "entities": [],
-                "templates": {},
-                "templateInstantiations": [],
+            "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);"
             },
-            "schema": {
-                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
-            },
+            "entities": [],
+            "schema": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
         });
         let bad_call = json!({
             "principal" : {
@@ -1846,15 +1545,11 @@ mod test {
                 "id": "bob",
             },
             "context": {},
-            "slice": {
-                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
-                "entities": [],
-                "templates": {},
-                "templateInstantiations": [],
+            "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);"
             },
-            "schema": {
-                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
-            },
+            "entities": [],
+            "schema": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
         });
         let bad_call_req_validation_disabled = json!({
             "principal" : {
@@ -1870,22 +1565,20 @@ mod test {
                 "id": "bob",
             },
             "context": {},
-            "slice": {
-                "policies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);",
-                "entities": [],
-                "templates": {},
-                "templateInstantiations": [],
+            "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action == Action::\"view\", resource);"
             },
-            "schema": {
-                "human": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };"
-            },
+            "entities": [],
+            "schema": "entity User, Photo; action view appliesTo { principal: User, resource: Photo };",
             "validateRequest": false,
         });
 
         assert_is_authorized_json(good_call);
-        assert_is_authorized_json_is_failure(
-            bad_call,
+        let errs = assert_is_authorized_json_is_failure(bad_call);
+        assert_exactly_one_error(
+            &errs,
             "resource type `User` is not valid for `Action::\"view\"`",
+            None,
         );
         assert_is_authorized_json(bad_call_req_validation_disabled);
     }
@@ -1921,7 +1614,7 @@ mod partial_test {
     }
 
     #[track_caller]
-    fn assert_is_residual(call: serde_json::Value, expected_residuals: HashSet<&str>) {
+    fn assert_is_residual(call: serde_json::Value, expected_residuals: &HashSet<&str>) {
         let ans_val = is_authorized_partial_json(call).unwrap();
         let result: Result<PartialAuthorizationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(PartialAuthorizationAnswer::Residuals { response, .. }) => {
@@ -1929,11 +1622,11 @@ mod partial_test {
             let errors: Vec<_> = response.errored().collect();
             assert_eq!(errors.len(), 0, "{errors:?}");
             let actual_residuals: HashSet<_> = response.nontrivial_residual_ids().collect();
-            for id in &expected_residuals {
-                assert!(actual_residuals.contains(&PolicyId::from_str(id).ok().unwrap()), "expected nontrivial residual for {id}, but it's missing")
+            for id in expected_residuals {
+                assert!(actual_residuals.contains(&PolicyId::new(id)), "expected nontrivial residual for {id}, but it's missing");
             }
             for id in &actual_residuals {
-                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}")
+                assert!(expected_residuals.contains(id.to_string().as_str()),"found unexpected nontrivial residual for {id}");
             }
         });
     }
@@ -1950,13 +1643,12 @@ mod partial_test {
                 "id": "view"
             },
             "context": {},
-            "slice": {
-                "policies": {
-                "ID1": "permit(principal == User::\"alice\", action, resource);"
-                },
-                "entities": []
+            "policies": {
+                "staticPolicies": {
+                    "ID1": "permit(principal == User::\"alice\", action, resource);"
+                }
             },
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_authorized_json_partial(call);
@@ -1974,13 +1666,12 @@ mod partial_test {
                 "id": "view"
             },
             "context": {},
-            "slice": {
-                "policies": {
-                "ID1": "permit(principal == User::\"alice\", action, resource);"
-                },
-                "entities": []
+            "policies": {
+                "staticPolicies": {
+                    "ID1": "permit(principal == User::\"alice\", action, resource);"
+                }
             },
-            "partial_evaluation": true
+            "entities": []
         });
 
         assert_is_not_authorized_json_partial(call);
@@ -1998,16 +1689,15 @@ mod partial_test {
                 "id" : "door"
             },
             "context": {},
-            "slice": {
-                "policies": {
-                "ID1": "permit(principal == User::\"alice\", action, resource);"
-                },
-                "entities": []
+            "policies": {
+                "staticPolicies": {
+                    "ID1": "permit(principal == User::\"alice\", action, resource);"
+                }
             },
-            "partial_evaluation": true
+            "entities": []
         });
 
-        assert_is_residual(call, HashSet::from(["ID1"]));
+        assert_is_residual(call, &HashSet::from(["ID1"]));
     }
 
     #[test]
@@ -2022,16 +1712,15 @@ mod partial_test {
                 "id" : "door"
             },
             "context": {},
-            "slice": {
-                "policies": {
-                "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
-                },
-                "entities": []
+            "policies" : {
+                "staticPolicies" : {
+                    "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
+                }
             },
-            "partial_evaluation": true
+            "entities": []
         });
 
-        assert_is_residual(call, HashSet::from(["ID1"]));
+        assert_is_residual(call, &HashSet::from(["ID1"]));
     }
 
     #[test]
@@ -2046,16 +1735,15 @@ mod partial_test {
                 "id" : "door"
             },
             "context": {},
-            "slice": {
-                "policies": {
-                "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
-                "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
-                },
-                "entities": []
+            "policies" : {
+                "staticPolicies" : {
+                    "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
+                    "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
+                }
             },
-            "partial_evaluation": true
+            "entities": []
         });
 
-        assert_is_residual(call, HashSet::from(["ID1"]));
+        assert_is_residual(call, &HashSet::from(["ID1"]));
     }
 }

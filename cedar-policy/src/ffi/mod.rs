@@ -22,3 +22,4 @@ mod utils;
 pub use utils::*;
 mod validate;
 pub use validate::*;
+mod tests;

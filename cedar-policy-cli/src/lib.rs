@@ -99,6 +99,9 @@ pub enum Commands {
     TranslatePolicy(TranslatePolicyArgs),
     /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
+    /// Visualize a set of JSON entities to the graphviz format.
+    /// Warning: Entity visualization is best-effort and not well tested.
+    Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
 }
@@ -341,8 +344,8 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
-            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+            PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
             add_template_links_to_set(links_filename, &mut pset)?;
@@ -377,6 +380,12 @@ pub struct AuthorizeArgs {
     /// Time authorization and report timing information
     #[arg(short, long)]
     pub timing: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct VisualizeArgs {
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -653,6 +662,19 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
+    }
+}
+
+pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
+    match load_entities(&args.entities_file, None) {
+        Ok(entities) => {
+            println!("{}", entities.to_dot_str());
+            CedarExitCode::Success
+        }
+        Err(report) => {
+            eprintln!("{report:?}");
+            CedarExitCode::Failure
+        }
     }
 }
 
@@ -1138,7 +1160,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
 
 /// Read a policy set, in Cedar human syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_human_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
@@ -1153,32 +1177,64 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
     rename_from_id_annotation(ps)
 }
 
-/// Read a policy or template, in Cedar JSON (EST) syntax, from the file given
+/// Read a policy set, static policy or policy template, in Cedar JSON (EST) syntax, from the file given
 /// in `filename`, or from stdin if `filename` is `None`.
-fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_json_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "JSON policy";
     let json_source = read_from_file_or_stdin(filename, context)?;
-    let json: serde_json::Value = serde_json::from_str(&json_source).into_diagnostic()?;
-    let err_to_report = |err| {
+    let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
+    let policy_type = get_json_policy_type(&json)?;
+
+    let add_json_source = |report: Report| {
         let name = filename.map_or_else(
             || "<stdin>".to_owned(),
             |n| n.as_ref().display().to_string(),
         );
-        Report::new(err).with_source_code(NamedSource::new(name, json_source.clone()))
+        report.with_source_code(NamedSource::new(name, json_source.clone()))
     };
 
-    match Policy::from_json(None, json.clone()).map_err(err_to_report) {
-        Ok(policy) => PolicySet::from_policies([policy])
-            .wrap_err_with(|| format!("failed to create policy set from {context}")),
-        Err(_) => match Template::from_json(None, json).map_err(err_to_report) {
-            Ok(template) => {
-                let mut ps = PolicySet::new();
-                ps.add_template(template)?;
-                Ok(ps)
-            }
-            Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
+    match policy_type {
+        JsonPolicyType::SinglePolicy => match Policy::from_json(None, json.clone()) {
+            Ok(policy) => PolicySet::from_policies([policy])
+                .wrap_err_with(|| format!("failed to create policy set from {context}")),
+            Err(_) => match Template::from_json(None, json)
+                .map_err(|err| add_json_source(Report::new(err)))
+            {
+                Ok(template) => {
+                    let mut ps = PolicySet::new();
+                    ps.add_template(template)?;
+                    Ok(ps)
+                }
+                Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
+            },
         },
+        JsonPolicyType::PolicySet => PolicySet::from_json_value(json)
+            .map_err(|err| add_json_source(Report::new(err)))
+            .wrap_err_with(|| format!("failed to create policy set from {context}")),
     }
+}
+
+fn get_json_policy_type(json: &serde_json::Value) -> Result<JsonPolicyType> {
+    let policy_set_properties = ["staticPolicies", "templates", "templateLinks"];
+    let policy_properties = ["action", "effect", "principal", "resource", "conditions"];
+
+    let json_has_property = |p| json.get(p).is_some();
+    let has_any_policy_set_property = policy_set_properties.iter().any(json_has_property);
+    let has_any_policy_property = policy_properties.iter().any(json_has_property);
+
+    match (has_any_policy_set_property, has_any_policy_property) {
+        (false, false) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found no matching properties from either format")),
+        (true, true) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found matching properties from both formats")),
+        (true, _) => Ok(JsonPolicyType::PolicySet),
+        (_, true) => Ok(JsonPolicyType::SinglePolicy),
+    }
+}
+
+enum JsonPolicyType {
+    SinglePolicy,
+    PolicySet,
 }
 
 fn read_schema_file(

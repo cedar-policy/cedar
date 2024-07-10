@@ -209,8 +209,9 @@ impl ValidatorSchema {
     pub fn from_file_natural(
         r: impl std::io::Read,
         extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r)?;
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
+    {
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -219,11 +220,12 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] from a string containing Cedar "natural"
     /// schema syntax.
-    pub fn from_str_natural(
+    pub fn from_str_natural<'a>(
         src: &str,
-        extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src)?;
+        extensions: Extensions<'a>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    {
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -2340,6 +2342,33 @@ mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("unknown extension type `i`")
                     .help("did you mean `ipaddr`?")
+                    .build());
+        });
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "ty": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Extension",
+                                "name": "partial_evaluation",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unknown extension type `partial_evaluation`")
+                    .help("did you mean `decimal`?")
                     .build());
         });
     }

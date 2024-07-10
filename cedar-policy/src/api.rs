@@ -158,7 +158,7 @@ impl Entity {
     /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
     /// assert!(entity.attr("foo").is_none());
     /// ```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, PartialValueToValueError>> {
         let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
@@ -646,6 +646,14 @@ impl Entities {
     /// `from_json_file`.
     pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
+    }
+
+    #[doc = include_str!("../experimental_warning.md")]
+    /// Visualize an `Entities` object in the graphviz `dot`
+    /// format. Entity visualization is best-effort and not well tested.
+    /// Feel free to submit an issue if you are using this feature and would like it improved.
+    pub fn to_dot_str(&self) -> String {
+        self.0.to_dot_str()
     }
 }
 
@@ -1210,7 +1218,10 @@ impl SchemaFragment {
     pub fn from_file_natural(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(
+            r,
+            Extensions::all_available(),
+        )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1224,7 +1235,10 @@ impl SchemaFragment {
     pub fn from_str_natural(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(
+            src,
+            Extensions::all_available(),
+        )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1234,7 +1248,7 @@ impl SchemaFragment {
         ))
     }
 
-    /// Create a `SchemaFragment` directly from a file.
+    /// Create a [`SchemaFragment`] directly from a file.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
@@ -1263,7 +1277,7 @@ impl SchemaFragment {
 impl TryInto<Schema> for SchemaFragment {
     type Error = SchemaError;
 
-    /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
+    /// Convert [`SchemaFragment`] into a [`Schema`]. To build the [`Schema`] we
     /// need to have all entity types defined, so an error will be returned if
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
@@ -2087,8 +2101,8 @@ impl Template {
     /// If `id` is Some, then the resulting template will have that `id`.
     /// If the `id` is None, the parser will use the default "policy0".
     /// The behavior around None may change in the future.
-    pub fn parse(id: Option<String>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_policy_template(id, src.as_ref())?;
+    pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_policy_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
@@ -2524,8 +2538,8 @@ impl Policy {
     /// This can fail if the policy fails to parse.
     /// It can also fail if a template was passed in, as this function only accepts static
     /// policies
-    pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let inline_ast = parser::parse_policy(id, policy_src.as_ref())?;
+    pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
@@ -3410,21 +3424,9 @@ mod context {
         type Item = (String, RestrictedExpression);
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.inner.next().map(|(k, v)| {
-                (
-                    k.to_string(),
-                    match v {
-                        ast::PartialValue::Value(val) => {
-                            RestrictedExpression(ast::RestrictedExpr::from(val))
-                        }
-                        ast::PartialValue::Residual(exp) => {
-                            // `exp` is guaranteed to be a valid `RestrictedExpr`
-                            // since it was originally stored in a `Context`
-                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
-                        }
-                    },
-                )
-            })
+            self.inner
+                .next()
+                .map(|(k, v)| (k.to_string(), RestrictedExpression(v)))
         }
     }
 }

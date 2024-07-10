@@ -5,6 +5,9 @@
 ### Added
 
 - Added command `translate-policy` that translates a policy set in its human-readable format to the JSON format (except comments).
+- Added a `visualize` option to the command-line interface, allowing entity json
+files to be visualized using the graphviz format.
+- All commands that read policies in JSON format now accept a policy set in addition to a single policy or a policy template.
 
 ### Changed
 

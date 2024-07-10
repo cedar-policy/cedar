@@ -15,7 +15,7 @@
  */
 
 //! Utility functions and types for JSON interface
-use crate::{Policy, SchemaWarning, Template};
+use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
@@ -33,6 +33,7 @@ extern crate tsify;
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct DetailedError {
     /// Main error message, including both the `miette` "message" and the
     /// `miette` "causes" (uses `miette`'s default `Display` output)
@@ -84,6 +85,7 @@ impl From<miette::Severity> for Severity {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct SourceLabel {
     /// Text of the label (if any)
     pub label: Option<String>,
@@ -97,6 +99,7 @@ pub struct SourceLabel {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct SourceLocation {
     /// Start of the source location (in bytes)
     pub start: usize,
@@ -259,84 +262,237 @@ impl From<serde_json::Value> for Entities {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Represents a static policy in either the Cedar or JSON policy format
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 #[serde(
-    expecting = "policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"
+    expecting = "expected a static policy in the Cedar or JSON policy format (with no duplicate keys)"
 )]
+pub enum Policy {
+    /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    Human(String),
+    /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
+    Json(JsonValueWithNoDuplicateKeys),
+}
+
+impl Policy {
+    /// Parse a [`Policy`] into a [`crate::Policy`]. Takes an optional id
+    /// argument that sets the policy id. If the argument is `None` then a
+    /// default id will be assigned.
+    pub(super) fn parse(self, id: Option<PolicyId>) -> Result<crate::Policy, miette::Report> {
+        let msg = id
+            .clone()
+            .map_or(String::new(), |id| format!(" with id `{id}`"));
+        match self {
+            Self::Human(str) => crate::Policy::parse(id, str)
+                .wrap_err(format!("failed to parse policy{msg} from string")),
+            Self::Json(json) => crate::Policy::from_json(id, json.into())
+                .wrap_err(format!("failed to parse policy{msg} from JSON")),
+        }
+    }
+}
+
+/// Represents a policy template in either the Cedar or JSON policy format
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(untagged)]
+#[serde(
+    expecting = "expected a policy template in the Cedar or JSON policy format (with no duplicate keys)"
+)]
+pub enum Template {
+    /// Template in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    Human(String),
+    /// Template in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
+    Json(JsonValueWithNoDuplicateKeys),
+}
+
+impl Template {
+    /// Parse a [`Template`] into a [`crate::Template`]. Takes an optional id
+    /// argument that sets the template id. If the argument is `None` then a
+    /// default id will be assigned.
+    pub(super) fn parse(self, id: Option<PolicyId>) -> Result<crate::Template, miette::Report> {
+        let msg = id
+            .clone()
+            .map(|id| format!(" with id `{id}`"))
+            .unwrap_or_default();
+        match self {
+            Self::Human(str) => crate::Template::parse(id, str)
+                .wrap_err(format!("failed to parse template{msg} from string")),
+            Self::Json(json) => crate::Template::from_json(id, json.into())
+                .wrap_err(format!("failed to parse template{msg} from JSON")),
+        }
+    }
+
+    /// Parse a [`Template`] into a [`crate::Template`] and add it into the
+    /// provided [`crate::PolicySet`].
+    pub(super) fn parse_and_add_to_set(
+        self,
+        id: Option<PolicyId>,
+        policies: &mut crate::PolicySet,
+    ) -> Result<(), miette::Report> {
+        let msg = id
+            .clone()
+            .map(|id| format!(" with id `{id}`"))
+            .unwrap_or_default();
+        let template = self.parse(id)?;
+        policies
+            .add_template(template)
+            .wrap_err(format!("failed to add template{msg} to policy set"))
+    }
+}
+
+/// Represents a set of static policies
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(untagged)]
+#[serde(
+    expecting = "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys)"
+)]
+pub enum StaticPolicySet {
+    /// Multiple policies as a concatenated string. Requires policies in the
+    /// Cedar (non-JSON) format.
+    Concatenated(String),
+    /// Multiple policies as a set
+    Set(Vec<Policy>),
+    /// Multiple policies as a hashmap where the policy id is the key
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    Map(HashMap<PolicyId, Policy>),
+}
+
+impl StaticPolicySet {
+    /// Parse a [`StaticPolicySet`] into a [`crate::PolicySet`]
+    pub(super) fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
+        match self {
+            Self::Concatenated(str) => crate::PolicySet::from_str(&str)
+                .wrap_err("failed to parse policies from string")
+                .map_err(|e| vec![e]),
+            Self::Set(set) => {
+                let mut errs = Vec::new();
+                let policies = set
+                    .into_iter()
+                    .map(|policy| policy.parse(None))
+                    .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
+                    .collect::<Vec<_>>();
+                if errs.is_empty() {
+                    crate::PolicySet::from_policies(policies).map_err(|e| vec![e.into()])
+                } else {
+                    Err(errs)
+                }
+            }
+            Self::Map(map) => {
+                let mut errs = Vec::new();
+                let policies = map
+                    .into_iter()
+                    .map(|(id, policy)| policy.parse(Some(id)))
+                    .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
+                    .collect::<Vec<_>>();
+                if errs.is_empty() {
+                    crate::PolicySet::from_policies(policies).map_err(|e| vec![e.into()])
+                } else {
+                    Err(errs)
+                }
+            }
+        }
+    }
+}
+
+impl Default for StaticPolicySet {
+    fn default() -> Self {
+        Self::Set(Vec::new())
+    }
+}
+
+/// Represents a template-linked policy
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
-/// Struct defining the two possible ways to pass a set of policies to `is_authorized_json` and `validate_json`
-pub enum PolicySet {
-    /// provides multiple policies as a concatenated string
-    Concatenated(String),
-    /// provides multiple policies as a hashmap where the policyId is the key
+#[serde(deny_unknown_fields)]
+pub struct TemplateLink {
+    /// Id of the template to link against
+    template_id: PolicyId,
+    /// Id of the generated policy
+    new_id: PolicyId,
+    /// Values for the slots; keys must be slot ids (i.e., `?principal` or `?resource`)
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    Map(HashMap<String, String>),
+    values: HashMap<SlotId, EntityUid>,
 }
 
-fn parse_policy_set_from_individual_policies(
-    policies: &HashMap<String, String>,
-    templates: Option<HashMap<String, String>>,
-) -> Result<crate::PolicySet, Vec<miette::Report>> {
-    let mut policy_set = crate::PolicySet::new();
-    let mut errs = Vec::new();
-    for (id, policy_src) in policies {
-        match Policy::parse(Some(id.clone()), policy_src)
-            .wrap_err_with(|| format!("failed to parse policy with id `{id}`"))
-        {
-            Ok(p) => match policy_set
-                .add(p)
-                .wrap_err_with(|| format!("failed to add policy with id `{id}` to policy set"))
-            {
-                Ok(()) => {}
-                Err(e) => {
-                    errs.push(e);
-                }
-            },
-            Err(e) => {
-                errs.push(e);
-            }
-        }
+impl TemplateLink {
+    /// Parse a [`TemplateLink`] and add the linked policy into the provided [`crate::PolicySet`]
+    pub(super) fn parse_and_add_to_set(
+        self,
+        policies: &mut crate::PolicySet,
+    ) -> Result<(), miette::Report> {
+        let values: HashMap<_, _> = self
+            .values
+            .into_iter()
+            .map(|(slot, euid)| euid.parse(None).map(|euid| (slot, euid)))
+            .collect::<Result<HashMap<_, _>, _>>()
+            .wrap_err("failed to parse link values")?;
+        policies
+            .link(self.template_id, self.new_id, values)
+            .map_err(miette::Report::new)
     }
+}
 
-    if let Some(templates) = templates {
-        for (id, policy_src) in templates {
-            match Template::parse(Some(id.clone()), policy_src)
-                .wrap_err_with(|| format!("failed to parse template with id `{id}`"))
-            {
-                Ok(p) => match policy_set.add_template(p).wrap_err_with(|| {
-                    format!("failed to add template with id `{id}` to policy set")
-                }) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        errs.push(e);
-                    }
-                },
-                Err(e) => errs.push(e),
-            }
-        }
-    }
-
-    if errs.is_empty() {
-        Ok(policy_set)
-    } else {
-        Err(errs)
-    }
+/// Represents a policy set, including static policies, templates, and template links
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct PolicySet {
+    /// static policies
+    #[serde(default)]
+    static_policies: StaticPolicySet,
+    /// a map from template id to template content
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(default)]
+    templates: HashMap<PolicyId, Template>,
+    /// template links
+    #[serde(default)]
+    template_links: Vec<TemplateLink>,
 }
 
 impl PolicySet {
-    /// Parse the `PolicySet` into a `crate::PolicySet`.
-    pub(super) fn parse(
-        self,
-        templates: Option<HashMap<String, String>>,
-    ) -> Result<crate::PolicySet, Vec<miette::Report>> {
-        match self {
-            Self::Concatenated(policies) => crate::PolicySet::from_str(&policies)
-                .wrap_err("failed to parse policies from string")
-                .map_err(|e| vec![e]),
-            Self::Map(policies) => parse_policy_set_from_individual_policies(&policies, templates),
+    /// Parse a [`PolicySet`] into a [`crate::PolicySet`]
+    pub(super) fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
+        let mut errs = Vec::new();
+        // Parse static policies
+        let mut policies = self.static_policies.parse().unwrap_or_else(|mut e| {
+            errs.append(&mut e);
+            crate::PolicySet::new()
+        });
+        // Parse templates & add them to the policy set
+        self.templates.into_iter().for_each(|(id, template)| {
+            template
+                .parse_and_add_to_set(Some(id), &mut policies)
+                .unwrap_or_else(|e| errs.push(e));
+        });
+        // Parse template links & add the resulting policies to the policy set
+        self.template_links.into_iter().for_each(|link| {
+            link.parse_and_add_to_set(&mut policies)
+                .unwrap_or_else(|e| errs.push(e));
+        });
+        // Return an error or the final policy set
+        if !errs.is_empty() {
+            return Err(errs);
+        }
+        Ok(policies)
+    }
+
+    /// Create an empty [`PolicySet`]
+    #[cfg(test)]
+    pub(super) fn new() -> Self {
+        Self {
+            static_policies: StaticPolicySet::Set(Vec::new()),
+            templates: HashMap::new(),
+            template_links: Vec::new(),
         }
     }
 }
@@ -345,7 +501,10 @@ impl PolicySet {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+#[serde(
+    expecting = "expected a schema in the Cedar or JSON policy format (with no duplicate keys)"
+)]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     Human(String),
@@ -365,7 +524,7 @@ impl Schema {
                         Box::new(warnings) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(miette::Report::new),
+                .wrap_err("failed to parse schema from string"),
             Self::Json(val) => crate::Schema::from_json_value(val.into())
                 .map(|sch| {
                     (
@@ -373,7 +532,7 @@ impl Schema {
                         Box::new(std::iter::empty()) as Box<dyn Iterator<Item = SchemaWarning>>,
                     )
                 })
-                .map_err(miette::Report::new),
+                .wrap_err("failed to parse schema from JSON"),
         }
     }
 }
@@ -384,46 +543,509 @@ pub(super) struct WithWarnings<T> {
 }
 
 // PANIC SAFETY unit tests
-#[allow(clippy::panic)]
+#[allow(clippy::panic, clippy::indexing_slicing)]
+// Also disable some other clippy lints that are unimportant for testing code
+#[allow(clippy::module_name_repetitions, clippy::missing_panics_doc)]
+#[cfg(test)]
+pub mod test_utils {
+    use super::*;
+
+    /// Assert that an error has the specified message and help fields.
+    #[track_caller]
+    pub fn assert_error_matches(err: &DetailedError, msg: &str, help: Option<&str>) {
+        assert_eq!(err.message, msg, "did not see the expected error message");
+        assert_eq!(
+            err.help,
+            help.map(Into::into),
+            "did not see the expected help message"
+        );
+    }
+
+    /// Assert that a vector (of errors) has the expected length
+    #[track_caller]
+    pub fn assert_length_matches<T: std::fmt::Debug>(errs: &[T], n: usize) {
+        assert_eq!(
+            errs.len(),
+            n,
+            "expected {n} error(s) but saw {}",
+            errs.len()
+        );
+    }
+
+    /// Assert that a vector contains exactly one error with the specified
+    /// message and help text.
+    #[track_caller]
+    pub fn assert_exactly_one_error(errs: &[DetailedError], msg: &str, help: Option<&str>) {
+        assert_length_matches(errs, 1);
+        assert_error_matches(&errs[0], msg, help);
+    }
+}
+
+// PANIC SAFETY unit tests
+#[allow(clippy::panic, clippy::indexing_slicing)]
+// Also disable some other clippy lints that are unimportant for testing code
+#[allow(clippy::too_many_lines)]
 #[cfg(test)]
 mod test {
     use super::*;
     use cedar_policy_core::test_utils::*;
     use serde_json::json;
+    use test_utils::assert_length_matches;
+
+    #[test]
+    fn test_policy_parser() {
+        // A string literal will be parsed as a policy in the Cedar syntax
+        let policy_json = json!("permit(principal == User::\"alice\", action, resource);");
+        let policy: Policy =
+            serde_json::from_value(policy_json).expect("failed to parse from JSON");
+        policy.parse(None).expect("failed to convert to policy");
+
+        // A JSON object will be parsed as a policy in the JSON syntax
+        let policy_json = json!({
+            "effect": "permit",
+            "principal": {
+                "op": "==",
+                "entity": { "type": "User", "id": "alice" }
+            },
+            "action": {
+                "op": "All"
+            },
+            "resource": {
+                "op": "All"
+            },
+            "conditions": []
+        });
+        let policy: Policy =
+            serde_json::from_value(policy_json).expect("failed to parse from JSON");
+        policy.parse(None).expect("failed to convert to policy");
+
+        // Invalid Cedar syntax
+        let src = "foo(principal == User::\"alice\", action, resource);";
+        let policy: Policy = serde_json::from_value(json!(src)).expect("failed to parse from JSON");
+        let err = policy
+            .parse(None)
+            .expect_err("should have failed to convert to policy");
+        expect_err(
+            src,
+            &err,
+            &ExpectedErrorMessageBuilder::error("failed to parse policy from string")
+                .source("invalid policy effect: foo")
+                .exactly_one_underline("foo")
+                .help("effect must be either `permit` or `forbid`")
+                .build(),
+        );
+
+        // Not a static policy
+        let src = "permit(principal == ?principal, action, resource);";
+        let policy: Policy =
+            serde_json::from_value(json!(src)).expect("failed to parse from string");
+        let err = policy
+            .parse(None)
+            .expect_err("should have failed to convert to policy");
+        expect_err(
+            src,
+            &err,
+            &ExpectedErrorMessageBuilder::error("failed to parse policy from string")
+                .source("expected a static policy, got a template containing the slot ?principal")
+                .exactly_one_underline(src)
+                .help("try removing the template slot(s) from this policy")
+                .build(),
+        );
+
+        // Not a single policy
+        let src = "permit(principal == User::\"alice\", action, resource); permit(principal == User::\"bob\", action, resource);";
+        let policy: Policy =
+            serde_json::from_value(json!(src)).expect("failed to parse from string");
+        let err = policy
+            .parse(None)
+            .expect_err("should have failed to convert to policy");
+        expect_err(
+            src,
+            &err,
+            &ExpectedErrorMessageBuilder::error("failed to parse policy from string")
+                .source("unexpected token `permit`")
+                .exactly_one_underline("permit")
+                .build(),
+        );
+
+        // Invalid JSON syntax (duplicate keys)
+        // The error message comes from the `serde(expecting = ..)` annotation on `Policy`
+        let policy_json_str = r#"{
+            "effect": "permit",
+            "effect": "forbid"
+        }"#;
+        let err = serde_json::from_str::<Policy>(policy_json_str)
+            .expect_err("should have failed to parse from JSON");
+        assert_eq!(
+            err.to_string(),
+            "expected a static policy in the Cedar or JSON policy format (with no duplicate keys)"
+        );
+    }
+
+    #[test]
+    fn test_template_parser() {
+        // A string literal will be parsed as a template in the Cedar syntax
+        let template_json = json!("permit(principal == ?principal, action, resource);");
+        let template: Template =
+            serde_json::from_value(template_json).expect("failed to parse from JSON");
+        template.parse(None).expect("failed to convert to template");
+
+        // A JSON object will be parsed as a template in the JSON syntax
+        let template_json = json!({
+            "effect": "permit",
+            "principal": {
+                "op": "==",
+                "slot": "?principal"
+            },
+            "action": {
+                "op": "All"
+            },
+            "resource": {
+                "op": "All"
+            },
+            "conditions": []
+        });
+        let template: Template =
+            serde_json::from_value(template_json).expect("failed to parse from JSON");
+        template.parse(None).expect("failed to convert to template");
+
+        // Invalid syntax
+        let src = "permit(principal == ?foo, action, resource);";
+        let template: Template =
+            serde_json::from_value(json!(src)).expect("failed to parse from JSON");
+        let err = template
+            .parse(None)
+            .expect_err("should have failed to convert to template");
+        expect_err(
+            src,
+            &err,
+            &ExpectedErrorMessageBuilder::error("failed to parse template from string")
+                .source("expected an entity uid or matching template slot, found ?foo instead of ?principal")
+                .exactly_one_underline("?foo")
+                .build(),
+        );
+
+        // Static policies can also be parsed as templates
+        let template_json = json!("permit(principal == User::\"alice\", action, resource);");
+        let template: Template =
+            serde_json::from_value(template_json).expect("failed to parse from JSON");
+        template.parse(None).expect("failed to convert to template");
+    }
+
+    #[test]
+    fn test_static_policy_set_parser() {
+        // A string literal will be parsed as the `Concatenated` variant
+        let policies_json = json!("permit(principal == User::\"alice\", action, resource);");
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        policies
+            .parse()
+            .expect("failed to convert to static policy set");
+
+        // A JSON array will be parsed as the `Set` variant
+        let policies_json = json!([
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "==",
+                    "entity": { "type": "User", "id": "alice" }
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            },
+            "permit(principal == User::\"bob\", action, resource);"
+        ]);
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        policies
+            .parse()
+            .expect("failed to convert to static policy set");
+
+        // A JSON object will be parsed as the `Map` variant
+        let policies_json = json!({
+            "policy0": {
+                "effect": "permit",
+                "principal": {
+                    "op": "==",
+                    "entity": { "type": "User", "id": "alice" }
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": []
+            },
+            "policy1": "permit(principal == User::\"bob\", action, resource);"
+        });
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        policies
+            .parse()
+            .expect("failed to convert to static policy set");
+
+        // Invalid static policy set - `policy0` is a template
+        let policies_json = json!({
+            "policy0": "permit(principal == ?principal, action, resource);",
+            "policy1": "permit(principal == User::\"bob\", action, resource);"
+        });
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        let errs = policies
+            .parse()
+            .expect_err("should have failed to convert to static policy set");
+        assert_length_matches(&errs, 1);
+        expect_err(
+            "permit(principal == ?principal, action, resource);",
+            &errs[0],
+            &ExpectedErrorMessageBuilder::error(
+                "failed to parse policy with id `policy0` from string",
+            )
+            .source("expected a static policy, got a template containing the slot ?principal")
+            .exactly_one_underline("permit(principal == ?principal, action, resource);")
+            .help("try removing the template slot(s) from this policy")
+            .build(),
+        );
+
+        // Invalid static policy set - `policy1` is actually multiple policies
+        let policies_json = json!({
+            "policy0": "permit(principal == User::\"alice\", action, resource);",
+            "policy1": "permit(principal == User::\"bob\", action, resource); permit(principal, action, resource);"
+        });
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        let errs = policies
+            .parse()
+            .expect_err("should have failed to convert to static policy set");
+        assert_length_matches(&errs, 1);
+        expect_err(
+            "permit(principal == User::\"bob\", action, resource); permit(principal, action, resource);",
+            &errs[0],
+            &ExpectedErrorMessageBuilder::error(
+                "failed to parse policy with id `policy1` from string",
+            )
+            .source("unexpected token `permit`")
+            .exactly_one_underline("permit")
+            .build(),
+        );
+
+        // Invalid static policy set - both policies are ill-formed
+        let policies_json = json!({
+            "policy0": "permit(principal, action);",
+            "policy1": "forbid(principal, action);"
+        });
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        let errs = policies
+            .parse()
+            .expect_err("should have failed to convert to static policy set");
+        assert_length_matches(&errs, 2);
+        for err in errs {
+            // hack to account for nondeterministic error ordering
+            if err
+                .to_string()
+                .contains("failed to parse policy with id `policy0`")
+            {
+                expect_err(
+                "permit(principal, action);",
+                &err,
+                &ExpectedErrorMessageBuilder::error(
+                        "failed to parse policy with id `policy0` from string",
+                    )
+                    .source("this policy is missing the `resource` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build(),
+            );
+            } else {
+                expect_err(
+                "forbid(principal, action);",
+                &err,
+                &ExpectedErrorMessageBuilder::error(
+                        "failed to parse policy with id `policy1` from string",
+                    )
+                    .source("this policy is missing the `resource` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build(),
+            );
+            }
+        }
+    }
+
+    #[test]
+    fn test_policy_set_parser() {
+        // Empty policy set
+        let policies_json = json!({});
+        let policies: PolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        policies.parse().expect("failed to convert to policy set");
+
+        // Example valid policy set
+        let policies_json = json!({
+            "staticPolicies": [
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": []
+                },
+                "permit(principal == User::\"bob\", action, resource);"
+            ],
+            "templates": {
+                "ID0": "permit(principal == ?principal, action, resource);"
+            },
+            "templateLinks": [
+                {
+                    "templateId": "ID0",
+                    "newId": "ID1",
+                    "values": { "?principal": { "type": "User", "id": "charlie" } }
+                }
+            ]
+        });
+        let policies: PolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        policies.parse().expect("failed to convert to policy set");
+
+        // Example policy set with a link error - `policy0` is already used
+        let policies_json = json!({
+            "staticPolicies": {
+                "policy0": "permit(principal == User::\"alice\", action, resource);",
+                "policy1": "permit(principal == User::\"bob\", action, resource);"
+            },
+            "templates": {
+                "template": "permit(principal == ?principal, action, resource);"
+            },
+            "templateLinks": [
+                {
+                    "templateId": "template",
+                    "newId": "policy0",
+                    "values": { "?principal": { "type": "User", "id": "charlie" } }
+                }
+            ]
+        });
+        let policies: PolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        let errs = policies
+            .parse()
+            .expect_err("should have failed to convert to policy set");
+        assert_length_matches(&errs, 1);
+        expect_err(
+            "",
+            &errs[0],
+            &ExpectedErrorMessageBuilder::error("unable to link template")
+                .source("template-linked policy id `policy0` conflicts with an existing policy id")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_set_parser_is_compatible_with_est_parser() {
+        // The `PolicySet::parse` function accepts the `est::PolicySet` JSON format
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "foo" }
+                    },
+                    "conditions": []
+                }
+            },
+            "templates": {
+                "template": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "all"
+                    },
+                    "resource" : {
+                        "op" : "all",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "bob" }
+                    }
+                }
+            ]
+        });
+
+        // use `crate::PolicySet::from_json_value`
+        let ast_from_est = crate::PolicySet::from_json_value(json.clone())
+            .expect("failed to convert to policy set");
+
+        // use `PolicySet::parse`
+        let ffi_policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        let ast_from_ffi = ffi_policy_set
+            .parse()
+            .expect("failed to convert to policy set");
+
+        // check that the produced policy sets match
+        assert_eq!(ast_from_est, ast_from_ffi);
+    }
 
     #[test]
     fn test_schema_parser() {
-        // Cedar syntax
-        let schema_json = json!({
-            "human": "entity User = { name: String};\nentity Photo;\naction viewPhoto appliesTo { principal: User, resource: Photo };"
-        });
+        // A string literal will be parsed as a schema in the Cedar syntax
+        let schema_json = json!("entity User = {name: String};\nentity Photo;\naction viewPhoto appliesTo {principal: User, resource: Photo};");
         let schema: Schema =
             serde_json::from_value(schema_json).expect("failed to parse from JSON");
         let _ = schema.parse().expect("failed to convert to schema");
 
-        // JSON syntax
+        // A JSON object will be parsed as a schema in the JSON syntax
         let schema_json = json!({
-            "json": {
-                "": {
-                    "entityTypes": {
-                        "User": {
-                            "shape": {
-                                "type": "Record",
-                                "attributes": {
-                                    "name": {
-                                        "type": "String"
-                                    }
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "name": {
+                                    "type": "String"
                                 }
                             }
-                        },
-                        "Photo": {}
+                        }
                     },
-                    "actions": {
-                        "viewPhoto": {
-                            "appliesTo": {
-                                "principalTypes": [ "User" ],
-                                "resourceTypes": [ "Photo" ]
-                            }
+                    "Photo": {}
+                },
+                "actions": {
+                    "viewPhoto": {
+                        "appliesTo": {
+                            "principalTypes": [ "User" ],
+                            "resourceTypes": [ "Photo" ]
                         }
                     }
                 }
@@ -434,23 +1056,21 @@ mod test {
         let _ = schema.parse().expect("failed to convert to schema");
 
         // Invalid syntax (the value is a policy)
-        let schema_json = json!({
-            "human": "permit(principal == User::\"alice\", action, resource);"
-        });
-        let schema: Schema =
-            serde_json::from_value(schema_json).expect("failed to parse from JSON");
+        let src = "permit(principal == User::\"alice\", action, resource);";
+        let schema: Schema = serde_json::from_value(json!(src)).expect("failed to parse from JSON");
         let err = schema
             .parse()
             .map(|(s, _)| s)
             .expect_err("should have failed to convert to schema");
         expect_err(
-            "permit(principal == User::\"alice\", action, resource);",
+            src,
             &err,
-            &ExpectedErrorMessageBuilder::error(r"error parsing schema: unexpected token `permit`")
+            &ExpectedErrorMessageBuilder::error("failed to parse schema from string")
                 .exactly_one_underline_with_label(
                     "permit",
                     "expected `action`, `entity`, `namespace`, or `type`",
                 )
+                .source("error parsing schema: unexpected token `permit`")
                 .build(),
         );
     }

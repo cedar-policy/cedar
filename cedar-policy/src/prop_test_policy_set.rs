@@ -22,7 +22,6 @@ use super::*;
 use proptest::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 /// Production `PolicySet` along with simplified model of policy set
 /// for Proptesting
@@ -73,7 +72,7 @@ impl PolicySetModel {
 
     fn add_static(&mut self, policy_name: &str) {
         let policy_str = "permit(principal, action, resource);";
-        let p = Policy::parse(Some(policy_name.to_owned()), policy_str).unwrap();
+        let p = Policy::parse(Some(PolicyId::new(policy_name)), policy_str).unwrap();
         if self.policy_set.add(p).is_ok() {
             self.assert_name_unique(policy_name);
             self.static_policy_names.push(policy_name.to_owned());
@@ -82,7 +81,7 @@ impl PolicySetModel {
 
     fn add_template(&mut self, template_name: &str) {
         let template_str = "permit(principal == ?principal, action, resource);";
-        let template = Template::parse(Some(template_name.to_owned()), template_str).unwrap();
+        let template = Template::parse(Some(PolicyId::new(template_name)), template_str).unwrap();
         if self.policy_set.add_template(template).is_ok() {
             self.assert_name_unique(template_name);
             self.template_names.push(template_name.to_owned());
@@ -99,8 +98,8 @@ impl PolicySetModel {
             if self
                 .policy_set
                 .link(
-                    PolicyId::from_str(template_name).unwrap(),
-                    PolicyId::from_str(policy_name).unwrap(),
+                    PolicyId::new(template_name),
+                    PolicyId::new(policy_name),
                     vals,
                 )
                 .is_ok()
@@ -132,7 +131,7 @@ impl PolicySetModel {
         //Remove from PolicySet and `link_names`
         if self
             .policy_set
-            .remove_static(PolicyId::from_str(policy_id).unwrap())
+            .remove_static(PolicyId::new(policy_id))
             .is_ok()
         {
             println!("Remove_static {policy_id}");
@@ -143,7 +142,7 @@ impl PolicySetModel {
     fn remove_template(&mut self, template_name: &str) {
         if self
             .policy_set
-            .remove_template(PolicyId::from_str(template_name).unwrap())
+            .remove_template(PolicyId::new(template_name))
             .is_ok()
         {
             println!("Remove_template {template_name}");
@@ -161,11 +160,7 @@ impl PolicySetModel {
     }
 
     fn unlink(&mut self, policy_id: &str) {
-        if self
-            .policy_set
-            .unlink(PolicyId::from_str(policy_id).unwrap())
-            .is_ok()
-        {
+        if self.policy_set.unlink(PolicyId::new(policy_id)).is_ok() {
             println!("Unlink {policy_id}");
             if let Some(template_name) = self.link_to_template_map.get(policy_id) {
                 let template_name = template_name.clone();
@@ -200,36 +195,36 @@ impl PolicySetModel {
         for policy_name in &self.static_policy_names {
             assert!(real_policy_set_links
                 .iter()
-                .any(|p| p.id() == &PolicyId::from_str(policy_name).unwrap()));
+                .any(|p| p.id() == &PolicyId::new(policy_name)));
         }
         for policy_name in &self.link_names {
             assert!(real_policy_set_links
                 .iter()
-                .any(|p| p.id() == &PolicyId::from_str(policy_name).unwrap()));
+                .any(|p| p.id() == &PolicyId::new(policy_name)));
         }
 
         for link_name in real_policy_set_links {
             assert!(
                 self.static_policy_names
                     .iter()
-                    .any(|p| link_name.id() == &PolicyId::from_str(p).unwrap())
+                    .any(|p| link_name.id() == &PolicyId::new(p))
                     || self
                         .link_names
                         .iter()
-                        .any(|p| link_name.id() == &PolicyId::from_str(p).unwrap())
+                        .any(|p| link_name.id() == &PolicyId::new(p))
             );
         }
 
         for template_name in &self.template_names {
             assert!(real_policy_set_templates
                 .iter()
-                .any(|p| p.id() == &PolicyId::from_str(template_name).unwrap()));
+                .any(|p| p.id() == &PolicyId::new(template_name)));
         }
         for template_name in real_policy_set_templates {
             assert!(self
                 .template_names
                 .iter()
-                .any(|p| template_name.id() == &PolicyId::from_str(p).unwrap()));
+                .any(|p| template_name.id() == &PolicyId::new(p)));
         }
     }
 }

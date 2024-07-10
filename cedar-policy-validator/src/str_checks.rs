@@ -167,7 +167,7 @@ mod test {
         "#;
 
         let mut s = PolicySet::new();
-        let p = parse_policy(Some("test".to_string()), src).unwrap();
+        let p = parse_policy(Some(PolicyID::from_string("test")), src).unwrap();
         s.add_static(p).unwrap();
         let warnings =
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();
@@ -196,7 +196,7 @@ mod test {
         };
         "#;
         let mut s = PolicySet::new();
-        let p = parse_policy(Some("test".to_string()), src).unwrap();
+        let p = parse_policy(Some(PolicyID::from_string("test")), src).unwrap();
         s.add_static(p).unwrap();
         let warnings = confusable_string_checks(s.policies().map(|p| p.template()));
         assert_eq!(warnings.count(), 2);
@@ -210,7 +210,7 @@ mod test {
         };
         "#;
         let mut s = PolicySet::new();
-        let p = parse_policy(Some("test".to_string()), src).unwrap();
+        let p = parse_policy(Some(PolicyID::from_string("test")), src).unwrap();
         s.add_static(p).unwrap();
         let warnings =
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();
@@ -239,7 +239,7 @@ mod test {
         };
         "#;
         let mut s = PolicySet::new();
-        let p = parse_policy(Some("test".to_string()), src).unwrap();
+        let p = parse_policy(Some(PolicyID::from_string("test")), src).unwrap();
         s.add_static(p).unwrap();
         let warnings =
             confusable_string_checks(s.policies().map(|p| p.template())).collect::<Vec<_>>();

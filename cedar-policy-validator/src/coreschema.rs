@@ -223,7 +223,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
-                        .typecheck_partial_value(context.as_ref(), extensions)
+                        .typecheck_partial_value(&context.clone().into(), extensions)
                         .map_err(RequestValidationError::TypeOfContext)?
                     {
                         return Err(request_validation_errors::InvalidContextError {

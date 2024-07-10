@@ -511,11 +511,14 @@ mod test {
     #[test]
     fn link_conflicts() {
         let mut pset = PolicySet::new();
-        let p1 = parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p1 = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add_static(p1).expect("Failed to add!");
         let template = parser::parse_policy_template(
-            Some("t".into()),
+            Some(PolicyID::from_string("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
@@ -544,16 +547,18 @@ mod test {
     #[test]
     fn policyset_add() {
         let mut pset = PolicySet::new();
-        let static_policy =
-            parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-                .expect("Failed to parse");
+        let static_policy = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         let static_policy: Policy = static_policy.into();
         pset.add(static_policy)
             .expect("Adding static policy in Policy form should succeed");
 
         let template = Arc::new(
             parser::parse_policy_template(
-                Some("t".into()),
+                Some(PolicyID::from_string("t")),
                 "permit(principal == ?principal, action, resource);",
             )
             .expect("Failed to parse"),
@@ -601,7 +606,7 @@ mod test {
 
         let template2 = Arc::new(
             parser::parse_policy_template(
-                Some("t".into()),
+                Some(PolicyID::from_string("t")),
                 "forbid(principal, action, resource == ?resource);",
             )
             .expect("Failed to parse"),
@@ -630,10 +635,13 @@ mod test {
     #[test]
     fn policy_conflicts() {
         let mut pset = PolicySet::new();
-        let p1 = parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p1 = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         let p2 = parser::parse_policy(
-            Some("id".into()),
+            Some(PolicyID::from_string("id")),
             "permit(principal,action,resource) when { false };",
         )
         .expect("Failed to parse");
@@ -647,12 +655,12 @@ mod test {
     #[test]
     fn template_filtering() {
         let template = parser::parse_policy_template(
-            Some("template".into()),
+            Some(PolicyID::from_string("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
         let static_policy = parser::parse_policy(
-            Some("static".into()),
+            Some(PolicyID::from_string("static")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");

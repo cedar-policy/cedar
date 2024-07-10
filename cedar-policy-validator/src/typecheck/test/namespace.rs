@@ -25,6 +25,7 @@ use std::vec;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID, StaticPolicy},
+    extensions::Extensions,
     parser::parse_policy,
 };
 
@@ -495,7 +496,7 @@ fn assert_policy_typecheck_fails_namespace_schema(
 #[test]
 fn namespaced_entity_is_wrong_type_and() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
             permit(principal, action, resource)
             when {
@@ -519,7 +520,7 @@ fn namespaced_entity_is_wrong_type_and() {
 #[test]
 fn namespaced_entity_is_wrong_type_when() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
             permit(principal, action, resource)
             when {
@@ -555,6 +556,7 @@ fn multi_namespace_action_eq() {
                 action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
             }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -604,6 +606,7 @@ fn multi_namespace_action_in() {
             }
             namespace NS4 { action "Group"; }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -673,6 +676,7 @@ fn test_cedar_policy_642() {
             };
         }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
 
@@ -699,6 +703,7 @@ fn multi_namespace_action_group_cycle() {
             namespace B { action "Act" in A::Action::"Act"; }
             namespace C { action "Act" in B::Action::"Act"; }
         "#,
+        Extensions::all_available(),
     )
     .unwrap();
     assert_matches!(

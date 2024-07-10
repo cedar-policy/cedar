@@ -24,6 +24,7 @@ mod demo_tests {
         iter::{empty, once},
     };
 
+    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
@@ -42,7 +43,7 @@ mod demo_tests {
         let src = r#"
             action "Foo";
         "#;
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) = SchemaFragment::from_str_natural(src, Extensions::none()).unwrap();
         let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             ActionType {
@@ -60,7 +61,7 @@ mod demo_tests {
         let src = r#"
         action "Foo" appliesTo { context: {} };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::none()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -79,7 +80,7 @@ mod demo_tests {
         action "Foo" appliesTo { principal: a, context: {}  };
         "#;
 
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::none()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -97,7 +98,7 @@ mod demo_tests {
         entity a;
         action "Foo" appliesTo { resource: a, context: {}  };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::none()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -117,7 +118,7 @@ mod demo_tests {
                 resource : [a]
             };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -138,7 +139,7 @@ mod demo_tests {
                 resource : [a, b]
             };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -158,7 +159,7 @@ mod demo_tests {
                 principal: [a]
             };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -179,7 +180,7 @@ mod demo_tests {
                 principal: [a, b]
             };
         "#;
-        match SchemaFragment::from_str_natural(src) {
+        match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Ok(_) => panic!("Should have failed to parse!"),
             Err(e) => expect_err(
                 src,
@@ -203,7 +204,8 @@ mod demo_tests {
                 resource: [c, d]
             };
         "#;
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
@@ -242,7 +244,8 @@ mod demo_tests {
                 principal: [a, b]
             };
         "#;
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
@@ -282,7 +285,7 @@ mod demo_tests {
             };
         "#;
         // Can't unwrap here as impl iter doesn't implement debug
-        let err = match SchemaFragment::from_str_natural(src) {
+        let err = match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Err(e) => e,
             _ => panic!("Should have failed to parse"),
         };
@@ -317,7 +320,7 @@ mod demo_tests {
             };
         "#;
         // Can't unwrap here as impl iter doesn't implement debug
-        let err = match SchemaFragment::from_str_natural(src) {
+        let err = match SchemaFragment::from_str_natural(src, Extensions::all_available()) {
             Err(e) => e,
             _ => panic!("Should have failed to parse"),
         };
@@ -363,7 +366,8 @@ mod demo_tests {
             principal: [E],
             resource: [E]
         };
-    "#
+    "#,
+            Extensions::all_available(),
         )
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
@@ -374,7 +378,8 @@ mod demo_tests {
         principal: [E],
         resource: [E]
     };
-"#
+"#,
+            Extensions::all_available(),
         )
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
@@ -385,7 +390,8 @@ action "Foo" appliesTo {
     principal: [E],
     resource: [E]
 };
-"#
+"#,
+            Extensions::all_available(),
         )
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
@@ -396,7 +402,8 @@ namespace Baz {action "Foo" appliesTo {
     principal: [E],
     resource: [E]
 };}
-"#
+"#,
+            Extensions::all_available(),
         )
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
@@ -413,7 +420,8 @@ namespace Baz {action "Foo" appliesTo {
         };
         action view appliesTo { context: authcontext, principal: [E], resource: [E] };
         action upload appliesTo { context: authcontext, principal: [E], resource: [E]};
-"#
+"#,
+            Extensions::all_available(),
         )
         .is_ok());
     }
@@ -462,6 +470,7 @@ namespace Baz {action "Foo" appliesTo {
         };
         }
         "#,
+            Extensions::all_available(),
         )
         .expect("schema should parse");
     }
@@ -481,6 +490,7 @@ namespace Baz {action "Foo" appliesTo {
         };
         }
         "#,
+            Extensions::all_available(),
         ) {
             Ok(_) => panic!("this is not a valid schema"),
             Err(err) => {
@@ -516,6 +526,7 @@ namespace Baz {action "Foo" appliesTo {
                 memberOfTypes: UserGroup
             };
         }"#,
+            Extensions::all_available(),
         )
         .expect("Schema should parse");
         assert!(warnings.collect::<Vec<_>>().is_empty());
@@ -655,6 +666,7 @@ namespace Baz {action "Foo" appliesTo {
             entity Public in [DocumentShare];
             entity Drive;
         }"#,
+            Extensions::all_available(),
         )
         .expect("failed to parse");
         assert!(warnings.collect::<Vec<_>>().is_empty());
@@ -788,7 +800,8 @@ namespace Baz {action "Foo" appliesTo {
         entity B;
         action Foo appliesTo { principal : A, resource : B  };
         "#;
-        let (_, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        let (_, warnings) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 
@@ -857,7 +870,8 @@ namespace Baz {action "Foo" appliesTo {
         }
         "#;
 
-        let (_, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        let (_, warnings) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 
@@ -877,7 +891,8 @@ namespace Baz {action "Foo" appliesTo {
             };
         }
         "#;
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        let (fragment, warnings) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
         let resource = service
@@ -907,7 +922,7 @@ namespace Baz {action "Foo" appliesTo {
     fn expected_tokens() {
         #[track_caller]
         fn assert_labeled_span(src: &str, label: impl Into<String>) {
-            assert_matches!(SchemaFragment::from_str_natural(src).map(|(s, _)| s), Err(e) => {
+            assert_matches!(SchemaFragment::from_str_natural(src, Extensions::all_available()).map(|(s, _)| s), Err(e) => {
                 let actual_label = e.labels().and_then(|l| {
                     l.exactly_one()
                         .ok()
@@ -1164,6 +1179,8 @@ mod parser_tests {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod translator_tests {
+    use cedar_policy_core::ast as cedar_ast;
+    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::FromNormalizedStr;
     use cool_asserts::assert_matches;
 
@@ -1172,7 +1189,6 @@ mod translator_tests {
         types::{EntityLUB, Type},
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
-    use cedar_policy_core::ast as cedar_ast;
 
     // We allow translation schemas that violate RFC 52 to `SchemaFragment`
     // The violations are reported during further translation to
@@ -1183,6 +1199,7 @@ mod translator_tests {
             r#"
           namespace __cedar {}
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_ok());
 
@@ -1190,6 +1207,7 @@ mod translator_tests {
             r#"
           namespace __cedar::Foo {}
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_ok());
     }
@@ -1201,6 +1219,7 @@ mod translator_tests {
           namespace A {}
           namespace A {}
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
     }
@@ -1212,6 +1231,7 @@ mod translator_tests {
           action A;
           action A appliesTo { context: {}};
         "#,
+            Extensions::all_available(),
         );
         assert!(
             schema.is_err(),
@@ -1222,6 +1242,7 @@ mod translator_tests {
           action A;
           action "A";
         "#,
+            Extensions::all_available(),
         );
         assert!(
             schema.is_err(),
@@ -1235,6 +1256,7 @@ mod translator_tests {
           action "A";
             };
         "#,
+            Extensions::all_available(),
         );
         assert!(
             schema.is_err(),
@@ -1246,6 +1268,7 @@ mod translator_tests {
           namespace X { action A; }
           action A;
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_ok());
     }
@@ -1257,6 +1280,7 @@ mod translator_tests {
           entity A;
           entity A {};
         "#,
+            Extensions::all_available(),
         );
         assert!(
             schema.is_err(),
@@ -1266,6 +1290,7 @@ mod translator_tests {
             r#"
           entity A,A {};
         "#,
+            Extensions::all_available(),
         )
         .is_err());
         assert!(SchemaFragment::from_str_natural(
@@ -1273,6 +1298,7 @@ mod translator_tests {
           namespace X { entity A; }
           entity A {};
         "#,
+            Extensions::all_available(),
         )
         .is_ok());
     }
@@ -1284,6 +1310,7 @@ mod translator_tests {
           type A = Bool;
           type A = Long;
         "#,
+            Extensions::all_available(),
         );
         assert!(
             schema.is_err(),
@@ -1294,6 +1321,7 @@ mod translator_tests {
           namespace X { type A = Bool; }
           type A = Long;
         "#,
+            Extensions::all_available(),
         )
         .is_ok());
     }
@@ -1316,6 +1344,7 @@ mod translator_tests {
             };
           }
         "#,
+            Extensions::all_available(),
         )
         .expect("should be a valid natural schema");
         let validator_schema: ValidatorSchema =
@@ -1372,6 +1401,7 @@ mod translator_tests {
                 entity Y;
             }
             "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema =
@@ -1411,6 +1441,7 @@ mod translator_tests {
             };
             type id = String;
           }"#,
+            Extensions::all_available(),
         )
         .unwrap();
         let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
@@ -1462,6 +1493,7 @@ mod translator_tests {
                 entity Y;
             }
             "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema =
@@ -1488,6 +1520,7 @@ mod translator_tests {
                 entity Z;
             }
             "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1511,7 +1544,8 @@ mod translator_tests {
         entity Foo in [namespace] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["namespace".parse().unwrap()]);
@@ -1525,7 +1559,7 @@ mod translator_tests {
         entity Foo in [in] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1535,7 +1569,8 @@ mod translator_tests {
         entity Foo in [Set] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Set".parse().unwrap()]);
@@ -1548,7 +1583,8 @@ mod translator_tests {
         entity Foo in [appliesTo] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["appliesTo".parse().unwrap()]);
@@ -1561,7 +1597,8 @@ mod translator_tests {
         entity Foo in [principal ] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["principal".parse().unwrap()]);
@@ -1574,7 +1611,8 @@ mod translator_tests {
         entity Foo in [resource] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["resource".parse().unwrap()]);
@@ -1587,7 +1625,8 @@ mod translator_tests {
         entity Foo in [action] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["action".parse().unwrap()]);
@@ -1600,7 +1639,8 @@ mod translator_tests {
         entity Foo in [context] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["context".parse().unwrap()]);
@@ -1613,7 +1653,8 @@ mod translator_tests {
         entity Foo in [attributes] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["attributes".parse().unwrap()]);
@@ -1626,7 +1667,8 @@ mod translator_tests {
         entity Foo in [Bool] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Bool".parse().unwrap()]);
@@ -1639,7 +1681,8 @@ mod translator_tests {
         entity Foo in [Long] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Long".parse().unwrap()]);
@@ -1652,7 +1695,8 @@ mod translator_tests {
         entity Foo in [String] = {};
         "#;
 
-        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let (schema, _) =
+            SchemaFragment::from_str_natural(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["String".parse().unwrap()]);
@@ -1665,7 +1709,7 @@ mod translator_tests {
         entity Foo in [if] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1675,7 +1719,7 @@ mod translator_tests {
         entity Foo in [like] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1685,7 +1729,7 @@ mod translator_tests {
         entity Foo in [true] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1695,7 +1739,7 @@ mod translator_tests {
         entity Foo in [false] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1705,7 +1749,7 @@ mod translator_tests {
         entity Foo in [has] = {};
         "#;
 
-        assert!(SchemaFragment::from_str_natural(src).is_err());
+        assert!(SchemaFragment::from_str_natural(src, Extensions::all_available()).is_err());
     }
 
     #[test]
@@ -1715,6 +1759,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { principal: A, principal: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
 
@@ -1723,6 +1768,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { principal: A, resource: B, principal: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
     }
@@ -1734,6 +1780,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { resource: A, resource: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
 
@@ -1742,6 +1789,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { resource: A, principal: B, resource: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
     }
@@ -1753,6 +1801,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { context: A, context: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
 
@@ -1761,6 +1810,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { principal: C, context: A, context: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
 
@@ -1769,6 +1819,7 @@ mod translator_tests {
         entity foo;
         action a appliesTo { resource: C, context: A, context: A };
         "#,
+            Extensions::all_available(),
         );
         assert!(schema.is_err());
     }
@@ -1786,6 +1837,7 @@ mod translator_tests {
         "#,
             )
             .unwrap(),
+            Extensions::none(),
         )
         .map(|_| ());
         assert_matches!(schema, Ok(()));
@@ -1798,6 +1850,7 @@ mod translator_tests {
         "#,
             )
             .unwrap(),
+            Extensions::none(),
         )
         .map(|_| ());
         assert_matches!(schema, Ok(()));
@@ -1809,6 +1862,7 @@ mod translator_tests {
         "#,
             )
             .unwrap(),
+            Extensions::none(),
         )
         .map(|_| ());
 
@@ -1826,6 +1880,7 @@ mod common_type_references {
         types::{AttributeType, EntityRecordKind, Type},
         SchemaError, SchemaFragment, ValidatorSchema,
     };
+    use cedar_policy_core::extensions::Extensions;
 
     #[test]
     fn basic() {
@@ -1837,6 +1892,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1858,6 +1914,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1883,6 +1940,7 @@ mod common_type_references {
             type a = Long;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1906,6 +1964,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1926,6 +1985,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1951,6 +2011,7 @@ mod common_type_references {
             type a = Set<Long>;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1974,6 +2035,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -1995,6 +2057,7 @@ mod common_type_references {
             a: a,
         };
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -2020,6 +2083,7 @@ mod common_type_references {
             type a = Set<Long>;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: ValidatorSchema = schema.try_into().unwrap();
@@ -2048,6 +2112,7 @@ mod common_type_references {
             type a = A::b;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
@@ -2069,6 +2134,7 @@ mod common_type_references {
             type a = A::a;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
@@ -2091,6 +2157,7 @@ mod common_type_references {
             type a = A::a;
         }
         "#,
+            Extensions::all_available(),
         )
         .unwrap();
         let validator_schema: Result<ValidatorSchema, _> = schema.try_into();

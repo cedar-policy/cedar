@@ -96,6 +96,8 @@ impl<'e> RestrictedEvaluator<'e> {
     /// Interpret a `RestrictedExpr` into a `Value` in this evaluation environment.
     ///
     /// May return an error, for instance if an extension function returns an error
+    ///
+    /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
     pub fn partial_interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         stack_size_check()?;
 
@@ -124,6 +126,8 @@ impl<'e> RestrictedEvaluator<'e> {
     /// `partial_interpret()` -- ie, so we can make sure the source locations of
     /// all errors are set properly before returning them from
     /// `partial_interpret()`.
+    ///
+    /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
     fn partial_interpret_internal(
         &self,
         expr: &BorrowedRestrictedExpr<'_>,
@@ -4222,7 +4226,7 @@ pub mod test {
     #[test]
     fn template_interp() {
         let t = parse_policy_template(
-            Some("template".to_string()),
+            Some(PolicyID::from_string("template")),
             r#"permit(principal == ?principal, action, resource);"#,
         )
         .expect("Parse Error");

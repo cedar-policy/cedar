@@ -104,13 +104,10 @@ pub fn parse_policyset_to_ests_and_pset(
 /// If `id` is Some, then the resulting template will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
 pub fn parse_policy_template(
-    id: Option<String>,
+    id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let id = match id {
-        Some(id) => ast::PolicyID::from_string(id),
-        None => ast::PolicyID::from_string("policy0"),
-    };
+    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy_template(id)
 }
@@ -135,11 +132,11 @@ pub fn parse_policy_template_to_est_and_ast(
 /// simple main function for parsing a policy.
 /// If `id` is Some, then the resulting policy will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
-pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let id = match id {
-        Some(id) => ast::PolicyID::from_string(id),
-        None => ast::PolicyID::from_string("policy0"),
-    };
+pub fn parse_policy(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy(id)
 }
@@ -148,13 +145,10 @@ pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy,
 /// EST of the original policy without any of the lossy transforms involved in
 /// converting to AST.
 pub fn parse_policy_to_est_and_ast(
-    id: Option<String>,
+    id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
-    let id = match id {
-        Some(id) => ast::PolicyID::from_string(id),
-        None => ast::PolicyID::from_string("policy0"),
-    };
+    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy(id)?;
     let est = cst.try_into_inner()?.try_into()?;
@@ -338,7 +332,7 @@ mod tests {
         for template in all_templates().map(Template::from) {
             let id = template.id();
             let src = format!("{template}");
-            let parsed = parse_policy_template(Some(id.to_string()), &src).unwrap();
+            let parsed = parse_policy_template(Some(ast::PolicyID::from_string(id)), &src).unwrap();
             assert_eq!(
                 parsed.slots().collect::<HashSet<_>>(),
                 template.slots().collect::<HashSet<_>>()
@@ -379,21 +373,9 @@ mod tests {
             unless { resource in principal.account };
         "#;
         let errs = parse_policyset(src).expect_err("expected parsing to fail");
-        // Lots of errors! All of them are "unrecognized token" errors from the text->CST parser
-        expect_n_errors(src, &errs, 16);
-        assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
         let unrecognized_tokens = vec![
             ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"), 
-            ("if", "expected `(`"), 
-            ("c", "expected `(`"), 
-            ("but", "expected `(`"), 
-            ("not", "expected `(`"), 
-            ("z", "expected `(`"), 
-            ("}", "expected `(`"), 
-            ("{", "expected `(`"), 
-            ("else", "expected `(`"), 
-            ("d", "expected `(`"), 
-            ("f", "expected `(`"),
+            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
         ];
         for (token, label) in unrecognized_tokens {
             expect_some_error_matches(
@@ -404,6 +386,8 @@ mod tests {
                     .build(),
             );
         }
+        expect_n_errors(src, &errs, 2);
+        assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
     }
 
     #[test]

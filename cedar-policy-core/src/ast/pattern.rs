@@ -19,37 +19,13 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
-#[derive(Deserialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
-// We need special serialization for patterns because Rust's unicode escape
-// sequences (e.g., `\u{1234}`) can appear in serialized strings and it's difficult
-// to parse these into characters in the formal model. Instead we serialize the
-// unicode values of Rust characters.
-#[cfg_attr(not(feature = "arbitrary"), derive(Serialize))]
+#[derive(Deserialize, Serialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
     Char(char),
     /// The wildcard `*`
     Wildcard,
-}
-
-#[cfg(feature = "arbitrary")]
-impl Serialize for PatternElem {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        // Helper enum for serialization
-        #[derive(Debug, Serialize)]
-        enum PatternElemU32 {
-            Char(u32),
-            Wildcard,
-        }
-        match self {
-            Self::Char(c) => PatternElemU32::Char(*c as u32).serialize(serializer),
-            Self::Wildcard => PatternElemU32::Wildcard.serialize(serializer),
-        }
-    }
 }
 
 /// Represent a pattern literal (the RHS of the like operator)

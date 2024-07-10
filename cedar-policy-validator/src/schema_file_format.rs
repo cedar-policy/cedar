@@ -17,6 +17,7 @@
 use cedar_policy_core::{
     ast::{Id, Name, ReservedNameError, UnreservedName},
     entities::CedarValueJson,
+    extensions::Extensions,
     FromNormalizedStr,
 };
 use serde::{
@@ -130,19 +131,24 @@ impl SchemaFragment<RawName> {
     }
 
     /// Parse the schema (in natural schema syntax) from a string
-    pub fn from_str_natural(
+    pub fn from_str_natural<'a>(
         src: &str,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        parse_natural_schema_fragment(src).map_err(|e| HumanSyntaxParseError::new(e, src).into())
+        extensions: Extensions<'a>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    {
+        parse_natural_schema_fragment(src, extensions)
+            .map_err(|e| HumanSyntaxParseError::new(e, src).into())
     }
 
     /// Parse the schema (in natural schema syntax) from a reader
-    pub fn from_file_natural(
+    pub fn from_file_natural<'a>(
         mut file: impl std::io::Read,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        extensions: Extensions<'a>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
-        Self::from_str_natural(&src)
+        Self::from_str_natural(&src, extensions)
     }
 }
 
@@ -2095,7 +2101,7 @@ mod test_duplicates_error {
         let src = r#"{
             "Foo": {
               "entityTypes" : {},
-              "actions": { 
+              "actions": {
                 "foo" : {
                     "appliesTo" : {
                         "principalTypes" : ["a"]
@@ -2113,7 +2119,7 @@ mod test_duplicates_error {
         let src = r#"{
             "Foo": {
               "entityTypes" : {},
-              "actions": { 
+              "actions": {
                 "foo" : {
                     "appliesTo" : {
                         "resourceTypes" : ["a"]
@@ -2131,7 +2137,7 @@ mod test_duplicates_error {
         let src = r#"{
             "Foo": {
               "entityTypes" : {},
-              "actions": { 
+              "actions": {
                 "foo" : {
                     "appliesTo" : {
                     }
