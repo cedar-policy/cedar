@@ -2737,7 +2737,7 @@ mod tests {
     #[test]
     fn issue_wf_5046() {
         let policy = parse_policy(
-            Some("WF-5046".into()),
+            Some(ast::PolicyID::from_string("WF-5046")),
             r#"permit(
             principal,
             action in [Action::"action"],

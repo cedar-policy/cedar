@@ -35,6 +35,8 @@ Cedar Language Version: 4.0
 - Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
+- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
+  instead of `Option<String>` to set the policy id (resolving #1049)
 
 ### Removed
 

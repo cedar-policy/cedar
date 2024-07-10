@@ -283,7 +283,7 @@ impl Policy {
             .clone()
             .map_or(String::new(), |id| format!(" with id `{id}`"));
         match self {
-            Self::Human(str) => crate::Policy::parse(id.map(|id| id.to_string()), str)
+            Self::Human(str) => crate::Policy::parse(id, str)
                 .wrap_err(format!("failed to parse policy{msg} from string")),
             Self::Json(json) => crate::Policy::from_json(id, json.into())
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
@@ -316,7 +316,7 @@ impl Template {
             .map(|id| format!(" with id `{id}`"))
             .unwrap_or_default();
         match self {
-            Self::Human(str) => crate::Template::parse(id.map(|id| id.to_string()), str)
+            Self::Human(str) => crate::Template::parse(id, str)
                 .wrap_err(format!("failed to parse template{msg} from string")),
             Self::Json(json) => crate::Template::from_json(id, json.into())
                 .wrap_err(format!("failed to parse template{msg} from JSON")),

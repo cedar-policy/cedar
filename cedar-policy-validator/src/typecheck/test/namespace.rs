@@ -496,7 +496,7 @@ fn assert_policy_typecheck_fails_namespace_schema(
 #[test]
 fn namespaced_entity_is_wrong_type_and() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
             permit(principal, action, resource)
             when {
@@ -520,7 +520,7 @@ fn namespaced_entity_is_wrong_type_and() {
 #[test]
 fn namespaced_entity_is_wrong_type_when() {
     let policy = parse_policy(
-        Some("0".to_string()),
+        Some(PolicyID::from_string("0")),
         r#"
             permit(principal, action, resource)
             when {
