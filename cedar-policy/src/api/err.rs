@@ -18,8 +18,8 @@
 
 use crate::{EntityUid, PolicyId};
 pub use cedar_policy_core::ast::{
-    expression_construction_errors, restricted_expr_errors, ExpressionConstructionError,
-    RestrictedExpressionError,
+    expression_construction_errors, restricted_expr_errors, ContainsUnknown,
+    ExpressionConstructionError, PartialValueToValueError, RestrictedExpressionError,
 };
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
