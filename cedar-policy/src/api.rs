@@ -3424,21 +3424,9 @@ mod context {
         type Item = (String, RestrictedExpression);
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.inner.next().map(|(k, v)| {
-                (
-                    k.to_string(),
-                    match v {
-                        ast::PartialValue::Value(val) => {
-                            RestrictedExpression(ast::RestrictedExpr::from(val))
-                        }
-                        ast::PartialValue::Residual(exp) => {
-                            // `exp` is guaranteed to be a valid `RestrictedExpr`
-                            // since it was originally stored in a `Context`
-                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
-                        }
-                    },
-                )
-            })
+            self.inner
+                .next()
+                .map(|(k, v)| (k.to_string(), RestrictedExpression(v)))
         }
     }
 }
