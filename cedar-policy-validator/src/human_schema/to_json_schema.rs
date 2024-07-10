@@ -46,7 +46,10 @@ use super::{
 /// This will let you subsequently decode that into the Validator AST for Schemas ([`crate::ValidatorSchema`]).
 /// On success, this function returns a tuple containing:
 ///     * The `SchemaFragment`
-///     * A vector of name collisions, that are essentially warnings
+///     * An iterator of warnings that were generated
+///
+/// TODO: In the future, these warnings should be generated later in the
+/// process, such that we apply the same checks to JSON and human schemas
 pub fn custom_schema_to_json_schema(
     schema: Schema,
     extensions: Extensions<'_>,

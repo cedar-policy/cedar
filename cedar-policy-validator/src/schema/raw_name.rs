@@ -20,7 +20,7 @@ use cedar_policy_core::parser::Loc;
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// A newtype which indicates that the contained `Name` may not yet be
 /// fully-qualified.
@@ -260,22 +260,6 @@ impl ConditionalName {
                 if let Some(possibility) = all_defined_entity_types.get(possibility) {
                     return Ok(possibility);
                 }
-            }
-        }
-        Err(TypeResolutionError(nonempty![self]))
-    }
-
-    /// Resolve the [`ConditionalName`] into a fully-qualified [`Name`], given that
-    /// `all_defined_names` represents all fully-qualified [`Name`]s defined in all
-    /// schema fragments. Also return the `T` which the resolved fully-qualified
-    /// [`Name`] maps to.
-    pub fn resolve_to_t<'a, T>(
-        self,
-        all_defined_names: &'a HashMap<Name, T>,
-    ) -> Result<(&'a Name, &'a T), TypeResolutionError> {
-        for possibility in self.possibilities.iter() {
-            if let Some(kv) = all_defined_names.get_key_value(possibility) {
-                return Ok(kv);
             }
         }
         Err(TypeResolutionError(nonempty![self]))

@@ -185,8 +185,22 @@ impl NameCollisionsError {
 
 /// Convert a [`SchemaFragment`] to a string containing human schema syntax
 ///
-/// TODO: Can/should we move these name-collision checks to some point after
-/// we've fully-qualified the names in question?
+/// REVIEW: The existing code throws an error if any fully-qualified name in a
+/// non-empty namespace is a valid common type and also a valid entity type.
+/// 1) I think this check is more conservative than necessary? Schemas are
+/// allowed to shadow an entity type with a common type declaration in the same
+/// namespace; see RFCs 24 and 70. What the human syntax can't express is if, in
+/// that situation, we then specifically refer to the shadowed entity type name.
+/// But it's harder to walk all type references than it is to walk all type
+/// declarations, so perhaps the conservative code here is fine.
+/// 2) At the same time, this check might miss some cases that are actually
+/// problematic. E.g., if a common type declaration in some namespace NS has the
+/// same basename as an entity type declaration in the empty namespace, and then
+/// the JSON syntax references the entity type declaration in the empty
+/// namespace (while the current namespace is NS). When converted to human
+/// syntax, the reference will resolve to the common type declaration in the
+/// current namespace instead. The existing code doesn't catch collisions with
+/// the empty namespace. But see RFC 70.
 pub fn json_schema_to_custom_schema_str<N: Display>(
     json_schema: &SchemaFragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {

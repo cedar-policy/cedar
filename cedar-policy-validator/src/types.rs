@@ -1400,9 +1400,8 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{human_schema::parser::parse_type, ActionBehavior};
+    use crate::ActionBehavior;
     use cool_asserts::assert_matches;
-    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
@@ -2113,22 +2112,20 @@ mod test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_type_display_roundtrip(ty: Type) {
-        let type_str = ty.to_string();
+        // test that a common type declaration using this type roundtrips properly
+        let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
-        let parsed_schema_type = parse_type(&type_str)
-            .expect("String representation should have parsed into a schema type");
-        let schema_type = parsed_schema_type
-            .conditionally_qualify_type_references(None)
-            .fully_qualify_type_references(&HashSet::new(), &HashSet::new())
-            .unwrap();
-        let type_from_schema_type = crate::schema::try_schema_type_into_validator_type(
-            schema_type,
-            Extensions::all_available(),
-        )
-        .expect("Schema type should have converted to type.")
-        .resolve_type_defs(&HashMap::new())
-        .unwrap();
-        assert_eq!(ty, type_from_schema_type);
+        let (schema, _) =
+            ValidatorSchema::from_str_natural(&type_str, Extensions::all_available()).unwrap();
+        assert_eq!(
+            &schema
+                .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
+                .unwrap()
+                .attr("foo")
+                .unwrap()
+                .attr_type,
+            &ty
+        );
     }
 
     #[test]

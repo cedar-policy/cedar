@@ -130,9 +130,12 @@ impl TCNode<EntityUID> for ValidatorActionId {
 ///
 /// The parameter `N` represents the type of entity type names stored in this
 /// [`ValidatorApplySpec`]. For instance, this could be [`crate::RawName`],
-/// [`crate::ConditionalName`], or [`ast::EntityType`], depending on whether the
+/// [`crate::ConditionalName`], or [`Name`], depending on whether the
 /// names have been resolved into fully-qualified names yet.
-/// ([`ast::EntityType`] always represents a fully-qualified name.)
+/// (It could also in principle be [`ast::EntityType`], which like [`Name`]
+/// always represents a fully-qualified name, but as of this writing we always
+/// use [`Name`] for the parameter here when we want to indicate names have been
+/// fully qualified.)
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ValidatorApplySpec<N> {

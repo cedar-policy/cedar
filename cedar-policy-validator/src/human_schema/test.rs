@@ -32,7 +32,8 @@ mod demo_tests {
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        NamespaceDefinition, RawName, SchemaFragment, SchemaType, SchemaTypeVariant,
+        TypeOfAttribute,
     };
 
     use itertools::Itertools;
@@ -539,7 +540,7 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"User".parse().unwrap())
             .expect("No `User`");
-        assert_empty_records(user);
+        assert_empty_record(user);
         assert_eq!(
             &user.member_of_types,
             &vec!["UserGroup".parse().unwrap(), "Team".parse().unwrap()]
@@ -549,7 +550,7 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"UserGroup".parse().unwrap())
             .expect("No `UserGroup`");
-        assert_empty_records(usergroup);
+        assert_empty_record(usergroup);
         assert_eq!(
             &usergroup.member_of_types,
             &vec!["UserGroup".parse().unwrap()]
@@ -563,12 +564,12 @@ namespace Baz {action "Foo" appliesTo {
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
         for group in groups {
             match &repo.shape.0 {
-                crate::SchemaType::Type(SchemaTypeVariant::Record {
+                SchemaType::Type(SchemaTypeVariant::Record {
                     attributes,
                     additional_attributes: false,
                 }) => {
-                    let expected = SchemaTypeVariant::Entity {
-                        name: "UserGroup".parse().unwrap(),
+                    let expected = SchemaType::EntityOrCommonTypeRef {
+                        type_name: "UserGroup".parse().unwrap(),
                     };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
@@ -582,22 +583,22 @@ namespace Baz {action "Foo" appliesTo {
             .expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
         match &issue.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+            SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
             }) => {
                 let attribute = attributes.get("repo").expect("No `repo`");
                 assert_has_type(
                     attribute,
-                    SchemaTypeVariant::Entity {
-                        name: "Repository".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "Repository".parse().unwrap(),
                     },
                 );
                 let attribute = attributes.get("reporter").expect("No `repo`");
                 assert_has_type(
                     attribute,
-                    SchemaTypeVariant::Entity {
-                        name: "User".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "User".parse().unwrap(),
                     },
                 );
             }
@@ -611,12 +612,12 @@ namespace Baz {action "Foo" appliesTo {
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
             match &org.shape.0 {
-                crate::SchemaType::Type(SchemaTypeVariant::Record {
+                SchemaType::Type(SchemaTypeVariant::Record {
                     attributes,
                     additional_attributes: false,
                 }) => {
-                    let expected = SchemaTypeVariant::Entity {
-                        name: "UserGroup".parse().unwrap(),
+                    let expected = SchemaType::EntityOrCommonTypeRef {
+                        type_name: "UserGroup".parse().unwrap(),
                     };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
@@ -626,17 +627,19 @@ namespace Baz {action "Foo" appliesTo {
         }
     }
 
+    #[track_caller]
     fn assert_has_type<N: std::fmt::Debug + PartialEq>(
         e: &TypeOfAttribute<N>,
-        expected: SchemaTypeVariant<N>,
+        expected: SchemaType<N>,
     ) {
-        assert!(e.required, "Attribute was not required");
-        assert_matches!(&e.ty, crate::SchemaType::Type(t) => assert_eq!(t, &expected));
+        assert!(e.required);
+        assert_eq!(&e.ty, &expected);
     }
 
-    fn assert_empty_records<N: std::fmt::Debug>(etyp: &EntityType<N>) {
+    #[track_caller]
+    fn assert_empty_record<N: std::fmt::Debug>(etyp: &EntityType<N>) {
         assert_matches!(&etyp.shape.0,
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+            SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
             }) => assert!(attributes.is_empty(), "Record should be empty")
@@ -680,23 +683,23 @@ namespace Baz {action "Foo" appliesTo {
             .expect("No `User`");
         assert_eq!(&user.member_of_types, &vec!["Group".parse().unwrap()]);
         match &user.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+            SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
             }) => {
                 assert_has_type(
                     attributes.get("personalGroup").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "Group".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "Group".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("blocked").unwrap(),
-                    SchemaTypeVariant::Set {
-                        element: Box::new(crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                            name: "User".parse().unwrap(),
-                        })),
-                    },
+                    SchemaType::Type(SchemaTypeVariant::Set {
+                        element: Box::new(SchemaType::EntityOrCommonTypeRef {
+                            type_name: "User".parse().unwrap(),
+                        }),
+                    }),
                 );
             }
             _ => panic!("Wrong type"),
@@ -710,14 +713,14 @@ namespace Baz {action "Foo" appliesTo {
             &vec!["DocumentShare".parse().unwrap()]
         );
         match &group.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+            SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
             }) => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "User".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "User".parse().unwrap(),
                     },
                 );
             }
@@ -729,40 +732,44 @@ namespace Baz {action "Foo" appliesTo {
             .expect("No `Group`");
         assert!(document.member_of_types.is_empty());
         match &document.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+            SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes: false,
             }) => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "User".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "User".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("isPrivate").unwrap(),
-                    SchemaTypeVariant::Boolean,
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "Bool".parse().unwrap(),
+                    },
                 );
                 assert_has_type(
                     attributes.get("publicAccess").unwrap(),
-                    SchemaTypeVariant::String,
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "String".parse().unwrap(),
+                    },
                 );
                 assert_has_type(
                     attributes.get("viewACL").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "DocumentShare".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "DocumentShare".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("modifyACL").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "DocumentShare".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "DocumentShare".parse().unwrap(),
                     },
                 );
                 assert_has_type(
                     attributes.get("manageACL").unwrap(),
-                    SchemaTypeVariant::Entity {
-                        name: "DocumentShare".parse().unwrap(),
+                    SchemaType::EntityOrCommonTypeRef {
+                        type_name: "DocumentShare".parse().unwrap(),
                     },
                 );
             }
@@ -773,7 +780,7 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"DocumentShare".parse().unwrap())
             .expect("No `DocumentShare`");
         assert!(document_share.member_of_types.is_empty());
-        assert_empty_records(document_share);
+        assert_empty_record(document_share);
 
         let public = doccloud
             .entity_types
@@ -783,14 +790,14 @@ namespace Baz {action "Foo" appliesTo {
             &public.member_of_types,
             &vec!["DocumentShare".parse().unwrap()]
         );
-        assert_empty_records(public);
+        assert_empty_record(public);
 
         let drive = doccloud
             .entity_types
             .get(&"Drive".parse().unwrap())
             .expect("No `Drive`");
         assert!(drive.member_of_types.is_empty());
-        assert_empty_records(drive);
+        assert_empty_record(drive);
     }
 
     #[test]
@@ -899,14 +906,14 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
-        assert_matches!(&resource.shape.0, crate::SchemaType::Type(SchemaTypeVariant::Record {
+        assert_matches!(&resource.shape.0, SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes,
             }) => {
                 assert!(!additional_attributes);
                 let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
                 assert!(required);
-                assert_matches!(ty, crate::SchemaType::CommonTypeRef { type_name } => {
+                assert_matches!(ty, SchemaType::EntityOrCommonTypeRef { type_name } => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             }
@@ -1182,7 +1189,7 @@ mod translator_tests {
 
     use crate::{
         types::{EntityLUB, Type},
-        SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
+        SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
     #[test]
@@ -1441,7 +1448,7 @@ mod translator_tests {
         .unwrap();
         let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
         let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
-        assert_matches!(&user.shape.0, crate::SchemaType::Type(SchemaTypeVariant::Record {
+        assert_matches!(&user.shape.0, SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes,
             }) => {
@@ -1449,7 +1456,7 @@ mod translator_tests {
                 let TypeOfAttribute { ty, required } = attributes.get("name").unwrap();
                 {
                     assert!(required);
-                    let expected = crate::SchemaType::CommonTypeRef {
+                    let expected = SchemaType::EntityOrCommonTypeRef {
                         type_name: "id".parse().unwrap(),
                     };
                     assert_eq!(ty, &expected);
@@ -1457,9 +1464,9 @@ mod translator_tests {
                 let TypeOfAttribute { ty, required } = attributes.get("email").unwrap();
                 {
                     assert!(required);
-                    let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                        name: "email_address".parse().unwrap(),
-                    });
+                    let expected = SchemaType::EntityOrCommonTypeRef {
+                        type_name: "email_address".parse().unwrap(),
+                    };
                     assert_eq!(ty, &expected);
                 }
             }
