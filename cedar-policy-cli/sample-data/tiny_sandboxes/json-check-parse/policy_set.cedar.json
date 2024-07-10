@@ -1,0 +1,52 @@
+{
+  "staticPolicies": {
+      "policy0": {
+          "effect": "permit",
+          "principal": {
+              "op": "==",
+              "entity": {
+                  "type": "User",
+                  "id": "bob"
+              }
+          },
+          "action": {
+              "op": "in",
+              "entities": [
+                  {
+                      "type": "Action",
+                      "id": "view"
+                  },
+                  {
+                      "type": "Action",
+                      "id": "edit"
+                  }
+              ]
+          },
+          "resource": {
+              "op": "All"
+          },
+          "conditions": [
+              {
+                  "kind": "when",
+                  "body": {
+                      "==": {
+                          "left": {
+                              ".": {
+                                  "left": {
+                                      "Var": "resource"
+                                  },
+                                  "attr": "owner"
+                              }
+                          },
+                          "right": {
+                              "Var": "principal"
+                          }
+                      }
+                  }
+              }
+          ]
+      }
+  },
+  "templates": {},
+  "templateLinks": []
+}
