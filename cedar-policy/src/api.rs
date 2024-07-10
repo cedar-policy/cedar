@@ -158,7 +158,7 @@ impl Entity {
     /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
     /// assert!(entity.attr("foo").is_none());
     /// ```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, PartialValueToValueError>> {
         let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
