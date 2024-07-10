@@ -2115,11 +2115,11 @@ mod test {
     fn assert_type_display_roundtrip(ty: Type) {
         let type_str = ty.to_string();
         println!("{type_str}");
-        let parsed_schema_type = parse_type(&type_str, Extensions::all_available())
+        let parsed_schema_type = parse_type(&type_str)
             .expect("String representation should have parsed into a schema type");
         let schema_type = parsed_schema_type
             .conditionally_qualify_type_references(None)
-            .fully_qualify_type_references(&HashSet::new())
+            .fully_qualify_type_references(&HashSet::new(), &HashSet::new())
             .unwrap();
         let type_from_schema_type = crate::schema::try_schema_type_into_validator_type(
             schema_type,

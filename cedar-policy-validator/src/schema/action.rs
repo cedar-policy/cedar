@@ -189,21 +189,23 @@ impl ValidatorApplySpec<ConditionalName> {
     /// [`ValidatorApplySpec<Name>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_defs` needs to be the full set of all fully-qualified typenames that
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<Name>,
+        all_entity_defs: &HashSet<Name>,
     ) -> Result<ValidatorApplySpec<Name>, crate::schema::TypeResolutionError> {
         let (principal_apply_spec, principal_errs) = self
             .principal_apply_spec
             .into_iter()
-            .map(|cname| cname.resolve(all_defs).cloned())
+            .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
             .partition_result::<_, Vec<TypeResolutionError>, _, _>();
         let (resource_apply_spec, resource_errs) = self
             .resource_apply_spec
             .into_iter()
-            .map(|cname| cname.resolve(all_defs).cloned())
+            .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
             .partition_result::<_, Vec<TypeResolutionError>, _, _>();
         match (
             NonEmpty::from_vec(principal_errs),

@@ -899,23 +899,18 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
-        match &resource.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+        assert_matches!(&resource.shape.0, crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes,
             }) => {
                 assert!(!additional_attributes);
                 let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
                 assert!(required);
-                match ty {
-                    crate::SchemaType::CommonTypeRef { type_name } => {
-                        assert_eq!(type_name, &"AWS::Tag".parse().unwrap())
-                    }
-                    _ => panic!("Wrong type for attribute"),
-                }
+                assert_matches!(ty, crate::SchemaType::CommonTypeRef { type_name } => {
+                    assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
+                });
             }
-            _ => panic!("Wrong type for shape"),
-        }
+        );
     }
 
     #[test]
@@ -1183,6 +1178,8 @@ mod translator_tests {
     use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::FromNormalizedStr;
 
+    use cool_asserts::assert_matches;
+
     use crate::{
         types::{EntityLUB, Type},
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
@@ -1444,8 +1441,7 @@ mod translator_tests {
         .unwrap();
         let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
         let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
-        match &user.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
+        assert_matches!(&user.shape.0, crate::SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
                 additional_attributes,
             }) => {
@@ -1467,8 +1463,7 @@ mod translator_tests {
                     assert_eq!(ty, &expected);
                 }
             }
-            _ => panic!("Wrong type"),
-        }
+        );
         let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
         assert!(validator_schema.is_ok());
     }

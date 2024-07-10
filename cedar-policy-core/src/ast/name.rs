@@ -107,6 +107,12 @@ impl Name {
         }
     }
 
+    /// Get the `Name` representing the reserved `__cedar` namespace
+    pub fn __cedar() -> Self {
+        // using `Id::new_unchecked()` for performance reasons -- this function called many times by validator code
+        Self::unqualified_name(Id::new_unchecked("__cedar"))
+    }
+
     /// Create a `Name` with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {

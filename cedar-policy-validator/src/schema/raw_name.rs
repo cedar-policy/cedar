@@ -102,13 +102,23 @@ impl RawName {
     /// type reference while the current/active namespace is `ns` (or `None` if
     /// the current/active namespace is the empty namespace).
     ///
-    /// This [`RawName`] will resolve to the following, in priority order:
-    /// 1. Itself, if it already has a non-empty explicit namespace
-    /// 2. The fully-qualified name resulting from prefixing `ns` to this
-    ///     [`RawName`], if that fully-qualified name is declared in the schema
-    ///     (in any schema fragment)
-    /// 3. Itself in the empty namespace
-    pub fn conditionally_qualify_with(self, ns: Option<&Name>) -> ConditionalName {
+    /// This [`RawName`] will resolve as follows:
+    /// - If the [`RawName`] already has a non-empty explicit namespace, there
+    ///     is no ambiguity, and it will resolve always and only to itself
+    /// - Otherwise (if the [`RawName`] does not have an explicit namespace
+    ///     already), then it resolves to the following in priority order:
+    ///     1. The fully-qualified name resulting from prefixing `ns` to this
+    ///         [`RawName`], if that fully-qualified name is declared in the schema
+    ///         (in any schema fragment)
+    ///     2. Itself in the empty namespace, if that name is declared in the schema
+    ///         (in any schema fragment)
+    ///     3. Itself in the `__cedar` namespace, if that name is valid (i.e., is
+    ///         the name of a primitive or extension type)
+    pub fn conditionally_qualify_with(
+        self,
+        ns: Option<&Name>,
+        reference_type: ReferenceType,
+    ) -> ConditionalName {
         let possibilities = if self.is_unqualified() {
             match ns {
                 Some(ns) => {
@@ -118,13 +128,18 @@ impl RawName {
                     nonempty![
                         self.clone().qualify_with(Some(ns)),
                         self.clone().qualify_with(None),
+                        self.clone().qualify_with(Some(&Name::__cedar())),
                     ]
                 }
                 None => {
                     // Same as the above case, but since the current/active
-                    // namespace is the empty namespace, both possibilities are
-                    // the same; so we only have one possibility
-                    nonempty![self.clone().qualify_with(None)]
+                    // namespace is the empty namespace, the first two
+                    // possibilities are the same; so we only have the first
+                    // and third possibility
+                    nonempty![
+                        self.clone().qualify_with(None),
+                        self.clone().qualify_with(Some(&Name::__cedar())),
+                    ]
                 }
             }
         } else {
@@ -134,6 +149,7 @@ impl RawName {
         };
         ConditionalName {
             possibilities,
+            reference_type,
             raw: self,
         }
     }
@@ -168,7 +184,7 @@ impl std::str::FromStr for RawName {
 /// constructed using [`RawName::conditionally_qualify_with()`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConditionalName {
-    /// The `ConditionalName` may refer to any of these `possibilities`, depending
+    /// The [`ConditionalName`] may refer to any of these `possibilities`, depending
     /// on which of them are declared (in any schema fragment).
     ///
     /// These are in descending priority order. If the first `Name` is declared
@@ -186,6 +202,9 @@ pub struct ConditionalName {
     /// That is, if `NS::Foo` exists, `Foo` refers to `NS::Foo`, but otherwise,
     /// `Foo` refers to the `Foo` declared in the empty namespace.
     possibilities: NonEmpty<Name>,
+    /// Whether the [`ConditionalName`] can resolve to a common-type name, an
+    /// entity-type name, or both
+    reference_type: ReferenceType,
     /// Copy of the original/raw name found in the source; this field is
     /// used only in error messages
     raw: RawName,
@@ -194,9 +213,10 @@ pub struct ConditionalName {
 impl ConditionalName {
     /// Create a [`ConditionalName`] which unconditionally resolves to the given
     /// fully-qualified [`Name`].
-    pub fn unconditional(name: Name) -> Self {
+    pub fn unconditional(name: Name, reference_type: ReferenceType) -> Self {
         ConditionalName {
             possibilities: nonempty!(name.clone()),
+            reference_type,
             raw: RawName(name),
         }
     }
@@ -208,15 +228,38 @@ impl ConditionalName {
     }
 
     /// Resolve the [`ConditionalName`] into a fully-qualified [`Name`], given that
-    /// `all_defined_names` represents all fully-qualified [`Name`]s defined in all
-    /// schema fragments.
+    /// `all_defined_common_types` and `all_defined_entity_types` represent all
+    /// fully-qualified [`Name`]s defined in all schema fragments, as common and
+    /// entity types respectively.
     pub fn resolve<'a>(
         self,
-        all_defined_names: &'a HashSet<Name>,
+        all_defined_common_types: &'a HashSet<Name>,
+        all_defined_entity_types: &'a HashSet<Name>,
     ) -> Result<&'a Name, TypeResolutionError> {
         for possibility in self.possibilities.iter() {
-            if let Some(possibility) = all_defined_names.get(possibility) {
-                return Ok(possibility);
+            // Per RFC 24, we give priority to trying to resolve to a common
+            // type, before trying to resolve to an entity type.
+            // (However, we have an even stronger preference to resolve earlier
+            // in the `possibilities` list. So, in the hypothetical case where
+            // we could resolve to either an entity type first in the
+            // `possibilities` list, or a common type later in the
+            // `possibilities` list, we choose the former.)
+            // See also cedar#579.
+            if matches!(
+                self.reference_type,
+                ReferenceType::Common | ReferenceType::CommonOrEntity
+            ) {
+                if let Some(possibility) = all_defined_common_types.get(possibility) {
+                    return Ok(possibility);
+                }
+            }
+            if matches!(
+                self.reference_type,
+                ReferenceType::Entity | ReferenceType::CommonOrEntity
+            ) {
+                if let Some(possibility) = all_defined_entity_types.get(possibility) {
+                    return Ok(possibility);
+                }
             }
         }
         Err(TypeResolutionError(nonempty![self]))
@@ -265,4 +308,16 @@ impl Serialize for ConditionalName {
     {
         self.raw().serialize(serializer)
     }
+}
+
+/// Describes whether a reference can resolve to a common-type name, an
+/// entity-type name, or both
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReferenceType {
+    /// The reference can only resolve to a common-type name
+    Common,
+    /// The reference can only resolve to an entity-type name
+    Entity,
+    /// The reference can resolve to either an entity or common type name
+    CommonOrEntity,
 }

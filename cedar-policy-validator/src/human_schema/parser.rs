@@ -25,7 +25,7 @@ use thiserror::Error;
 use super::{
     ast::Schema,
     err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
-    to_json_schema::{custom_schema_to_json_schema, custom_type_to_json_type},
+    to_json_schema::{custom_schema_to_json_schema, human_type_to_json_type},
 };
 use cedar_policy_core::extensions::Extensions;
 
@@ -96,12 +96,9 @@ pub enum HumanSyntaxParseErrors {
 }
 
 /// Parse a type, in human syntax, into a [`crate::SchemaType`]
-pub fn parse_type(
-    src: &str,
-    extensions: Extensions<'_>,
-) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
+pub fn parse_type(src: &str) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
     let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
-    Ok(custom_type_to_json_type(ty, extensions)?)
+    Ok(human_type_to_json_type(ty))
 }
 
 /// Parse a schema fragment, in human syntax, into a [`crate::SchemaFragment`],

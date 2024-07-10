@@ -38,7 +38,7 @@ use crate::{
     human_schema::{
         self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
-    ConditionalName, HumanSchemaError, HumanSyntaxParseError, RawName,
+    ConditionalName, HumanSchemaError, HumanSyntaxParseError, RawName, ReferenceType,
 };
 
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
@@ -266,7 +266,7 @@ impl EntityType<RawName> {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
                 .collect(),
             shape: self.shape.conditionally_qualify_type_references(ns),
         }
@@ -407,12 +407,12 @@ impl ApplySpec<RawName> {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
                 .collect(),
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
                 .collect(),
             context: self.context.conditionally_qualify_type_references(ns),
         }
@@ -465,7 +465,9 @@ impl ActionEntityUID<RawName> {
     ) -> ActionEntityUID<ConditionalName> {
         ActionEntityUID {
             id: self.id,
-            ty: self.ty.map(|rname| rname.conditionally_qualify_with(ns)),
+            ty: self
+                .ty
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)),
         }
     }
 }
@@ -496,10 +498,26 @@ pub enum SchemaType<N> {
         #[serde(rename = "type")]
         type_name: N,
     },
+    /// Reference that may resolve to either an entity or common type
+    EntityOrCommonTypeRef {
+        /// Name of the entity or common type.
+        /// Since `serde(untagged)` matches the first variant that works,
+        /// this variant can never be constructed by the `Deserialize`
+        /// implementation, as any structure that would fit this would
+        /// first fit `CommonTypeRef` above.
+        /// This is intended; the JSON syntax in question is specified to
+        /// resolve to only a common type.
+        /// This variant (`EntityOrCommonTypeRef`) exists only for the use
+        /// of the human-schema parser, so that we can represent all valid
+        /// human-syntax schemas in this format.
+        #[serde(rename = "type")]
+        type_name: N,
+    },
 }
 
 impl<N> SchemaType<N> {
-    /// Iterate over all common type references which occur in the type
+    /// Iterate over all references which occur in the type and (must or may)
+    /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
             SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
@@ -512,14 +530,16 @@ impl<N> SchemaType<N> {
                 element.common_type_references()
             }
             SchemaType::CommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
+            SchemaType::EntityOrCommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a `CommonTypeRef` because we
-    /// can't easily check the type of a common type reference, accounting for
-    /// namespaces, without first converting to a [`crate::types::Type`].
+    /// (recursively)? Returns `None` if this is a `CommonTypeRef` or
+    /// `EntityOrCommonTypeRef` because we can't easily check the type
+    /// of a common type reference, accounting for namespaces, without first
+    /// converting to a [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
@@ -532,7 +552,7 @@ impl<N> SchemaType<N> {
                     None => None,
                 }),
             Self::Type(_) => Some(false),
-            Self::CommonTypeRef { .. } => None,
+            Self::CommonTypeRef { .. } | Self::EntityOrCommonTypeRef { .. } => None,
         }
     }
 
@@ -558,7 +578,10 @@ impl SchemaType<RawName> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.conditionally_qualify_type_references(ns)),
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
-                type_name: type_name.conditionally_qualify_with(ns),
+                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
+            },
+            Self::EntityOrCommonTypeRef { type_name } => SchemaType::EntityOrCommonTypeRef {
+                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::CommonOrEntity),
             },
         }
     }
@@ -567,6 +590,9 @@ impl SchemaType<RawName> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.into_n()),
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
+                type_name: type_name.into(),
+            },
+            Self::EntityOrCommonTypeRef { type_name } => SchemaType::EntityOrCommonTypeRef {
                 type_name: type_name.into(),
             },
         }
@@ -578,18 +604,23 @@ impl SchemaType<ConditionalName> {
     /// by fully-qualifying all typenames that appear anywhere in any
     /// definitions.
     ///
-    /// `all_defs` needs to be the full set of all fully-qualified typenames that
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<Name>,
+        all_entity_defs: &HashSet<Name>,
     ) -> std::result::Result<SchemaType<Name>, TypeResolutionError> {
         match self {
             Self::Type(stv) => Ok(SchemaType::Type(
-                stv.fully_qualify_type_references(all_defs)?,
+                stv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
             )),
             Self::CommonTypeRef { type_name } => Ok(SchemaType::CommonTypeRef {
-                type_name: type_name.resolve(all_defs)?.clone(),
+                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
+            }),
+            Self::EntityOrCommonTypeRef { type_name } => Ok(SchemaType::EntityOrCommonTypeRef {
+                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
             }),
         }
     }
@@ -895,6 +926,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
                     }
                     "Extension" => {
                         if remaining_fields.is_empty() {
+                            // must be referring to a common type named `Extension`
                             Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(EXTENSION_NAME.clone()),
                             })
@@ -1000,7 +1032,7 @@ impl SchemaTypeVariant<RawName> {
             Self::String => SchemaTypeVariant::String,
             Self::Extension { name } => SchemaTypeVariant::Extension { name },
             Self::Entity { name } => SchemaTypeVariant::Entity {
-                name: name.conditionally_qualify_with(ns),
+                name: name.conditionally_qualify_with(ns, ReferenceType::Entity), // `Self::Entity` must resolve to an entity type, not a common type
             },
             Self::Set { element } => SchemaTypeVariant::Set {
                 element: Box::new(element.conditionally_qualify_type_references(ns)),
@@ -1054,11 +1086,13 @@ impl SchemaTypeVariant<ConditionalName> {
     /// [`SchemaTypeVariant<Name>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_defs` needs to be the full set of all fully-qualified typenames that
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<Name>,
+        all_entity_defs: &HashSet<Name>,
     ) -> std::result::Result<SchemaTypeVariant<Name>, TypeResolutionError> {
         match self {
             Self::Boolean => Ok(SchemaTypeVariant::Boolean),
@@ -1066,10 +1100,12 @@ impl SchemaTypeVariant<ConditionalName> {
             Self::String => Ok(SchemaTypeVariant::String),
             Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
             Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
-                name: name.resolve(all_defs)?.clone(),
+                name: name.resolve(all_common_defs, all_entity_defs)?.clone(),
             }),
             Self::Set { element } => Ok(SchemaTypeVariant::Set {
-                element: Box::new(element.fully_qualify_type_references(all_defs)?),
+                element: Box::new(
+                    element.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                ),
             }),
             Self::Record {
                 attributes,
@@ -1081,7 +1117,10 @@ impl SchemaTypeVariant<ConditionalName> {
                         Ok((
                             attr,
                             TypeOfAttribute {
-                                ty: ty.fully_qualify_type_references(all_defs)?,
+                                ty: ty.fully_qualify_type_references(
+                                    all_common_defs,
+                                    all_entity_defs,
+                                )?,
                                 required,
                             },
                         ))
@@ -1097,9 +1136,6 @@ impl SchemaTypeVariant<ConditionalName> {
 fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
-
-// We forbid declaring a custom typedef with the same name as a builtin type.
-pub(crate) static PRIMITIVE_TYPES: &[&str] = &["String", "Long", "Boolean"];
 
 #[cfg(feature = "arbitrary")]
 // PANIC SAFETY property testing code

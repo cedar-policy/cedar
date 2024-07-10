@@ -87,7 +87,8 @@ impl<N: Display> Display for SchemaType<N> {
                 SchemaTypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 SchemaTypeVariant::String => write!(f, "__cedar::String"),
             },
-            SchemaType::CommonTypeRef { type_name } => write!(f, "{type_name}"),
+            SchemaType::CommonTypeRef { type_name }
+            | SchemaType::EntityOrCommonTypeRef { type_name } => write!(f, "{type_name}"),
         }
     }
 }
