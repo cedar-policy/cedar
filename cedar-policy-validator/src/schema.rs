@@ -771,6 +771,8 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 /// Get a `ValidatorSchemaFragment` describing the items that implicitly exist
 /// in the `__cedar` namespace.
 fn cedar_fragment(extensions: Extensions<'_>) -> ValidatorSchemaFragment<ConditionalName> {
+    // PANIC SAFETY: these are valid `Id`s
+    #[allow(clippy::unwrap_used)]
     let mut common_types = HashMap::from_iter([
         (
             Id::from_str("Bool").unwrap(),
@@ -797,8 +799,10 @@ fn cedar_fragment(extensions: Extensions<'_>) -> ValidatorSchemaFragment<Conditi
         );
     }
 
+    // PANIC SAFETY: this is a valid schema fragment. This code is tested by every test that constructs `ValidatorSchema`, and this fragment is the same every time, modulo active extensions.
+    #[allow(clippy::unwrap_used)]
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_typedefs(
-        Some(Name::parse_unqualified_name("__cedar").unwrap()),
+        Some(Name::__cedar()),
         common_types,
     )
     .unwrap()])
@@ -809,20 +813,21 @@ fn cedar_fragment(extensions: Extensions<'_>) -> ValidatorSchemaFragment<Conditi
 /// the fully-qualified name `def`. (This will eventually cause an error if
 /// `def` is not defined somewhere.)
 fn single_alias_in_empty_namespace(id: Id, def: Name) -> ValidatorSchemaFragment<ConditionalName> {
-    ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_typedefs(
+    ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_typedef(
         None,
-        HashMap::from_iter([(
+        (
             id,
             SchemaType::EntityOrCommonTypeRef {
                 type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
             },
-        )]),
-    )
-    .unwrap()])
+        ),
+    )])
 }
 
 /// Get the names of all primitive types, as unqualified `Id`s
 fn primitive_types() -> impl Iterator<Item = Id> {
+    // PANIC SAFETY: these are valid `Id`s
+    #[allow(clippy::unwrap_used)]
     [
         Id::from_str("Bool").unwrap(),
         Id::from_str("Long").unwrap(),

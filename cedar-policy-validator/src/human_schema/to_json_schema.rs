@@ -70,7 +70,7 @@ pub fn custom_schema_to_json_schema(
     let names = build_namespace_bindings(all_namespaces.iter())?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment =
-        collect_all_errors(all_namespaces.into_iter().map(|ns| convert_namespace(ns)))?.collect();
+        collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
         SchemaFragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -157,13 +157,13 @@ impl TryFrom<Namespace> for NamespaceDefinition<RawName> {
         let entity_types = collect_all_errors(
             entity_types
                 .into_iter()
-                .map(|decl| convert_entity_decl(decl)),
+                .map(convert_entity_decl),
         )?
         .collect::<Vec<_>>();
         let entity_types = entity_types.into_iter().flatten().collect();
 
         // Convert entity type decls, collecting all errors
-        let actions = collect_all_errors(action.into_iter().map(|decl| convert_action_decl(decl)))?
+        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
             .collect::<Vec<_>>();
         let actions = actions.into_iter().flatten().collect();
 
@@ -305,14 +305,14 @@ fn convert_app_decls(
     }
     Ok(ApplySpec {
         resource_types: resource_types
-            .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+            .map(|node| node.node)
             .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
                 kind: PR::Resource,
                 name: action_info.0.clone(),
                 loc: action_info.1.clone(),
             })?,
         principal_types: principal_types
-            .map(|node| node.node.into_iter().map(|name| name.into()).collect())
+            .map(|node| node.node)
             .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
                 kind: PR::Principal,
                 name: action_info.0.clone(),
@@ -334,7 +334,7 @@ fn convert_entity_decl(
     // First build up the defined entity type
     let member_of_types = member_of_types
         .into_iter()
-        .map(|p| RawName::from(p).into())
+        .map(RawName::from)
         .collect();
     let shape = convert_attr_decls(attrs)?;
     let etype = EntityType {

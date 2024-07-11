@@ -155,6 +155,25 @@ impl ValidatorNamespaceDef<ConditionalName> {
         })
     }
 
+    /// Construct a new [`ValidatorNamespaceDef<ConditionalName>`] containing
+    /// only a single given common-type definition, which is already given in
+    /// terms of [`ConditionalName`]s.
+    ///
+    /// Unlike `from_common_typedefs()`, this function cannot fail, because
+    /// there is only one typedef so it cannot have a name collision with itself
+    pub fn from_common_typedef(
+        namespace: Option<Name>,
+        typedef: (Id, SchemaType<ConditionalName>),
+    ) -> ValidatorNamespaceDef<ConditionalName> {
+        let type_defs = TypeDefs::from_conditionalname_typedef(typedef, namespace.as_ref());
+        ValidatorNamespaceDef {
+            namespace,
+            type_defs,
+            entity_types: EntityTypesDef::new(),
+            actions: ActionsDef::new(),
+        }
+    }
+
     /// Convert this [`ValidatorNamespaceDef<ConditionalName>`] into a
     /// [`ValidatorNamespaceDef<Name>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
@@ -187,8 +206,8 @@ impl ValidatorNamespaceDef<ConditionalName> {
                 Err(TypeResolutionError::join(
                 res1.err()
                     .into_iter()
-                    .chain(res2.err().into_iter())
-                    .chain(res3.err().into_iter()),
+                    .chain(res2.err())
+                    .chain(res3.err()),
                 )
                 .expect("at least one of these results was Err, so join() must return Some"))
             },
@@ -294,6 +313,21 @@ impl TypeDefs<ConditionalName> {
             }
         }
         Ok(Self { type_defs })
+    }
+
+    /// Construct a [`TypeDefs<ConditionalName>`] representing a single typedef
+    /// in the given namespace.
+    ///
+    /// Unlike `from_conditionalname_typedefs()`, this function cannot fail,
+    /// because there is only one typedef so it cannot have a name collision
+    /// with itself
+    pub(crate) fn from_conditionalname_typedef(
+        (id, schema_ty): (Id, SchemaType<ConditionalName>),
+        schema_namespace: Option<&Name>,
+    ) -> Self {
+        Self { type_defs: HashMap::from_iter([
+            (RawName::new(id).qualify_with(schema_namespace), schema_ty),
+        ]) }
     }
 
     /// Convert this [`TypeDefs<ConditionalName>`] into a [`TypeDefs<Name>`] by
@@ -480,7 +514,7 @@ impl EntityTypeFragment<ConditionalName> {
             (Ok(_), Some(undeclared_parents)) => Err(TypeResolutionError(undeclared_parents)),
             (Err(e), None) => Err(e),
             (Err(e), Some(mut undeclared)) => {
-                undeclared.extend(e.0.into_iter());
+                undeclared.extend(e.0);
                 Err(TypeResolutionError(undeclared))
             }
         }

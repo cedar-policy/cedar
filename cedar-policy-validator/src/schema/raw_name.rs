@@ -267,6 +267,8 @@ impl ConditionalName {
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve
     pub(crate) fn resolution_failure_help(&self) -> String {
+        // PANIC SAFETY: indexing is safe because we first check the `.len()`
+        #[allow(clippy::indexing_slicing)]
         match self.possibilities.len() {
             1 => format!("`{}` has not been declared", self.possibilities[0]),
             2 => format!(
