@@ -798,7 +798,7 @@ impl<'a> CommonTypeResolver<'a> {
         ty: SchemaType<Name>,
     ) -> Result<SchemaType<Name>> {
         match ty {
-            SchemaType::TypeDef { type_name } => resolve_table
+            SchemaType::CommonTypeRef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(
                     UndeclaredCommonTypesError(type_name),
