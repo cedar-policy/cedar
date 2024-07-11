@@ -367,6 +367,11 @@ impl Node<Option<cst::Annotation>> {
 }
 
 impl Node<Option<cst::Ident>> {
+    /// Convert `cst::Ident` to `ast::UnreservedId`. Fails for reserved or invalid identifiers
+    pub(crate) fn to_unreserved_ident(&self) -> Result<ast::UnreservedId> {
+        self.to_valid_ident()
+            .and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+    }
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self) -> Result<ast::Id> {
         let ident = self.try_as_inner()?;
@@ -456,7 +461,7 @@ impl ast::UnreservedId {
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
             _ => {
-                if EXTENSION_STYLES.methods.contains(&self) {
+                if EXTENSION_STYLES.methods.contains(self) {
                     args.insert(0, e);
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
                     Ok(construct_ext_meth(self.clone(), args, loc.clone()))
@@ -701,7 +706,7 @@ pub(crate) enum ExprOrSpecial<'a> {
     /// Variables, which act as expressions or names
     Var { var: ast::Var, loc: Loc },
     /// Name that isn't an expr and couldn't be converted to var
-    Name { name: ast::Name, loc: Loc },
+    Name { name: ast::UnreservedName, loc: Loc },
     /// String literal, not yet unescaped
     /// Must be processed with to_unescaped_string or to_pattern before inclusion in the AST
     StrLit { lit: &'a SmolStr, loc: Loc },
@@ -744,12 +749,7 @@ impl ExprOrSpecial<'_> {
     pub(crate) fn into_valid_attr(self) -> Result<SmolStr> {
         match self {
             Self::Var { var, .. } => Ok(construct_string_from_var(var)),
-            Self::Name { name, loc } => match ast::UnreservedName::try_from(name) {
-                Ok(name) => name.into_valid_attr(loc),
-                Err(err) => {
-                    Err(ToASTError::new(ToASTErrorKind::ReservedNamespace(err), loc).into())
-                }
-            },
+            Self::Name { name, loc } => name.into_valid_attr(loc),
             Self::StrLit { lit, loc } => to_unescaped_string(lit).map_err(|escape_errs| {
                 ParseErrors::new_from_nonempty(
                     escape_errs
@@ -807,16 +807,13 @@ impl ExprOrSpecial<'_> {
     }
 
     fn into_unreserved_name(self) -> Result<ast::UnreservedName> {
-        self.into_name()
-            .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
-    }
-
-    fn into_name(self) -> Result<ast::Name> {
         match self {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
-            Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
+            Self::Var { var, .. } => {
+                Ok(ast::Name::unqualified_name(var.into()).try_into().unwrap())
+            }
             Self::Name { ref name, .. } => Ok(name.clone()),
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
@@ -1105,7 +1102,7 @@ impl Node<Option<cst::Unary>> {
 
 /// Temporary converted data, mirroring `cst::MemAccess`
 enum AstAccessor {
-    Field(ast::Id),
+    Field(ast::UnreservedId),
     Call(Vec<ast::Expr>),
     Index(SmolStr),
 }
@@ -1158,22 +1155,13 @@ impl Node<Option<cst::Member>> {
                     // replace the object `name` refers to with a default value since it won't be used afterwards
                     let nn = mem::replace(
                         name,
-                        ast::Name::unqualified_name(ast::Id::new_unchecked("")),
+                        ast::UnreservedName::unqualified_name(ast::UnreservedId::empty()),
                     );
-                    match ast::UnreservedName::try_from(nn) {
-                        Ok(nn) => {
-                            head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
-                                expr,
-                                loc: self.loc.clone(),
-                            })?;
-                            tail = rest;
-                        }
-                        Err(err) => {
-                            break Err(self
-                                .to_ast_err(ToASTErrorKind::ReservedNamespace(err))
-                                .into())
-                        }
-                    }
+                    head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
+                        expr,
+                        loc: self.loc.clone(),
+                    })?;
+                    tail = rest;
                 }
                 // variable call - error
                 (Var { var, .. }, [Call(_), ..]) => {
@@ -1186,18 +1174,7 @@ impl Node<Option<cst::Member>> {
                 // method call on name - error
                 (Name { name, .. }, [Field(f), Call(_), ..]) => {
                     break Err(self
-                        .to_ast_err(
-                            match (
-                                ast::UnreservedName::try_from(name.clone()),
-                                ast::UnreservedId::try_from(f.clone()),
-                            ) {
-                                (Ok(name), Ok(f)) => {
-                                    ToASTErrorKind::NoMethods(name.clone(), f.clone())
-                                }
-                                (Ok(_), Err(err)) => ToASTErrorKind::ReservedNamespace(err),
-                                (Err(err), _) => ToASTErrorKind::ReservedNamespace(err),
-                            },
-                        )
+                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
                         .into())
                 }
                 // method call on variable
@@ -1206,23 +1183,15 @@ impl Node<Option<cst::Member>> {
                     let var = mem::replace(var, ast::Var::Principal);
                     let args = std::mem::take(a);
                     // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    match UnreservedId::try_from(id) {
-                        Ok(id) => {
-                            head = id
-                                .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
-                                .map(|expr| Expr {
-                                    expr,
-                                    loc: self.loc.clone(),
-                                })?;
-                            tail = rest;
-                        }
-                        Err(err) => {
-                            break Err(self
-                                .to_ast_err(ToASTErrorKind::ReservedNamespace(err))
-                                .into())
-                        }
-                    }
+                    let id = mem::replace(i, ast::UnreservedId::empty());
+
+                    head = id
+                        .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
+                        .map(|expr| Expr {
+                            expr,
+                            loc: self.loc.clone(),
+                        })?;
+                    tail = rest;
                 }
                 // method call on arbitrary expression
                 (Expr { expr, .. }, [Field(i), Call(a), rest @ ..]) => {
@@ -1230,26 +1199,17 @@ impl Node<Option<cst::Member>> {
                     let args = std::mem::take(a);
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    match UnreservedId::try_from(id) {
-                        Ok(id) => {
-                            head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
-                                expr,
-                                loc: self.loc.clone(),
-                            })?;
-                            tail = rest;
-                        }
-                        Err(err) => {
-                            break Err(self
-                                .to_ast_err(ToASTErrorKind::ReservedNamespace(err))
-                                .into())
-                        }
-                    }
+                    let id = mem::replace(i, ast::UnreservedId::empty());
+                    head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
+                        expr,
+                        loc: self.loc.clone(),
+                    })?;
+                    tail = rest;
                 }
                 // method call on string literal (same as Expr case)
                 (StrLit { lit, loc: lit_loc }, [Field(i), Call(a), rest @ ..]) => {
                     let args = std::mem::take(a);
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     let maybe_expr = match to_unescaped_string(lit) {
                         Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
                         Err(escape_errs) => {
@@ -1258,12 +1218,11 @@ impl Node<Option<cst::Member>> {
                             })))
                         }
                     };
-                    head = maybe_expr.and_then(|e| match UnreservedId::try_from(id) {
-                        Ok(id) => id.to_meth(e, args, &self.loc).map(|expr| Expr {
+                    head = maybe_expr.and_then(|e| {
+                        id.to_meth(e, args, &self.loc).map(|expr| Expr {
                             expr,
                             loc: self.loc.clone(),
-                        }),
-                        Err(err) => Err(self.to_ast_err(err).into()),
+                        })
                     })?;
                     tail = rest;
                 }
@@ -1284,11 +1243,11 @@ impl Node<Option<cst::Member>> {
                 // attribute of variable
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
                     let var = mem::replace(var, ast::Var::Principal);
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.into_smolstr(),
+                            id.as_ref().into(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1298,16 +1257,16 @@ impl Node<Option<cst::Member>> {
                 // field of arbitrary expr
                 (Expr { expr, .. }, [Field(i), rest @ ..]) => {
                     let expr = mem::replace(expr, ast::Expr::val(false));
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
-                        expr: construct_expr_attr(expr, id.into_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.as_ref().into(), self.loc.clone()),
                         loc: self.loc.clone(),
                     };
                     tail = rest;
                 }
                 // field of string literal (same as Expr case)
                 (StrLit { lit, loc: lit_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     let maybe_expr = match to_unescaped_string(lit) {
                         Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
                         Err(escape_errs) => {
@@ -1317,7 +1276,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.into_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.as_ref().into(), self.loc.clone()),
                         loc: self.loc.clone(),
                     })?;
                     tail = rest;
@@ -1374,7 +1333,7 @@ impl Node<Option<cst::MemAccess>> {
 
         match acc {
             cst::MemAccess::Field(i) => {
-                let maybe_ident = i.to_valid_ident();
+                let maybe_ident = i.to_unreserved_ident();
                 maybe_ident.map(AstAccessor::Field)
             }
             cst::MemAccess::Call(args) => {
@@ -1415,9 +1374,12 @@ impl Node<Option<cst::Primary>> {
                         loc: self.loc.clone(),
                     })
                 } else {
-                    n.to_name().map(|name| ExprOrSpecial::Name {
-                        name,
-                        loc: self.loc.clone(),
+                    n.to_name().and_then(|name| match name.try_into() {
+                        Ok(name) => Ok(ExprOrSpecial::Name {
+                            name,
+                            loc: self.loc.clone(),
+                        }),
+                        Err(err) => Err(ParseErrors::singleton(err)),
                     })
                 }
             }

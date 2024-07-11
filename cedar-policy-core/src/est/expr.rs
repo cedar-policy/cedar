@@ -1069,7 +1069,7 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
 /// cases a `Primary` can be converted into an `Expr`.)
 fn interpret_primary(
     p: &Node<Option<cst::Primary>>,
-) -> Result<Either<ast::Name, Expr>, ParseErrors> {
+) -> Result<Either<ast::UnreservedName, Expr>, ParseErrors> {
     match p.try_as_inner()? {
         cst::Primary::Literal(lit) => Ok(Either::Right(lit.try_into()?)),
         cst::Primary::Ref(node) => match node.try_as_inner()? {
@@ -1112,17 +1112,20 @@ fn interpret_primary(
                 (&[], cst::Ident::Action) => Ok(Either::Right(Expr::var(ast::Var::Action))),
                 (&[], cst::Ident::Resource) => Ok(Either::Right(Expr::var(ast::Var::Resource))),
                 (&[], cst::Ident::Context) => Ok(Either::Right(Expr::var(ast::Var::Context))),
-                (path, cst::Ident::Ident(id)) => Ok(Either::Left(ast::Name::new(
-                    id.parse()?,
-                    path.iter()
-                        .map(|node| {
-                            node.try_as_inner()
-                                .map_err(Into::into)
-                                .and_then(|id| id.to_string().parse().map_err(Into::into))
-                        })
-                        .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
-                    Some(node.loc.clone()),
-                ))),
+                (path, cst::Ident::Ident(id)) => Ok(Either::Left(
+                    ast::Name::new(
+                        id.parse()?,
+                        path.iter()
+                            .map(|node| {
+                                node.try_as_inner()
+                                    .map_err(Into::into)
+                                    .and_then(|id| id.to_string().parse().map_err(Into::into))
+                            })
+                            .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                        Some(node.loc.clone()),
+                    )
+                    .try_into()?,
+                )),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
@@ -1169,7 +1172,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
     type Error = ParseErrors;
     fn try_from(m: &Node<Option<cst::Member>>) -> Result<Expr, ParseErrors> {
         let m_node = m.try_as_inner()?;
-        let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
+        let mut item: Either<ast::UnreservedName, Expr> = interpret_primary(&m_node.item)?;
         for access in &m_node.access {
             match access.try_as_inner()? {
                 cst::MemAccess::Field(node) => {
