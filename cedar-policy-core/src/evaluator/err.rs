@@ -246,7 +246,7 @@ impl EvaluationError {
 
     /// Construct a [`WrongNumArguments`] error
     pub(crate) fn wrong_num_arguments(
-        function_name: UnreservedName,
+        function_name: Name,
         expected: usize,
         actual: usize,
         source_loc: Option<Loc>,
@@ -267,7 +267,7 @@ impl EvaluationError {
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
     pub(crate) fn failed_extension_function_application(
-        extension_name: UnreservedName,
+        extension_name: Name,
         msg: String,
         source_loc: Option<Loc>,
     ) -> Self {
@@ -303,7 +303,7 @@ pub mod evaluation_errors {
     use std::sync::Arc;
     use thiserror::Error;
 
-    use super::UnreservedName;
+    use super::Name;
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //
@@ -498,7 +498,7 @@ pub mod evaluation_errors {
     #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
     pub struct WrongNumArgumentsError {
         /// arguments to this function
-        pub(crate) function_name: UnreservedName,
+        pub(crate) function_name: Name,
         /// expected number of arguments
         pub(crate) expected: usize,
         /// actual number of arguments
@@ -654,7 +654,7 @@ pub mod evaluation_errors {
     #[error("error while evaluating `{extension_name}` extension function: {msg}")]
     pub struct ExtensionFunctionExecutionError {
         /// Name of the extension throwing the error
-        pub(crate) extension_name: UnreservedName,
+        pub(crate) extension_name: Name,
         /// Error message from the extension
         pub(crate) msg: String,
         /// Source location

@@ -30,7 +30,7 @@ use crate::{
         expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
         ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
     },
-    entities::UnreservedName,
+    entities::Name,
 };
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -202,7 +202,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            UnreservedName::from_normalized_str(&e.entity_type)?.into(),
+            Name::from_normalized_str(&e.entity_type)?.into(),
             Eid::new(e.id),
             None,
         ))
@@ -360,7 +360,7 @@ impl CedarValueJson {
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
-                let ext_fn: &UnreservedName = &ev.constructor;
+                let ext_fn: &Name = &ev.constructor;
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
                         ext_fn: ext_fn.to_string().into(),
@@ -416,7 +416,7 @@ impl FnAndArg {
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         Ok(RestrictedExpr::call_extension_fn(
-            UnreservedName::from_normalized_str(&self.ext_fn).map_err(|errs| {
+            Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
                 JsonDeserializationError::parse_escape(EscapeKind::Extension, self.ext_fn, errs)
             })?,
             vec![CedarValueJson::into_expr(*self.arg, ctx)?],
@@ -613,7 +613,7 @@ impl<'e> ValueParser<'e> {
     fn extn_value_json_into_rexpr(
         &self,
         extnjson: ExtnValueJson,
-        expected_typename: UnreservedName,
+        expected_typename: Name,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match extnjson {

@@ -1191,7 +1191,7 @@ impl Validator {
 #[derive(Debug)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment,
-    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
+    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawReservedName>,
 }
 
 impl SchemaFragment {
@@ -1574,7 +1574,7 @@ pub fn confusable_string_checker<'a>(
 /// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EntityNamespace(ast::UnreservedName);
+pub struct EntityNamespace(ast::Name);
 
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
@@ -1582,7 +1582,7 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        ast::UnreservedName::from_normalized_str(namespace_str)
+        ast::Name::from_normalized_str(namespace_str)
             .map(EntityNamespace)
             .map_err(Into::into)
     }
@@ -2973,18 +2973,18 @@ impl RestrictedExpression {
     }
 }
 
-fn decimal_extension_name() -> ast::UnreservedName {
+fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::Name::unqualified_name("decimal".parse().unwrap())
+    ast::ReservedName::unqualified_name("decimal".parse().unwrap())
         .try_into()
         .unwrap()
 }
 
-fn ip_extension_name() -> ast::UnreservedName {
+fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::Name::unqualified_name("ip".parse().unwrap())
+    ast::ReservedName::unqualified_name("ip".parse().unwrap())
         .try_into()
         .unwrap()
 }

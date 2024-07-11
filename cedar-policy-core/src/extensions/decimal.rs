@@ -18,7 +18,7 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Type, UnreservedName, Value, ValueKind,
+    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -41,16 +41,16 @@ struct Decimal {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
     use super::EXTENSION_NAME;
-    use crate::extensions::UnreservedName;
+    use crate::extensions::Name;
     use regex::Regex;
 
     // PANIC SAFETY all of the names here are valid names
     lazy_static::lazy_static! {
-        pub static ref DECIMAL_FROM_STR_NAME : UnreservedName = UnreservedName::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
-        pub static ref LESS_THAN : UnreservedName = UnreservedName::parse_unqualified_name("lessThan").expect("should be a valid identifier");
-        pub static ref LESS_THAN_OR_EQUAL : UnreservedName = UnreservedName::parse_unqualified_name("lessThanOrEqual").expect("should be a valid identifier");
-        pub static ref GREATER_THAN : UnreservedName = UnreservedName::parse_unqualified_name("greaterThan").expect("should be a valid identifier");
-        pub static ref GREATER_THAN_OR_EQUAL : UnreservedName = UnreservedName::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
+        pub static ref DECIMAL_FROM_STR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
+        pub static ref LESS_THAN : Name = Name::parse_unqualified_name("lessThan").expect("should be a valid identifier");
+        pub static ref LESS_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("lessThanOrEqual").expect("should be a valid identifier");
+        pub static ref GREATER_THAN : Name = Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier");
+        pub static ref GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
     }
 
     // Global regex, initialized at first use
@@ -95,7 +95,7 @@ fn checked_mul_pow(x: i64, y: u32) -> Result<i64, Error> {
 
 impl Decimal {
     /// The Cedar typename of decimal values
-    fn typename() -> UnreservedName {
+    fn typename() -> Name {
         constants::DECIMAL_FROM_STR_NAME.clone()
     }
 
@@ -163,7 +163,7 @@ impl std::fmt::Display for Decimal {
 }
 
 impl ExtensionValue for Decimal {
-    fn typename(&self) -> UnreservedName {
+    fn typename(&self) -> Name {
         Self::typename()
     }
 }
@@ -327,7 +327,7 @@ mod tests {
             println!("{msg}");
             assert_eq!(
                 extension_name,
-                UnreservedName::parse_unqualified_name("decimal")
+                Name::parse_unqualified_name("decimal")
                     .expect("should be a valid identifier")
             )
         });
@@ -347,35 +347,32 @@ mod tests {
         let ext = extension();
         assert!(ext
             .get_func(
-                &UnreservedName::parse_unqualified_name("decimal")
+                &Name::parse_unqualified_name("decimal").expect("should be a valid identifier")
+            )
+            .expect("function should exist")
+            .is_constructor());
+        assert!(!ext
+            .get_func(
+                &Name::parse_unqualified_name("lessThan").expect("should be a valid identifier")
+            )
+            .expect("function should exist")
+            .is_constructor());
+        assert!(!ext
+            .get_func(
+                &Name::parse_unqualified_name("lessThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
             .is_constructor());
         assert!(!ext
             .get_func(
-                &UnreservedName::parse_unqualified_name("lessThan")
-                    .expect("should be a valid identifier")
+                &Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier")
             )
             .expect("function should exist")
             .is_constructor());
         assert!(!ext
             .get_func(
-                &UnreservedName::parse_unqualified_name("lessThanOrEqual")
-                    .expect("should be a valid identifier")
-            )
-            .expect("function should exist")
-            .is_constructor());
-        assert!(!ext
-            .get_func(
-                &UnreservedName::parse_unqualified_name("greaterThan")
-                    .expect("should be a valid identifier")
-            )
-            .expect("function should exist")
-            .is_constructor());
-        assert!(!ext
-            .get_func(
-                &UnreservedName::parse_unqualified_name("greaterThanOrEqual")
+                &Name::parse_unqualified_name("greaterThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
@@ -553,8 +550,7 @@ mod tests {
         for ((l, r), res) in tests {
             assert_eq!(
                 eval.interpret_inline_policy(&Expr::call_extension_fn(
-                    UnreservedName::parse_unqualified_name(op)
-                        .expect("should be a valid identifier"),
+                    Name::parse_unqualified_name(op).expect("should be a valid identifier"),
                     vec![l, r]
                 )),
                 Ok(Value::from(res))
@@ -625,7 +621,7 @@ mod tests {
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Extension {
-                    name: UnreservedName::parse_unqualified_name("decimal")
+                    name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 });
                 assert_eq!(advice, None);
@@ -637,7 +633,7 @@ mod tests {
             ),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::Extension {
-                    name: UnreservedName::parse_unqualified_name("decimal")
+                    name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 }]);
                 assert_eq!(actual, Type::String);

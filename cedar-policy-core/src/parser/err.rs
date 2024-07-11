@@ -298,13 +298,13 @@ pub enum ToASTErrorKind {
     VariableCall(ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
-    NoMethods(ast::UnreservedName, ast::UnreservedId),
+    NoMethods(ast::Name, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
     #[error("`{0}` is not a valid method")]
     UnknownMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a valid function")]
-    UnknownFunction(ast::UnreservedName),
+    UnknownFunction(ast::Name),
     /// Returned when a policy attempts to write an entity literal
     #[error("invalid entity literal: {0}")]
     #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]
@@ -315,10 +315,10 @@ pub enum ToASTErrorKind {
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
     #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
-    InvalidAccess(ast::UnreservedName, SmolStr),
+    InvalidAccess(ast::Name, SmolStr),
     /// Returned when a policy attempts to index on a fields of a value with no fields
     #[error("invalid indexing expression `{0}[\"{}\"]`, `{0}` has no fields", .1.escape_debug())]
-    InvalidIndex(ast::UnreservedName, SmolStr),
+    InvalidIndex(ast::Name, SmolStr),
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,

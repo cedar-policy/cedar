@@ -28,7 +28,7 @@ use crate::{
     diagnostics::ValidationError, types::Type, validation_errors::AttributeAccess,
     validation_errors::LubContext, validation_errors::LubHelp,
     validation_errors::UnexpectedTypeHelp, AttributesOrContext, EntityType, NamespaceDefinition,
-    RawName, SchemaFragment, ValidationMode,
+    RawReservedName, SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::{
@@ -374,7 +374,7 @@ fn eq_typechecks() {
 
 #[test]
 fn entity_eq_is_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -422,7 +422,7 @@ fn entity_eq_is_false() {
 
 #[test]
 fn set_eq_is_not_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -475,7 +475,7 @@ fn set_eq_is_not_false() {
 
 #[test]
 fn eq_typecheck_action_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {},
@@ -504,7 +504,7 @@ fn eq_typecheck_action_literals_false() {
 
 #[test]
 fn eq_typecheck_entity_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -849,7 +849,7 @@ fn contains_typecheck_fails() {
 
 #[test]
 fn contains_typecheck_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_value(json!(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_value(json!(
     {
         "entityTypes": {},
         "actions": {
@@ -910,7 +910,7 @@ fn contains_all_typecheck_fails() {
 
 #[test]
 fn contains_all_typecheck_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_value(json!(
+    let schema: NamespaceDefinition<RawReservedName> = serde_json::from_value(json!(
     {
         "entityTypes": {},
         "actions": {
@@ -1177,7 +1177,7 @@ fn add_sub_typecheck_fails() {
 
 #[test]
 fn is_typecheck_fails() {
-    let schema: NamespaceDefinition<RawName> =
+    let schema: NamespaceDefinition<RawReservedName> =
         serde_json::from_value(json!({ "entityTypes": { "User": {}, }, "actions": {} })).unwrap();
     assert_typecheck_fails(
         schema,
@@ -1195,7 +1195,7 @@ fn is_typecheck_fails() {
 
 #[test]
 fn is_typechecks() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(json!({
+    let schema: SchemaFragment<RawReservedName> = serde_json::from_value(json!({
             "": { "entityTypes": { "User": {}, "Photo": {} }, "actions": {} },
             "N::S": { "entityTypes": { "User": {} }, "actions": {} }
     }))

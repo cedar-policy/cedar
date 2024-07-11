@@ -62,7 +62,7 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
-    functions: HashSet<&'a ast::UnreservedName>,
+    functions: HashSet<&'a ast::Name>,
     methods: HashSet<ast::UnreservedId>,
 }
 
@@ -466,7 +466,7 @@ impl ast::UnreservedId {
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
                     Ok(construct_ext_meth(self.clone(), args, loc.clone()))
                 } else {
-                    let unqual_name = ast::UnreservedName::unqualified_name(self.clone());
+                    let unqual_name = ast::Name::unqualified_name(self.clone());
                     if EXTENSION_STYLES.functions.contains(&unqual_name) {
                         Err(ToASTError::new(
                             ToASTErrorKind::MethodCallOnFunction(unqual_name.basename()),
@@ -706,7 +706,7 @@ pub(crate) enum ExprOrSpecial<'a> {
     /// Variables, which act as expressions or names
     Var { var: ast::Var, loc: Loc },
     /// Name that isn't an expr and couldn't be converted to var
-    Name { name: ast::UnreservedName, loc: Loc },
+    Name { name: ast::Name, loc: Loc },
     /// String literal, not yet unescaped
     /// Must be processed with to_unescaped_string or to_pattern before inclusion in the AST
     StrLit { lit: &'a SmolStr, loc: Loc },
@@ -806,7 +806,7 @@ impl ExprOrSpecial<'_> {
         self.into_unreserved_name().map(ast::EntityType::from)
     }
 
-    fn into_unreserved_name(self) -> Result<ast::UnreservedName> {
+    fn into_unreserved_name(self) -> Result<ast::Name> {
         match self {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
@@ -814,7 +814,9 @@ impl ExprOrSpecial<'_> {
             Self::Var { var, .. } => {
                 // PANIC SAFETY: vars are valid unreserved names
                 #[allow(clippy::unwrap_used)]
-                Ok(ast::Name::unqualified_name(var.into()).try_into().unwrap())
+                Ok(ast::ReservedName::unqualified_name(var.into())
+                    .try_into()
+                    .unwrap())
             }
             Self::Name { ref name, .. } => Ok(name.clone()),
             Self::Expr { ref expr, .. } => Err(self
@@ -1157,7 +1159,7 @@ impl Node<Option<cst::Member>> {
                     // replace the object `name` refers to with a default value since it won't be used afterwards
                     let nn = mem::replace(
                         name,
-                        ast::UnreservedName::unqualified_name(ast::UnreservedId::empty()),
+                        ast::Name::unqualified_name(ast::UnreservedId::empty()),
                     );
                     head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
                         expr,
@@ -1461,12 +1463,12 @@ impl Node<Option<cst::Name>> {
         }
     }
 
-    pub(crate) fn to_unreserved_name(&self) -> Result<ast::UnreservedName> {
+    pub(crate) fn to_unreserved_name(&self) -> Result<ast::Name> {
         self.to_name()
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    pub(crate) fn to_name(&self) -> Result<ast::Name> {
+    pub(crate) fn to_name(&self) -> Result<ast::ReservedName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1504,7 +1506,7 @@ impl Node<Option<cst::Name>> {
     }
 }
 
-impl ast::UnreservedName {
+impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Loc) -> Result<SmolStr> {
         if !self.0.path.is_empty() {
@@ -1663,8 +1665,8 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
-    ast::Name {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::ReservedName {
+    ast::ReservedName {
         id,
         path: Arc::new(path),
         loc: Some(loc),
@@ -1786,7 +1788,7 @@ fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
         .with_source_loc(loc)
         .is_entity_type(e, n)
 }
-fn construct_ext_func(name: ast::UnreservedName, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
+fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine
     ast::ExprBuilder::new()
         .with_source_loc(loc)
@@ -1811,7 +1813,7 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
 
 // INVARIANT (MethodStyleArgs), args must be non-empty
 fn construct_ext_meth(n: UnreservedId, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
-    let name = ast::UnreservedName::unqualified_name(n);
+    let name = ast::Name::unqualified_name(n);
     // INVARIANT (MethodStyleArgs), args must be non-empty
     ast::ExprBuilder::new()
         .with_source_loc(loc)
@@ -1839,7 +1841,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
-    use ast::{Name, ReservedNameError};
+    use ast::{ReservedName, ReservedNameError};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4516,39 +4518,39 @@ mod tests {
         assert_matches!(parse_expr(r#"__cedar::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::A::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"principal is __cedar::A"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"ip("").__cedar()"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"{__cedar: 0}"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
         assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
     }
 
     #[test]

@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Literal, PatternElem, Template, UnreservedName,
+    EntityType, EntityUID, Expr, ExprKind, Literal, Name, PatternElem, Template,
 };
 use cedar_policy_core::parser::Loc;
 
@@ -142,10 +142,7 @@ fn text_in_entity_type<'a>(
     text_in_name(loc, ty.name()).collect::<Vec<_>>()
 }
 
-fn text_in_name<'a>(
-    loc: Option<&'a Loc>,
-    name: &'a UnreservedName,
-) -> impl Iterator<Item = TextKind<'a>> {
+fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item = TextKind<'a>> {
     name.as_ref()
         .namespace_components()
         .map(move |id| TextKind::Identifier(loc, id.as_ref()))

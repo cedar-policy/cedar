@@ -42,8 +42,8 @@ use crate::{
 };
 
 use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, UnreservedName, Var,
+    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -65,7 +65,7 @@ pub enum PolicyCheck {
 #[derive(Debug)]
 pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
-    extensions: HashMap<UnreservedName, ExtensionSchema>,
+    extensions: HashMap<Name, ExtensionSchema>,
     mode: ValidationMode,
     policy_id: PolicyID,
 }
@@ -2195,7 +2195,7 @@ impl<'a> Typechecker<'a> {
     /// a different instantiation of the generic expression type is used.
     fn lookup_extension_function<'b>(
         &'b self,
-        f: &'b UnreservedName,
+        f: &'b Name,
     ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> ValidationError + 'b> {
         let extension_funcs: Vec<&ExtensionFunctionType> = self
             .extensions

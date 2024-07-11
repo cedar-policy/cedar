@@ -249,7 +249,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, UnreservedName},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, ReservedName},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -341,7 +341,7 @@ pub mod schema_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error("undeclared common type: {0}")]
     #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) Name);
+    pub struct UndeclaredCommonTypesError(pub(crate) ReservedName);
 
     /// Duplicate entity type error
     //
@@ -368,7 +368,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) Name);
+    pub struct DuplicateCommonTypeError(pub(crate) ReservedName);
 
     /// Cycle in action hierarchy error
     //
@@ -386,7 +386,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) Name);
+    pub struct CycleInCommonTypeReferencesError(pub(crate) ReservedName);
 
     /// Action declared in `entityType` list error
     //
@@ -566,7 +566,7 @@ pub mod schema_errors {
     #[derive(Error, Debug)]
     #[error("unknown extension type `{actual}`")]
     pub struct UnknownExtensionTypeError {
-        pub(crate) actual: UnreservedName,
+        pub(crate) actual: Name,
         pub(crate) suggested_replacement: Option<String>,
     }
 

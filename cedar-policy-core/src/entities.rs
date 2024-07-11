@@ -1971,12 +1971,12 @@ mod schema_based_parsing_tests {
             basename: &'a UnreservedId,
         ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
             match basename.as_ref() {
-                "Employee" => Box::new(std::iter::once(EntityType::from(
-                    UnreservedName::unqualified_name(basename.clone()),
-                ))),
-                "Action" => Box::new(std::iter::once(EntityType::from(
-                    UnreservedName::unqualified_name(basename.clone()),
-                ))),
+                "Employee" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
+                "Action" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
                 _ => Box::new(std::iter::empty()),
             }
         }
@@ -1989,7 +1989,7 @@ mod schema_based_parsing_tests {
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
         fn entity_type(&self) -> EntityType {
-            EntityType::from(UnreservedName::parse_unqualified_name("Employee").expect("valid"))
+            EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
         }
 
         fn attr_type(&self, attr: &str) -> Option<SchemaType> {
@@ -1997,7 +1997,7 @@ mod schema_based_parsing_tests {
                 ty: self.entity_type(),
             };
             let hr_ty = || SchemaType::Entity {
-                ty: EntityType::from(UnreservedName::parse_unqualified_name("HR").expect("valid")),
+                ty: EntityType::from(Name::parse_unqualified_name("HR").expect("valid")),
             };
             match attr {
                 "isFullTime" => Some(SchemaType::Bool),
@@ -2029,13 +2029,13 @@ mod schema_based_parsing_tests {
                     open_attrs: false,
                 }),
                 "home_ip" => Some(SchemaType::Extension {
-                    name: UnreservedName::parse_unqualified_name("ipaddr").expect("valid"),
+                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
                 }),
                 "work_ip" => Some(SchemaType::Extension {
-                    name: UnreservedName::parse_unqualified_name("ipaddr").expect("valid"),
+                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
                 }),
                 "trust_score" => Some(SchemaType::Extension {
-                    name: UnreservedName::parse_unqualified_name("decimal").expect("valid"),
+                    name: Name::parse_unqualified_name("decimal").expect("valid"),
                 }),
                 "tricky" => Some(SchemaType::Record {
                     attrs: [
@@ -2245,14 +2245,14 @@ mod schema_based_parsing_tests {
         assert_eq!(
             parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                UnreservedName::parse_unqualified_name("ip").expect("valid"),
+                Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("222.222.222.101")]
             ))),
         );
         assert_eq!(
             parsed.get("work_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                UnreservedName::parse_unqualified_name("ip").expect("valid"),
+                Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("2.2.2.0/24")]
             ))),
         );
@@ -2262,7 +2262,7 @@ mod schema_based_parsing_tests {
                 .cloned()
                 .map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
-                UnreservedName::parse_unqualified_name("decimal").expect("valid"),
+                Name::parse_unqualified_name("decimal").expect("valid"),
                 vec![RestrictedExpr::val("5.7")]
             ))),
         );
@@ -3127,7 +3127,7 @@ mod schema_based_parsing_tests {
             ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
                 match basename.as_ref() {
                     "Employee" => Box::new(std::iter::once(EntityType::from(
-                        UnreservedName::from_str("XYZCorp::Employee").expect("valid name"),
+                        Name::from_str("XYZCorp::Employee").expect("valid name"),
                     ))),
                     _ => Box::new(std::iter::empty()),
                 }

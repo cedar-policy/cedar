@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::{RawName, SchemaTypeVariant};
+use crate::{RawReservedName, SchemaTypeVariant};
 
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
@@ -98,9 +98,9 @@ impl std::fmt::Display for Path {
     }
 }
 
-impl From<Path> for RawName {
+impl From<Path> for RawReservedName {
     fn from(value: Path) -> Self {
-        RawName::from_components(
+        RawReservedName::from_components(
             value.0.node.basename,
             value.0.node.namespace,
             Some(value.0.loc),
@@ -183,10 +183,10 @@ impl Namespace {
 
     /// Get the name of this [`Namespace`] as a fully-qualified [`cedar_policy_core::ast::Name`],
     /// or `None` for the empty namespace
-    pub fn name(&self) -> Option<cedar_policy_core::ast::Name> {
+    pub fn name(&self) -> Option<cedar_policy_core::ast::ReservedName> {
         self.name.as_ref().map(|path| {
             // `.qualify_with(None)` is OK because the `path` is already fully-qualified
-            crate::RawName::from(path.clone().node).qualify_with(None)
+            crate::RawReservedName::from(path.clone().node).qualify_with(None)
         })
     }
 }

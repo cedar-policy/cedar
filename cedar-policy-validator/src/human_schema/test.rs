@@ -32,7 +32,7 @@ mod demo_tests {
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        NamespaceDefinition, RawReservedName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
     use itertools::Itertools;
@@ -343,7 +343,7 @@ mod demo_tests {
 
     #[test]
     fn empty_appliesto() {
-        let action = ActionType::<RawName> {
+        let action = ActionType::<RawReservedName> {
             attributes: None,
             applies_to: None,
             member_of: None,
@@ -432,19 +432,19 @@ namespace Baz {action "Foo" appliesTo {
             common_types: HashMap::new(),
             entity_types: HashMap::from([(
                 "a".parse().unwrap(),
-                EntityType::<RawName> {
+                EntityType::<RawReservedName> {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::<RawName>::default(),
+                    shape: AttributesOrContext::<RawReservedName>::default(),
                 },
             )]),
             actions: HashMap::from([(
                 "j".to_smolstr(),
-                ActionType::<RawName> {
+                ActionType::<RawReservedName> {
                     attributes: None,
-                    applies_to: Some(ApplySpec::<RawName> {
+                    applies_to: Some(ApplySpec::<RawReservedName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: AttributesOrContext::<RawName>::default(),
+                        context: AttributesOrContext::<RawReservedName>::default(),
                     }),
                     member_of: None,
                 },
@@ -1367,7 +1367,7 @@ mod translator_tests {
                                 "wrong type for attr `ip`"
                             ),
                             "bandwidth" => assert!(
-                                matches!(&attr.attr_type, crate::types::Type::ExtensionType { name } if name.clone() == cedar_policy_core::ast::UnreservedName::from_normalized_str("decimal").unwrap()),
+                                matches!(&attr.attr_type, crate::types::Type::ExtensionType { name } if name.clone() == cedar_policy_core::ast::Name::from_normalized_str("decimal").unwrap()),
                                 "wrong type for attr `bandwidth`"
                             ),
                             _ => unreachable!("unexpected attr: {attr_name}"),
@@ -1409,7 +1409,7 @@ mod translator_tests {
         for (name, et) in validator_schema.entity_types() {
             if name.to_string() == "A::C" || name.to_string() == "X::Y" {
                 assert!(et.descendants.contains(&cedar_ast::EntityType::from(
-                    cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap()
+                    cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()
                 )));
             } else {
                 assert!(et.descendants.is_empty());
@@ -1500,7 +1500,7 @@ mod translator_tests {
             schema.try_into().expect("should be a valid schema");
         let et = validator_schema
             .get_entity_type(&cedar_ast::EntityType::from(
-                cedar_policy_core::ast::UnreservedName::from_normalized_str("A::B").unwrap(),
+                cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap(),
             ))
             .unwrap();
         let attr = et.attr("foo").unwrap();

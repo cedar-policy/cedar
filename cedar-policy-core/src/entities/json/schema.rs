@@ -16,7 +16,7 @@
 
 use super::SchemaType;
 use crate::ast::{Entity, EntityType, EntityUID};
-use crate::entities::{UnreservedId, UnreservedName};
+use crate::entities::{Name, UnreservedId};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -103,9 +103,9 @@ impl Schema for AllEntitiesNoAttrsSchema {
         &'a self,
         basename: &'a UnreservedId,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
-        Box::new(std::iter::once(EntityType::from(
-            UnreservedName::unqualified_name(basename.clone()),
-        )))
+        Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+            basename.clone(),
+        ))))
     }
     fn action_entities(&self) -> std::iter::Empty<Arc<Entity>> {
         std::iter::empty()

@@ -146,7 +146,7 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::UnreservedName::from_normalized_str(namespace_type_str)
+        ast::Name::from_normalized_str(namespace_type_str)
             .map(|name| Self(ast::EntityType::from(name)))
             .map_err(Into::into)
     }

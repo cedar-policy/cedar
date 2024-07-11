@@ -14,9 +14,18 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{Id, Name, ReservedNameError, UnreservedName};
+use cedar_policy_core::ast::{Id, Name, ReservedName, ReservedNameError};
 use cedar_policy_core::parser::Loc;
 use serde::{Deserialize, Serialize};
+
+/// A newtype which indicates that the contained `ReservedName` may not yet be
+/// fully-qualified.
+///
+/// You can convert it to a fully-qualified `ReservedName` using `.qualify_with()`.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RawReservedName(ReservedName);
 
 /// A newtype which indicates that the contained `Name` may not yet be
 /// fully-qualified.
@@ -27,109 +36,100 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RawName(Name);
 
-/// A newtype which indicates that the contained `UnreservedName` may not yet be
-/// fully-qualified.
-///
-/// You can convert it to a fully-qualified `UnreservedName` using `.qualify_with()`.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct RawUnreservedName(UnreservedName);
-
-impl TryFrom<RawName> for RawUnreservedName {
+impl TryFrom<RawReservedName> for RawName {
     type Error = ReservedNameError;
-    fn try_from(value: RawName) -> Result<Self, Self::Error> {
+    fn try_from(value: RawReservedName) -> Result<Self, Self::Error> {
         value.0.try_into().map(Self)
     }
 }
 
-impl RawUnreservedName {
-    /// Create a fully qualified `UnreservedName`
-    pub fn qualify_with(self, ns: Option<&UnreservedName>) -> UnreservedName {
+impl RawName {
+    /// Create a fully qualified `Name`
+    pub fn qualify_with(self, ns: Option<&Name>) -> Name {
         self.0.qualify_with(ns)
     }
 }
 
-impl RawName {
-    /// Create a new `RawName` from the given `Id`
+impl RawReservedName {
+    /// Create a new `RawReservedName` from the given `Id`
     pub fn new(id: Id) -> Self {
-        Self(Name::unqualified_name(id))
+        Self(ReservedName::unqualified_name(id))
     }
 
-    /// Create a new `RawName` from the given `Name`.
+    /// Create a new `RawReservedName` from the given `ReservedName`.
     ///
     /// Note that if `name` includes explicit namespaces, the result will be a
-    /// `RawName` that also includes those explicit namespaces, as if that
+    /// `RawReservedName` that also includes those explicit namespaces, as if that
     /// fully-qualified name appeared directly in the (JSON or human) schema
     /// format.
     /// If `name` does not include explicit namespaces, the result will be a
-    /// `RawName` that also does not include explicit namespaces, which may or
+    /// `RawReservedName` that also does not include explicit namespaces, which may or
     /// may not translate back to the original input `name`, due to
     /// namespace-qualification rules.
-    pub fn from_name(name: Name) -> Self {
+    pub fn from_name(name: ReservedName) -> Self {
         Self(name)
     }
 
-    /// Create a new `RawName` from a basename, namespace components as `Id`s, and optional source location
+    /// Create a new `RawReservedName` from a basename, namespace components as `Id`s, and optional source location
     pub fn from_components(
         basename: Id,
         namespace: impl IntoIterator<Item = Id>,
         loc: Option<Loc>,
     ) -> Self {
-        Self(Name::new(basename, namespace, loc))
+        Self(ReservedName::new(basename, namespace, loc))
     }
 
-    /// Create a new `RawName` by parsing the provided string, which should contain
-    /// an unqualified `Name` (no explicit namespaces)
+    /// Create a new `RawReservedName` by parsing the provided string, which should contain
+    /// an unqualified `ReservedName` (no explicit namespaces)
     pub fn parse_unqualified_name(
         s: &str,
     ) -> Result<Self, cedar_policy_core::parser::err::ParseErrors> {
-        Name::parse_unqualified_name(s).map(RawName)
+        ReservedName::parse_unqualified_name(s).map(RawReservedName)
     }
 
-    /// Create a new `RawName` by parsing the provided string, which should contain
-    /// a `Name` in normalized form.
+    /// Create a new `RawReservedName` by parsing the provided string, which should contain
+    /// a `ReservedNamee` in normalized form.
     ///
     /// (See the [`cedar_policy_core::FromNormalizedStr`] trait.)
     pub fn from_normalized_str(
         s: &str,
     ) -> Result<Self, cedar_policy_core::parser::err::ParseErrors> {
         use cedar_policy_core::FromNormalizedStr;
-        Name::from_normalized_str(s).map(RawName)
+        ReservedName::from_normalized_str(s).map(RawReservedName)
     }
 
-    /// Is this `RawName` unqualified, that is, written without any _explicit_
+    /// Is this `RawReservedName` unqualified, that is, written without any _explicit_
     /// namespaces.
-    /// (This method returning `true` does not imply that the `RawName` will
+    /// (This method returning `true` does not imply that the `RawReservedName` will
     /// _eventually resolve_ to an unqualified name.)
     pub fn is_unqualified(&self) -> bool {
         self.0.is_unqualified()
     }
 
-    /// Convert this `RawName` to a `Name` by adding the given `ns` as its
+    /// Convert this `RawReservedName` to a `ReservedName` by adding the given `ns` as its
     /// prefix, or by no-op if `ns` is `None`.
     ///
-    /// Note that if the `RawName` already had a non-empty explicit namespace,
+    /// Note that if the `RawReservedName` already had a non-empty explicit namespace,
     /// no additional prefixing will be done, even if `ns` is `Some`.
-    pub fn qualify_with(self, ns: Option<&Name>) -> Name {
+    pub fn qualify_with(self, ns: Option<&ReservedName>) -> ReservedName {
         self.0.qualify_with(ns)
     }
 
-    /// Is this `RawName` reserved, i.e., containing any components being `__cedar`
+    /// Is this `RawReservedName` reserved, i.e., containing any components being `__cedar`
     pub fn is_reserved(&self) -> bool {
         self.0.is_reserved()
     }
 }
 
-impl std::fmt::Display for RawName {
+impl std::fmt::Display for RawReservedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl std::str::FromStr for RawName {
-    type Err = <Name as std::str::FromStr>::Err;
+impl std::str::FromStr for RawReservedName {
+    type Err = <ReservedName as std::str::FromStr>::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Name::from_str(s).map(RawName)
+        ReservedName::from_str(s).map(RawReservedName)
     }
 }
