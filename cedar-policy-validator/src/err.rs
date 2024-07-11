@@ -368,12 +368,7 @@ pub mod schema_errors {
         /// Unlike `join()`, this cannot fail, because `NonEmpty` guarantees
         /// there is at least one error to join.
         pub(crate) fn join_nonempty(errs: NonEmpty<TypeResolutionError>) -> Self {
-            // PANIC SAFETY: Since the input is `NonEmpty`, there must be at least one error, so `NonEmpty::collect()` must return `Some`
-            #[allow(clippy::expect_used)]
-            Self(
-                NonEmpty::collect(errs.into_iter().flat_map(|err| err.0))
-                    .expect("input contained at least one error, so NonEmpty must be nonempty"),
-            )
+            Self(errs.flat_map(|err| err.0))
         }
     }
 
