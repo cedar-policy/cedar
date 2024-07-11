@@ -411,7 +411,7 @@ mod test {
     use crate::{
         schema_file_format::{NamespaceDefinition, *},
         validation_errors::UnrecognizedEntityType,
-        RawReservedName, ValidationMode, ValidationWarning, Validator,
+        RawUncheckedName, ValidationMode, ValidationWarning, Validator,
     };
 
     #[test]
@@ -434,7 +434,7 @@ mod test {
 
     #[test]
     fn validate_equals_instead_of_in() {
-        let schema_file: NamespaceDefinition<RawReservedName> =
+        let schema_file: NamespaceDefinition<RawUncheckedName> =
             serde_json::from_value(serde_json::json!(
                 {
                     "entityTypes": {
@@ -725,7 +725,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_action_id_in_schema() {
-        let descriptors: SchemaFragment<RawReservedName> = serde_json::from_str(
+        let descriptors: SchemaFragment<RawUncheckedName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -757,7 +757,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_action() {
-        let descriptors: SchemaFragment<RawReservedName> = serde_json::from_str(
+        let descriptors: SchemaFragment<RawUncheckedName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -788,7 +788,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
-        let descriptors: SchemaFragment<RawReservedName> = serde_json::from_str(
+        let descriptors: SchemaFragment<RawUncheckedName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -823,7 +823,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_entity_type() {
-        let descriptors: SchemaFragment<RawReservedName> = serde_json::from_str(
+        let descriptors: SchemaFragment<RawUncheckedName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -1448,7 +1448,7 @@ mod test {
 
     #[test]
     fn unspecified_principal_resource_with_scope_conditions() {
-        let schema = serde_json::from_str::<NamespaceDefinition<RawReservedName>>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawUncheckedName>>(
             r#"
         {
             "entityTypes": {"a": {}},
@@ -1481,11 +1481,11 @@ mod partial_schema {
         parser::parse_policy,
     };
 
-    use crate::{NamespaceDefinition, RawReservedName, Validator};
+    use crate::{NamespaceDefinition, RawUncheckedName, Validator};
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
-        let schema = serde_json::from_str::<NamespaceDefinition<RawReservedName>>(
+        let schema = serde_json::from_str::<NamespaceDefinition<RawUncheckedName>>(
             r#"
         {
             "entityTypes": { },

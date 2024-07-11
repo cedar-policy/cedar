@@ -249,7 +249,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, ReservedName},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, UncheckedName},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -341,7 +341,7 @@ pub mod schema_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error("undeclared common type: {0}")]
     #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) ReservedName);
+    pub struct UndeclaredCommonTypesError(pub(crate) UncheckedName);
 
     /// Duplicate entity type error
     //
@@ -368,7 +368,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) ReservedName);
+    pub struct DuplicateCommonTypeError(pub(crate) UncheckedName);
 
     /// Cycle in action hierarchy error
     //
@@ -386,7 +386,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) ReservedName);
+    pub struct CycleInCommonTypeReferencesError(pub(crate) UncheckedName);
 
     /// Action declared in `entityType` list error
     //

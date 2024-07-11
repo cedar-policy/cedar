@@ -66,7 +66,7 @@ impl EntityType {
 
     /// Wraps [`Name::from_normalized_str`]
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
-        ReservedName::from_normalized_str(src)
+        UncheckedName::from_normalized_str(src)
             .and_then(|n| n.try_into().map(Self).map_err(ParseErrors::singleton))
     }
 }
@@ -77,8 +77,8 @@ impl From<Name> for EntityType {
     }
 }
 
-impl AsRef<ReservedName> for EntityType {
-    fn as_ref(&self) -> &ReservedName {
+impl AsRef<UncheckedName> for EntityType {
+    fn as_ref(&self) -> &UncheckedName {
         self.0.as_ref()
     }
 }

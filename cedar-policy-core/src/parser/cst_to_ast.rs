@@ -814,7 +814,7 @@ impl ExprOrSpecial<'_> {
             Self::Var { var, .. } => {
                 // PANIC SAFETY: vars are valid unreserved names
                 #[allow(clippy::unwrap_used)]
-                Ok(ast::ReservedName::unqualified_name(var.into())
+                Ok(ast::UncheckedName::unqualified_name(var.into())
                     .try_into()
                     .unwrap())
             }
@@ -1468,7 +1468,7 @@ impl Node<Option<cst::Name>> {
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    pub(crate) fn to_name(&self) -> Result<ast::ReservedName> {
+    pub(crate) fn to_name(&self) -> Result<ast::UncheckedName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1665,8 +1665,8 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::ReservedName {
-    ast::ReservedName {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::UncheckedName {
+    ast::UncheckedName {
         id,
         path: Arc::new(path),
         loc: Some(loc),
@@ -1841,7 +1841,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
-    use ast::{ReservedName, ReservedNameError};
+    use ast::{ReservedNameError, UncheckedName};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4518,41 +4518,47 @@ mod tests {
         assert_matches!(parse_expr(r#"__cedar::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::A::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"principal is __cedar::A"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"ip("").__cedar()"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"{__cedar: 0}"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
         assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
         // We allow `__cedar` as an annotation identifier
-        assert_matches!(parse_policy(None, r#"@__cedar("foo") permit(principal, action, resource);"#), Ok(_));
+        assert_matches!(
+            parse_policy(
+                None,
+                r#"@__cedar("foo") permit(principal, action, resource);"#
+            ),
+            Ok(_)
+        );
     }
 
     #[test]

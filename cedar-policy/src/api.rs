@@ -1191,7 +1191,7 @@ impl Validator {
 #[derive(Debug)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment,
-    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawReservedName>,
+    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawUncheckedName>,
 }
 
 impl SchemaFragment {
@@ -2976,7 +2976,7 @@ impl RestrictedExpression {
 fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::ReservedName::unqualified_name("decimal".parse().unwrap())
+    ast::UncheckedName::unqualified_name("decimal".parse().unwrap())
         .try_into()
         .unwrap()
 }
@@ -2984,7 +2984,7 @@ fn decimal_extension_name() -> ast::Name {
 fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::ReservedName::unqualified_name("ip".parse().unwrap())
+    ast::UncheckedName::unqualified_name("ip".parse().unwrap())
         .try_into()
         .unwrap()
 }

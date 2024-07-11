@@ -32,7 +32,7 @@ mod demo_tests {
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, RawReservedName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        NamespaceDefinition, RawUncheckedName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
     use itertools::Itertools;
@@ -343,7 +343,7 @@ mod demo_tests {
 
     #[test]
     fn empty_appliesto() {
-        let action = ActionType::<RawReservedName> {
+        let action = ActionType::<RawUncheckedName> {
             attributes: None,
             applies_to: None,
             member_of: None,
@@ -432,19 +432,19 @@ namespace Baz {action "Foo" appliesTo {
             common_types: HashMap::new(),
             entity_types: HashMap::from([(
                 "a".parse().unwrap(),
-                EntityType::<RawReservedName> {
+                EntityType::<RawUncheckedName> {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::<RawReservedName>::default(),
+                    shape: AttributesOrContext::<RawUncheckedName>::default(),
                 },
             )]),
             actions: HashMap::from([(
                 "j".to_smolstr(),
-                ActionType::<RawReservedName> {
+                ActionType::<RawUncheckedName> {
                     attributes: None,
-                    applies_to: Some(ApplySpec::<RawReservedName> {
+                    applies_to: Some(ApplySpec::<RawUncheckedName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: AttributesOrContext::<RawReservedName>::default(),
+                        context: AttributesOrContext::<RawUncheckedName>::default(),
                     }),
                     member_of: None,
                 },

@@ -99,7 +99,7 @@ pub enum HumanSyntaxParseErrors {
 pub fn parse_type(
     src: &str,
     extensions: Extensions<'_>,
-) -> Result<crate::SchemaType<crate::RawReservedName>, HumanSyntaxParseErrors> {
+) -> Result<crate::SchemaType<crate::RawUncheckedName>, HumanSyntaxParseErrors> {
     let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
     Ok(custom_type_to_json_type(ty, extensions)?)
 }
@@ -111,7 +111,7 @@ pub fn parse_natural_schema_fragment<'a>(
     extensions: Extensions<'a>,
 ) -> Result<
     (
-        crate::SchemaFragment<crate::RawReservedName>,
+        crate::SchemaFragment<crate::RawUncheckedName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
     HumanSyntaxParseErrors,

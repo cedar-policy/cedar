@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use cedar_policy_core::{
-    ast::{Id, ReservedName},
+    ast::{Id, UncheckedName},
     extensions::Extensions,
     parser::{Loc, Node},
 };
@@ -30,7 +30,7 @@ use std::collections::hash_map::Entry;
 
 use crate::{
     human_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
-    EntityType, NamespaceDefinition, RawReservedName, SchemaFragment, SchemaType,
+    EntityType, NamespaceDefinition, RawUncheckedName, SchemaFragment, SchemaType,
     SchemaTypeVariant, TypeOfAttribute,
 };
 
@@ -52,7 +52,7 @@ pub fn custom_schema_to_json_schema(
     extensions: Extensions<'_>,
 ) -> Result<
     (
-        SchemaFragment<RawReservedName>,
+        SchemaFragment<RawUncheckedName>,
         impl Iterator<Item = SchemaWarning>,
     ),
     ToJsonSchemaErrors,
@@ -92,7 +92,7 @@ fn is_valid_ext_type(ty: &Id, extensions: Extensions<'_>) -> bool {
 pub fn custom_type_to_json_type(
     ty: Node<Type>,
     extensions: Extensions<'_>,
-) -> Result<SchemaType<RawReservedName>, ToJsonSchemaErrors> {
+) -> Result<SchemaType<RawUncheckedName>, ToJsonSchemaErrors> {
     let names = HashMap::from([(None, NamespaceRecord::default())]);
     let context = ConversionContext::new(
         &names,
@@ -133,10 +133,10 @@ fn split_unqualified_namespace(
 
 /// Converts a CST namespace to the JSON namespace
 fn convert_namespace(
-    names: &HashMap<Option<ReservedName>, NamespaceRecord>,
+    names: &HashMap<Option<UncheckedName>, NamespaceRecord>,
     namespace: Namespace,
     extensions: Extensions<'_>,
-) -> Result<(Option<ReservedName>, NamespaceDefinition<RawReservedName>), ToJsonSchemaErrors> {
+) -> Result<(Option<UncheckedName>, NamespaceDefinition<RawUncheckedName>), ToJsonSchemaErrors> {
     let cc = ConversionContext::new(names, &namespace, extensions);
     let def = cc.convert_namespace(namespace)?;
     Ok((cc.current_namespace_name, def))
@@ -147,8 +147,8 @@ fn convert_namespace(
 /// Its primary purpose is implementing the procedure for looking up a type name
 /// and resolving it to a type.
 struct ConversionContext<'a> {
-    names: &'a HashMap<Option<ReservedName>, NamespaceRecord>,
-    current_namespace_name: Option<ReservedName>,
+    names: &'a HashMap<Option<UncheckedName>, NamespaceRecord>,
+    current_namespace_name: Option<UncheckedName>,
     cedar_namespace: NamespaceRecord,
     extensions: Extensions<'a>,
 }
@@ -156,7 +156,7 @@ struct ConversionContext<'a> {
 impl<'a> ConversionContext<'a> {
     /// Create a context, needs the entire schemas name map, as well as the current namespace we are converting
     fn new(
-        names: &'a HashMap<Option<ReservedName>, NamespaceRecord>,
+        names: &'a HashMap<Option<UncheckedName>, NamespaceRecord>,
         current_namespace: &Namespace,
         extensions: Extensions<'a>,
     ) -> Self {
@@ -172,7 +172,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_namespace(
         &self,
         n: Namespace,
-    ) -> Result<NamespaceDefinition<RawReservedName>, ToJsonSchemaErrors> {
+    ) -> Result<NamespaceDefinition<RawUncheckedName>, ToJsonSchemaErrors> {
         // Partition the decls into entities, actions, and common types
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
         // Convert entity type decls, collecting all errors
@@ -212,7 +212,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_common_types(
         &self,
         decl: TypeDecl,
-    ) -> Result<(Id, SchemaType<RawReservedName>), ToJsonSchemaErrors> {
+    ) -> Result<(Id, SchemaType<RawUncheckedName>), ToJsonSchemaErrors> {
         let TypeDecl { name, def } = decl;
         let ty = self.convert_type(def)?;
         Ok((name.node, ty))
@@ -222,7 +222,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_action_decl(
         &self,
         a: ActionDecl,
-    ) -> Result<impl Iterator<Item = (SmolStr, ActionType<RawReservedName>)>, ToJsonSchemaErrors>
+    ) -> Result<impl Iterator<Item = (SmolStr, ActionType<RawUncheckedName>)>, ToJsonSchemaErrors>
     {
         let ActionDecl {
             names,
@@ -252,11 +252,11 @@ impl<'a> ConversionContext<'a> {
     fn convert_parents(
         &self,
         parents: NonEmpty<Node<QualName>>,
-    ) -> Vec<ActionEntityUID<RawReservedName>> {
+    ) -> Vec<ActionEntityUID<RawUncheckedName>> {
         parents.into_iter().map(Self::convert_qual_name).collect()
     }
 
-    fn convert_qual_name(qn: Node<QualName>) -> ActionEntityUID<RawReservedName> {
+    fn convert_qual_name(qn: Node<QualName>) -> ActionEntityUID<RawUncheckedName> {
         let qn = qn.node;
         ActionEntityUID {
             id: qn.eid,
@@ -269,12 +269,12 @@ impl<'a> ConversionContext<'a> {
         &self,
         action_info: (&SmolStr, &Loc),
         decls: Node<NonEmpty<Node<AppDecl>>>,
-    ) -> Result<ApplySpec<RawReservedName>, ToJsonSchemaErrors> {
+    ) -> Result<ApplySpec<RawUncheckedName>, ToJsonSchemaErrors> {
         // Split AppDecl's into context/principal/resource decls
         let (decls, _) = decls.into_inner();
-        let mut principal_types: Option<Node<Vec<RawReservedName>>> = None;
-        let mut resource_types: Option<Node<Vec<RawReservedName>>> = None;
-        let mut context: Option<Node<AttributesOrContext<RawReservedName>>> = None;
+        let mut principal_types: Option<Node<Vec<RawUncheckedName>>> = None;
+        let mut resource_types: Option<Node<Vec<RawUncheckedName>>> = None;
+        let mut context: Option<Node<AttributesOrContext<RawUncheckedName>>> = None;
 
         for decl in decls {
             match decl {
@@ -374,7 +374,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_entity_decl(
         &self,
         e: EntityDecl,
-    ) -> Result<impl Iterator<Item = (Id, EntityType<RawReservedName>)>, ToJsonSchemaErrors> {
+    ) -> Result<impl Iterator<Item = (Id, EntityType<RawUncheckedName>)>, ToJsonSchemaErrors> {
         let EntityDecl {
             names,
             member_of_types,
@@ -383,7 +383,7 @@ impl<'a> ConversionContext<'a> {
         // First build up the defined entity type
         let member_of_types = member_of_types
             .into_iter()
-            .map(RawReservedName::from)
+            .map(RawUncheckedName::from)
             .collect();
         let shape = self.convert_attr_decls(attrs)?;
         let etype = EntityType {
@@ -401,7 +401,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_attr_decls(
         &self,
         attrs: Vec<Node<AttrDecl>>,
-    ) -> Result<AttributesOrContext<RawReservedName>, ToJsonSchemaErrors> {
+    ) -> Result<AttributesOrContext<RawUncheckedName>, ToJsonSchemaErrors> {
         Ok(AttributesOrContext(SchemaType::Type(
             SchemaTypeVariant::Record {
                 attributes: collect_all_errors(
@@ -417,7 +417,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_context_decl(
         &self,
         decl: Either<Path, Vec<Node<AttrDecl>>>,
-    ) -> Result<AttributesOrContext<RawReservedName>, ToJsonSchemaErrors> {
+    ) -> Result<AttributesOrContext<RawUncheckedName>, ToJsonSchemaErrors> {
         Ok(AttributesOrContext(match decl {
             Either::Left(p) => SchemaType::TypeDef {
                 type_name: p.into(),
@@ -436,7 +436,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_attr_decl(
         &self,
         attr: Node<AttrDecl>,
-    ) -> Result<(SmolStr, TypeOfAttribute<RawReservedName>), ToJsonSchemaErrors> {
+    ) -> Result<(SmolStr, TypeOfAttribute<RawUncheckedName>), ToJsonSchemaErrors> {
         let AttrDecl { name, required, ty } = attr.node;
         Ok((
             name.node,
@@ -451,7 +451,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_type(
         &self,
         ty: Node<Type>,
-    ) -> Result<SchemaType<RawReservedName>, ToJsonSchemaErrors> {
+    ) -> Result<SchemaType<RawUncheckedName>, ToJsonSchemaErrors> {
         match ty.node {
             Type::Set(t) => Ok(SchemaType::Type(SchemaTypeVariant::Set {
                 element: Box::new(self.convert_type(*t)?),
@@ -475,16 +475,16 @@ impl<'a> ConversionContext<'a> {
 
     /// Dereference a type name to get it's type
     /// This follows the procedure from RFC 24.
-    fn dereference_name(&self, p: Path) -> Result<SchemaType<RawReservedName>, ToJsonSchemaError> {
+    fn dereference_name(&self, p: Path) -> Result<SchemaType<RawUncheckedName>, ToJsonSchemaError> {
         // First determine what namespace we are searching
-        let name: RawReservedName = p.clone().into();
+        let name: RawUncheckedName = p.clone().into();
         let is_unqualified_or_cedar = p.is_in_unqualified_or_cedar();
         let loc = p.loc().clone();
         let (prefix, base) = p.split_last();
         let namespace_to_search = match prefix.split_last() {
             Some((prefix_base, prefix_prefix)) => self.lookup_namespace(
                 loc.clone(),
-                &Some(ReservedName::new(
+                &Some(UncheckedName::new(
                     prefix_base.clone(),
                     prefix_prefix.iter().cloned(),
                     None,
@@ -520,7 +520,7 @@ impl<'a> ConversionContext<'a> {
     fn lookup_namespace(
         &self,
         loc: Loc,
-        name: &Option<ReservedName>,
+        name: &Option<UncheckedName>,
     ) -> Result<&NamespaceRecord, ToJsonSchemaError> {
         if name.as_ref().map_or(SmolStr::default(), |n| n.to_smolstr()) == CEDAR_NAMESPACE {
             Ok(&self.cedar_namespace)
@@ -570,7 +570,7 @@ fn search_cedar_namespace(
     name: Id,
     loc: Loc,
     extensions: Extensions<'_>,
-) -> Result<SchemaType<RawReservedName>, ToJsonSchemaError> {
+) -> Result<SchemaType<RawUncheckedName>, ToJsonSchemaError> {
     match name.as_ref() {
         "Long" => Ok(SchemaType::Type(SchemaTypeVariant::Long)),
         "String" => Ok(SchemaType::Type(SchemaTypeVariant::String)),
@@ -593,7 +593,7 @@ struct NamespaceRecord {
 }
 
 impl NamespaceRecord {
-    fn new(namespace: &Namespace) -> Result<(Option<ReservedName>, Self), ToJsonSchemaErrors> {
+    fn new(namespace: &Namespace) -> Result<(Option<UncheckedName>, Self), ToJsonSchemaErrors> {
         let (entities, actions, types) = partition_decls(&namespace.decls);
 
         let entities = collect_decls(
@@ -650,7 +650,7 @@ where
 }
 
 fn compute_namespace_warnings<'a>(
-    fragment: &'a HashMap<Option<ReservedName>, NamespaceRecord>,
+    fragment: &'a HashMap<Option<UncheckedName>, NamespaceRecord>,
     extensions: Extensions<'a>,
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     fragment
@@ -710,7 +710,7 @@ fn shadows_builtin(
 
 fn build_namespace_bindings<'a>(
     namespaces: impl Iterator<Item = &'a Namespace>,
-) -> Result<HashMap<Option<ReservedName>, NamespaceRecord>, ToJsonSchemaErrors> {
+) -> Result<HashMap<Option<UncheckedName>, NamespaceRecord>, ToJsonSchemaErrors> {
     let mut map = HashMap::new();
     for (name, record) in collect_all_errors(namespaces.map(NamespaceRecord::new))? {
         update_namespace_record(&mut map, name, record)?;
@@ -719,8 +719,8 @@ fn build_namespace_bindings<'a>(
 }
 
 fn update_namespace_record(
-    map: &mut HashMap<Option<ReservedName>, NamespaceRecord>,
-    name: Option<ReservedName>,
+    map: &mut HashMap<Option<UncheckedName>, NamespaceRecord>,
+    name: Option<UncheckedName>,
     record: NamespaceRecord,
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {

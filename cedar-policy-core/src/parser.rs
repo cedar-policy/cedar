@@ -197,7 +197,7 @@ pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors>
 ///
 /// Private to this crate. Users outside Core should use `Name`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_name(name: &str) -> Result<ast::ReservedName, err::ParseErrors> {
+pub(crate) fn parse_name(name: &str) -> Result<ast::UncheckedName, err::ParseErrors> {
     let cst = text_to_cst::parse_name(name)?;
     cst.to_name()
 }

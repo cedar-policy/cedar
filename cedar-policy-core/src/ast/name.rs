@@ -30,12 +30,12 @@ use crate::FromNormalizedStr;
 use super::{PrincipalOrResource, UnreservedId};
 use thiserror::Error;
 
-/// This is the `ReservedName` type used to name types, functions, etc.
+/// This is the `UncheckedName` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
 /// Note that objects of this type can contain reserved `__cedar` components.
 #[derive(Debug, Clone)]
-pub struct ReservedName {
+pub struct UncheckedName {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
@@ -45,14 +45,14 @@ pub struct ReservedName {
 }
 
 /// `PartialEq` implementation ignores the `loc`.
-impl PartialEq for ReservedName {
+impl PartialEq for UncheckedName {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id && self.path == other.path
     }
 }
-impl Eq for ReservedName {}
+impl Eq for UncheckedName {}
 
-impl std::hash::Hash for ReservedName {
+impl std::hash::Hash for UncheckedName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // hash the ty and eid, in line with the `PartialEq` impl which compares
         // the ty and eid.
@@ -61,30 +61,30 @@ impl std::hash::Hash for ReservedName {
     }
 }
 
-impl PartialOrd for ReservedName {
+impl PartialOrd for UncheckedName {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for ReservedName {
+impl Ord for UncheckedName {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id).then(self.path.cmp(&other.path))
     }
 }
 
-/// A shortcut for `ReservedName::unqualified_name`
-impl From<Id> for ReservedName {
+/// A shortcut for [`UncheckedName::unqualified_name`]
+impl From<Id> for UncheckedName {
     fn from(value: Id) -> Self {
         Self::unqualified_name(value)
     }
 }
 
-/// Convert a `ReservedName` to an `Id`
+/// Convert a [`UncheckedName`] to an [`Id`]
 /// The error type is the unit type because the reason the conversion fails
 /// is obvious
-impl TryFrom<ReservedName> for Id {
+impl TryFrom<UncheckedName> for Id {
     type Error = ();
-    fn try_from(value: ReservedName) -> Result<Self, Self::Error> {
+    fn try_from(value: UncheckedName) -> Result<Self, Self::Error> {
         if value.is_unqualified() {
             Ok(value.id)
         } else {
@@ -93,8 +93,8 @@ impl TryFrom<ReservedName> for Id {
     }
 }
 
-impl ReservedName {
-    /// A full constructor for `ReservedName`
+impl UncheckedName {
+    /// A full constructor for [`UncheckedName`]
     pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         Self {
             id: basename,
@@ -103,7 +103,7 @@ impl ReservedName {
         }
     }
 
-    /// Create a `ReservedName` with no path (no namespaces).
+    /// Create a [`UncheckedName`] with no path (no namespaces).
     pub fn unqualified_name(id: Id) -> Self {
         Self {
             id,
@@ -112,7 +112,7 @@ impl ReservedName {
         }
     }
 
-    /// Create a `ReservedName` with no path (no namespaces).
+    /// Create a [`UncheckedName`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
@@ -122,16 +122,16 @@ impl ReservedName {
         })
     }
 
-    /// Given a type basename and a namespace (as a `ReservedName` itself),
-    /// return a `ReservedName` representing the type's fully qualified name
+    /// Given a type basename and a namespace (as a [`UncheckedName`] itself),
+    /// return a [`UncheckedName`] representing the type's fully qualified name
     pub fn type_in_namespace(
         basename: Id,
-        namespace: ReservedName,
+        namespace: UncheckedName,
         loc: Option<Loc>,
-    ) -> ReservedName {
+    ) -> UncheckedName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
-        ReservedName::new(basename, path, loc)
+        UncheckedName::new(basename, path, loc)
     }
 
     /// Get the source location
@@ -139,17 +139,17 @@ impl ReservedName {
         self.loc.as_ref()
     }
 
-    /// Get the basename of the `ReservedName` (ie, with namespaces stripped).
+    /// Get the basename of the [`UncheckedName`] (ie, with namespaces stripped).
     pub fn basename(&self) -> &Id {
         &self.id
     }
 
-    /// Get the namespace of the `ReservedName`, as components
+    /// Get the namespace of the [`UncheckedName`], as components
     pub fn namespace_components(&self) -> impl Iterator<Item = &Id> {
         self.path.iter()
     }
 
-    /// Get the full namespace of the `ReservedName`, as a single string.
+    /// Get the full namespace of the [`UncheckedName`], as a single string.
     ///
     /// Examples:
     /// - `foo::bar` --> the namespace is `"foo"`
@@ -175,7 +175,7 @@ impl ReservedName {
     /// `A`.qualify_with(Some(C)) is C::A
     /// `A`.qualify_with(Some(B::C)) is B::C::A
     /// `A`.qualify_with(None) is A
-    pub fn qualify_with(&self, namespace: Option<&ReservedName>) -> ReservedName {
+    pub fn qualify_with(&self, namespace: Option<&UncheckedName>) -> UncheckedName {
         if self.is_unqualified() {
             // Ideally, we want to implement `IntoIterator` for `Name`
             match namespace {
@@ -194,12 +194,12 @@ impl ReservedName {
         }
     }
 
-    /// Test if a `ReservedName` is an `Id`
+    /// Test if a [`UncheckedName`] is an [`Id`]
     pub fn is_unqualified(&self) -> bool {
         self.path.is_empty()
     }
 
-    /// Test if a `ReservedName` is reserved
+    /// Test if a [`UncheckedName`] is reserved
     /// i.e., any of its components matches `__cedar`
     pub fn is_reserved(&self) -> bool {
         self.path
@@ -209,7 +209,7 @@ impl ReservedName {
     }
 }
 
-impl std::fmt::Display for ReservedName {
+impl std::fmt::Display for UncheckedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.path.as_ref() {
             write!(f, "{}::", elem)?;
@@ -219,9 +219,9 @@ impl std::fmt::Display for ReservedName {
     }
 }
 
-/// Serialize a `ReservedName` using its `Display` implementation
+/// Serialize a [`UncheckedName`] using its `Display` implementation
 /// This serialization implementation is used in the JSON schema format.
-impl Serialize for ReservedName {
+impl Serialize for UncheckedName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -230,8 +230,8 @@ impl Serialize for ReservedName {
     }
 }
 
-// allow `.parse()` on a string to make a `Name`
-impl std::str::FromStr for ReservedName {
+// allow `.parse()` on a string to make a [`UncheckedName`]
+impl std::str::FromStr for UncheckedName {
     type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -239,14 +239,14 @@ impl std::str::FromStr for ReservedName {
     }
 }
 
-impl FromNormalizedStr for ReservedName {
+impl FromNormalizedStr for UncheckedName {
     fn describe_self() -> &'static str {
         "Reserved name"
     }
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for ReservedName {
+impl<'a> arbitrary::Arbitrary<'a> for UncheckedName {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             id: u.arbitrary()?,
@@ -259,7 +259,7 @@ impl<'a> arbitrary::Arbitrary<'a> for ReservedName {
 struct NameVisitor;
 
 impl<'de> serde::de::Visitor<'de> for NameVisitor {
-    type Value = ReservedName;
+    type Value = UncheckedName;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("a name consisting of an optional namespace and id")
@@ -269,14 +269,14 @@ impl<'de> serde::de::Visitor<'de> for NameVisitor {
     where
         E: serde::de::Error,
     {
-        ReservedName::from_normalized_str(value)
+        UncheckedName::from_normalized_str(value)
             .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
     }
 }
 
-/// Deserialize a `Name` using `from_normalized_str`
+/// Deserialize a [`UncheckedName`] using `from_normalized_str`
 /// This deserialization implementation is used in the JSON schema format.
-impl<'de> Deserialize<'de> for ReservedName {
+impl<'de> Deserialize<'de> for UncheckedName {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -287,7 +287,7 @@ impl<'de> Deserialize<'de> for ReservedName {
 
 /// Identifier for a slot
 /// Clone is O(1).
-// This simply wraps a separate enum -- currently `ValidSlotId` -- in case we
+// This simply wraps a separate enum -- currently [`ValidSlotId`] -- in case we
 // want to generalize later
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -396,7 +396,7 @@ mod vars_test {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct Name(pub(crate) ReservedName);
+pub struct Name(pub(crate) UncheckedName);
 
 impl Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -407,7 +407,7 @@ impl Display for Name {
 impl FromStr for Name {
     type Err = ParseErrors;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let n: ReservedName = s.parse()?;
+        let n: UncheckedName = s.parse()?;
         n.try_into().map_err(ParseErrors::singleton)
     }
 }
@@ -429,13 +429,13 @@ impl Name {
     /// Create a [`Name`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
-        ReservedName::parse_unqualified_name(s)
+        UncheckedName::parse_unqualified_name(s)
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
     /// Create a [`Name`] with no path (no namespaces).
     pub fn unqualified_name(id: UnreservedId) -> Self {
-        Self(ReservedName::unqualified_name(id.0))
+        Self(UncheckedName::unqualified_name(id.0))
     }
 
     /// Get the basename of the [`Name`] (ie, with namespaces stripped).
@@ -456,7 +456,7 @@ impl Name {
 /// Error occurred when a reserved name is used
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic, Hash)]
 #[error("The name `{0}` contains `__cedar`, which is reserved")]
-pub struct ReservedNameError(pub(crate) ReservedName);
+pub struct ReservedNameError(pub(crate) UncheckedName);
 
 impl From<ReservedNameError> for ParseError {
     fn from(value: ReservedNameError) -> Self {
@@ -473,9 +473,9 @@ impl From<ReservedNameError> for ParseError {
     }
 }
 
-impl TryFrom<ReservedName> for Name {
+impl TryFrom<UncheckedName> for Name {
     type Error = ReservedNameError;
-    fn try_from(value: ReservedName) -> Result<Self, Self::Error> {
+    fn try_from(value: UncheckedName) -> Result<Self, Self::Error> {
         if value.is_reserved() {
             Err(ReservedNameError(value))
         } else {
@@ -484,14 +484,14 @@ impl TryFrom<ReservedName> for Name {
     }
 }
 
-impl From<Name> for ReservedName {
+impl From<Name> for UncheckedName {
     fn from(value: Name) -> Self {
         value.0
     }
 }
 
-impl AsRef<ReservedName> for Name {
-    fn as_ref(&self) -> &ReservedName {
+impl AsRef<UncheckedName> for Name {
+    fn as_ref(&self) -> &UncheckedName {
         &self.0
     }
 }
@@ -502,48 +502,48 @@ mod test {
 
     #[test]
     fn normalized_name() {
-        ReservedName::from_normalized_str("foo").expect("should be OK");
-        ReservedName::from_normalized_str("foo::bar").expect("should be OK");
-        ReservedName::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
-        ReservedName::from_normalized_str(" foo").expect_err("shouldn't be OK");
-        ReservedName::from_normalized_str("foo ").expect_err("shouldn't be OK");
-        ReservedName::from_normalized_str("foo\n").expect_err("shouldn't be OK");
-        ReservedName::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+        UncheckedName::from_normalized_str("foo").expect("should be OK");
+        UncheckedName::from_normalized_str("foo::bar").expect("should be OK");
+        UncheckedName::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        UncheckedName::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        UncheckedName::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        UncheckedName::from_normalized_str("foo\n").expect_err("shouldn't be OK");
+        UncheckedName::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
     }
 
     #[test]
     fn qualify_with() {
         assert_eq!(
             "foo::bar::baz",
-            ReservedName::from_normalized_str("baz")
+            UncheckedName::from_normalized_str("baz")
                 .unwrap()
                 .qualify_with(Some(&"foo::bar".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "C::D",
-            ReservedName::from_normalized_str("C::D")
+            UncheckedName::from_normalized_str("C::D")
                 .unwrap()
                 .qualify_with(Some(&"A::B".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A::B::C::D",
-            ReservedName::from_normalized_str("D")
+            UncheckedName::from_normalized_str("D")
                 .unwrap()
                 .qualify_with(Some(&"A::B::C".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "B::C::D",
-            ReservedName::from_normalized_str("B::C::D")
+            UncheckedName::from_normalized_str("B::C::D")
                 .unwrap()
                 .qualify_with(Some(&"A".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A",
-            ReservedName::from_normalized_str("A")
+            UncheckedName::from_normalized_str("A")
                 .unwrap()
                 .qualify_with(None)
                 .to_smolstr()
@@ -559,11 +559,11 @@ mod test {
             "A::__cedar",
             "A::__cedar::B",
         ] {
-            assert!(ReservedName::from_normalized_str(n).unwrap().is_reserved());
+            assert!(UncheckedName::from_normalized_str(n).unwrap().is_reserved());
         }
 
         for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
-            assert!(!ReservedName::from_normalized_str(n).unwrap().is_reserved());
+            assert!(!UncheckedName::from_normalized_str(n).unwrap().is_reserved());
         }
     }
 }
