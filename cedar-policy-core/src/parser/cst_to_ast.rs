@@ -4557,7 +4557,7 @@ mod tests {
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
-        assert_matches!(parse_expr(r#"A::__cedar::B"""#),
+        assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<Name>().unwrap())));
