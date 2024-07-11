@@ -812,6 +812,8 @@ impl ExprOrSpecial<'_> {
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
             Self::Var { var, .. } => {
+                // PANIC SAFETY: vars are valid unreserved names
+                #[allow(clippy::unwrap_used)]
                 Ok(ast::Name::unqualified_name(var.into()).try_into().unwrap())
             }
             Self::Name { ref name, .. } => Ok(name.clone()),
