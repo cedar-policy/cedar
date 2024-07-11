@@ -148,7 +148,7 @@ fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item 
         .map(move |id| TextKind::Identifier(loc, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(
             loc,
-            name.basename_unchecked().as_ref(),
+            name.basename_as_ref().as_ref(),
         )))
 }
 

@@ -4551,6 +4551,8 @@ mod tests {
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<ReservedName>().unwrap())));
+        // We allow `__cedar` as an annotation identifier
+        assert_matches!(parse_policy(None, r#"@__cedar("foo") permit(principal, action, resource);"#), Ok(_));
     }
 
     #[test]

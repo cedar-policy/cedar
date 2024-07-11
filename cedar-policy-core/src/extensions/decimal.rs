@@ -41,7 +41,7 @@ struct Decimal {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
     use super::EXTENSION_NAME;
-    use crate::extensions::Name;
+    use crate::ast::Name;
     use regex::Regex;
 
     // PANIC SAFETY all of the names here are valid names

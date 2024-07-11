@@ -420,31 +420,31 @@ impl FromNormalizedStr for Name {
 
 impl Name {
     /// Qualify the name with an optional namespace
-    /// This method has the same behavior as [`Name::qualify_with`] except that
+    /// This method has the same behavior as [`ReservedName::qualify_with`] except that
     /// the `namespace` argument is a `Option<&UnreservedName>`
     pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
         Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
     }
 
-    /// Create a [`UnreservedName`] with no path (no namespaces).
+    /// Create a [`Name`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         ReservedName::parse_unqualified_name(s)
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    /// Create a [`UnreservedName`] with no path (no namespaces).
+    /// Create a [`Name`] with no path (no namespaces).
     pub fn unqualified_name(id: UnreservedId) -> Self {
         Self(ReservedName::unqualified_name(id.0))
     }
 
-    /// Get the basename of the [`UnreservedName`] (ie, with namespaces stripped).
+    /// Get the basename of the [`Name`] (ie, with namespaces stripped).
     /// Return a reference to [`Id`]
-    pub fn basename_unchecked(&self) -> &Id {
+    pub fn basename_as_ref(&self) -> &Id {
         self.0.basename()
     }
 
-    /// Get the basename of the [`UnreservedName`] (ie, with namespaces stripped).
+    /// Get the basename of the [`Name`] (ie, with namespaces stripped).
     /// Return an [`UnreservedId`]
     pub fn basename(&self) -> UnreservedId {
         // PANIC SAFETY: Any component of a `UnreservedName` is a `UnreservedId`
@@ -552,7 +552,13 @@ mod test {
 
     #[test]
     fn test_reserved() {
-        for n in ["__cedar", "__cedar::A", "__cedar::A::B"] {
+        for n in [
+            "__cedar",
+            "__cedar::A",
+            "__cedar::A::B",
+            "A::__cedar",
+            "A::__cedar::B",
+        ] {
             assert!(ReservedName::from_normalized_str(n).unwrap().is_reserved());
         }
 

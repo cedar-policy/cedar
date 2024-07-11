@@ -84,7 +84,7 @@ fn is_valid_ext_type(ty: &Id, extensions: Extensions<'_>) -> bool {
     extensions
         .ext_types()
         .filter(|ext_ty| ext_ty.as_ref().is_unqualified()) // if there are any qualified extension type names, we don't care, because we're looking for an unqualified name `ty`
-        .any(|ext_ty| ty == ext_ty.basename_unchecked())
+        .any(|ext_ty| ty == ext_ty.basename_as_ref())
 }
 
 /// Convert a custom type AST into the JSON representation of the type.
