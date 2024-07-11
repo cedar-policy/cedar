@@ -4263,3 +4263,48 @@ mod issue_994 {
         );
     }
 }
+
+#[cfg(test)]
+mod issue_1061 {
+    use crate::{est, parser};
+    use serde_json::json;
+
+    #[test]
+    fn function_with_name_unknown() {
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "unknown": [
+                                {"Value": ""}
+                            ]
+                        }
+                    }
+                ]
+            }
+        );
+        let est = serde_json::from_value::<est::Policy>(src.clone())
+            .expect("Failed to deserialize policy JSON");
+        let ast_from_est = est
+            .try_into_ast_policy(None)
+            .expect("Failed to convert EST to AST");
+        let ast_from_cedar = parser::parse_policy_template(None, &ast_from_est.to_string())
+            .expect("Failed to parse policy template");
+
+        assert!(ast_from_est
+            .non_scope_constraints()
+            .eq_shape(ast_from_cedar.non_scope_constraints()));
+    }
+}

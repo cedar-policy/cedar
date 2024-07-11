@@ -722,9 +722,11 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
             ast::ExprKind::Unknown(ast::Unknown { name, .. }) => {
-                // Create a Vec<Expr> with one arg, which is the name of the extension function
-                let args = vec![Expr::lit(CedarValueJson::String(name))];
-                Expr::ext_call("unknown".to_string().into(), args)
+                // Create an extension call with one arg, which is the name of the unknown
+                Expr::ext_call(
+                    "unknown".to_string().into(),
+                    vec![Expr::lit(CedarValueJson::String(name))],
+                )
             }
             ast::ExprKind::If {
                 test_expr,
