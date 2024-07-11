@@ -109,7 +109,7 @@ impl Name {
 
     /// Get the `Name` representing the reserved `__cedar` namespace
     pub fn __cedar() -> Self {
-        // using `Id::new_unchecked()` for performance reasons -- this function called many times by validator code
+        // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
         Self::unqualified_name(Id::new_unchecked("__cedar"))
     }
 
