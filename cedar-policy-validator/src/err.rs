@@ -341,7 +341,7 @@ pub mod schema_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error("undeclared common type: {0}")]
     #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) UncheckedName);
+    pub struct UndeclaredCommonTypesError(pub(crate) Name);
 
     /// Duplicate entity type error
     //
@@ -386,7 +386,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) UncheckedName);
+    pub struct CycleInCommonTypeReferencesError(pub(crate) Name);
 
     /// Action declared in `entityType` list error
     //

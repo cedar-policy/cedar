@@ -23,7 +23,7 @@
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cedar_policy_core::{
-    ast::{Entity, EntityType, EntityUID, Name, UncheckedName},
+    ast::{Entity, EntityType, EntityUID, Name},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     transitive_closure::compute_tc,
@@ -780,7 +780,7 @@ impl<'a> CommonTypeResolver<'a> {
         }
 
         if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.as_ref().clone())
+            Err(cycle.clone())
         } else {
             // We need to reverse the result because, e.g.,
             // `res` is now [A,B,C] for A -> B -> C because no one depends on A
@@ -798,7 +798,7 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaType::CommonTypeRef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(
-                    UndeclaredCommonTypesError(type_name.as_ref().clone()),
+                    UndeclaredCommonTypesError(type_name.clone()),
                 ))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {

@@ -907,13 +907,15 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     type_name => {
                         error_if_any_fields()?;
                         Ok(SchemaType::CommonTypeRef {
-                            type_name: N::from(RawName::from_normalized_str(type_name).map_err(
-                                |err| {
-                                    serde::de::Error::custom(format!(
-                                        "invalid common type `{type_name}`: {err}"
-                                    ))
-                                },
-                            )?),
+                            type_name: N::from(
+                                RawUncheckedName::from_normalized_str(type_name).map_err(
+                                    |err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid common type `{type_name}`: {err}"
+                                        ))
+                                    },
+                                )?,
+                            ),
                         })
                     }
                 }
