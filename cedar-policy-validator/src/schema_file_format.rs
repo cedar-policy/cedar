@@ -498,7 +498,7 @@ impl<N> SchemaType<N> {
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
     /// (recursively)? Returns `None` if this is a `CommonTypeRef` because we
-    /// can't easily properly check the type of a typedef, accounting for
+    /// can't easily check the type of a common type reference, accounting for
     /// namespaces, without first converting to a [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
