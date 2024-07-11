@@ -455,7 +455,7 @@ impl Name {
 
 /// Error occurred when a reserved name is used
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic, Hash)]
-#[error("Use reserved name `{0}` containing `__cedar`")]
+#[error("The name `{0}` contains `__cedar`, which is reserved")]
 pub struct ReservedNameError(pub(crate) ReservedName);
 
 impl From<ReservedNameError> for ParseError {
