@@ -153,21 +153,20 @@ impl TryFrom<Namespace> for NamespaceDefinition<RawName> {
 
         // Partition the decls into entities, actions, and common types
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
-        // Convert entity type decls, collecting all errors
-        let entity_types = collect_all_errors(
-            entity_types
-                .into_iter()
-                .map(convert_entity_decl),
-        )?
-        .collect::<Vec<_>>();
-        let entity_types = entity_types.into_iter().flatten().collect();
 
-        // Convert entity type decls, collecting all errors
+        // Convert entity type decls
+        let entity_types = entity_types
+            .into_iter()
+            .map(convert_entity_decl)
+            .flatten()
+            .collect();
+
+        // Convert action decls, collecting all errors
         let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
             .collect::<Vec<_>>();
         let actions = actions.into_iter().flatten().collect();
 
-        // Convert entity type decls, collecting all errors
+        // Convert common type decls
         let common_types = common_types
             .into_iter()
             .map(|decl| (decl.name.node, human_type_to_json_type(decl.def)))
@@ -322,37 +321,30 @@ fn convert_app_decls(
     })
 }
 
-/// Convert Entity declarations, trivial recursive conversion
+/// Convert Entity declarations
 fn convert_entity_decl(
     e: EntityDecl,
-) -> Result<impl Iterator<Item = (Id, EntityType<RawName>)>, ToJsonSchemaErrors> {
-    let EntityDecl {
-        names,
-        member_of_types,
-        attrs,
-    } = e;
+) -> impl Iterator<Item = (Id, EntityType<RawName>)> {
     // First build up the defined entity type
-    let member_of_types = member_of_types
+    let member_of_types = e.member_of_types
         .into_iter()
         .map(RawName::from)
         .collect();
-    let shape = convert_attr_decls(attrs)?;
+    let shape = convert_attr_decls(e.attrs);
     let etype = EntityType {
         member_of_types,
         shape,
     };
 
     // Then map over all of the bound names
-    Ok(names
+    e.names
         .into_iter()
-        .map(move |name| (name.node, etype.clone())))
+        .map(move |name| (name.node, etype.clone()))
 }
 
 /// Create a Record Type from a vector of `AttrDecl`s
-fn convert_attr_decls(
-    attrs: Vec<Node<AttrDecl>>,
-) -> Result<AttributesOrContext<RawName>, ToJsonSchemaErrors> {
-    Ok(AttributesOrContext(SchemaType::Type(
+fn convert_attr_decls(attrs: Vec<Node<AttrDecl>>) -> AttributesOrContext<RawName> {
+    AttributesOrContext(SchemaType::Type(
         SchemaTypeVariant::Record {
             attributes: attrs
                 .into_iter()
@@ -360,7 +352,7 @@ fn convert_attr_decls(
                 .collect(),
             additional_attributes: false,
         },
-    )))
+    ))
 }
 
 /// Create a context decl
