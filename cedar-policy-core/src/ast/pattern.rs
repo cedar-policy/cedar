@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 // unicode values of Rust characters.
 #[cfg_attr(not(feature = "arbitrary"), derive(Serialize))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(kani, derive(kani::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
     Char(char),
@@ -159,6 +160,43 @@ impl Pattern {
         }
 
         j == pattern_len
+    }
+}
+
+#[cfg(kani)]
+mod proof {
+    use super::*;
+
+    const N: usize = 4;
+
+    #[kani::proof]
+    #[kani::unwind(12)]
+    fn doesnt_panic() {
+        let bytes: [u8; N] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= N);
+        let slice = &bytes[0..len];
+        if let Ok(string) = std::str::from_utf8(slice) {
+            let pattern = arbitrary_pattern();
+            // Doens't crash
+            let _ = pattern.wildcard_match(&string);
+        }
+    }
+
+    fn arbitrary_pattern() -> Pattern {
+        let buf: [PatternElem; N] = kani::any();
+        let size: usize = kani::any();
+        kani::assume(size <= N);
+        let slice = buf[0..size].iter().cloned();
+        Pattern::new(slice)
+    }
+
+    fn arbitrary_elem() -> PatternElem {
+        if kani::any() {
+            PatternElem::Wildcard
+        } else {
+            PatternElem::Char(kani::any())
+        }
     }
 }
 
