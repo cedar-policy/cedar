@@ -69,8 +69,7 @@ pub fn custom_schema_to_json_schema(
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment =
-        collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
         SchemaFragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -162,8 +161,8 @@ impl TryFrom<Namespace> for NamespaceDefinition<RawName> {
             .collect();
 
         // Convert action decls, collecting all errors
-        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
-            .collect::<Vec<_>>();
+        let actions =
+            collect_all_errors(action.into_iter().map(convert_action_decl))?.collect::<Vec<_>>();
         let actions = actions.into_iter().flatten().collect();
 
         // Convert common type decls
@@ -303,33 +302,28 @@ fn convert_app_decls(
         }
     }
     Ok(ApplySpec {
-        resource_types: resource_types
-            .map(|node| node.node)
-            .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
+        resource_types: resource_types.map(|node| node.node).ok_or(
+            ToJsonSchemaError::NoPrincipalOrResource {
                 kind: PR::Resource,
                 name: action_info.0.clone(),
                 loc: action_info.1.clone(),
-            })?,
-        principal_types: principal_types
-            .map(|node| node.node)
-            .ok_or(ToJsonSchemaError::NoPrincipalOrResource {
+            },
+        )?,
+        principal_types: principal_types.map(|node| node.node).ok_or(
+            ToJsonSchemaError::NoPrincipalOrResource {
                 kind: PR::Principal,
                 name: action_info.0.clone(),
                 loc: action_info.1.clone(),
-            })?,
+            },
+        )?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
 
 /// Convert Entity declarations
-fn convert_entity_decl(
-    e: EntityDecl,
-) -> impl Iterator<Item = (Id, EntityType<RawName>)> {
+fn convert_entity_decl(e: EntityDecl) -> impl Iterator<Item = (Id, EntityType<RawName>)> {
     // First build up the defined entity type
-    let member_of_types = e.member_of_types
-        .into_iter()
-        .map(RawName::from)
-        .collect();
+    let member_of_types = e.member_of_types.into_iter().map(RawName::from).collect();
     let shape = convert_attr_decls(e.attrs);
     let etype = EntityType {
         member_of_types,
@@ -344,15 +338,13 @@ fn convert_entity_decl(
 
 /// Create a Record Type from a vector of `AttrDecl`s
 fn convert_attr_decls(attrs: Vec<Node<AttrDecl>>) -> AttributesOrContext<RawName> {
-    AttributesOrContext(SchemaType::Type(
-        SchemaTypeVariant::Record {
-            attributes: attrs
-                .into_iter()
-                .map(|attr| convert_attr_decl(attr.node))
-                .collect(),
-            additional_attributes: false,
-        },
-    ))
+    AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
+        attributes: attrs
+            .into_iter()
+            .map(|attr| convert_attr_decl(attr.node))
+            .collect(),
+        additional_attributes: false,
+    }))
 }
 
 /// Create a context decl

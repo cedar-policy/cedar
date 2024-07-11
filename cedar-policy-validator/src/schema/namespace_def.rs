@@ -204,13 +204,10 @@ impl ValidatorNamespaceDef<ConditionalName> {
                 // PANIC SAFETY: at least one of the results is `Err`, so the input to `TypeResolutionError::join()` is nonempty, so it returns Some, as documented there
                 #[allow(clippy::expect_used)]
                 Err(TypeResolutionError::join(
-                res1.err()
-                    .into_iter()
-                    .chain(res2.err())
-                    .chain(res3.err()),
+                    res1.err().into_iter().chain(res2.err()).chain(res3.err()),
                 )
                 .expect("at least one of these results was Err, so join() must return Some"))
-            },
+            }
         }
     }
 
@@ -325,9 +322,12 @@ impl TypeDefs<ConditionalName> {
         (id, schema_ty): (Id, SchemaType<ConditionalName>),
         schema_namespace: Option<&Name>,
     ) -> Self {
-        Self { type_defs: HashMap::from_iter([
-            (RawName::new(id).qualify_with(schema_namespace), schema_ty),
-        ]) }
+        Self {
+            type_defs: HashMap::from_iter([(
+                RawName::new(id).qualify_with(schema_namespace),
+                schema_ty,
+            )]),
+        }
     }
 
     /// Convert this [`TypeDefs<ConditionalName>`] into a [`TypeDefs<Name>`] by
