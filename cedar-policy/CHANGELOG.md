@@ -68,6 +68,8 @@ Cedar Language Version: 4.0
   human-readable Cedar policies. (#943, resolving #925)
 - JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
+- Schemas can now reference entity and common types defined in the empty namespace,
+  even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
