@@ -700,12 +700,14 @@ pub(crate) fn try_schema_type_into_validator_type(
                 ))
             }
         }
-        SchemaType::TypeDef { type_name } => Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-            typ_defs
-                .get(&type_name)
-                .cloned()
-                .ok_or(UndeclaredCommonTypesError(type_name).into())
-        })),
+        SchemaType::CommonTypeRef { type_name } => {
+            Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
+                typ_defs
+                    .get(&type_name)
+                    .cloned()
+                    .ok_or(UndeclaredCommonTypesError(type_name).into())
+            }))
+        }
     }
 }
 
