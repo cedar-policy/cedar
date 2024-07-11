@@ -108,12 +108,6 @@ pub enum ExprNoExt {
     Var(ast::Var),
     /// Template slot
     Slot(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId),
-    /// Unknown (for partial evaluation)
-    Unknown {
-        /// Name of the unknown
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
-        name: SmolStr,
-    },
     /// `!`
     #[serde(rename = "!")]
     Not {
@@ -346,11 +340,6 @@ impl Expr {
         Expr::ExprNoExt(ExprNoExt::Slot(slot))
     }
 
-    /// Partial-evaluation unknowns
-    pub fn unknown(name: impl Into<SmolStr>) -> Self {
-        Expr::ExprNoExt(ExprNoExt::Unknown { name: name.into() })
-    }
-
     /// `!`
     pub fn not(e: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Not { arg: Arc::new(e) })
@@ -570,9 +559,6 @@ impl Expr {
                 .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
-            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => {
-                Ok(ast::Expr::unknown(ast::Unknown::new_untyped(name)))
-            }
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
                 Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
@@ -735,7 +721,11 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => Expr::unknown(name),
+            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => {
+                // Create a Vec<Expr> with one arg, which is the name of the extension function
+                let args = vec![Expr::lit(CedarValueJson::String(name))];
+                Expr::ext_call("unknown".to_string().into(), args)
+            }
             ast::ExprKind::If {
                 test_expr,
                 then_expr,
@@ -1432,7 +1422,6 @@ impl std::fmt::Display for ExprNoExt {
             ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
             ExprNoExt::Var(v) => write!(f, "{v}"),
             ExprNoExt::Slot(id) => write!(f, "{id}"),
-            ExprNoExt::Unknown { name } => write!(f, "unknown(\"{}\")", name.escape_debug()),
             ExprNoExt::Not { arg } => {
                 write!(f, "!")?;
                 maybe_with_parens(f, arg)
@@ -1611,7 +1600,6 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
         Expr::ExprNoExt(ExprNoExt::Slot(_)) |
-        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => write!(f, "{expr}"),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning
