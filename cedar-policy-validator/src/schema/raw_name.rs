@@ -196,7 +196,7 @@ pub struct ConditionalName {
     ///
     /// Typical example: In
     /// ```ignore
-    /// namespace "NS" { ... some reference to Foo ... }
+    /// namespace NS { ... some reference to Foo ... }
     /// ```
     /// `Foo` is a `ConditionalName` with `possibilities = [NS::Foo, Foo]`.
     /// That is, if `NS::Foo` exists, `Foo` refers to `NS::Foo`, but otherwise,
