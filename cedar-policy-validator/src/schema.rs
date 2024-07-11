@@ -2891,7 +2891,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXa1 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as an entity type in the
     /// current namespace (NS1).
@@ -2927,7 +2927,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXa2 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as a common type in the
     /// current namespace (NS1).
@@ -2965,7 +2965,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXb1 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as an entity type in the
     /// empty namespace.
@@ -3006,7 +3006,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXb2 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as a common type in the
     /// empty namespace.
@@ -3046,7 +3046,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXc test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is not declared in any namespace.
     fn c_json() -> serde_json::Value {
@@ -3082,7 +3082,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXd1 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as an entity type in an
     /// unrelated namespace (NS2).
@@ -3125,7 +3125,7 @@ mod test_579 {
 
     /// Makes a schema for all the XXd2 test cases, where different XX plug in a
     /// different schema construct that uses `MyType` (e.g., with a function
-    /// like `A1_json()`).
+    /// like `A1X1_json()`).
     ///
     /// In all of these cases, `MyType` is declared as a common type in an
     /// unrelated namespace (NS2).
