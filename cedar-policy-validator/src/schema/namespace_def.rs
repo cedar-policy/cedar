@@ -385,7 +385,6 @@ pub struct ActionFragment {
     pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
-type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
 impl ActionFragment {
     /// Construct an [`ActionFragment`] by converting the structures used by the
     /// schema format to those used internally by the validator.
@@ -557,6 +556,7 @@ impl ActionFragment {
     }
 }
 
+type ResolveFunc<T> = dyn FnOnce(&HashMap<&Name, Type>) -> Result<T>;
 /// Represent a type that might be defined in terms of some type definitions
 /// which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedTypeDefs<T> {
@@ -565,7 +565,7 @@ pub(crate) enum WithUnresolvedTypeDefs<T> {
 }
 
 impl<T: 'static> WithUnresolvedTypeDefs<T> {
-    pub fn new(f: impl FnOnce(&HashMap<Name, Type>) -> Result<T> + 'static) -> Self {
+    pub fn new(f: impl FnOnce(&HashMap<&Name, Type>) -> Result<T> + 'static) -> Self {
         Self::WithUnresolved(Box::new(f))
     }
 
@@ -580,7 +580,7 @@ impl<T: 'static> WithUnresolvedTypeDefs<T> {
 
     /// Instantiate any names referencing types with the definition of the type
     /// from the input `HashMap`.
-    pub fn resolve_type_defs(self, type_defs: &HashMap<Name, Type>) -> Result<T> {
+    pub fn resolve_type_defs(self, type_defs: &HashMap<&Name, Type>) -> Result<T> {
         match self {
             WithUnresolvedTypeDefs::WithUnresolved(f) => f(type_defs),
             WithUnresolvedTypeDefs::WithoutUnresolved(v) => Ok(v),
@@ -707,12 +707,14 @@ pub(crate) fn try_schema_type_into_validator_type(
                 ))
             }
         }
-        SchemaType::TypeDef { type_name } => Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-            typ_defs
-                .get(&type_name)
-                .cloned()
-                .ok_or(UndeclaredCommonTypesError(type_name.as_ref().clone()).into())
-        })),
+        SchemaType::CommonTypeRef { type_name } => {
+            Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
+                typ_defs
+                    .get(&type_name)
+                    .cloned()
+                    .ok_or(UndeclaredCommonTypesError(type_name).into())
+            }))
+        }
     }
 }
 

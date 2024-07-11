@@ -908,7 +908,7 @@ namespace Baz {action "Foo" appliesTo {
                 let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
                 assert!(required);
                 match ty {
-                    crate::SchemaType::TypeDef { type_name } => {
+                    crate::SchemaType::CommonTypeRef { type_name } => {
                         assert_eq!(type_name, &"AWS::Tag".parse().unwrap())
                     }
                     _ => panic!("Wrong type for attribute"),
@@ -1455,7 +1455,7 @@ mod translator_tests {
                 let TypeOfAttribute { ty, required } = attributes.get("name").unwrap();
                 {
                     assert!(required);
-                    let expected = crate::SchemaType::TypeDef {
+                    let expected = crate::SchemaType::CommonTypeRef {
                         type_name: "id".parse().unwrap(),
                     };
                     assert_eq!(ty, &expected);

@@ -419,7 +419,7 @@ impl<'a> ConversionContext<'a> {
         decl: Either<Path, Vec<Node<AttrDecl>>>,
     ) -> Result<AttributesOrContext<RawUncheckedName>, ToJsonSchemaErrors> {
         Ok(AttributesOrContext(match decl {
-            Either::Left(p) => SchemaType::TypeDef {
+            Either::Left(p) => SchemaType::CommonTypeRef {
                 type_name: p.into(),
             },
             Either::Right(attrs) => SchemaType::Type(SchemaTypeVariant::Record {
@@ -504,7 +504,7 @@ impl<'a> ConversionContext<'a> {
         // 3. Primitive types
         // 4. Extension Types
         if namespace_to_search.common_types.contains_key(&base) {
-            Ok(SchemaType::TypeDef { type_name: name })
+            Ok(SchemaType::CommonTypeRef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
             Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
         } else if is_unqualified_or_cedar {

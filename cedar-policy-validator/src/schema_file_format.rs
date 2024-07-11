@@ -497,8 +497,8 @@ impl ActionEntityUID<RawUncheckedName> {
 pub enum SchemaType<N> {
     /// One of the standard types exposed to users
     Type(SchemaTypeVariant<N>),
-    /// A common type ("typedef")
-    TypeDef {
+    /// Reference to a common type
+    CommonTypeRef {
         /// Name of the common type.
         /// For the important case of `N` = [`RawName`], this is the schema JSON
         /// format, and the `RawName` is exactly how it appears in the schema;
@@ -509,7 +509,7 @@ pub enum SchemaType<N> {
 }
 
 impl<N> SchemaType<N> {
-    /// Return an iterator of common type references ocurred in the type
+    /// Iterate over all common type references which occur in the type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
             SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
@@ -521,15 +521,15 @@ impl<N> SchemaType<N> {
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
                 element.common_type_references()
             }
-            SchemaType::TypeDef { type_name } => Box::new(std::iter::once(type_name)),
+            SchemaType::CommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a `TypeDef` because we can't
-    /// easily properly check the type of a typedef, accounting for namespaces,
-    /// without first converting to a [`crate::types::Type`].
+    /// (recursively)? Returns `None` if this is a `CommonTypeRef` because we
+    /// can't easily check the type of a common type reference, accounting for
+    /// namespaces, without first converting to a [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
@@ -542,7 +542,7 @@ impl<N> SchemaType<N> {
                     None => None,
                 }),
             Self::Type(_) => Some(false),
-            Self::TypeDef { .. } => None,
+            Self::CommonTypeRef { .. } => None,
         }
     }
 
@@ -567,7 +567,7 @@ impl SchemaType<RawUncheckedName> {
     ) -> std::result::Result<SchemaType<Name>, ReservedNameError> {
         match self {
             Self::Type(stv) => Ok(SchemaType::Type(stv.qualify_type_references(ns)?)),
-            Self::TypeDef { type_name } => Ok(SchemaType::TypeDef {
+            Self::CommonTypeRef { type_name } => Ok(SchemaType::CommonTypeRef {
                 type_name: RawName::try_from(type_name)?.qualify_with(ns),
             }),
         }
@@ -576,7 +576,7 @@ impl SchemaType<RawUncheckedName> {
     fn into_n<N: From<RawUncheckedName>>(self) -> SchemaType<N> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.into_n()),
-            Self::TypeDef { type_name } => SchemaType::TypeDef {
+            Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
                 type_name: type_name.into(),
             },
         }
@@ -798,7 +798,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     "Set" => {
                         if remaining_fields.is_empty() {
                             // must be referring to a common type named `Set`
-                            Ok(SchemaType::TypeDef {
+                            Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(SET_NAME.clone()),
                             })
                         } else {
@@ -820,7 +820,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     "Record" => {
                         if remaining_fields.is_empty() {
                             // must be referring to a common type named `Record`
-                            Ok(SchemaType::TypeDef {
+                            Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(RECORD_NAME.clone()),
                             })
                         } else {
@@ -859,7 +859,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     "Entity" => {
                         if remaining_fields.is_empty() {
                             // must be referring to a common type named `Entity`
-                            Ok(SchemaType::TypeDef {
+                            Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(ENTITY_NAME.clone()),
                             })
                         } else {
@@ -883,7 +883,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     }
                     "Extension" => {
                         if remaining_fields.is_empty() {
-                            Ok(SchemaType::TypeDef {
+                            Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(EXTENSION_NAME.clone()),
                             })
                         } else {
@@ -906,16 +906,14 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     }
                     type_name => {
                         error_if_any_fields()?;
-                        Ok(SchemaType::TypeDef {
-                            type_name: N::from(
-                                RawUncheckedName::from_normalized_str(type_name).map_err(
-                                    |err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid common type `{type_name}`: {err}"
-                                        ))
-                                    },
-                                )?,
-                            ),
+                        Ok(SchemaType::CommonTypeRef {
+                            type_name: N::from(RawName::from_normalized_str(type_name).map_err(
+                                |err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid common type `{type_name}`: {err}"
+                                    ))
+                                },
+                            )?),
                         })
                     }
                 }

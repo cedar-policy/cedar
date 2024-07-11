@@ -63,8 +63,8 @@ impl ValidatorActionId {
     /// The `Type` that this action requires for its context.
     ///
     /// This always returns a closed record type.
-    pub fn context_type(&self) -> Type {
-        self.context.clone()
+    pub fn context_type(&self) -> &Type {
+        &self.context
     }
 
     /// The `EntityType`s that can be the `principal` for this action.

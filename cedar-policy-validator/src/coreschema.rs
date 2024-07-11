@@ -450,7 +450,7 @@ pub fn context_schema_for_action(
     // as their values are representable. The values are representable
     // because they are taken from the context of a `ValidatorActionId`
     // which was constructed directly from a schema.
-    schema.context_type(action).map(ContextSchema)
+    schema.context_type(action).cloned().map(ContextSchema)
 }
 
 #[cfg(test)]
