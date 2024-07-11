@@ -90,11 +90,6 @@ impl Path {
     pub fn is_in_unqualified_or_cedar(&self) -> bool {
         self.0.node.is_in_unqualified_or_cedar()
     }
-
-    /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`)
-    pub fn is_reserved(&self) -> bool {
-        self.0.node.is_reserved()
-    }
 }
 
 impl std::fmt::Display for Path {
@@ -126,12 +121,6 @@ impl PathInternal {
 
     fn into_iter(self) -> impl Iterator<Item = Id> {
         self.namespace.into_iter().chain(once(self.basename))
-    }
-
-    /// Is this referring to a name _in__ the reserved namespace that contains
-    /// `__cedar`
-    fn is_reserved(&self) -> bool {
-        self.iter().any(|id| id.as_ref() == CEDAR_NAMESPACE)
     }
 
     /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace

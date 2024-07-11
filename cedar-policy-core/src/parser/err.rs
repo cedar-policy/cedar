@@ -301,7 +301,7 @@ pub enum ToASTErrorKind {
     NoMethods(ast::UnreservedName, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
     #[error("`{0}` is not a valid method")]
-    UnknownMethod(String),
+    UnknownMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a valid function")]
     UnknownFunction(ast::UnreservedName),

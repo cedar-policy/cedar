@@ -386,7 +386,7 @@ mod vars_test {
     }
 }
 
-/// A newtype which indicates that the contained `Name` does not contain
+/// A newtype which indicates that the contained [`Name`] does not contain
 /// reserved `__cedar`, as specified by RFC 52
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -415,30 +415,34 @@ impl FromNormalizedStr for UnreservedName {
 
 impl UnreservedName {
     /// Qualify the name with an optional namespace
-    /// This method has the same behavior as `Name::qualify_with` except that
+    /// This method has the same behavior as [`Name::qualify_with`] except that
     /// the `namespace` argument is a `Option<&UnreservedName>`
     pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
         Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
     }
 
-    /// Create a `UnreservedName` with no path (no namespaces).
+    /// Create a [`UnreservedName`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         Name::parse_unqualified_name(s).and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    /// Create a `UnreservedName` with no path (no namespaces).
+    /// Create a [`UnreservedName`] with no path (no namespaces).
     pub fn unqualified_name(id: UnreservedId) -> Self {
         Self(Name::unqualified_name(id.0))
     }
 
-    /// Get the basename of the `UnreservedName` (ie, with namespaces stripped).
+    /// Get the basename of the [`UnreservedName`] (ie, with namespaces stripped).
+    /// Return a reference to [`Id`]
     pub fn basename_unchecked(&self) -> &Id {
         self.0.basename()
     }
 
-    /// Get the basename of the `UnreservedName` (ie, with namespaces stripped).
+    /// Get the basename of the [`UnreservedName`] (ie, with namespaces stripped).
+    /// Return an [`UnreservedId`]
     pub fn basename(&self) -> UnreservedId {
+        // PANIC SAFETY: Any component of a `UnreservedName` is a `UnreservedId`
+        #![allow(clippy::unwrap_used)]
         self.0.basename().clone().try_into().unwrap()
     }
 }

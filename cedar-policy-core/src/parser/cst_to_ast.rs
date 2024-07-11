@@ -63,7 +63,7 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
     functions: HashSet<&'a ast::UnreservedName>,
-    methods: HashSet<&'a str>,
+    methods: HashSet<ast::UnreservedId>,
 }
 
 // Store extension function call styles
@@ -76,7 +76,7 @@ fn load_styles() -> ExtStyles<'static> {
     for func in crate::extensions::Extensions::all_available().all_funcs() {
         match func.style() {
             CallStyle::FunctionStyle => functions.insert(func.name()),
-            CallStyle::MethodStyle => methods.insert(func.name().basename_unchecked().as_ref()),
+            CallStyle::MethodStyle => methods.insert(func.name().basename()),
         };
     }
     ExtStyles { functions, methods }
@@ -455,11 +455,11 @@ impl ast::UnreservedId {
                 .map(|arg| construct_method_contains_all(e, arg, loc.clone())),
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
-            id => {
-                if EXTENSION_STYLES.methods.contains(&id) {
+            _ => {
+                if EXTENSION_STYLES.methods.contains(&self) {
                     args.insert(0, e);
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
-                    Ok(construct_ext_meth(id.to_string(), args, loc.clone()))
+                    Ok(construct_ext_meth(self.clone(), args, loc.clone()))
                 } else {
                     let unqual_name = ast::UnreservedName::unqualified_name(self.clone());
                     if EXTENSION_STYLES.functions.contains(&unqual_name) {
@@ -470,7 +470,7 @@ impl ast::UnreservedId {
                         .into())
                     } else {
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(id.to_string()),
+                            ToASTErrorKind::UnknownMethod(self.clone()),
                             loc.clone(),
                         )
                         .into())
@@ -1553,15 +1553,15 @@ impl ast::UnreservedName {
     /// If this name is a known extension function/method name or not
     pub(crate) fn is_known_extension_func_name(&self) -> bool {
         EXTENSION_STYLES.functions.contains(self)
-            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(self.0.id.as_ref()))
+            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&self.basename()))
     }
 
     fn into_func(self, args: Vec<ast::Expr>, loc: Loc) -> Result<ast::Expr> {
         // error on standard methods
         if self.0.path.is_empty() {
-            let id = self.0.id.as_ref();
-            if EXTENSION_STYLES.methods.contains(id)
-                || matches!(id, "contains" | "containsAll" | "containsAny")
+            let id = self.basename();
+            if EXTENSION_STYLES.methods.contains(&id)
+                || matches!(id.as_ref(), "contains" | "containsAll" | "containsAny")
             {
                 return Err(ToASTError::new(
                     ToASTErrorKind::FunctionCallOnMethod(self.basename()),
@@ -1846,9 +1846,8 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
 }
 
 // INVARIANT (MethodStyleArgs), args must be non-empty
-fn construct_ext_meth(n: String, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
-    let id: UnreservedId = ast::Id::new_unchecked(n).try_into().unwrap();
-    let name = ast::UnreservedName::unqualified_name(id);
+fn construct_ext_meth(n: UnreservedId, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
+    let name = ast::UnreservedName::unqualified_name(n);
     // INVARIANT (MethodStyleArgs), args must be non-empty
     ast::ExprBuilder::new()
         .with_source_loc(loc)
@@ -4558,6 +4557,10 @@ mod tests {
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"A::__cedar::B"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<Name>().unwrap())));
         assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
@@ -4567,9 +4570,21 @@ mod tests {
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
                     ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<Name>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
-                    Err(errs) if matches!(errs.as_ref().first(),
-                        ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                            ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<Name>().unwrap())));
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"ip("").__cedar()"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"{__cedar: 0}"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
+        assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<Name>().unwrap())));
     }
 
     #[test]
