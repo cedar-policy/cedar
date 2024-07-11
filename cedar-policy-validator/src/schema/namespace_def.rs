@@ -550,7 +550,7 @@ impl ActionFragment {
     }
 }
 
-type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
+type ResolveFunc<T> = dyn FnOnce(&HashMap<&Name, Type>) -> Result<T>;
 /// Represent a type that might be defined in terms of some type definitions
 /// which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedTypeDefs<T> {
@@ -559,7 +559,7 @@ pub(crate) enum WithUnresolvedTypeDefs<T> {
 }
 
 impl<T: 'static> WithUnresolvedTypeDefs<T> {
-    pub fn new(f: impl FnOnce(&HashMap<Name, Type>) -> Result<T> + 'static) -> Self {
+    pub fn new(f: impl FnOnce(&HashMap<&Name, Type>) -> Result<T> + 'static) -> Self {
         Self::WithUnresolved(Box::new(f))
     }
 
@@ -574,7 +574,7 @@ impl<T: 'static> WithUnresolvedTypeDefs<T> {
 
     /// Instantiate any names referencing types with the definition of the type
     /// from the input `HashMap`.
-    pub fn resolve_type_defs(self, type_defs: &HashMap<Name, Type>) -> Result<T> {
+    pub fn resolve_type_defs(self, type_defs: &HashMap<&Name, Type>) -> Result<T> {
         match self {
             WithUnresolvedTypeDefs::WithUnresolved(f) => f(type_defs),
             WithUnresolvedTypeDefs::WithoutUnresolved(v) => Ok(v),
