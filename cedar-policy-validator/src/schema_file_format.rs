@@ -467,7 +467,7 @@ impl ActionEntityUID<RawName> {
 pub enum SchemaType<N> {
     /// One of the standard types exposed to users
     Type(SchemaTypeVariant<N>),
-    /// Reference to a common type ("typedef")
+    /// Reference to a common type
     CommonTypeRef {
         /// Name of the common type.
         /// For the important case of `N` = [`RawName`], this is the schema JSON
