@@ -181,17 +181,17 @@ impl ValidatorNamespaceDef<ConditionalName> {
                 entity_types,
                 actions,
             }),
-            // PANIC SAFETY: at least one of the results is `Err`, so the input
-            // to `TypeResolutionError::join()` is nonempty, so it returns Some,
-            // as documented there
-            #[allow(clippy::expect_used)]
-            (res1, res2, res3) => Err(TypeResolutionError::join(
+            (res1, res2, res3) => {
+                // PANIC SAFETY: at least one of the results is `Err`, so the input to `TypeResolutionError::join()` is nonempty, so it returns Some, as documented there
+                #[allow(clippy::expect_used)]
+                Err(TypeResolutionError::join(
                 res1.err()
                     .into_iter()
                     .chain(res2.err().into_iter())
                     .chain(res3.err().into_iter()),
-            )
-            .expect("at least one of these results was Err, so join() must return Some")),
+                )
+                .expect("at least one of these results was Err, so join() must return Some"))
+            },
         }
     }
 
