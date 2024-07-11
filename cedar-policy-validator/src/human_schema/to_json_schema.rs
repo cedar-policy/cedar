@@ -54,7 +54,12 @@ pub fn custom_schema_to_json_schema(
     schema: Schema,
     extensions: Extensions<'_>,
 ) -> Result<(SchemaFragment<RawName>, impl Iterator<Item = SchemaWarning>), ToJsonSchemaErrors> {
-    // First pass, figure out what each name is bound to
+    // combine all of the declarations in unqualified (empty) namespaces into a
+    // single unqualified namespace
+    //
+    // TODO: In the future, we could also combine namespaces with matching
+    // non-empty names, to allow reopening a namespace within the same (human)
+    // schema fragment.
     let (qualified_namespaces, unqualified_namespace) =
         split_unqualified_namespace(schema.into_iter().map(|n| n.node));
     // Create a single iterator for all namespaces
