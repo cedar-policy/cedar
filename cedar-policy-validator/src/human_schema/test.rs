@@ -1190,7 +1190,7 @@ mod translator_tests {
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
-    // We allow translation schemas that violate RFC 52 to `SchemaFragment`
+    // We allow translating schemas that violate RFC 52 to `SchemaFragment`.
     // The violations are reported during further translation to
     // `ValidatorSchema`
     #[test]
