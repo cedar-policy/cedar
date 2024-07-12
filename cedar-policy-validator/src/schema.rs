@@ -309,8 +309,8 @@ impl ValidatorSchema {
         // `__cedar` to refer to the primitive/extension type.)
         // In the future, if we support some kind of `use` keyword to make names
         // available in the empty namespace, we'd probably add that here.
-        for tyname in primitive_types()
-            .map(Name::unqualified_name)
+        for tyname in primitive_types::<Name>()
+            .map(|(id, _)| Name::unqualified_name(id))
             .chain(extensions.ext_types().cloned())
         {
             if !all_entity_defs.contains(&tyname) && !all_common_defs.contains(&tyname) {
@@ -773,20 +773,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 fn cedar_fragment(extensions: Extensions<'_>) -> ValidatorSchemaFragment<ConditionalName> {
     // PANIC SAFETY: these are valid `Id`s
     #[allow(clippy::unwrap_used)]
-    let mut common_types = HashMap::from_iter([
-        (
-            Id::from_str("Bool").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::Boolean),
-        ),
-        (
-            Id::from_str("Long").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::Long),
-        ),
-        (
-            Id::from_str("String").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::String),
-        ),
-    ]);
+    let mut common_types = HashMap::from_iter(primitive_types());
     for ext_type in extensions.ext_types() {
         assert!(
             ext_type.is_unqualified(),
@@ -824,14 +811,24 @@ fn single_alias_in_empty_namespace(id: Id, def: Name) -> ValidatorSchemaFragment
     )])
 }
 
-/// Get the names of all primitive types, as unqualified `Id`s
-fn primitive_types() -> impl Iterator<Item = Id> {
+/// Get the names of all primitive types, as unqualified `Id`s,
+/// paired with the primitive [`SchemaType`]s they represent
+fn primitive_types<N>() -> impl Iterator<Item = (Id, SchemaType<N>)> {
     // PANIC SAFETY: these are valid `Id`s
     #[allow(clippy::unwrap_used)]
     [
-        Id::from_str("Bool").unwrap(),
-        Id::from_str("Long").unwrap(),
-        Id::from_str("String").unwrap(),
+        (
+            Id::from_str("Bool").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::Boolean),
+        ),
+        (
+            Id::from_str("Long").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::Long),
+        ),
+        (
+            Id::from_str("String").unwrap(),
+            SchemaType::Type(SchemaTypeVariant::String),
+        ),
     ]
     .into_iter()
 }
