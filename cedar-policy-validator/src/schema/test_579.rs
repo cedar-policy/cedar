@@ -741,6 +741,60 @@ fn D3_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
+/// Generate human-schema syntax for a `MyType` use of kind E1.
+fn E1_human() -> &'static str {
+    r#"action Read appliesTo { principal: [MyType], resource: [Resource] };"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind E1XX (for any XX), returning the new schema.
+///
+/// Unlike for A1/B1/C1, we do not need to distinguish between
+/// E1X1 and E1X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn E1_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["actions"]["Read"] = json!({
+        "appliesTo": { "principalTypes": ["MyType"], "resourceTypes": ["Resource"] }
+    });
+    schema
+}
+
+/// Generate human-schema syntax for a `MyType` use of kind E2.
+fn E2_human() -> &'static str {
+    r#"action Read appliesTo { principal: [NS1::MyType], resource: [Resource] };"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind E1XX (for any XX), returning the new schema.
+///
+/// Unlike for A2/B2/C2, we do not need to distinguish between
+/// E2X1 and E2X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn E2_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["actions"]["Read"] = json!({
+        "appliesTo": { "principalTypes": ["NS1::MyType"], "resourceTypes": ["Resource"] }
+    });
+    schema
+}
+
+/// Generate human-schema syntax for a `MyType` use of kind E3.
+fn E3_human() -> &'static str {
+    r#"action Read appliesTo { principal: [NS2::MyType], resource: [Resource] };"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind E1XX (for any XX), returning the new schema.
+///
+/// Unlike for A3/B3/C3, we do not need to distinguish between
+/// E3X1 and E3X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn E3_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["actions"]["Read"] = json!({
+        "appliesTo": { "principalTypes": ["NS2::MyType"], "resourceTypes": ["Resource"] }
+    });
+    schema
+}
+
 // ####
 //
 // For explanations of all of the below tests and their naming, see comments
@@ -1315,6 +1369,179 @@ fn D3d2_human() {
             .build(),
     );
 }
+#[test]
+fn E1a1_human() {
+    assert_parses_successfully_human(&a1_human(E1_human()));
+}
+#[test]
+fn E1a2_human() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &a2_human(E1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn E1b1_human() {
+    assert_parses_successfully_human(&b1_human(E1_human()));
+}
+#[test]
+fn E1b2_human() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &b2_human(E1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn E1c_human() {
+    assert_parse_error_human(
+        &c_human(E1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn E2a1_human() {
+    assert_parses_successfully_human(&a1_human(E2_human()));
+}
+#[test]
+fn E2a2_human() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &a2_human(E2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn E2b1_human() {
+    assert_parse_error_human(
+        &b1_human(E2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E2b2_human() {
+    assert_parse_error_human(
+        &b2_human(E2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E2c_human() {
+    assert_parse_error_human(
+        &c_human(E2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3a1_human() {
+    assert_parse_error_human(
+        &a1_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3a2_human() {
+    assert_parse_error_human(
+        &a2_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3b1_human() {
+    assert_parse_error_human(
+        &b1_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3b2_human() {
+    assert_parse_error_human(
+        &b2_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3c_human() {
+    assert_parse_error_human(
+        &c_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn E3d1_human() {
+    assert_parses_successfully_human(&d1_human(E3_human()));
+}
+#[test]
+fn E3d2_human() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &d2_human(E3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
 
 // json versions
 #[test]
@@ -1800,6 +2027,155 @@ fn D3d2_json() {
     // it were allowed to.
     assert_parse_error_json(
         D3_json(d2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E1a1_json() {
+    assert_parses_successfully_json(E1_json(a1_json()));
+}
+#[test]
+fn E1a2_json() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        E1_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E1b1_json() {
+    assert_parses_successfully_json(E1_json(b1_json()));
+}
+#[test]
+fn E1b2_json() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        E1_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E1c_json() {
+    assert_parse_error_json(
+        E1_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E2a1_json() {
+    assert_parses_successfully_json(E2_json(a1_json()));
+}
+#[test]
+fn E2a2_json() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        E2_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E2b1_json() {
+    assert_parse_error_json(
+        E2_json(b1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E2b2_json() {
+    assert_parse_error_json(
+        E2_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E2c_json() {
+    assert_parse_error_json(
+        E2_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3a1_json() {
+    assert_parse_error_json(
+        E3_json(a1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3a2_json() {
+    assert_parse_error_json(
+        E3_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3b1_json() {
+    assert_parse_error_json(
+        E3_json(b1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3b2_json() {
+    assert_parse_error_json(
+        E3_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3c_json() {
+    assert_parse_error_json(
+        E3_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn E3d1_json() {
+    assert_parses_successfully_json(E3_json(d1_json()));
+}
+#[test]
+fn E3d2_json() {
+    // this is an error because we currently don't support `appliesTo { principal: [common-type] }`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        E3_json(d2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
             .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
