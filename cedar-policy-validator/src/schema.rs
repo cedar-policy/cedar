@@ -1284,7 +1284,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"undeclared action: Action::"photo_action""#)
-                    .help("any actions appearing in `memberOf` need to be declared in `actions`")
+                    .help("any actions appearing as parents need to be declared as actions")
                     .build());
         });
     }

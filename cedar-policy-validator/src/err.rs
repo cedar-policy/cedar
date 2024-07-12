@@ -317,7 +317,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
+    #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
     pub struct UndeclaredActionsError(pub(crate) BTreeSet<SmolStr>);
 
     impl Display for UndeclaredActionsError {
