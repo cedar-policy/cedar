@@ -22,7 +22,9 @@ use logos::Logos;
 /// Tokenize the input, associating with each token a leading and trailing
 /// comment if they are present. Also returns a string containing any comments
 /// that may be present at the end of input after all tokens are consumed.
-pub fn get_token_stream(input: &str) -> Option<(Vec<WrappedToken>, String)> {
+pub fn get_token_stream(
+    input: &str,
+) -> Option<(Vec<WrappedToken<'_>>, impl Iterator<Item = &str>)> {
     let mut tokens = Token::lexer(input).spanned();
 
     let Some(mut current_token) = tokens.next() else {

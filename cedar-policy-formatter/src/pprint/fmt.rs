@@ -29,7 +29,7 @@ use super::utils::remove_empty_lines;
 use super::config::{self, Config};
 use super::doc::*;
 
-fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<String> {
+fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_, '_>) -> Result<String> {
     let mut w = Vec::new();
     let config = context.config;
     let doc = t.to_doc(context);
@@ -114,9 +114,10 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     formatted_policies.push('\n');
 
     // handle comment at the end of a policyset
-    if !end_of_file_comment.is_empty() {
-        // note: end_of_file_comment is guaranteed to end with a newline
-        formatted_policies.push_str(&end_of_file_comment);
+    for comment_line in end_of_file_comment {
+        formatted_policies.push_str(comment_line);
+        // note: each `comment_line` is guaranteed to never end with a newline
+        formatted_policies.push('\n');
     }
 
     // add soundness check to make sure formatting doesn't alter policy ASTs
@@ -210,6 +211,23 @@ mod tests {
         );
         assert_eq!(policies_str_to_pretty(p1, &config).unwrap(), formatted_p);
         assert_eq!(policies_str_to_pretty(p2, &config).unwrap(), formatted_p);
+
+        let formatted_p = "permit (principal, action, resource);\n//foo\n//bar\n";
+        let p1 = "permit (principal, action, resource);\n//foo\n//bar";
+        let p2 = "permit (principal, action, resource);\n//foo\n//bar ";
+        let p3 = "permit (principal, action, resource);\n//foo\n//bar\n\n\n";
+        let p4 = "permit (principal, action, resource);\n//foo\n//bar   \n\n\n";
+        let p5 = "permit (principal, action, resource);\n//foo\n//bar   \n \n \n";
+
+        assert_eq!(
+            policies_str_to_pretty(formatted_p, &config).unwrap(),
+            formatted_p
+        );
+        assert_eq!(policies_str_to_pretty(p1, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p2, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p3, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p4, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p5, &config).unwrap(), formatted_p);
     }
 
     #[test]
