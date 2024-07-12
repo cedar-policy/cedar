@@ -258,11 +258,11 @@ impl ValidatorSchema {
         let mut action_fragments = HashMap::new();
 
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
-            // Build aggregate maps for the declared typedefs, entity types, and
-            // actions, checking that nothing is defined twice.  Namespaces were
-            // already added by the `ValidatorNamespaceDef`, so the same base
-            // type name may appear multiple times so long as the namespaces are
-            // different.
+            // Build aggregate maps for the declared common types, entity types,
+            // and actions, checking that nothing is defined twice.  Namespaces
+            // were already added by the `ValidatorNamespaceDef`, so the same
+            // base type name may appear multiple times so long as the
+            // namespaces are different.
             for (name, ty) in ns_def.common_types.defs {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),

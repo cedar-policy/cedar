@@ -101,7 +101,7 @@ impl ValidatorNamespaceDef {
         // Convert the type defs, actions and entity types from the schema file
         // into the representation used by the validator.
         let common_types =
-            CommonTypeDefs::from_raw_typedefs(namespace_def.common_types, namespace.as_ref())?;
+            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types = EntityTypesDef::from_raw_entity_types(
@@ -177,7 +177,7 @@ pub struct CommonTypeDefs {
 impl CommonTypeDefs {
     /// Construct a [`CommonTypeDefs`] by converting the structures used by the
     /// schema format to those used internally by the validator.
-    pub(crate) fn from_raw_typedefs(
+    pub(crate) fn from_raw_common_types(
         schema_file_type_def: HashMap<Id, SchemaType<RawName>>,
         schema_namespace: Option<&Name>,
     ) -> Result<Self> {
