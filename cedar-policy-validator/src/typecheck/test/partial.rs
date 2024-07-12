@@ -27,7 +27,7 @@ use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::validation_errors::{AttributeAccess, UnexpectedTypeHelp};
 use crate::{
-    NamespaceDefinition, RawUncheckedName, ValidationError, ValidationMode, ValidationWarning,
+    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
     ValidatorSchema,
 };
 
@@ -500,7 +500,7 @@ mod fails_empty_schema {
     }
 }
 
-fn partial_schema_file() -> NamespaceDefinition<RawUncheckedName> {
+fn partial_schema_file() -> NamespaceDefinition<RawName> {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {
