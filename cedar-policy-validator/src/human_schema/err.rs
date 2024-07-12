@@ -370,7 +370,7 @@ pub enum ToJsonSchemaError {
     #[error("Unknown type name: `{}`", .0.node)]
     UnknownTypeName(Node<SmolStr>),
     /// Invalid type name
-    #[error("Use reserved name: `{}`", .0.node)]
+    #[error("this uses a reserved namespace or typename: {}", .0.node)]
     ReservedName(Node<SmolStr>),
 }
 

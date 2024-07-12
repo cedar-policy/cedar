@@ -391,7 +391,7 @@ mod vars_test {
     }
 }
 
-/// A new type which indicates that the contained [`ReservedName`] does not contain
+/// A new type which indicates that the contained [`UncheckedName`] does not contain
 /// reserved `__cedar`, as specified by RFC 52
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize)]
 #[serde(transparent)]
@@ -450,8 +450,8 @@ impl<'de> Deserialize<'de> for Name {
 
 impl Name {
     /// Qualify the name with an optional namespace
-    /// This method has the same behavior as [`ReservedName::qualify_with`] except that
-    /// the `namespace` argument is a `Option<&UnreservedName>`
+    /// This method has the same behavior as [`UncheckedName::qualify_with`] except that
+    /// the `namespace` argument is a `Option<&Name>`
     pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
         Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
     }
@@ -477,7 +477,7 @@ impl Name {
     /// Get the basename of the [`Name`] (ie, with namespaces stripped).
     /// Return an [`UnreservedId`]
     pub fn basename(&self) -> UnreservedId {
-        // PANIC SAFETY: Any component of a `UnreservedName` is a `UnreservedId`
+        // PANIC SAFETY: Any component of a `Name` is a `UnreservedId`
         #![allow(clippy::unwrap_used)]
         self.0.basename().clone().try_into().unwrap()
     }
