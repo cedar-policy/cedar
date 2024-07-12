@@ -92,6 +92,7 @@ impl FromNormalizedStr for Id {
 
 /// An `Id` that is not equal to `__cedar`, as specified by RFC 52
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UnreservedId(pub(crate) Id);
 
 impl From<UnreservedId> for Id {
