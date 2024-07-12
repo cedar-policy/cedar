@@ -27,7 +27,7 @@ use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
     types::{EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinition, RawUncheckedName, ValidationError, ValidationMode, ValidationWarning,
+    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
     ValidatorSchema,
 };
 
@@ -336,7 +336,7 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     });
 }
 
-pub(crate) fn empty_schema_file() -> NamespaceDefinition<RawUncheckedName> {
+pub(crate) fn empty_schema_file() -> NamespaceDefinition<RawName> {
     NamespaceDefinition::new([], [])
 }
 

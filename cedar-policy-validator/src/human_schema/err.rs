@@ -369,6 +369,9 @@ pub enum ToJsonSchemaError {
     /// Invalid type name
     #[error("Unknown type name: `{}`", .0.node)]
     UnknownTypeName(Node<SmolStr>),
+    /// Invalid type name
+    #[error("Use reserved name: `{}`", .0.node)]
+    ReservedName(Node<SmolStr>),
 }
 
 impl ToJsonSchemaError {
@@ -406,6 +409,9 @@ impl Diagnostic for ToJsonSchemaError {
                 })))
             }
             ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(node.loc.span),
+            ))),
+            ToJsonSchemaError::ReservedName(node) => Some(Box::new(std::iter::once(
                 LabeledSpan::underline(node.loc.span),
             ))),
             ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {

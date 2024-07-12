@@ -33,14 +33,14 @@ use crate::{
     types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
-    RawUncheckedName, SchemaFragment, ValidationError, ValidationMode,
+    RawName, SchemaFragment, ValidationError, ValidationMode,
 };
 
 use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
-    schema: SchemaFragment<RawUncheckedName>,
+    schema: SchemaFragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
@@ -62,7 +62,7 @@ fn assert_typechecks_strict(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
-    schema: SchemaFragment<RawUncheckedName>,
+    schema: SchemaFragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
@@ -85,7 +85,7 @@ fn assert_strict_type_error(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_types_must_match(
-    schema: SchemaFragment<RawUncheckedName>,
+    schema: SchemaFragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     on_expr: Expr,
@@ -109,7 +109,7 @@ fn assert_types_must_match(
     )
 }
 
-fn simple_schema_file() -> SchemaFragment<RawUncheckedName> {
+fn simple_schema_file() -> SchemaFragment<RawName> {
     serde_json::from_value(json!(
     { "": {
       "entityTypes": {
@@ -137,7 +137,7 @@ fn simple_schema_file() -> SchemaFragment<RawUncheckedName> {
 
 fn with_simple_schema_and_request<F>(f: F)
 where
-    F: FnOnce(SchemaFragment<RawUncheckedName>, RequestEnv<'_>),
+    F: FnOnce(SchemaFragment<RawName>, RequestEnv<'_>),
 {
     f(
         simple_schema_file(),

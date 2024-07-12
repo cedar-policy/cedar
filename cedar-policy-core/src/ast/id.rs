@@ -123,6 +123,19 @@ impl std::fmt::Display for UnreservedId {
     }
 }
 
+impl std::str::FromStr for UnreservedId {
+    type Err = ParseErrors;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Id::from_str(s).and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+    }
+}
+
+impl FromNormalizedStr for UnreservedId {
+    fn describe_self() -> &'static str {
+        "Unreserved Id"
+    }
+}
+
 impl UnreservedId {
     /// Create an [`UnreservedId`] from an empty string
     pub(crate) fn empty() -> Self {
@@ -158,6 +171,19 @@ impl<'de> Deserialize<'de> for Id {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(IdVisitor)
+    }
+}
+
+/// Deserialize a [`Name`] using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for UnreservedId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_str(IdVisitor)
+            .and_then(|n| n.try_into().map_err(serde::de::Error::custom))
     }
 }
 

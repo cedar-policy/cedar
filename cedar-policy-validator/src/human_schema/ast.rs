@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::Id,
+    ast::{Id, UncheckedName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::{RawUncheckedName, SchemaTypeVariant};
+use crate::SchemaTypeVariant;
 
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
@@ -87,24 +87,24 @@ impl Path {
     }
 
     /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`) or the unqualified namespace
-    pub fn is_in_unqualified_or_cedar(&self) -> bool {
-        self.0.node.is_in_unqualified_or_cedar()
+    pub fn is_in_cedar(&self) -> bool {
+        self.0.node.is_in_cedar()
+    }
+}
+
+impl From<Path> for UncheckedName {
+    fn from(value: Path) -> Self {
+        UncheckedName::new(
+            value.0.node.basename,
+            value.0.node.namespace,
+            Some(value.0.loc),
+        )
     }
 }
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.node)
-    }
-}
-
-impl From<Path> for RawUncheckedName {
-    fn from(value: Path) -> Self {
-        RawUncheckedName::from_components(
-            value.0.node.basename,
-            value.0.node.namespace,
-            Some(value.0.loc),
-        )
     }
 }
 
@@ -123,10 +123,9 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace
-    fn is_in_unqualified_or_cedar(&self) -> bool {
+    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`)
+    fn is_in_cedar(&self) -> bool {
         match self.namespace.as_slice() {
-            [] => true,
             [id] => id.as_ref() == CEDAR_NAMESPACE,
             _ => false,
         }
@@ -176,18 +175,9 @@ pub struct Namespace {
 }
 
 impl Namespace {
-    /// Is this [`Namespace`] unqualfiied?
+    /// Is this [`Namespace`] unqualfied?
     pub fn is_unqualified(&self) -> bool {
         self.name.is_none()
-    }
-
-    /// Get the name of this [`Namespace`] as a fully-qualified [`cedar_policy_core::ast::Name`],
-    /// or `None` for the empty namespace
-    pub fn name(&self) -> Option<cedar_policy_core::ast::UncheckedName> {
-        self.name.as_ref().map(|path| {
-            // `.qualify_with(None)` is OK because the `path` is already fully-qualified
-            crate::RawUncheckedName::from(path.clone().node).qualify_with(None)
-        })
     }
 }
 
@@ -333,46 +323,6 @@ mod test {
 
     fn loc() -> Loc {
         Loc::new((1, 1), Arc::from("foo"))
-    }
-
-    #[test]
-    fn in_unqual() {
-        let p = Path::single("foo".parse().unwrap(), loc());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn qual() {
-        let p = Path::new("foo".parse().unwrap(), ["bar".parse().unwrap()], loc());
-        assert!(!p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar() {
-        let p = Path::new("foo".parse().unwrap(), ["__cedar".parse().unwrap()], loc());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar3() {
-        let p = Path::new(
-            "foo".parse().unwrap(),
-            ["bar".parse().unwrap(), "__cedar".parse().unwrap()],
-            loc(),
-        );
-        assert!(!p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn is_cedar() {
-        let p = Path::new("__cedar".parse().unwrap(), [], loc());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn is_cedar2() {
-        let p = Path::new("__cedar".parse().unwrap(), ["foo".parse().unwrap()], loc());
-        assert!(!p.is_in_unqualified_or_cedar());
     }
 
     // Ensure the iterators over [`Path`]s return most significant names first

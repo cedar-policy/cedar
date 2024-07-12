@@ -25,7 +25,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{
-    ActionType, EntityType, NamespaceDefinition, RawUncheckedName, SchemaFragment, SchemaType,
+    ActionType, EntityType, NamespaceDefinition, RawName, SchemaFragment, SchemaType,
     SchemaTypeVariant,
 };
 
@@ -192,7 +192,7 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawUncheckedName::new(ty_name.clone())
+                RawName::new(ty_name.clone())
                     .qualify_with(name.as_ref())
                     .to_smolstr()
             })
@@ -201,7 +201,7 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .common_types
             .keys()
             .map(|ty_name| {
-                RawUncheckedName::new(ty_name.clone())
+                RawName::new(ty_name.clone())
                     .qualify_with(name.as_ref())
                     .to_smolstr()
             })

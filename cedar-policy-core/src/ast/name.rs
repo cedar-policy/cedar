@@ -393,10 +393,27 @@ mod vars_test {
 
 /// A new type which indicates that the contained [`ReservedName`] does not contain
 /// reserved `__cedar`, as specified by RFC 52
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name(pub(crate) UncheckedName);
+
+impl From<UnreservedId> for Name {
+    fn from(value: UnreservedId) -> Self {
+        Self::unqualified_name(value)
+    }
+}
+
+impl TryFrom<Name> for UnreservedId {
+    type Error = ();
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.0.path.is_empty() {
+            Err(())
+        } else {
+            Ok(value.basename())
+        }
+    }
+}
 
 impl Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -415,6 +432,19 @@ impl FromStr for Name {
 impl FromNormalizedStr for Name {
     fn describe_self() -> &'static str {
         "Name"
+    }
+}
+
+/// Deserialize a [`Name`] using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_str(NameVisitor)
+            .and_then(|n| n.try_into().map_err(serde::de::Error::custom))
     }
 }
 

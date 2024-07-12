@@ -77,9 +77,9 @@ impl From<Name> for EntityType {
     }
 }
 
-impl AsRef<UncheckedName> for EntityType {
-    fn as_ref(&self) -> &UncheckedName {
-        self.0.as_ref()
+impl AsRef<Name> for EntityType {
+    fn as_ref(&self) -> &Name {
+        &self.0
     }
 }
 

@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.as_ref().basename().as_ref()
+        self.0.as_ref().basename_as_ref().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -136,7 +136,7 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.as_ref().namespace()
+        self.0.as_ref().as_ref().namespace()
     }
 }
 

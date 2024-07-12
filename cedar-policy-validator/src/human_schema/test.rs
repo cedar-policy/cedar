@@ -32,7 +32,7 @@ mod demo_tests {
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
         ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, RawUncheckedName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        NamespaceDefinition, RawName, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
     use itertools::Itertools;
@@ -343,7 +343,7 @@ mod demo_tests {
 
     #[test]
     fn empty_appliesto() {
-        let action = ActionType::<RawUncheckedName> {
+        let action = ActionType::<RawName> {
             attributes: None,
             applies_to: None,
             member_of: None,
@@ -432,19 +432,19 @@ namespace Baz {action "Foo" appliesTo {
             common_types: HashMap::new(),
             entity_types: HashMap::from([(
                 "a".parse().unwrap(),
-                EntityType::<RawUncheckedName> {
+                EntityType::<RawName> {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::<RawUncheckedName>::default(),
+                    shape: AttributesOrContext::<RawName>::default(),
                 },
             )]),
             actions: HashMap::from([(
                 "j".to_smolstr(),
-                ActionType::<RawUncheckedName> {
+                ActionType::<RawName> {
                     attributes: None,
-                    applies_to: Some(ApplySpec::<RawUncheckedName> {
+                    applies_to: Some(ApplySpec::<RawName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: AttributesOrContext::<RawUncheckedName>::default(),
+                        context: AttributesOrContext::<RawName>::default(),
                     }),
                     member_of: None,
                 },
@@ -1201,7 +1201,7 @@ mod translator_tests {
         "#,
             Extensions::all_available(),
         );
-        assert!(schema.is_ok());
+        assert!(schema.is_err());
 
         let schema = SchemaFragment::from_str_natural(
             r#"
@@ -1209,7 +1209,7 @@ mod translator_tests {
         "#,
             Extensions::all_available(),
         );
-        assert!(schema.is_ok());
+        assert!(schema.is_err());
     }
 
     #[test]
@@ -1824,9 +1824,6 @@ mod translator_tests {
         assert!(schema.is_err());
     }
 
-    // Note that we do not throw any errors during the human-readable to JSON
-    // translation. An error will be raised if the translated JSON schema is
-    // further processed into `ValidatorSchema`
     #[test]
     fn reserved_namespace() {
         let schema = custom_schema_to_json_schema(
@@ -1840,7 +1837,7 @@ mod translator_tests {
             Extensions::none(),
         )
         .map(|_| ());
-        assert_matches!(schema, Ok(()));
+        assert_matches!(schema, Err(_));
 
         let schema = custom_schema_to_json_schema(
             parse_schema(
@@ -1853,7 +1850,7 @@ mod translator_tests {
             Extensions::none(),
         )
         .map(|_| ());
-        assert_matches!(schema, Ok(()));
+        assert_matches!(schema, Err(_));
 
         let schema = custom_schema_to_json_schema(
             parse_schema(
@@ -1865,10 +1862,7 @@ mod translator_tests {
             Extensions::none(),
         )
         .map(|_| ());
-
-        // The result is Ok here because we want to report the error later
-        // in the schema parsing pipeline
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(_));
     }
 }
 

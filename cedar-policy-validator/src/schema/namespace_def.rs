@@ -21,8 +21,8 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
-        PartialValueSerializedAsExpr, ReservedNameError, UncheckedName,
+        Eid, EntityAttrEvaluationError, EntityType, EntityUID, Name, PartialValueSerializedAsExpr,
+        ReservedNameError, UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
@@ -37,7 +37,7 @@ use crate::{
     err::{schema_errors::*, Result, SchemaError},
     schema_file_format,
     types::{AttributeType, Attributes, Type},
-    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, RawUncheckedName, SchemaType,
+    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute,
 };
 use crate::{fuzzy_match::fuzzy_search, types::OpenTag};
@@ -89,12 +89,11 @@ pub struct ValidatorNamespaceDef {
 impl ValidatorNamespaceDef {
     /// Construct a new [`ValidatorNamespaceDef`] from the raw [`NamespaceDefinition`]
     pub fn from_namespace_definition(
-        namespace: Option<UncheckedName>,
-        namespace_def: NamespaceDefinition<RawUncheckedName>,
+        namespace: Option<Name>,
+        namespace_def: NamespaceDefinition<RawName>,
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorNamespaceDef> {
-        let namespace: Option<Name> = namespace.map(|n| n.try_into()).transpose()?;
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
         Self::check_action_behavior(&namespace_def, action_behavior)?;
@@ -179,7 +178,7 @@ impl TypeDefs {
     /// Construct a [`TypeDefs`] by converting the structures used by the schema
     /// format to those used internally by the validator.
     pub(crate) fn from_raw_typedefs(
-        schema_file_type_def: HashMap<Id, SchemaType<RawUncheckedName>>,
+        schema_file_type_def: HashMap<UnreservedId, SchemaType<RawName>>,
         schema_namespace: Option<&Name>,
     ) -> Result<Self> {
         let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
@@ -189,10 +188,10 @@ impl TypeDefs {
                     CommonTypeNameConflictError(id),
                 ));
             }
-            let name = RawName::try_from(RawUncheckedName::new(id))?.qualify_with(schema_namespace);
+            let name = RawName::new(id).qualify_with(schema_namespace);
             match type_defs.entry(name) {
                 Entry::Vacant(ventry) => {
-                    ventry.insert(schema_ty.qualify_type_references(schema_namespace)?);
+                    ventry.insert(schema_ty.qualify_type_references(schema_namespace));
                 }
                 Entry::Occupied(oentry) => {
                     return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
@@ -224,7 +223,7 @@ impl EntityTypesDef {
     /// Construct a [`EntityTypesDef`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_entity_types(
-        schema_files_types: HashMap<Id, schema_file_format::EntityType<RawUncheckedName>>,
+        schema_files_types: HashMap<UnreservedId, schema_file_format::EntityType<RawName>>,
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
@@ -232,8 +231,7 @@ impl EntityTypesDef {
             HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
             let ety = cedar_policy_core::ast::EntityType::from(
-                RawName::try_from(RawUncheckedName::new(id.clone()))?
-                    .qualify_with(schema_namespace),
+                RawName::new(id.clone()).qualify_with(schema_namespace),
             );
             match entity_types.entry(ety) {
                 Entry::Vacant(ventry) => {
@@ -277,7 +275,7 @@ impl EntityTypeFragment {
     /// Construct an [`EntityTypeFragment`] by converting the structures used by
     /// the schema format to those used internally by the validator.
     pub(crate) fn from_raw_entity_type(
-        entity_type: schema_file_format::EntityType<RawUncheckedName>,
+        entity_type: schema_file_format::EntityType<RawName>,
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
@@ -286,17 +284,13 @@ impl EntityTypeFragment {
                 entity_type
                     .shape
                     .into_inner()
-                    .qualify_type_references(schema_namespace)?,
+                    .qualify_type_references(schema_namespace),
                 extensions,
             )?,
             parents: entity_type
                 .member_of_types
                 .into_iter()
-                .map(|raw_name| {
-                    Ok(RawName::try_from(raw_name)?
-                        .qualify_with(schema_namespace)
-                        .into())
-                })
+                .map(|raw_name| Ok(raw_name.qualify_with(schema_namespace).into()))
                 .collect::<std::result::Result<HashSet<EntityType>, ReservedNameError>>()?,
         })
     }
@@ -325,7 +319,7 @@ impl ActionsDef {
     /// Construct an [`ActionsDef`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
-        schema_file_actions: HashMap<SmolStr, ActionType<RawUncheckedName>>,
+        schema_file_actions: HashMap<SmolStr, ActionType<RawName>>,
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
@@ -390,7 +384,7 @@ impl ActionFragment {
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_action(
         action_uid: &EntityUID,
-        action_type: schema_file_format::ActionType<RawUncheckedName>,
+        action_type: schema_file_format::ActionType<RawName>,
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
@@ -416,7 +410,7 @@ impl ActionFragment {
         let context = try_schema_type_into_validator_type(
             context
                 .into_inner()
-                .qualify_type_references(schema_namespace)?,
+                .qualify_type_references(schema_namespace),
             extensions,
         )?;
 
@@ -444,12 +438,12 @@ impl ActionFragment {
     /// Take a list of raw entity type names from an action apply spec and parse it
     /// into a set of [`EntityType`]s for those entity types.
     fn parse_apply_spec_type_list(
-        types: Vec<RawUncheckedName>,
+        types: Vec<RawName>,
         namespace: Option<&Name>,
     ) -> std::result::Result<HashSet<EntityType>, ReservedNameError> {
         types
             .into_iter()
-            .map(|ty| Ok(RawName::try_from(ty)?.qualify_with(namespace).into()))
+            .map(|ty| Ok(ty.qualify_with(namespace).into()))
             .collect::<std::result::Result<HashSet<_>, _>>()
     }
 
@@ -605,7 +599,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for WithUnresolvedTypeDefs<T> {
     }
 }
 
-impl TryInto<ValidatorNamespaceDef> for NamespaceDefinition<RawUncheckedName> {
+impl TryInto<ValidatorNamespaceDef> for NamespaceDefinition<RawName> {
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorNamespaceDef> {
@@ -624,7 +618,7 @@ impl TryInto<ValidatorNamespaceDef> for NamespaceDefinition<RawUncheckedName> {
 /// namespace provided in the `namespace` argument or with the namespace
 /// inside the [`ActionEntityUID`] if one is present.
 fn parse_action_id_with_namespace(
-    action_id: ActionEntityUID<RawUncheckedName>,
+    action_id: ActionEntityUID<RawName>,
     namespace: Option<&Name>,
 ) -> std::result::Result<EntityUID, ReservedNameError> {
     let action_ty = match action_id.ty {
@@ -632,15 +626,16 @@ fn parse_action_id_with_namespace(
         None => {
             // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
             #[allow(clippy::expect_used)]
-            RawUncheckedName::new(
-                Id::from_normalized_str(cedar_policy_core::ast::ACTION_ENTITY_TYPE).expect(
+            RawName::new(
+                UnreservedId::from_normalized_str(cedar_policy_core::ast::ACTION_ENTITY_TYPE)
+                    .expect(
                     "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
                 ),
             )
         }
     };
     Ok(EntityUID::from_components(
-        RawName::try_from(action_ty)?.qualify_with(namespace).into(),
+        action_ty.qualify_with(namespace).into(),
         Eid::new(action_id.id),
         None,
     ))
@@ -688,7 +683,7 @@ pub(crate) fn try_schema_type_into_validator_type(
             Ok(Type::named_entity_reference(name.into()).into())
         }
         SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
-            let extension_type_name = Name::try_from(UncheckedName::unqualified_name(name))?;
+            let extension_type_name = Name::unqualified_name(name);
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
             } else {

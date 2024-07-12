@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name, ReservedNameError, UncheckedName},
+    ast::{Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -38,7 +38,7 @@ use crate::{
     human_schema::{
         self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
-    HumanSchemaError, HumanSyntaxParseError, RawName, RawUncheckedName,
+    HumanSchemaError, HumanSyntaxParseError, RawName,
 };
 
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
@@ -51,51 +51,47 @@ use crate::{
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`SchemaFragment`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`Id`] and unambiguously
+/// _that are being declared here_, which is always an [`UnreservedId`] and unambiguously
 /// refers to the [`Name`] with the appropriate implicit namespace prepended.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
 /// - `N` = [`Name`]: a [`SchemaFragment`] in which all names have been
 ///     resolved into fully-qualified [`Name`]s
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SchemaFragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
-    pub HashMap<Option<UncheckedName>, NamespaceDefinition<N>>,
+    pub HashMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
-fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawUncheckedName>>(
+fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawName>>(
     deserializer: D,
-) -> std::result::Result<HashMap<Option<UncheckedName>, NamespaceDefinition<N>>, D::Error>
+) -> std::result::Result<HashMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let raw: HashMap<SmolStr, NamespaceDefinition<N>> =
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-    Ok(
-        HashMap::from_iter(
-            raw.into_iter()
-                .map(|(key, value)| {
-                    let key = if key.is_empty() {
-                        None
-                    } else {
-                        Some(UncheckedName::from_normalized_str(&key).map_err(|err| {
-                            serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
-                        })?)
-                    };
-                    Ok((key, value))
-                })
-                .collect::<std::result::Result<
-                    Vec<(Option<UncheckedName>, NamespaceDefinition<N>)>,
-                    D::Error,
-                >>()?,
-        ),
-    )
+    Ok(HashMap::from_iter(
+        raw.into_iter()
+            .map(|(key, value)| {
+                let key = if key.is_empty() {
+                    None
+                } else {
+                    Some(Name::from_normalized_str(&key).map_err(|err| {
+                        serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
+                    })?)
+                };
+                Ok((key, value))
+            })
+            .collect::<std::result::Result<Vec<(Option<Name>, NamespaceDefinition<N>)>, D::Error>>(
+            )?,
+    ))
 }
 
 impl<N: Serialize> Serialize for SchemaFragment<N> {
@@ -116,7 +112,7 @@ impl<N: Serialize> Serialize for SchemaFragment<N> {
     }
 }
 
-impl SchemaFragment<RawUncheckedName> {
+impl SchemaFragment<RawName> {
     /// Create a [`SchemaFragment`] from a string containing JSON (which should
     /// be an object of the appropriate shape).
     pub fn from_json_str(json: &str) -> Result<Self> {
@@ -170,12 +166,12 @@ impl<N: Display> SchemaFragment<N> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`NamespaceDefinition`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an `Id` and unambiguously
+/// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the `Name` with the implicit current/active namespace prepended.)
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(bound(serialize = "N: Serialize"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -186,16 +182,16 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<Id, SchemaType<N>>,
+    pub common_types: HashMap<UnreservedId, SchemaType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<Id, EntityType<N>>,
+    pub entity_types: HashMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub actions: HashMap<SmolStr, ActionType<N>>,
 }
 
 impl<N> NamespaceDefinition<N> {
     pub fn new(
-        entity_types: impl IntoIterator<Item = (Id, EntityType<N>)>,
+        entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
@@ -206,30 +202,26 @@ impl<N> NamespaceDefinition<N> {
     }
 }
 
-impl NamespaceDefinition<RawUncheckedName> {
+impl NamespaceDefinition<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<NamespaceDefinition<Name>, ReservedNameError> {
-        Ok(NamespaceDefinition {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> NamespaceDefinition<Name> {
+        NamespaceDefinition {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
-                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
-                .collect::<std::result::Result<HashMap<Id, EntityType<Name>>, ReservedNameError>>(
-                )?,
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.qualify_type_references(ns)?)))
-                .collect::<std::result::Result<HashMap<_, _>, _>>()?,
-        })
+                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .collect(),
+        }
     }
 }
 
@@ -242,7 +234,7 @@ impl NamespaceDefinition<RawUncheckedName> {
 /// this [`EntityType`], including recursively.
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -259,20 +251,17 @@ pub struct EntityType<N> {
     pub shape: AttributesOrContext<N>,
 }
 
-impl EntityType<RawUncheckedName> {
+impl EntityType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<EntityType<Name>, ReservedNameError> {
-        Ok(EntityType {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> EntityType<Name> {
+        EntityType {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|rname| Ok(RawName::try_from(rname)?.qualify_with(ns)))
-                .collect::<std::result::Result<Vec<_>, _>>()?,
-            shape: self.shape.qualify_type_references(ns)?,
-        })
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
+            shape: self.shape.qualify_type_references(ns),
+        }
     }
 }
 
@@ -283,7 +272,7 @@ impl EntityType<RawUncheckedName> {
 /// this [`AttributesOrContext`], including recursively.
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -314,13 +303,10 @@ impl<N> Default for AttributesOrContext<N> {
     }
 }
 
-impl AttributesOrContext<RawUncheckedName> {
+impl AttributesOrContext<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<AttributesOrContext<Name>, ReservedNameError> {
-        Ok(AttributesOrContext(self.0.qualify_type_references(ns)?))
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> AttributesOrContext<Name> {
+        AttributesOrContext(self.0.qualify_type_references(ns))
     }
 }
 
@@ -332,7 +318,7 @@ impl AttributesOrContext<RawUncheckedName> {
 /// this [`ActionType`], including recursively.
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -354,27 +340,20 @@ pub struct ActionType<N> {
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
 }
 
-impl ActionType<RawUncheckedName> {
+impl ActionType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<ActionType<Name>, ReservedNameError> {
-        Ok(ActionType {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionType<Name> {
+        ActionType {
             attributes: self.attributes,
             applies_to: self
                 .applies_to
-                .map(|applyspec| applyspec.qualify_type_references(ns))
-                .transpose()?,
-            member_of: self
-                .member_of
-                .map(|v| {
-                    v.into_iter()
-                        .map(|aeuid| aeuid.qualify_type_references(ns))
-                        .collect::<std::result::Result<Vec<_>, _>>()
-                })
-                .transpose()?,
-        })
+                .map(|applyspec| applyspec.qualify_type_references(ns)),
+            member_of: self.member_of.map(|v| {
+                v.into_iter()
+                    .map(|aeuid| aeuid.qualify_type_references(ns))
+                    .collect()
+            }),
+        }
     }
 }
 
@@ -388,7 +367,7 @@ impl ActionType<RawUncheckedName> {
 /// this [`ApplySpec`], including recursively.
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -404,31 +383,28 @@ pub struct ApplySpec<N> {
     pub context: AttributesOrContext<N>,
 }
 
-impl ApplySpec<RawUncheckedName> {
+impl ApplySpec<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<ApplySpec<Name>, ReservedNameError> {
-        Ok(ApplySpec {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ApplySpec<Name> {
+        ApplySpec {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|rname| Ok(RawName::try_from(rname)?.qualify_with(ns)))
-                .collect::<std::result::Result<Vec<_>, _>>()?,
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|rname| Ok(RawName::try_from(rname)?.qualify_with(ns)))
-                .collect::<std::result::Result<Vec<_>, _>>()?,
-            context: self.context.qualify_type_references(ns)?,
-        })
+                .map(|rname| rname.qualify_with(ns))
+                .collect(),
+            context: self.context.qualify_type_references(ns),
+        }
     }
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -464,19 +440,13 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
     }
 }
 
-impl ActionEntityUID<RawUncheckedName> {
+impl ActionEntityUID<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<ActionEntityUID<Name>, ReservedNameError> {
-        Ok(ActionEntityUID {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
+        ActionEntityUID {
             id: self.id,
-            ty: self
-                .ty
-                .map(|rname| Ok(RawName::try_from(rname)?.qualify_with(ns)))
-                .transpose()?,
-        })
+            ty: self.ty.map(|rname| rname.qualify_with(ns)),
+        }
     }
 }
 
@@ -559,21 +529,18 @@ impl<N> SchemaType<N> {
     }
 }
 
-impl SchemaType<RawUncheckedName> {
+impl SchemaType<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<SchemaType<Name>, ReservedNameError> {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
         match self {
-            Self::Type(stv) => Ok(SchemaType::Type(stv.qualify_type_references(ns)?)),
-            Self::CommonTypeRef { type_name } => Ok(SchemaType::CommonTypeRef {
-                type_name: RawName::try_from(type_name)?.qualify_with(ns),
-            }),
+            Self::Type(stv) => SchemaType::Type(stv.qualify_type_references(ns)),
+            Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
+                type_name: type_name.qualify_with(ns),
+            },
         }
     }
 
-    fn into_n<N: From<RawUncheckedName>>(self) -> SchemaType<N> {
+    fn into_n<N: From<RawName>>(self) -> SchemaType<N> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.into_n()),
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
@@ -583,7 +550,7 @@ impl SchemaType<RawUncheckedName> {
     }
 }
 
-impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> Deserialize<'de> for SchemaType<N> {
+impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for SchemaType<N> {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -645,14 +612,14 @@ impl TypeFields {
 #[derive(Deserialize)]
 struct AttributesTypeMap(
     #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
-    BTreeMap<SmolStr, TypeOfAttribute<RawUncheckedName>>,
+    BTreeMap<SmolStr, TypeOfAttribute<RawName>>,
 );
 
 struct SchemaTypeVisitor<N> {
     _phantom: PhantomData<N>,
 }
 
-impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> Visitor<'de> for SchemaTypeVisitor<N> {
+impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for SchemaTypeVisitor<N> {
     type Value = SchemaType<N>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -723,17 +690,17 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> Visitor<'de> for SchemaT
 // PANIC SAFETY `Set`, `Record`, `Entity`, and `Extension` are valid `Name`s
 #[allow(clippy::expect_used)]
 pub(crate) mod static_names {
-    use crate::RawUncheckedName;
+    use crate::RawName;
 
     lazy_static::lazy_static! {
-        pub(crate) static ref SET_NAME : RawUncheckedName = RawUncheckedName::parse_unqualified_name("Set").expect("valid identifier");
-        pub(crate) static ref RECORD_NAME : RawUncheckedName = RawUncheckedName::parse_unqualified_name("Record").expect("valid identifier");
-        pub(crate) static ref ENTITY_NAME : RawUncheckedName = RawUncheckedName::parse_unqualified_name("Entity").expect("valid identifier");
-        pub(crate) static ref EXTENSION_NAME : RawUncheckedName = RawUncheckedName::parse_unqualified_name("Extension").expect("valid identifier");
+        pub(crate) static ref SET_NAME : RawName = RawName::parse_unqualified_name("Set").expect("valid identifier");
+        pub(crate) static ref RECORD_NAME : RawName = RawName::parse_unqualified_name("Record").expect("valid identifier");
+        pub(crate) static ref ENTITY_NAME : RawName = RawName::parse_unqualified_name("Entity").expect("valid identifier");
+        pub(crate) static ref EXTENSION_NAME : RawName = RawName::parse_unqualified_name("Extension").expect("valid identifier");
     }
 }
 
-impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
+impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
     /// Construct a schema type given the name of the type and its fields.
     /// Fields which were not present are `None`. It is an error for a field
     /// which is not used for a particular type to be `Some` when building that
@@ -871,7 +838,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Entity {
-                                name: RawUncheckedName::from_normalized_str(&name)
+                                name: RawName::from_normalized_str(&name)
                                     .map_err(|err| {
                                         serde::de::Error::custom(format!(
                                             "invalid entity type `{name}`: {err}"
@@ -896,7 +863,7 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                                name: Id::from_normalized_str(&name).map_err(|err| {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
                                     serde::de::Error::custom(format!(
                                         "invalid extension type `{name}`: {err}"
                                     ))
@@ -907,15 +874,13 @@ impl<'de, N: Deserialize<'de> + From<RawUncheckedName>> SchemaTypeVisitor<N> {
                     type_name => {
                         error_if_any_fields()?;
                         Ok(SchemaType::CommonTypeRef {
-                            type_name: N::from(
-                                RawUncheckedName::from_normalized_str(type_name).map_err(
-                                    |err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid common type `{type_name}`: {err}"
-                                        ))
-                                    },
-                                )?,
-                            ),
+                            type_name: N::from(RawName::from_normalized_str(type_name).map_err(
+                                |err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid common type `{type_name}`: {err}"
+                                    ))
+                                },
+                            )?),
                         })
                     }
                 }
@@ -939,7 +904,7 @@ impl<N> From<SchemaTypeVariant<N>> for SchemaType<N> {
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaTypeVariant<N> {
@@ -974,51 +939,45 @@ pub enum SchemaTypeVariant<N> {
     /// Extension types
     Extension {
         /// Name of the extension type
-        name: Id,
+        name: UnreservedId,
     },
 }
 
-impl SchemaTypeVariant<RawUncheckedName> {
+impl SchemaTypeVariant<RawName> {
     /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(
-        self,
-        ns: Option<&Name>,
-    ) -> std::result::Result<SchemaTypeVariant<Name>, ReservedNameError> {
+    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
         match self {
-            Self::Boolean => Ok(SchemaTypeVariant::Boolean),
-            Self::Long => Ok(SchemaTypeVariant::Long),
-            Self::String => Ok(SchemaTypeVariant::String),
-            Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
-                name: RawName::try_from(name)?.qualify_with(ns),
-            }),
+            Self::Boolean => SchemaTypeVariant::Boolean,
+            Self::Long => SchemaTypeVariant::Long,
+            Self::String => SchemaTypeVariant::String,
+            Self::Entity { name } => SchemaTypeVariant::Entity {
+                name: name.qualify_with(ns),
+            },
             Self::Record {
                 attributes,
                 additional_attributes,
-            } => Ok(SchemaTypeVariant::Record {
-                attributes: BTreeMap::from_iter(
-                    attributes
-                        .into_iter()
-                        .map(|(attr, TypeOfAttribute { ty, required })| {
-                            Ok((
-                                attr,
-                                TypeOfAttribute {
-                                    ty: ty.qualify_type_references(ns)?,
-                                    required,
-                                },
-                            ))
-                        })
-                        .collect::<std::result::Result<Vec<_>, ReservedNameError>>()?,
-                ),
+            } => SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(attributes.into_iter().map(
+                    |(attr, TypeOfAttribute { ty, required })| {
+                        (
+                            attr,
+                            TypeOfAttribute {
+                                ty: ty.qualify_type_references(ns),
+                                required,
+                            },
+                        )
+                    },
+                )),
                 additional_attributes,
-            }),
-            Self::Set { element } => Ok(SchemaTypeVariant::Set {
-                element: Box::new(element.qualify_type_references(ns)?),
-            }),
-            Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
+            },
+            Self::Set { element } => SchemaTypeVariant::Set {
+                element: Box::new(element.qualify_type_references(ns)),
+            },
+            Self::Extension { name } => SchemaTypeVariant::Extension { name },
         }
     }
 
-    fn into_n<N: From<RawUncheckedName>>(self) -> SchemaTypeVariant<N> {
+    fn into_n<N: From<RawName>>(self) -> SchemaTypeVariant<N> {
         match self {
             Self::Boolean => SchemaTypeVariant::Boolean,
             Self::Long => SchemaTypeVariant::Long,
@@ -1053,10 +1012,8 @@ pub(crate) static PRIMITIVE_TYPES: &[&str] = &["String", "Long", "Boolean"];
 #[cfg(feature = "arbitrary")]
 // PANIC SAFETY property testing code
 #[allow(clippy::panic)]
-impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawUncheckedName> {
-    fn arbitrary(
-        u: &mut arbitrary::Unstructured<'a>,
-    ) -> arbitrary::Result<SchemaType<RawUncheckedName>> {
+impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawName> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType<RawName>> {
         use std::collections::BTreeSet;
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
@@ -1083,12 +1040,12 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawUncheckedName> {
                 name: u.arbitrary()?,
             },
             7 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `ipaddr` is a valid `Id`
+                // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "ipaddr".parse().unwrap(),
             },
             8 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `decimal` is a valid `Id`
+                // PANIC SAFETY: `decimal` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "decimal".parse().unwrap(),
             },
@@ -1119,7 +1076,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawUncheckedName> {
 /// unknown fields for [`TypeOfAttribute`] should be passed to [`SchemaType`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawUncheckedName>"))]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
@@ -1130,8 +1087,8 @@ pub struct TypeOfAttribute<N> {
     pub required: bool,
 }
 
-impl TypeOfAttribute<RawUncheckedName> {
-    fn into_n<N: From<RawUncheckedName>>(self) -> TypeOfAttribute<N> {
+impl TypeOfAttribute<RawName> {
+    fn into_n<N: From<RawName>>(self) -> TypeOfAttribute<N> {
         TypeOfAttribute {
             ty: self.ty.into_n(),
             required: self.required,
@@ -1140,7 +1097,7 @@ impl TypeOfAttribute<RawUncheckedName> {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawUncheckedName> {
+impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             ty: u.arbitrary()?,
@@ -1150,7 +1107,7 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawUncheckedName> {
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
         arbitrary::size_hint::and(
-            <SchemaType<RawUncheckedName> as arbitrary::Arbitrary>::size_hint(depth),
+            <SchemaType<RawName> as arbitrary::Arbitrary>::size_hint(depth),
             <bool as arbitrary::Arbitrary>::size_hint(depth),
         )
     }
@@ -1193,7 +1150,7 @@ mod test {
             "memberOfTypes" : ["UserGroup"]
         }
         "#;
-        let et = serde_json::from_str::<EntityType<RawUncheckedName>>(user).expect("Parse Error");
+        let et = serde_json::from_str::<EntityType<RawName>>(user).expect("Parse Error");
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape.into_inner(),
@@ -1209,7 +1166,7 @@ mod test {
         let src = r#"
               { }
         "#;
-        let et = serde_json::from_str::<EntityType<RawUncheckedName>>(src).expect("Parse Error");
+        let et = serde_json::from_str::<EntityType<RawName>>(src).expect("Parse Error");
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape.into_inner(),
@@ -1231,7 +1188,7 @@ mod test {
                 "memberOf": [{"id": "readWrite"}]
               }
         "#;
-        let at: ActionType<RawUncheckedName> = serde_json::from_str(src).expect("Parse Error");
+        let at: ActionType<RawName> = serde_json::from_str(src).expect("Parse Error");
         let spec = ApplySpec {
             resource_types: vec!["Album".parse().unwrap()],
             principal_types: vec!["User".parse().unwrap()],
@@ -1252,7 +1209,7 @@ mod test {
         let src = r#"
               { }
         "#;
-        let at: ActionType<RawUncheckedName> = serde_json::from_str(src).expect("Parse Error");
+        let at: ActionType<RawName> = serde_json::from_str(src).expect("Parse Error");
         assert_eq!(at.applies_to, None);
         assert!(at.member_of.is_none());
     }
@@ -1310,7 +1267,7 @@ mod test {
               }
             }
           });
-        let schema_file: NamespaceDefinition<RawUncheckedName> =
+        let schema_file: NamespaceDefinition<RawName> =
             serde_json::from_value(src).expect("Parse Error");
 
         assert_eq!(schema_file.entity_types.len(), 5);
@@ -1326,8 +1283,7 @@ mod test {
                 "actions": {}
             }
         }"#;
-        let schema: SchemaFragment<RawUncheckedName> =
-            serde_json::from_str(src).expect("Parse Error");
+        let schema: SchemaFragment<RawName> = serde_json::from_str(src).expect("Parse Error");
         let (namespace, _descriptor) = schema.0.into_iter().next().unwrap();
         assert_eq!(namespace, Some("foo::foo::bar::baz".parse().unwrap()));
     }
@@ -1353,7 +1309,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1377,7 +1333,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1402,7 +1358,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1427,7 +1383,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1474,7 +1430,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1500,7 +1456,7 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawUncheckedName> = serde_json::from_value(src).unwrap();
+        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
@@ -1529,8 +1485,8 @@ mod strengthened_types {
     use cool_asserts::assert_matches;
 
     use crate::{
-        ActionEntityUID, ApplySpec, EntityType, NamespaceDefinition, RawUncheckedName,
-        SchemaFragment, SchemaType,
+        ActionEntityUID, ApplySpec, EntityType, NamespaceDefinition, RawName, SchemaFragment,
+        SchemaType,
     };
 
     /// Assert that `result` is an `Err`, and the error message matches `msg`
@@ -1548,7 +1504,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `\n`: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1558,7 +1514,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `1`: unexpected token `1`");
 
         let src = serde_json::json!(
@@ -1568,7 +1524,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `*1`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -1578,7 +1534,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `::`: unexpected token `::`");
 
         let src = serde_json::json!(
@@ -1588,7 +1544,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `A::`: unexpected end of input");
     }
 
@@ -1604,7 +1560,7 @@ mod strengthened_types {
                 }
             }
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id ``: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1617,7 +1573,7 @@ mod strengthened_types {
                 }
             }
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id `~`: invalid token");
 
         let src = serde_json::json!(
@@ -1630,7 +1586,7 @@ mod strengthened_types {
                 }
             }
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
     }
 
@@ -1643,7 +1599,7 @@ mod strengthened_types {
             },
             "actions": {}
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id ``: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1653,7 +1609,7 @@ mod strengthened_types {
             },
             "actions": {}
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id `*`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -1663,7 +1619,7 @@ mod strengthened_types {
             },
             "actions": {}
         });
-        let schema: Result<NamespaceDefinition<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
     }
 
@@ -1673,28 +1629,28 @@ mod strengthened_types {
         {
            "memberOfTypes": [""]
         });
-        let schema: Result<EntityType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["*"]
         });
-        let schema: Result<EntityType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["A::"]
         });
-        let schema: Result<EntityType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["::A"]
         });
-        let schema: Result<EntityType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
@@ -1704,28 +1660,28 @@ mod strengthened_types {
         {
            "resourceTypes": [""]
         });
-        let schema: Result<ApplySpec<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ApplySpec<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["*"]
         });
-        let schema: Result<ApplySpec<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ApplySpec<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["A::"]
         });
-        let schema: Result<ApplySpec<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ApplySpec<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["::A"]
         });
-        let schema: Result<ApplySpec<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ApplySpec<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
@@ -1736,7 +1692,7 @@ mod strengthened_types {
            "type": "Entity",
             "name": ""
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid entity type ``: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1744,7 +1700,7 @@ mod strengthened_types {
            "type": "Entity",
             "name": "*"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid entity type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -1752,7 +1708,7 @@ mod strengthened_types {
            "type": "Entity",
             "name": "::A"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid entity type `::A`: unexpected token `::`");
 
         let src = serde_json::json!(
@@ -1760,7 +1716,7 @@ mod strengthened_types {
            "type": "Entity",
             "name": "A::"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid entity type `A::`: unexpected end of input");
     }
 
@@ -1771,7 +1727,7 @@ mod strengthened_types {
            "id": "action",
             "type": ""
         });
-        let schema: Result<ActionEntityUID<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ActionEntityUID<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1779,7 +1735,7 @@ mod strengthened_types {
            "id": "action",
             "type": "*"
         });
-        let schema: Result<ActionEntityUID<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ActionEntityUID<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -1787,7 +1743,7 @@ mod strengthened_types {
            "id": "action",
             "type": "Action::"
         });
-        let schema: Result<ActionEntityUID<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ActionEntityUID<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `Action::`: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1795,7 +1751,7 @@ mod strengthened_types {
            "id": "action",
             "type": "::Action"
         });
-        let schema: Result<ActionEntityUID<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<ActionEntityUID<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `::Action`: unexpected token `::`");
     }
 
@@ -1805,28 +1761,28 @@ mod strengthened_types {
         {
            "type": ""
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid common type ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "type": "*"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid common type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "type": "::A"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid common type `::A`: unexpected token `::`");
 
         let src = serde_json::json!(
         {
            "type": "A::"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid common type `A::`: unexpected end of input");
     }
 
@@ -1837,7 +1793,7 @@ mod strengthened_types {
            "type": "Extension",
            "name": ""
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid extension type ``: unexpected end of input");
 
         let src = serde_json::json!(
@@ -1845,7 +1801,7 @@ mod strengthened_types {
             "type": "Extension",
            "name": "*"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid extension type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -1853,7 +1809,7 @@ mod strengthened_types {
             "type": "Extension",
            "name": "__cedar::decimal"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(
             schema,
             "invalid extension type `__cedar::decimal`: unexpected token `::`",
@@ -1864,7 +1820,7 @@ mod strengthened_types {
             "type": "Extension",
            "name": "__cedar::"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(
             schema,
             "invalid extension type `__cedar::`: unexpected token `::`",
@@ -1875,7 +1831,7 @@ mod strengthened_types {
             "type": "Extension",
            "name": "::__cedar"
         });
-        let schema: Result<SchemaType<RawUncheckedName>, _> = serde_json::from_value(src);
+        let schema: Result<SchemaType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(
             schema,
             "invalid extension type `::__cedar`: unexpected token `::`",
@@ -1889,9 +1845,9 @@ mod test_json_roundtrip {
     use super::*;
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn roundtrip(schema: SchemaFragment<RawUncheckedName>) {
+    fn roundtrip(schema: SchemaFragment<RawName>) {
         let json = serde_json::to_value(schema.clone()).unwrap();
-        let new_schema: SchemaFragment<RawUncheckedName> = serde_json::from_value(json).unwrap();
+        let new_schema: SchemaFragment<RawName> = serde_json::from_value(json).unwrap();
         assert_eq!(schema, new_schema);
     }
 
@@ -2031,7 +1987,7 @@ mod test_duplicates_error {
               "actions": {}
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2046,7 +2002,7 @@ mod test_duplicates_error {
               "actions": {}
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2061,7 +2017,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2077,7 +2033,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2099,7 +2055,7 @@ mod test_duplicates_error {
               "actions": { }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2117,7 +2073,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2135,7 +2091,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2152,6 +2108,6 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawUncheckedName>>(src).unwrap();
+        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
     }
 }
