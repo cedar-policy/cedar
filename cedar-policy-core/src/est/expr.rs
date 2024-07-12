@@ -1601,7 +1601,7 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Record(_)) |
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) |
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => write!(f, "{expr}"),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning
