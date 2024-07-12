@@ -622,6 +622,8 @@ fn search_cedar_namespace(
         "Bool" => Ok(SchemaType::Type(SchemaTypeVariant::Boolean)),
         _ if is_valid_ext_type(&name, extensions) => {
             Ok(SchemaType::Type(SchemaTypeVariant::Extension {
+                // PANIC SAFETY: valid extension types are unreserved ids
+                #[allow(clippy::unwrap_used)]
                 name: UnreservedId::try_from(name).unwrap(),
             }))
         }
