@@ -145,7 +145,7 @@ fn convert_namespace(
         namespace
             .name
             .clone()
-            .map(|n| RawName::try_from(n.node).unwrap().into()),
+            .map(|n| RawName::try_from(n.node).unwrap().qualify_with(None)),
         extensions,
     );
     let def = cc.convert_namespace(namespace)?;
@@ -646,7 +646,7 @@ impl NamespaceRecord {
         let ns = namespace
             .name
             .clone()
-            .map(|n| RawName::try_from(n.node).map(|n| n.into()))
+            .map(|n| RawName::try_from(n.node).map(|n| n.qualify_with(None)))
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
 

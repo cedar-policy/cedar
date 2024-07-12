@@ -235,7 +235,7 @@ impl std::str::FromStr for UncheckedName {
     type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        crate::parser::parse_name(s)
+        crate::parser::parse_unchecked_name(s)
     }
 }
 
@@ -395,7 +395,6 @@ mod vars_test {
 /// reserved `__cedar`, as specified by RFC 52
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize)]
 #[serde(transparent)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name(pub(crate) UncheckedName);
 
 impl From<UnreservedId> for Name {
@@ -523,6 +522,22 @@ impl From<Name> for UncheckedName {
 impl AsRef<UncheckedName> for Name {
     fn as_ref(&self) -> &UncheckedName {
         &self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let basename: UnreservedId = u.arbitrary()?;
+        let path: Vec<UnreservedId> = u.arbitrary()?;
+        let name = UncheckedName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
+        // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
+        #[allow(clippy::unwrap_used)]
+        Ok(name.try_into().unwrap())
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <UncheckedName as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 

@@ -1077,7 +1077,7 @@ fn interpret_primary(
                 path,
                 eid: eid_node,
             } => {
-                let maybe_name = path.to_unreserved_name().map(ast::EntityType::from);
+                let maybe_name = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid_node.as_valid_string();
 
                 let (name, eid) = flatten_tuple_2(maybe_name, maybe_eid)?;

@@ -92,7 +92,6 @@ impl FromNormalizedStr for Id {
 
 /// An `Id` that is not equal to `__cedar`, as specified by RFC 52
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UnreservedId(pub(crate) Id);
 
 impl From<UnreservedId> for Id {
@@ -227,6 +226,26 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
             // we use the size hint of a vector of `u8` to get an underestimate of bytes required by the sequence of choices.
             <Vec<u8> as arbitrary::Arbitrary>::size_hint(depth),
         ])
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for UnreservedId {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let id: Id = u.arbitrary()?;
+        match UnreservedId::try_from(id.clone()) {
+            Ok(id) => Ok(id),
+            Err(_) => {
+                // PANIC SAFETY: `___cedar` is a valid unreserved id
+                #[allow(clippy::unwrap_used)]
+                let new_id = format!("_{id}").parse().unwrap();
+                Ok(new_id)
+            }
+        }
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <Id as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 

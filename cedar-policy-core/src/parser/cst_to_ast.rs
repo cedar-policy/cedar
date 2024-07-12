@@ -803,10 +803,10 @@ impl ExprOrSpecial<'_> {
     }
 
     fn into_entity_type(self) -> Result<ast::EntityType> {
-        self.into_unreserved_name().map(ast::EntityType::from)
+        self.into_name().map(ast::EntityType::from)
     }
 
-    fn into_unreserved_name(self) -> Result<ast::Name> {
+    fn into_name(self) -> Result<ast::Name> {
         match self {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
@@ -1378,13 +1378,14 @@ impl Node<Option<cst::Primary>> {
                         loc: self.loc.clone(),
                     })
                 } else {
-                    n.to_name().and_then(|name| match name.try_into() {
-                        Ok(name) => Ok(ExprOrSpecial::Name {
-                            name,
-                            loc: self.loc.clone(),
-                        }),
-                        Err(err) => Err(ParseErrors::singleton(err)),
-                    })
+                    n.to_unchecked_name()
+                        .and_then(|name| match name.try_into() {
+                            Ok(name) => Ok(ExprOrSpecial::Name {
+                                name,
+                                loc: self.loc.clone(),
+                            }),
+                            Err(err) => Err(ParseErrors::singleton(err)),
+                        })
                 }
             }
             cst::Primary::Expr(e) => e.to_expr().map(|expr| ExprOrSpecial::Expr {
@@ -1463,12 +1464,12 @@ impl Node<Option<cst::Name>> {
         }
     }
 
-    pub(crate) fn to_unreserved_name(&self) -> Result<ast::Name> {
-        self.to_name()
+    pub(crate) fn to_name(&self) -> Result<ast::Name> {
+        self.to_unchecked_name()
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    pub(crate) fn to_name(&self) -> Result<ast::UncheckedName> {
+    pub(crate) fn to_unchecked_name(&self) -> Result<ast::UncheckedName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1551,7 +1552,7 @@ impl Node<Option<cst::Ref>> {
 
         match refr {
             cst::Ref::Uid { path, eid } => {
-                let maybe_path = path.to_unreserved_name().map(ast::EntityType::from);
+                let maybe_path = path.to_name().map(ast::EntityType::from);
                 let maybe_eid = eid.as_valid_string().and_then(|s| {
                     to_unescaped_string(s).map_err(|escape_errs| {
                         ParseErrors::new_from_nonempty(

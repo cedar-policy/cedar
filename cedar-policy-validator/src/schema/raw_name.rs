@@ -88,9 +88,3 @@ impl std::str::FromStr for RawName {
         Name::from_str(s).map(RawName)
     }
 }
-
-impl From<RawName> for Name {
-    fn from(value: RawName) -> Self {
-        value.0
-    }
-}
