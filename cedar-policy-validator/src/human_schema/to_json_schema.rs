@@ -161,9 +161,9 @@ impl TryFrom<Namespace> for NamespaceDefinition<RawName> {
             .collect();
 
         // Convert action decls, collecting all errors
-        let actions =
-            collect_all_errors(action.into_iter().map(convert_action_decl))?.collect::<Vec<_>>();
-        let actions = actions.into_iter().flatten().collect();
+        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
+            .flatten()
+            .collect();
 
         // Convert common type decls
         let common_types = common_types
