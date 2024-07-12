@@ -266,7 +266,7 @@ impl EntityType<RawName> {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             shape: self.shape.conditionally_qualify_type_references(ns),
         }
@@ -407,12 +407,12 @@ impl ApplySpec<RawName> {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // REVIEW: Should we allow writing common-types in this position, as long as the common type resolves to an entity type?
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             context: self.context.conditionally_qualify_type_references(ns),
         }
