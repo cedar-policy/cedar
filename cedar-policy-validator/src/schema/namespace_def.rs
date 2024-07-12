@@ -993,7 +993,7 @@ pub(crate) fn try_schema_type_into_validator_type(
                     // `ConditionalName` into a fully-qualified `Name`. Nonetheless,
                     // instead of panicking if that internal invariant is violated,
                     // it's easy to return this dynamic error instead.
-                    .ok_or(UndeclaredCommonTypeError(type_name).into())
+                    .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
         SchemaType::EntityOrCommonTypeRef { type_name } => {

@@ -150,19 +150,11 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
-    /// This error occurs when we cannot resolve a typename we found in an
-    /// entity or context attribute. (because it refers to an entity type
-    /// or common type that was not declared.)
+    /// This error occurs when we cannot resolve a typename (because it refers
+    /// to an entity type or common type that was not declared).
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeResolution(#[from] schema_errors::TypeResolutionError),
-    /// This error occurs when we cannot resolve a common-type reference.
-    /// Normally, such errors would be `TypeResolution` instead; I think
-    /// this variant should never occur, but not positive, and hard to guarantee
-    /// structurally.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UndeclaredCommonType(#[from] schema_errors::UndeclaredCommonTypeError),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
     #[error(transparent)]
@@ -220,6 +212,11 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
+    /// Could not find a definition for a common type, at a point in the code
+    /// where internal invariants should guarantee that we would find one.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CommonTypeInvariantViolation(#[from] schema_errors::CommonTypeInvariantViolationError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -330,20 +327,6 @@ pub mod schema_errors {
             join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
         }
     }
-
-    /// Undeclared common type error
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("undeclared common type: {0}")]
-    pub struct UndeclaredCommonTypeError(
-        // Note this is a fully-qualified `Name`; we can't conclude a
-        // common-type reference is undeclared without first determining which
-        // fully-qualified `Name` it resolves to
-        pub(crate) Name,
-    );
 
     /// Type resolution error
     //
@@ -605,5 +588,19 @@ pub mod schema_errors {
                 Box::new(format!("did you mean `{suggestion}`?")) as Box<dyn Display>
             })
         }
+    }
+
+    /// Could not find a definition for a common type, at a point in the code
+    /// where internal invariants should guarantee that we would find one.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Error, Debug, Diagnostic)]
+    #[error("internal invariant violated: failed to find a common-type definition for {name}")]
+    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
+    pub struct CommonTypeInvariantViolationError {
+        /// Fully-qualified [`Name`] of the common type we failed to find a definition for
+        pub(crate) name: Name,
     }
 }

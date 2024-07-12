@@ -836,6 +836,13 @@ fn primitive_types<N>() -> impl Iterator<Item = (Id, SchemaType<N>)> {
 /// A common type reference resolver.
 /// This resolver is designed to operate on fully-qualified references.
 /// It facilitates inlining the definitions of common types.
+///
+/// INVARIANT: There should be no dangling references. That is, all common-type
+/// references that occur in the [`SchemaType`]s in `type_defs`, should be to
+/// common types that appear as keys in `type_defs`.
+/// This invariant is upheld because the process of converting references to
+/// fully-qualified ensures that the targets exist (else, it throws
+/// `TypeResolutionError`).
 #[derive(Debug)]
 struct CommonTypeResolver<'a> {
     /// Common type declarations to resolve.
@@ -857,6 +864,13 @@ impl<'a> CommonTypeResolver<'a> {
     /// Construct the resolver.
     /// Note that this requires that all common-type references are already
     /// fully qualified, because it uses [`Name`] and not [`RawName`].
+    ///
+    /// INVARIANT: There should be no dangling references. That is, all common-type
+    /// references that occur in the [`SchemaType`]s in `type_defs`, should be to
+    /// common types that appear as keys in `type_defs`.
+    /// This invariant is upheld because the process of converting references to
+    /// fully-qualified ensures that the targets exist (else, it throws
+    /// `TypeResolutionError`).
     fn new(type_defs: &'a HashMap<Name, SchemaType<Name>>) -> Self {
         let mut graph = HashMap::new();
         for (name, ty) in type_defs {
@@ -963,7 +977,7 @@ impl<'a> CommonTypeResolver<'a> {
         match ty {
             SchemaType::CommonTypeRef { type_name } => resolve_table
                 .get(&type_name)
-                .ok_or(UndeclaredCommonTypeError(type_name).into())
+                .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
                 .cloned(),
             SchemaType::EntityOrCommonTypeRef { type_name } => {
                 match resolve_table.get(&type_name) {
