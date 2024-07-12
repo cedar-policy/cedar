@@ -450,11 +450,11 @@ pub struct EntityTypeFragment<N> {
     /// (e.g., because they are not defined in this schema fragment).
     pub(super) attributes: SchemaType<N>,
     /// Direct parent entity types for this entity type.
-    /// These are fully qualified entity types, but may be entity types declared
-    /// in a different namespace or schema fragment.
+    /// These entity types may be declared in a different namespace or schema
+    /// fragment.
     /// We will check for undeclared parent types when combining fragments into
     /// a [`crate::ValidatorSchema`].
-    pub(super) parents: HashSet<EntityType>,
+    pub(super) parents: HashSet<N>,
 }
 
 impl EntityTypeFragment<ConditionalName> {
@@ -473,7 +473,9 @@ impl EntityTypeFragment<ConditionalName> {
             parents: schema_file_type
                 .member_of_types
                 .into_iter()
-                .map(|raw_name| raw_name.qualify_with(schema_namespace).into())
+                .map(|raw_name| {
+                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                }) // REVIEW: here's another place to adjust if we decide we want to allow common types in this position
                 .collect(),
         }
     }
@@ -494,22 +496,25 @@ impl EntityTypeFragment<ConditionalName> {
         let fully_qual_attributes = self
             .attributes
             .fully_qualify_type_references(all_common_defs, all_entity_defs);
-        // `parents` are already fully qualified, but now is the time to check
-        // whether any are dangling, i.e., refer to entity types that are not
-        // declared in any fragment (since we now have the set of typenames that
-        // are declared in all fragments).
+        // Fully qualify typenames appearing in `parents`
+        let parents: HashSet<Name> = self
+            .parents
+            .into_iter()
+            .map(|parent| parent.resolve(all_common_defs, all_entity_defs).cloned())
+            .collect::<Result<_, _>>()?;
+        // Now is the time to check whether any parents are dangling, i.e.,
+        // refer to entity types that are not declared in any fragment (since we
+        // now have the set of typenames that are declared in all fragments).
         let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
-            self.parents
+            parents
                 .iter()
-                .filter(|ety| !all_entity_defs.contains(ety.as_ref()))
-                .map(|ety| {
-                    ConditionalName::unconditional(ety.as_ref().clone(), ReferenceType::Entity)
-                }),
+                .filter(|ety| !all_entity_defs.contains(ety))
+                .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
         );
         match (fully_qual_attributes, undeclared_parents) {
             (Ok(attributes), None) => Ok(EntityTypeFragment {
                 attributes,
-                parents: self.parents,
+                parents,
             }),
             (Ok(_), Some(undeclared_parents)) => Err(TypeResolutionError(undeclared_parents)),
             (Err(e), None) => Err(e),

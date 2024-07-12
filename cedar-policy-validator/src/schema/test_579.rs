@@ -687,10 +687,64 @@ fn C3X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
+/// Generate human-schema syntax for a `MyType` use of kind D1.
+fn D1_human() -> &'static str {
+    r#"entity E in [MyType];"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind D1XX (for any XX), returning the new schema.
+///
+/// Unlike for A1/B1/C1, we do not need to distinguish between
+/// D1X1 and D1X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn D1_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["entityTypes"]["E"] = json!({
+        "memberOfTypes": [ "MyType" ]
+    });
+    schema
+}
+
+/// Generate human-schema syntax for a `MyType` use of kind D2.
+fn D2_human() -> &'static str {
+    r#"entity E in [NS1::MyType];"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind D2XX (for any XX), returning the new schema.
+///
+/// Unlike for A2/B2/C2, we do not need to distinguish between
+/// D2X1 and D2X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn D2_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["entityTypes"]["E"] = json!({
+        "memberOfTypes": [ "NS1::MyType" ]
+    });
+    schema
+}
+
+/// Generate human-schema syntax for a `MyType` use of kind D3.
+fn D3_human() -> &'static str {
+    r#"entity E in [NS2::MyType];"#
+}
+
+/// Given a starting JSON schema (e.g., from `a1_json()`),
+/// add a `MyType` use of kind D3XX (for any XX), returning the new schema.
+///
+/// Unlike for A3/B3/C3, we do not need to distinguish between
+/// D3X1 and D3X2, because this position does not distinguish between
+/// an entity reference and a common-type reference.
+fn D3_json(mut schema: serde_json::Value) -> serde_json::Value {
+    schema["NS1"]["entityTypes"]["E"] = json!({
+        "memberOfTypes": [ "NS2::MyType" ]
+    });
+    schema
+}
+
 // ####
 //
 // For explanations of all of the below tests and their naming, see comments
-// on this module.
+// at the top of this file.
 //
 // ####
 
@@ -716,7 +770,7 @@ fn A1c_human() {
     assert_parse_error_human(
         &c_human(A1_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("MyType")
             .build(),
@@ -735,7 +789,7 @@ fn A2b1_human() {
     assert_parse_error_human(
         &b1_human(A2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -746,7 +800,7 @@ fn A2b2_human() {
     assert_parse_error_human(
         &b2_human(A2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -757,7 +811,7 @@ fn A2c_human() {
     assert_parse_error_human(
         &c_human(A2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -768,7 +822,7 @@ fn A3a1_human() {
     assert_parse_error_human(
         &a1_human(A3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -779,7 +833,7 @@ fn A3a2_human() {
     assert_parse_error_human(
         &a2_human(A3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -790,7 +844,7 @@ fn A3b1_human() {
     assert_parse_error_human(
         &b1_human(A3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -801,7 +855,7 @@ fn A3b2_human() {
     assert_parse_error_human(
         &b2_human(A3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -812,7 +866,7 @@ fn A3c_human() {
     assert_parse_error_human(
         &c_human(A3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -847,7 +901,7 @@ fn B1c_human() {
     assert_parse_error_human(
         &c_human(B1_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("MyType")
             .build(),
@@ -866,7 +920,7 @@ fn B2b1_human() {
     assert_parse_error_human(
         &b1_human(B2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -877,7 +931,7 @@ fn B2b2_human() {
     assert_parse_error_human(
         &b2_human(B2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -888,7 +942,7 @@ fn B2c_human() {
     assert_parse_error_human(
         &c_human(B2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -899,7 +953,7 @@ fn B3a1_human() {
     assert_parse_error_human(
         &a1_human(B3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -910,7 +964,7 @@ fn B3a2_human() {
     assert_parse_error_human(
         &a2_human(B3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -921,7 +975,7 @@ fn B3b1_human() {
     assert_parse_error_human(
         &b1_human(B3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -932,7 +986,7 @@ fn B3b2_human() {
     assert_parse_error_human(
         &b2_human(B3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -943,7 +997,7 @@ fn B3c_human() {
     assert_parse_error_human(
         &c_human(B3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -978,7 +1032,7 @@ fn C1c_human() {
     assert_parse_error_human(
         &c_human(C1_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("MyType")
             .build(),
@@ -997,7 +1051,7 @@ fn C2b1_human() {
     assert_parse_error_human(
         &b1_human(C2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -1008,7 +1062,7 @@ fn C2b2_human() {
     assert_parse_error_human(
         &b2_human(C2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -1019,7 +1073,7 @@ fn C2c_human() {
     assert_parse_error_human(
         &c_human(C2_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -1030,7 +1084,7 @@ fn C3a1_human() {
     assert_parse_error_human(
         &a1_human(C3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -1041,7 +1095,7 @@ fn C3a2_human() {
     assert_parse_error_human(
         &a2_human(C3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -1052,7 +1106,7 @@ fn C3b1_human() {
     assert_parse_error_human(
         &b1_human(C3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -1063,7 +1117,7 @@ fn C3b2_human() {
     assert_parse_error_human(
         &b2_human(C3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS2::MyType")
             .build(),
@@ -1074,7 +1128,7 @@ fn C3c_human() {
     assert_parse_error_human(
         &c_human(C3_human()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common or entity type")
             // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
             //.exactly_one_underline("NS1::MyType")
             .build(),
@@ -1087,6 +1141,179 @@ fn C3d1_human() {
 #[test]
 fn C3d2_human() {
     assert_parses_successfully_human(&d2_human(C3_human()));
+}
+#[test]
+fn D1a1_human() {
+    assert_parses_successfully_human(&a1_human(D1_human()));
+}
+#[test]
+fn D1a2_human() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &a2_human(D1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn D1b1_human() {
+    assert_parses_successfully_human(&b1_human(D1_human()));
+}
+#[test]
+fn D1b2_human() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &b2_human(D1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn D1c_human() {
+    assert_parse_error_human(
+        &c_human(D1_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn D2a1_human() {
+    assert_parses_successfully_human(&a1_human(D2_human()));
+}
+#[test]
+fn D2a2_human() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &a2_human(D2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("MyType")
+            .build(),
+    );
+}
+#[test]
+fn D2b1_human() {
+    assert_parse_error_human(
+        &b1_human(D2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D2b2_human() {
+    assert_parse_error_human(
+        &b2_human(D2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D2c_human() {
+    assert_parse_error_human(
+        &c_human(D2_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3a1_human() {
+    assert_parse_error_human(
+        &a1_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3a2_human() {
+    assert_parse_error_human(
+        &a2_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3b1_human() {
+    assert_parse_error_human(
+        &b1_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3b2_human() {
+    assert_parse_error_human(
+        &b2_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS2::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3c_human() {
+    assert_parse_error_human(
+        &c_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
+            //.exactly_one_underline("NS1::MyType")
+            .build(),
+    );
+}
+#[test]
+fn D3d1_human() {
+    assert_parses_successfully_human(&d1_human(D3_human()));
+}
+#[test]
+fn D3d2_human() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_human(
+        &d2_human(D3_human()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
 }
 
 // json versions
@@ -1111,7 +1338,7 @@ fn A1c_json() {
     assert_parse_error_json(
         A1X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build(),
     );
 }
@@ -1128,7 +1355,7 @@ fn A2b1_json() {
     assert_parse_error_json(
         A2X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1137,7 +1364,7 @@ fn A2b2_json() {
     assert_parse_error_json(
         A2X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1146,7 +1373,7 @@ fn A2c_json() {
     assert_parse_error_json(
         A2X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1155,7 +1382,7 @@ fn A3a1_json() {
     assert_parse_error_json(
         A3X1_json(a1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1164,7 +1391,7 @@ fn A3a2_json() {
     assert_parse_error_json(
         A3X2_json(a2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1173,7 +1400,7 @@ fn A3b1_json() {
     assert_parse_error_json(
         A3X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1182,7 +1409,7 @@ fn A3b2_json() {
     assert_parse_error_json(
         A3X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1191,7 +1418,7 @@ fn A3c_json() {
     assert_parse_error_json(
         A3X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1224,7 +1451,7 @@ fn B1c_json() {
     assert_parse_error_json(
         B1X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build(),
     );
 }
@@ -1241,7 +1468,7 @@ fn B2b1_json() {
     assert_parse_error_json(
         B2X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1250,7 +1477,7 @@ fn B2b2_json() {
     assert_parse_error_json(
         B2X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1259,7 +1486,7 @@ fn B2c_json() {
     assert_parse_error_json(
         B2X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1268,7 +1495,7 @@ fn B3a1_json() {
     assert_parse_error_json(
         B3X1_json(a1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1277,7 +1504,7 @@ fn B3a2_json() {
     assert_parse_error_json(
         B3X2_json(a2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1286,7 +1513,7 @@ fn B3b1_json() {
     assert_parse_error_json(
         B3X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1295,7 +1522,7 @@ fn B3b2_json() {
     assert_parse_error_json(
         B3X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1304,7 +1531,7 @@ fn B3c_json() {
     assert_parse_error_json(
         B3X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1337,7 +1564,7 @@ fn C1c_json() {
     assert_parse_error_json(
         C1X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
-            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build(),
     );
 }
@@ -1354,7 +1581,7 @@ fn C2b1_json() {
     assert_parse_error_json(
         C2X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1363,7 +1590,7 @@ fn C2b2_json() {
     assert_parse_error_json(
         C2X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1372,7 +1599,7 @@ fn C2c_json() {
     assert_parse_error_json(
         C2X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared")
+            .help("`NS1::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1381,7 +1608,7 @@ fn C3a1_json() {
     assert_parse_error_json(
         C3X1_json(a1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1390,7 +1617,7 @@ fn C3a2_json() {
     assert_parse_error_json(
         C3X2_json(a2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1399,7 +1626,7 @@ fn C3b1_json() {
     assert_parse_error_json(
         C3X1_json(b1_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1408,7 +1635,7 @@ fn C3b2_json() {
     assert_parse_error_json(
         C3X2_json(b2_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as a common type")
             .build(),
     );
 }
@@ -1417,7 +1644,7 @@ fn C3c_json() {
     assert_parse_error_json(
         C3X1_json(c_json()),
         &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared")
+            .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
 }
@@ -1428,4 +1655,153 @@ fn C3d1_json() {
 #[test]
 fn C3d2_json() {
     assert_parses_successfully_json(C3X2_json(d2_json()));
+}
+#[test]
+fn D1a1_json() {
+    assert_parses_successfully_json(D1_json(a1_json()));
+}
+#[test]
+fn D1a2_json() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        D1_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D1b1_json() {
+    assert_parses_successfully_json(D1_json(b1_json()));
+}
+#[test]
+fn D1b2_json() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        D1_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D1c_json() {
+    assert_parse_error_json(
+        D1_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
+            .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D2a1_json() {
+    assert_parses_successfully_json(D2_json(a1_json()));
+}
+#[test]
+fn D2a2_json() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        D2_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D2b1_json() {
+    assert_parse_error_json(
+        D2_json(b1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D2b2_json() {
+    assert_parse_error_json(
+        D2_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D2c_json() {
+    assert_parse_error_json(
+        D2_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+            .help("`NS1::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3a1_json() {
+    assert_parse_error_json(
+        D3_json(a1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3a2_json() {
+    assert_parse_error_json(
+        D3_json(a2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3b1_json() {
+    assert_parse_error_json(
+        D3_json(b1_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3b2_json() {
+    assert_parse_error_json(
+        D3_json(b2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3c_json() {
+    assert_parse_error_json(
+        D3_json(c_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
+}
+#[test]
+fn D3d1_json() {
+    assert_parses_successfully_json(D3_json(d1_json()));
+}
+#[test]
+fn D3d2_json() {
+    // this is an error because we currently don't support `entity E in [common-type]`.
+    // The error message could be more clear, e.g., specialized to check whether
+    // the type that failed to resolve would have resolved to a common type if
+    // it were allowed to.
+    assert_parse_error_json(
+        D3_json(d2_json()),
+        &ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+            .help("`NS2::MyType` has not been declared as an entity type")
+            .build(),
+    );
 }

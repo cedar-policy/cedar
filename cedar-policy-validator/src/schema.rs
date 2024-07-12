@@ -385,11 +385,11 @@ impl ValidatorSchema {
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
-        let mut entity_children = HashMap::new();
+        let mut entity_children: HashMap<EntityType, HashSet<EntityType>> = HashMap::new();
         for (name, entity_type) in entity_type_fragments.iter() {
             for parent in entity_type.parents.iter() {
                 entity_children
-                    .entry(parent.clone())
+                    .entry(parent.clone().into())
                     .or_insert_with(HashSet::new)
                     .insert(name.clone());
             }
@@ -1193,7 +1193,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Grop, Usr, Phoot"#)
-                    .help("`Grop` has not been declared")
+                    .help("`Grop` has not been declared as an entity type")
                     .build());
         });
     }
@@ -1218,7 +1218,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Bar::Group"#)
-                    .help("`Bar::Group` has not been declared")
+                    .help("`Bar::Group` has not been declared as an entity type")
                     .build());
         });
     }
@@ -1245,7 +1245,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Bar::User, Bar::Photo"#)
-                    .help("`Bar::User` has not been declared")
+                    .help("`Bar::User` has not been declared as an entity type")
                     .build());
         });
     }
@@ -1447,7 +1447,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: C::D::Foo"#)
-                    .help("`C::D::Foo` has not been declared")
+                    .help("`C::D::Foo` has not been declared as an entity type")
                     .build());
         });
     }
@@ -2430,7 +2430,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Demo::id"#)
-                    .help("`Demo::id` has not been declared")
+                    .help("`Demo::id` has not been declared as a common type")
                     .build());
         });
     }

@@ -267,16 +267,25 @@ impl ConditionalName {
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve
     pub(crate) fn resolution_failure_help(&self) -> String {
+        let entity_or_common_text = match self.reference_type {
+            ReferenceType::Common => "as a common type",
+            ReferenceType::Entity => "as an entity type",
+            ReferenceType::CommonOrEntity => "as a common or entity type",
+        };
         // PANIC SAFETY: indexing is safe because we first check the `.len()`
         #[allow(clippy::indexing_slicing)]
         match self.possibilities.len() {
-            1 => format!("`{}` has not been declared", self.possibilities[0]),
+            1 => format!(
+                "`{}` has not been declared {}",
+                self.possibilities[0], entity_or_common_text
+            ),
             2 => format!(
-                "neither `{}` nor `{}` refers to anything that has been declared",
-                self.possibilities[0], self.possibilities[1]
+                "neither `{}` nor `{}` refers to anything that has been declared {}",
+                self.possibilities[0], self.possibilities[1], entity_or_common_text,
             ),
             _ => format!(
-                "none of these have been declared: {}",
+                "none of these have been declared {}: {}",
+                entity_or_common_text,
                 self.possibilities
                     .iter()
                     .map(|p| format!("`{p}`"))
