@@ -227,8 +227,7 @@ impl EntityTypesDef {
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
-        let mut defs: HashMap<EntityType, _> =
-            HashMap::with_capacity(schema_files_types.len());
+        let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
             let ety = cedar_policy_core::ast::EntityType::from(
                 RawName::new(id.clone()).qualify_with(schema_namespace),
