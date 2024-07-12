@@ -140,6 +140,8 @@ fn convert_namespace(
 ) -> Result<(Option<Name>, NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
     let cc = ConversionContext::new(
         names,
+        // PANIC SAFETY: the all namespaces should have valid names now
+        #[allow(clippy::unwrap_used)]
         namespace
             .name
             .clone()
@@ -157,7 +159,6 @@ fn convert_namespace(
 struct ConversionContext<'a> {
     names: &'a HashMap<Option<Name>, NamespaceRecord>,
     current_namespace_name: Option<Name>,
-    empty_namespace: NamespaceRecord,
     extensions: Extensions<'a>,
 }
 
@@ -171,7 +172,6 @@ impl<'a> ConversionContext<'a> {
         Self {
             names,
             current_namespace_name,
-            empty_namespace: NamespaceRecord::default(), // The `__cedar` namespace is empty (besides primitives)
             extensions,
         }
     }
@@ -524,10 +524,13 @@ impl<'a> ConversionContext<'a> {
         }
         // After this, all paths must be unreserved
         let name = p.try_into()?;
+
         let namespace_to_search = match prefix.split_last() {
             Some((prefix_base, prefix_prefix)) => self.lookup_namespace(
                 loc.clone(),
                 &Some(
+                    // PANIC SAFETY: `p` is a valid name, which means its prefix should also be
+                    #[allow(clippy::unwrap_used)]
                     Name::try_from(UncheckedName::new(
                         prefix_base.clone(),
                         prefix_prefix.iter().cloned(),
@@ -553,8 +556,8 @@ impl<'a> ConversionContext<'a> {
             Ok(SchemaType::CommonTypeRef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
             Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
-        } else if let Ok(v) = search_cedar_namespace(base, loc.clone(), self.extensions) {
-            Ok(v)
+        } else if let Ok(ty) = search_cedar_namespace(base, loc.clone(), self.extensions) {
+            Ok(ty)
         } else {
             Err(
                 ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(name.to_smolstr(), loc))
@@ -757,6 +760,7 @@ fn shadows_builtin(
     }
 }
 
+// Essentially index `NamespaceRecord`s by the namespace
 fn build_namespace_bindings<'a>(
     namespaces: impl Iterator<Item = &'a Namespace>,
 ) -> Result<HashMap<Option<Name>, NamespaceRecord>, ToJsonSchemaErrors> {
