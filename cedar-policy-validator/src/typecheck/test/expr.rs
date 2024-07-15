@@ -25,10 +25,10 @@ use serde_json::json;
 use smol_str::SmolStr;
 
 use crate::{
-    diagnostics::ValidationError, types::Type, validation_errors::AttributeAccess,
-    validation_errors::LubContext, validation_errors::LubHelp,
-    validation_errors::UnexpectedTypeHelp, AttributesOrContext, EntityType, NamespaceDefinition,
-    RawName, SchemaFragment, ValidationMode,
+    diagnostics::ValidationError,
+    types::Type,
+    validation_errors::{AttributeAccess, LubContext, LubHelp, UnexpectedTypeHelp},
+    AttributesOrContext, EntityType, NamespaceDefinition, RawName, SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::{

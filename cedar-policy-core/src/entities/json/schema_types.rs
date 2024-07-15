@@ -15,9 +15,10 @@
  */
 
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Name, PartialValue, Type, Unknown,
+    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, PartialValue, Type, Unknown,
     Value, ValueKind,
 };
+use crate::entities::Name;
 use crate::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError, Extensions,
 };

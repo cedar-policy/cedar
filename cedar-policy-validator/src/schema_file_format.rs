@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -51,7 +51,7 @@ use crate::{
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`SchemaFragment`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`Id`] and unambiguously
+/// _that are being declared here_, which is always an [`UnreservedId`] and unambiguously
 /// refers to the [`Name`] with the appropriate implicit namespace prepended.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
@@ -141,10 +141,10 @@ impl SchemaFragment<RawName> {
     }
 
     /// Parse the schema (in natural schema syntax) from a reader
-    pub fn from_file_natural<'a>(
+    pub fn from_file_natural(
         mut file: impl std::io::Read,
-        extensions: Extensions<'a>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+        extensions: Extensions<'_>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
     {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
@@ -166,7 +166,7 @@ impl<N: Display> SchemaFragment<N> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`NamespaceDefinition`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an `Id` and unambiguously
+/// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the `Name` with the implicit current/active namespace prepended.)
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -182,16 +182,16 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<Id, SchemaType<N>>,
+    pub common_types: HashMap<UnreservedId, SchemaType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<Id, EntityType<N>>,
+    pub entity_types: HashMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub actions: HashMap<SmolStr, ActionType<N>>,
 }
 
 impl<N> NamespaceDefinition<N> {
     pub fn new(
-        entity_types: impl IntoIterator<Item = (Id, EntityType<N>)>,
+        entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
@@ -863,7 +863,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                                name: Id::from_normalized_str(&name).map_err(|err| {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
                                     serde::de::Error::custom(format!(
                                         "invalid extension type `{name}`: {err}"
                                     ))
@@ -939,7 +939,7 @@ pub enum SchemaTypeVariant<N> {
     /// Extension types
     Extension {
         /// Name of the extension type
-        name: Id,
+        name: UnreservedId,
     },
 }
 
@@ -1040,12 +1040,12 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawName> {
                 name: u.arbitrary()?,
             },
             7 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `ipaddr` is a valid `Id`
+                // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "ipaddr".parse().unwrap(),
             },
             8 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `decimal` is a valid `Id`
+                // PANIC SAFETY: `decimal` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "decimal".parse().unwrap(),
             },

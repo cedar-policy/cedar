@@ -18,7 +18,7 @@
 // GRCOV_STOP_COVERAGE
 
 use crate::{diagnostics::ValidationError, types::Type};
-use cedar_policy_core::ast::{Expr, Name};
+use cedar_policy_core::ast::Expr;
 use std::str::FromStr;
 
 use super::test_utils::{
@@ -28,6 +28,8 @@ use super::test_utils::{
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typechecks() {
+    use cedar_policy_core::ast::Name;
+
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let expr = Expr::from_str("ip(\"127.0.0.1\")").expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::extension(ipaddr_name));
@@ -41,6 +43,8 @@ fn ip_extension_typechecks() {
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typecheck_fails() {
+    use cedar_policy_core::ast::Name;
+
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let expr = Expr::from_str("ip(3)").expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
@@ -92,6 +96,8 @@ fn ip_extension_typecheck_fails() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typechecks() {
+    use cedar_policy_core::ast::Name;
+
     let decimal_name =
         Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let expr = Expr::from_str("decimal(\"1.23\")").expect("parsing should succeed");
@@ -113,6 +119,8 @@ fn decimal_extension_typechecks() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typecheck_fails() {
+    use cedar_policy_core::ast::Name;
+
     let decimal_name =
         Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let expr = Expr::from_str("decimal(3)").expect("parsing should succeed");

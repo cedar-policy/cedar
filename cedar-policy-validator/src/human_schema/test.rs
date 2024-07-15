@@ -1182,12 +1182,17 @@ mod translator_tests {
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::FromNormalizedStr;
+    use cool_asserts::assert_matches;
 
     use crate::{
+        human_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
         types::{EntityLUB, Type},
         SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
+    // We allow translating schemas that violate RFC 52 to `SchemaFragment`.
+    // The violations are reported during further translation to
+    // `ValidatorSchema`
     #[test]
     fn use_reserved_namespace() {
         let schema = SchemaFragment::from_str_natural(
@@ -1196,7 +1201,7 @@ mod translator_tests {
         "#,
             Extensions::all_available(),
         );
-        assert!(schema.is_err(), "__cedar namespace shouldn't be allowed");
+        assert!(schema.is_err());
 
         let schema = SchemaFragment::from_str_natural(
             r#"
@@ -1204,10 +1209,7 @@ mod translator_tests {
         "#,
             Extensions::all_available(),
         );
-        assert!(
-            schema.is_err(),
-            "__cedar::Foo namespace shouldn't be allowed"
-        );
+        assert!(schema.is_err());
     }
 
     #[test]
@@ -1820,6 +1822,47 @@ mod translator_tests {
             Extensions::all_available(),
         );
         assert!(schema.is_err());
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(_));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"namespace __cedar::A {
+                entity foo;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(_));
+
+        let schema = custom_schema_to_json_schema(
+            parse_schema(
+                r#"
+                entity __cedar;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(_));
     }
 }
 

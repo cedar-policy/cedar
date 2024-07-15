@@ -18,10 +18,11 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, Name,
-    PartialValue, PolicyID, RestrictedExpr, RestrictedExpressionError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PartialValue,
+    PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
+use crate::entities::{Name, ReservedNameError};
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
@@ -153,6 +154,10 @@ pub enum JsonDeserializationError {
     /// Raised when the input JSON contains a `null`
     #[error("{0}, found a `null`; JSON `null`s are not allowed in Cedar")]
     Null(Box<JsonDeserializationErrorContext>),
+    /// Returned when a name contains `__cedar`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedName(#[from] ReservedNameError),
 }
 
 impl JsonDeserializationError {

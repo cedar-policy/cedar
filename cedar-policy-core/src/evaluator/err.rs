@@ -294,7 +294,7 @@ impl EvaluationError {
 
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
-    use crate::ast::{BinaryOp, EntityUID, Expr, Name, SlotId, Type, UnaryOp, Value};
+    use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
     use crate::parser::Loc;
     use itertools::Itertools;
     use miette::Diagnostic;
@@ -302,6 +302,8 @@ pub mod evaluation_errors {
     use smol_str::SmolStr;
     use std::sync::Arc;
     use thiserror::Error;
+
+    use super::Name;
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //

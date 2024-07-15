@@ -27,7 +27,7 @@ use std::sync::Arc;
 // PANIC SAFETY All the names are valid names
 #[allow(clippy::expect_used)]
 mod names {
-    use super::Name;
+    use crate::ast::Name;
     lazy_static::lazy_static! {
         pub static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         pub static ref IP_FROM_STR_NAME : Name = Name::parse_unqualified_name("ip").expect("should be a valid identifier");

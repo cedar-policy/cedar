@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{ast::EntityUID, transitive_closure};
+use cedar_policy_core::{
+    ast::{EntityUID, ReservedNameError},
+    transitive_closure,
+};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -212,6 +215,10 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
+    /// The schema used a reserved namespace or typename (as of this writing, just `__cedar`).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedName(#[from] ReservedNameError),
     /// Common type names conflict with primitive types.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -242,7 +249,9 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name},
+        ast::{
+            EntityAttrEvaluationError, EntityType, EntityUID, Name, UncheckedName, UnreservedId,
+        },
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -361,7 +370,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) Name);
+    pub struct DuplicateCommonTypeError(pub(crate) UncheckedName);
 
     /// Cycle in action hierarchy error
     //
@@ -579,5 +588,5 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Error, Debug, Diagnostic)]
     #[error("Common type name `{0}` conflicts with primitive type")]
-    pub struct CommonTypeNameConflictError(pub(crate) Id);
+    pub struct CommonTypeNameConflictError(pub(crate) UnreservedId);
 }
