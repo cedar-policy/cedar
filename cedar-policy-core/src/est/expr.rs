@@ -340,6 +340,14 @@ impl Expr {
         Expr::ExprNoExt(ExprNoExt::Slot(slot))
     }
 
+    // An extension call with one arg, which is the name of the unknown
+    pub fn unknown(name: impl Into<SmolStr>) -> Self {
+        Expr::ext_call(
+            "unknown".into(),
+            vec![Expr::lit(CedarValueJson::String(name.into()))],
+        )
+    }
+
     /// `!`
     pub fn not(e: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Not { arg: Arc::new(e) })
@@ -721,13 +729,7 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => {
-                // Create an extension call with one arg, which is the name of the unknown
-                Expr::ext_call(
-                    "unknown".to_string().into(),
-                    vec![Expr::lit(CedarValueJson::String(name))],
-                )
-            }
+            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => Expr::unknown(name),
             ast::ExprKind::If {
                 test_expr,
                 then_expr,
