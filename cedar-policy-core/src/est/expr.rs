@@ -340,7 +340,7 @@ impl Expr {
         Expr::ExprNoExt(ExprNoExt::Slot(slot))
     }
 
-    // An extension call with one arg, which is the name of the unknown
+    /// An extension call with one arg, which is the name of the unknown
     pub fn unknown(name: impl Into<SmolStr>) -> Self {
         Expr::ext_call(
             "unknown".into(),
