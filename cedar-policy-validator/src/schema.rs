@@ -394,7 +394,7 @@ impl ValidatorSchema {
             entity_children.into_keys(),
             &action_ids,
             action_children.into_keys(),
-            &common_types,
+            common_types.into_values(),
         )?;
 
         Ok(ValidatorSchema {
@@ -412,7 +412,7 @@ impl ValidatorSchema {
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
-        common_types: &HashMap<&Name, Type>,
+        common_types: impl IntoIterator<Item = Type>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -437,7 +437,7 @@ impl ValidatorSchema {
         }
 
         // Check for undeclared entity types within common types.
-        for common_type in common_types.values() {
+        for common_type in common_types {
             Self::check_undeclared_in_type(&common_type, entity_types, &mut undeclared_e);
         }
 
