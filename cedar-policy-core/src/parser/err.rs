@@ -27,7 +27,7 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast;
+use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -246,11 +246,11 @@ pub enum ToASTErrorKind {
     /// Returned when a policy attempts to call a method function-style
     #[error("`{0}` is a method, not a function")]
     #[diagnostic(help("use a method-style call `e.{0}(..)`"))]
-    FunctionCallOnMethod(ast::Id),
+    FunctionCallOnMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function in the method style
     #[error("`{0}` is a function, not a method")]
     #[diagnostic(help("use a function-style call `{0}(..)`"))]
-    MethodCallOnFunction(ast::Id),
+    MethodCallOnFunction(ast::UnreservedId),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
@@ -298,10 +298,10 @@ pub enum ToASTErrorKind {
     VariableCall(ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
-    NoMethods(ast::Name, ast::Id),
+    NoMethods(ast::Name, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
     #[error("`{0}` is not a valid method")]
-    UnknownMethod(String),
+    UnknownMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a valid function")]
     UnknownFunction(ast::Name),
@@ -368,6 +368,10 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
+    /// Returned when an entity type contains a reserved namespace or typename (as of this writing, just `__cedar`)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedNamespace(#[from] ReservedNameError),
     /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _` in the policy scope
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]

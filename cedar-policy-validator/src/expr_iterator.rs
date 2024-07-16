@@ -143,11 +143,12 @@ fn text_in_entity_type<'a>(
 }
 
 fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item = TextKind<'a>> {
-    name.namespace_components()
+    name.as_ref()
+        .namespace_components()
         .map(move |id| TextKind::Identifier(loc, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(
             loc,
-            name.basename().as_ref(),
+            name.basename_as_ref().as_ref(),
         )))
 }
 

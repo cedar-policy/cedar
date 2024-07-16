@@ -1968,7 +1968,7 @@ mod schema_based_parsing_tests {
         }
         fn entity_types_with_basename<'a>(
             &'a self,
-            basename: &'a Id,
+            basename: &'a UnreservedId,
         ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
             match basename.as_ref() {
                 "Employee" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
@@ -3123,7 +3123,7 @@ mod schema_based_parsing_tests {
             }
             fn entity_types_with_basename<'a>(
                 &'a self,
-                basename: &'a Id,
+                basename: &'a UnreservedId,
             ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
                 match basename.as_ref() {
                     "Employee" => Box::new(std::iter::once(EntityType::from(

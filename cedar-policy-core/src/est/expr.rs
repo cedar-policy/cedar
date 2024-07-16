@@ -1112,17 +1112,20 @@ fn interpret_primary(
                 (&[], cst::Ident::Action) => Ok(Either::Right(Expr::var(ast::Var::Action))),
                 (&[], cst::Ident::Resource) => Ok(Either::Right(Expr::var(ast::Var::Resource))),
                 (&[], cst::Ident::Context) => Ok(Either::Right(Expr::var(ast::Var::Context))),
-                (path, cst::Ident::Ident(id)) => Ok(Either::Left(ast::Name::new(
-                    id.parse()?,
-                    path.iter()
-                        .map(|node| {
-                            node.try_as_inner()
-                                .map_err(Into::into)
-                                .and_then(|id| id.to_string().parse().map_err(Into::into))
-                        })
-                        .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
-                    Some(node.loc.clone()),
-                ))),
+                (path, cst::Ident::Ident(id)) => Ok(Either::Left(
+                    ast::UncheckedName::new(
+                        id.parse()?,
+                        path.iter()
+                            .map(|node| {
+                                node.try_as_inner()
+                                    .map_err(Into::into)
+                                    .and_then(|id| id.to_string().parse().map_err(Into::into))
+                            })
+                            .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                        Some(node.loc.clone()),
+                    )
+                    .try_into()?,
+                )),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (

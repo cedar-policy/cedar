@@ -113,7 +113,7 @@ impl ValidatorSchemaFragment {
 
     /// Access the `Name`s for the namespaces in this fragment.
     /// `None` indicates the empty namespace.
-    pub fn namespaces(&self) -> impl Iterator<Item = &Option<Name>> {
+    pub fn namespaces(&self) -> impl Iterator<Item = Option<&Name>> {
         self.0.iter().map(|d| d.namespace())
     }
 }
@@ -267,7 +267,7 @@ impl ValidatorSchema {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateCommonTypeError(o.key().clone()).into());
+                        return Err(DuplicateCommonTypeError(o.key().as_ref().clone()).into());
                     }
                 };
             }
@@ -810,7 +810,7 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaType::CommonTypeRef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(SchemaError::UndeclaredCommonTypes(
-                    UndeclaredCommonTypesError(type_name),
+                    UndeclaredCommonTypesError(type_name.clone()),
                 ))
                 .cloned(),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
@@ -883,6 +883,7 @@ mod test {
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
+
     use serde_json::json;
 
     use super::*;
@@ -1494,9 +1495,9 @@ mod test {
                 .map(|f| f.namespace())
                 .collect::<HashSet<_>>(),
             HashSet::from([
-                &Some("Foo::Bar::Baz".parse().unwrap()),
-                &Some("Foo".parse().unwrap()),
-                &Some("Bar".parse().unwrap())
+                Some(&"Foo::Bar::Baz".parse().unwrap()),
+                Some(&"Foo".parse().unwrap()),
+                Some(&"Bar".parse().unwrap())
             ])
         );
     }
@@ -2584,6 +2585,71 @@ mod test {
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::CommonTypeNameConflict(CommonTypeNameConflictError(n))) if n == "String".parse().unwrap());
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        let src: serde_json::Value = json!({
+            "__cedar": {
+                "commonTypes": { },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
+
+        let src: serde_json::Value = json!({
+            "__cedar::A": {
+                "commonTypes": { },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "__cedar": {
+                        "type": "String",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
+
+        let src: serde_json::Value = json!({
+            "A": {
+                "commonTypes": {
+                    "__cedar": {
+                        "type": "String",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
+
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "A": {
+                        "type": "__cedar",
+                    }
+                },
+                "entityTypes": { },
+                "actions": { },
+            }
+        });
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
     }
 }
 

@@ -40,7 +40,8 @@ struct Decimal {
 // PANIC SAFETY The `Name`s and `Regex` here are valid
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
-    use super::{Name, EXTENSION_NAME};
+    use super::EXTENSION_NAME;
+    use crate::ast::Name;
     use regex::Regex;
 
     // PANIC SAFETY all of the names here are valid names

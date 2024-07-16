@@ -46,7 +46,7 @@ impl EntityType {
     /// base name for the type, so this will return true for any entity type named
     /// `Action` regardless of namespaces.
     pub fn is_action(&self) -> bool {
-        self.0.basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+        self.0.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
     }
 
     /// The name of this entity type
@@ -56,7 +56,7 @@ impl EntityType {
 
     /// The source location of this entity type
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc()
+        self.0.as_ref().loc()
     }
 
     /// Calls [`Name::qualify_with`] on the underlying [`Name`]
@@ -66,7 +66,8 @@ impl EntityType {
 
     /// Wraps [`Name::from_normalized_str`]
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
-        Name::from_normalized_str(src).map(Self)
+        UncheckedName::from_normalized_str(src)
+            .and_then(|n| n.try_into().map(Self).map_err(ParseErrors::singleton))
     }
 }
 
@@ -83,11 +84,10 @@ impl AsRef<Name> for EntityType {
 }
 
 impl FromStr for EntityType {
-    type Err = <Name as FromStr>::Err;
+    type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let name: Name = s.parse()?;
-        Ok(Self(name))
+        s.parse().map(Self)
     }
 }
 
