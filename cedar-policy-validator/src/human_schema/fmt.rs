@@ -193,14 +193,7 @@ impl NameCollisionsError {
 /// that situation, we then specifically refer to the shadowed entity type name.
 /// But it's harder to walk all type references than it is to walk all type
 /// declarations, so perhaps the conservative code here is fine.
-/// 2) At the same time, this check might miss some cases that are actually
-/// problematic. E.g., if a common type declaration in some namespace NS has the
-/// same basename as an entity type declaration in the empty namespace, and then
-/// the JSON syntax references the entity type declaration in the empty
-/// namespace (while the current namespace is NS). When converted to human
-/// syntax, the reference will resolve to the common type declaration in the
-/// current namespace instead. The existing code doesn't catch collisions with
-/// the empty namespace. But see RFC 70.
+/// 2) This code is also likely the cause of #1063; see that issue
 pub fn json_schema_to_custom_schema_str<N: Display>(
     json_schema: &SchemaFragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {
