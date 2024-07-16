@@ -436,7 +436,7 @@ impl ValidatorSchema {
             }
         }
 
-        // Check for undeclared entity types in common type record, entities, and sets.
+        // Check for undeclared entity types within common types.
         for common_type in common_types.values() {
             Self::check_undeclared_in_type(&common_type, entity_types, &mut undeclared_e);
         }
