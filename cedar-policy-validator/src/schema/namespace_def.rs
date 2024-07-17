@@ -21,13 +21,11 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
-        PartialValueSerializedAsExpr,
+        EntityAttrEvaluationError, EntityType, EntityUID, Id, Name, PartialValueSerializedAsExpr,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
-    FromNormalizedStr,
 };
 use itertools::Itertools;
 use nonempty::NonEmpty;
@@ -101,6 +99,12 @@ impl<N> ValidatorNamespaceDef<N> {
     /// [`ValidatorNamespaceDef`].
     pub fn all_declared_common_type_names(&self) -> impl Iterator<Item = &Name> {
         self.type_defs.type_defs.keys()
+    }
+
+    /// Get the fully-qualified [`EntityUID`]s of all actions declared in this
+    /// [`ValidatorNamespaceDef`].
+    pub fn all_declared_action_names(&self) -> impl Iterator<Item = &EntityUID> {
+        self.actions.actions.keys()
     }
 
     /// The fully-qualified [`Name`] of the namespace this is a definition of.
@@ -181,18 +185,24 @@ impl ValidatorNamespaceDef<ConditionalName> {
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_common_defs: &HashSet<Name>,
         all_entity_defs: &HashSet<Name>,
-    ) -> Result<ValidatorNamespaceDef<Name>, TypeResolutionError> {
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<ValidatorNamespaceDef<Name>, SchemaError> {
         match (
             self.type_defs
                 .fully_qualify_type_references(all_common_defs, all_entity_defs),
             self.entity_types
                 .fully_qualify_type_references(all_common_defs, all_entity_defs),
-            self.actions
-                .fully_qualify_type_references(all_common_defs, all_entity_defs),
+            self.actions.fully_qualify_type_references(
+                all_common_defs,
+                all_entity_defs,
+                all_action_defs,
+            ),
         ) {
             (Ok(type_defs), Ok(entity_types), Ok(actions)) => Ok(ValidatorNamespaceDef {
                 namespace: self.namespace,
@@ -201,12 +211,17 @@ impl ValidatorNamespaceDef<ConditionalName> {
                 actions,
             }),
             (res1, res2, res3) => {
-                // PANIC SAFETY: at least one of the results is `Err`, so the input to `TypeResolutionError::join()` is nonempty, so it returns Some, as documented there
+                // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
                 #[allow(clippy::expect_used)]
-                Err(TypeResolutionError::join(
-                    res1.err().into_iter().chain(res2.err()).chain(res3.err()),
+                let errs = NonEmpty::collect(
+                    res1.err()
+                        .into_iter()
+                        .map(SchemaError::from)
+                        .chain(res2.err().map(SchemaError::from))
+                        .chain(res3.err().map(SchemaError::from)),
                 )
-                .expect("at least one of these results was Err, so join() must return Some"))
+                .expect("there must be an error");
+                Err(SchemaError::join_nonempty(errs))
             }
         }
     }
@@ -564,11 +579,9 @@ impl ActionsDef<ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::with_capacity(schema_file_actions.len());
         for (action_id_str, action_type) in schema_file_actions {
-            let action_uid = parse_action_id_with_namespace(
-                ActionEntityUID::default_type(action_id_str.clone()),
-                schema_namespace,
-            );
-            match actions.entry(action_uid) {
+            let action_uid =
+                ActionEntityUID::default_type(action_id_str.clone()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            match actions.entry(action_uid.into()) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
@@ -593,11 +606,14 @@ impl ActionsDef<ConditionalName> {
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_common_defs: &HashSet<Name>,
         all_entity_defs: &HashSet<Name>,
-    ) -> Result<ActionsDef<Name>, TypeResolutionError> {
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<ActionsDef<Name>, SchemaError> {
         Ok(ActionsDef {
             actions: self
                 .actions
@@ -605,10 +621,14 @@ impl ActionsDef<ConditionalName> {
                 .map(|(k, v)| {
                     Ok((
                         k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                        v.fully_qualify_type_references(
+                            all_common_defs,
+                            all_entity_defs,
+                            all_action_defs,
+                        )?,
                     ))
                 })
-                .collect::<Result<_, _>>()?,
+                .collect::<Result<_, SchemaError>>()?,
         })
     }
 }
@@ -629,11 +649,11 @@ pub struct ActionFragment<N> {
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec<N>,
     /// The direct parent action entities for this action.
-    /// These are fully qualified `EntityUID`s, but may be actions declared in a
-    /// different namespace or schema fragment, and thus not declared yet.
+    /// These may be actions declared in a different namespace or schema
+    /// fragment, and thus not declared yet.
     /// We will check for undeclared parents when combining fragments into a
     /// [`crate::ValidatorSchema`].
-    pub(super) parents: HashSet<EntityUID>,
+    pub(super) parents: HashSet<ActionEntityUID<N>>,
     /// The types for the attributes defined for this actions entity.
     /// Here, common types have been fully resolved/inlined.
     pub(super) attribute_types: Attributes,
@@ -687,7 +707,7 @@ impl ActionFragment<ConditionalName> {
                 .member_of
                 .unwrap_or_default()
                 .into_iter()
-                .map(|parent| parse_action_id_with_namespace(parent, schema_namespace))
+                .map(|parent| parent.conditionally_qualify_type_references(schema_namespace))
                 .collect(),
             attribute_types,
             attributes,
@@ -701,11 +721,14 @@ impl ActionFragment<ConditionalName> {
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_common_defs: &HashSet<Name>,
         all_entity_defs: &HashSet<Name>,
-    ) -> Result<ActionFragment<Name>, TypeResolutionError> {
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<ActionFragment<Name>, SchemaError> {
         Ok(ActionFragment {
             context: self
                 .context
@@ -713,7 +736,16 @@ impl ActionFragment<ConditionalName> {
             applies_to: self
                 .applies_to
                 .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-            parents: self.parents,
+            parents: self
+                .parents
+                .into_iter()
+                .map(|parent| {
+                    parent
+                        .fully_qualify_type_references(all_action_defs)
+                        .map(Into::into)
+                        .map_err(Into::into)
+                })
+                .collect::<Result<_, SchemaError>>()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
         })
@@ -890,35 +922,6 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName>> for NamespaceDefinition<Raw
             Extensions::all_available(),
         )
     }
-}
-
-/// Take an action identifier and use it to construct a fully-qualified
-/// [`EntityUID`] for that action.
-///
-/// The entity type of the action will always have the base type `Action`.
-/// The type will be qualified with any namespace provided in the
-/// `namespace` argument or with the namespace inside the
-/// [`ActionEntityUID`] if one is present.
-fn parse_action_id_with_namespace(
-    action_id: ActionEntityUID<RawName>,
-    namespace: Option<&Name>,
-) -> EntityUID {
-    let action_ty =
-        match action_id.ty {
-            Some(ty) => ty.clone(),
-            None => {
-                // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
-                #[allow(clippy::expect_used)]
-            RawName::new(Id::from_normalized_str(cedar_policy_core::ast::ACTION_ENTITY_TYPE).expect(
-                "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
-            ))
-            }
-        };
-    EntityUID::from_components(
-        action_ty.qualify_with(namespace).into(),
-        Eid::new(action_id.id),
-        None,
-    )
 }
 
 /// Convert a type as represented in the schema file format (but with

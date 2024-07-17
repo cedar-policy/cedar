@@ -227,6 +227,12 @@ impl ConditionalName {
         &self.raw
     }
 
+    /// Get the possible fully-qualified [`Name`]s which this [`ConditionalName`]
+    /// might resolve to, in priority order (highest-priority first).
+    pub(crate) fn possibilities(&self) -> impl Iterator<Item = &Name> {
+        self.possibilities.iter()
+    }
+
     /// Resolve the [`ConditionalName`] into a fully-qualified [`Name`], given that
     /// `all_defined_common_types` and `all_defined_entity_types` represent all
     /// fully-qualified [`Name`]s defined in all schema fragments, as common and

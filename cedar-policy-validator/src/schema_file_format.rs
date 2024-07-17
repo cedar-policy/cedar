@@ -15,11 +15,12 @@
  */
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    ast::{Eid, EntityUID, Id, Name},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
 };
+use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -31,6 +32,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     marker::PhantomData,
+    str::FromStr,
 };
 
 use crate::{
@@ -420,7 +422,7 @@ impl ApplySpec<RawName> {
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -432,7 +434,9 @@ pub struct ActionEntityUID<N> {
 
     /// Represents the type of the action.
     /// `None` is shorthand for `Action`.
-    /// If this is `Some`, the last component of the [`Name`] should be `Action`.
+    /// If this is `Some`, the last component of the `N` should be `Action`.
+    ///
+    /// INVARIANT: This can only be `None` in the `N` = `RawName` case.
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -458,16 +462,100 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
 }
 
 impl ActionEntityUID<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    /// (Conditionally) prefix this action entity UID's typename with the given namespace
     pub fn conditionally_qualify_type_references(
         self,
         ns: Option<&Name>,
     ) -> ActionEntityUID<ConditionalName> {
         ActionEntityUID {
             id: self.id,
-            ty: self
-                .ty
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)),
+            ty: {
+                // PANIC SAFETY: this is a valid raw name
+                #[allow(clippy::expect_used)]
+                let raw_name = self
+                    .ty
+                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
+            },
+        }
+    }
+
+    /// Unconditionally prefix this action entity UID's typename with the given namespace
+    pub fn qualify_with(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
+        ActionEntityUID {
+            id: self.id,
+            ty: {
+                // PANIC SAFETY: this is a valid raw name
+                #[allow(clippy::expect_used)]
+                let raw_name = self
+                    .ty
+                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                Some(raw_name.qualify_with(ns))
+            },
+        }
+    }
+}
+
+impl ActionEntityUID<ConditionalName> {
+    /// Convert this [`ActionEntityUID<ConditionalName>`] into an
+    /// [`ActionEntityUID<Name>`] by fully-qualifying its typename.
+    ///
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// This `ActionEntityUID<ConditionalName>` must resolve to one of the
+    /// `all_action_defs` or else it throws `UndeclaredActionsError`.
+    pub fn fully_qualify_type_references(
+        self,
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> std::result::Result<EntityUID, ActionResolutionError> {
+        for possibility in self.possibilities() {
+            let possibility = possibility.into();
+            if all_action_defs.contains(&possibility) {
+                return Ok(possibility);
+            }
+        }
+        return Err(ActionResolutionError(nonempty!(self)));
+    }
+
+    /// Get the possible fully-qualified [`ActionEntityUID<Name>`]s which this
+    /// [`ActionEntityUID<ConditionalName>`] might resolve to, in priority order
+    /// (highest-priority first).
+    pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<Name>> + '_ {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = self.ty.as_ref().expect("by INVARIANT on self.ty");
+        ty.possibilities().map(|possibility| ActionEntityUID {
+            id: self.id.clone(),
+            ty: Some(possibility.clone()),
+        })
+    }
+
+    /// Convert this [`ActionEntityUID<ConditionalName>`] back into a [`ActionEntityUID<RawName>`].
+    /// As of this writing, [`ActionEntityUID<RawName>`] has a `Display` impl while
+    /// [`ActionEntityUID<ConditionalName>`] does not.
+    pub(crate) fn as_raw(&self) -> ActionEntityUID<RawName> {
+        ActionEntityUID {
+            id: self.id.clone(),
+            ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
+        }
+    }
+}
+
+impl From<ActionEntityUID<Name>> for EntityUID {
+    fn from(aeuid: ActionEntityUID<Name>) -> Self {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = aeuid.ty.expect("by INVARIANT on self.ty");
+        EntityUID::from_components(ty.into(), Eid::new(aeuid.id), None)
+    }
+}
+
+impl From<EntityUID> for ActionEntityUID<Name> {
+    fn from(euid: EntityUID) -> Self {
+        let (ty, id) = euid.components();
+        ActionEntityUID {
+            ty: Some(ty.into()),
+            id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
         }
     }
 }

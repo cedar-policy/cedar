@@ -15,7 +15,9 @@
  */
 
 use cedar_policy_core::{ast::EntityUID, transitive_closure};
+use itertools::{Either, Itertools};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use thiserror::Error;
 
 use crate::human_schema;
@@ -146,26 +148,26 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
-    /// Undeclared action(s) used in the `memberOf` field of an action.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
     /// This error occurs when we cannot resolve a typename (because it refers
     /// to an entity type or common type that was not declared).
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeResolution(#[from] schema_errors::TypeResolutionError),
-    /// Duplicate specifications for an entity type. Argument is the name of
-    /// the duplicate entity type.
+    /// This error occurs when we cannot resolve an action name used in the
+    /// `memberOf` field of an action (because it refers to an action that was
+    /// not declared).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionResolution(#[from] schema_errors::ActionResolutionError),
+    /// Duplicate specifications for an entity type
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateEntityType(#[from] schema_errors::DuplicateEntityTypeError),
-    /// Duplicate specifications for an action. Argument is the name of the
-    /// duplicate action.
+    /// Duplicate specifications for an action
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateAction(#[from] schema_errors::DuplicateActionError),
-    /// Duplicate specification for a reusable type declaration.
+    /// Duplicate specification for a common type declaration
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateCommonType(#[from] schema_errors::DuplicateCommonTypeError),
@@ -217,6 +219,11 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     CommonTypeInvariantViolation(#[from] schema_errors::CommonTypeInvariantViolationError),
+    /// Could not find a definition for an action, at a point in the code where
+    /// internal invariants should guarantee that we would find one.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionInvariantViolation(#[from] schema_errors::ActionInvariantViolationError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -230,6 +237,37 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
             }
             transitive_closure::TcError::HasCycle(err) => {
                 schema_errors::CycleInActionHierarchyError(err.vertex_with_loop().clone()).into()
+            }
+        }
+    }
+}
+
+impl SchemaError {
+    /// Given one or more `SchemaError`, collect them into a single `SchemaError`.
+    /// Due to current structures, some errors may have to be dropped in some cases.
+    pub fn join_nonempty(errs: NonEmpty<SchemaError>) -> SchemaError {
+        // if we have any `TypeResolutionError`s, we can report all of those at once (but have to drop the others).
+        // Same for `ActionResolutionError`s.
+        // Any other error, we can just report the first one and have to drop the others.
+        let (type_res_errors, other_errors): (Vec<_>, Vec<_>) =
+            errs.into_iter().partition_map(|e| match e {
+                SchemaError::TypeResolution(e) => Either::Left(e),
+                _ => Either::Right(e),
+            });
+        if let Some(errs) = NonEmpty::from_vec(type_res_errors) {
+            schema_errors::TypeResolutionError::join_nonempty(errs).into()
+        } else {
+            let (action_res_errors, other_errors): (Vec<_>, Vec<_>) =
+                other_errors.into_iter().partition_map(|e| match e {
+                    SchemaError::ActionResolution(e) => Either::Left(e),
+                    _ => Either::Right(e),
+                });
+            if let Some(errs) = NonEmpty::from_vec(action_res_errors) {
+                schema_errors::ActionResolutionError::join_nonempty(errs).into()
+            } else {
+                // PANIC SAFETY: `other_errors` was created by partitioning a `NonEmpty` into what we now know is an empty vector and this, so this cannot be empty
+                #[allow(clippy::expect_used)]
+                other_errors.into_iter().next().expect("cannot be nonempty")
             }
         }
     }
@@ -308,26 +346,6 @@ pub mod schema_errors {
         }
     }
 
-    /// Undeclared actions error
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
-    pub struct UndeclaredActionsError(pub(crate) BTreeSet<SmolStr>);
-
-    impl Display for UndeclaredActionsError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if self.0.len() == 1 {
-                write!(f, "undeclared action: ")?;
-            } else {
-                write!(f, "undeclared actions: ")?;
-            }
-            join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
-        }
-    }
-
     /// Type resolution error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -341,17 +359,47 @@ pub mod schema_errors {
     impl TypeResolutionError {
         /// Combine all the errors into a single `TypeResolutionError`.
         ///
-        /// Returns `None` if the input `errs` was empty, otherwise returns `Some`.
-        pub(crate) fn join(errs: impl IntoIterator<Item = TypeResolutionError>) -> Option<Self> {
-            NonEmpty::collect(errs.into_iter().flat_map(|err| err.0)).map(Self)
-        }
-
-        /// Combine all the errors into a single `TypeResolutionError`.
-        ///
-        /// Unlike `join()`, this cannot fail, because `NonEmpty` guarantees
-        /// there is at least one error to join.
+        /// This cannot fail, because `NonEmpty` guarantees there is at least
+        /// one error to join.
         pub(crate) fn join_nonempty(errs: NonEmpty<TypeResolutionError>) -> Self {
             Self(errs.flat_map(|err| err.0))
+        }
+    }
+
+    /// Action resolution error
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
+    pub struct ActionResolutionError(
+        pub(crate) NonEmpty<crate::schema_file_format::ActionEntityUID<crate::ConditionalName>>,
+    );
+
+    impl ActionResolutionError {
+        /// Combine all the errors into a single `ActionResolutionError`.
+        ///
+        /// This cannot fail, because `NonEmpty` guarantees there is at least
+        /// one error to join.
+        pub(crate) fn join_nonempty(errs: NonEmpty<ActionResolutionError>) -> Self {
+            Self(errs.flat_map(|err| err.0))
+        }
+    }
+
+    impl Display for ActionResolutionError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.0.len() == 1 {
+                write!(f, "undeclared action: ")?;
+            } else {
+                write!(f, "undeclared actions: ")?;
+            }
+            join_with_conjunction(
+                f,
+                "and",
+                self.0.iter().map(|aeuid| aeuid.as_raw()),
+                |f, s| s.fmt(f),
+            )
         }
     }
 
@@ -602,5 +650,19 @@ pub mod schema_errors {
     pub struct CommonTypeInvariantViolationError {
         /// Fully-qualified [`Name`] of the common type we failed to find a definition for
         pub(crate) name: Name,
+    }
+
+    /// Could not find a definition for an action, at a point in the code where
+    /// internal invariants should guarantee that we would find one.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Error, Debug, Diagnostic)]
+    #[error("internal invariant violated: failed to find {} for {}", if .euids.len() > 1 { "action definitions" } else { "an action definition" }, .euids.iter().join(", "))]
+    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
+    pub struct ActionInvariantViolationError {
+        /// Fully-qualified [`EntityUID`]s of the action(s) we failed to find a definition for
+        pub(crate) euids: NonEmpty<EntityUID>,
     }
 }

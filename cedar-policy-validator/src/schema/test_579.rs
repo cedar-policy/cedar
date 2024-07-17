@@ -8,8 +8,7 @@
 //! C. Inside the body of a common-type definition
 //! D. As an entity parent type
 //! E. In an action `appliesTo` declaration
-//! F. Inside an action attribute type?
-//! G. In an action parent declaration?
+//! F. In an action parent declaration
 //!
 //! and scenario is all the ways a typename can resolve:
 //! 1. the typename is written without a namespace
@@ -795,6 +794,312 @@ fn E3_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
+/// Generate human-schema syntax for F1a.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1a_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action ActionGroup;
+        action Read in [ActionGroup];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F1a.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1a_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+                "Read": {
+                    "memberOf": [ { "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F1b.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1b_human_schema() -> &'static str {
+    r#"
+    action ActionGroup;
+    namespace NS1 {
+        action Read in [ActionGroup];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F1b.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1b_json_schema() -> serde_json::Value {
+    json!({
+        "": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+            }
+        },
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F1c.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1c_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action Read in [ActionGroup];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F1c.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F1c_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F2a.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2a_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action ActionGroup;
+        action Read in [NS1::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F2a.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2a_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+                "Read": {
+                    "memberOf": [ { "type": "NS1::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F2b.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2b_human_schema() -> &'static str {
+    r#"
+    action ActionGroup;
+    namespace NS1 {
+        action Read in [NS1::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F2b.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2b_json_schema() -> serde_json::Value {
+    json!({
+        "" : {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+            }
+        },
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "type": "NS1::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F2c.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2c_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action Read in [NS1::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F2c.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F2c_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "type": "NS1::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F3a.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3a_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action ActionGroup;
+        action Read in [NS2::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F3a.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3a_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+                "Read": {
+                    "memberOf": [ { "type": "NS2::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F3b.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3b_human_schema() -> &'static str {
+    r#"
+    action ActionGroup;
+    namespace NS1 {
+        action Read in [NS2::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F3b.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3b_json_schema() -> serde_json::Value {
+    json!({
+        "": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+            }
+        },
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "type": "NS2::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F3c.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3c_human_schema() -> &'static str {
+    r#"
+    namespace NS1 {
+        action Read in [NS2::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F3c.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3c_json_schema() -> serde_json::Value {
+    json!({
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "type": "NS2::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
+/// Generate human-schema syntax for F3d.
+/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3d_human_schema() -> &'static str {
+    r#"
+    namespace NS2 {
+        action ActionGroup;
+    }
+    namespace NS1 {
+        action Read in [NS2::Action::"ActionGroup"];
+    }
+    "#
+}
+
+/// Generate JSON syntax for F3d.
+/// (F tests cannot use the standard `a1_json()` etc, because they need action
+/// declarations instead of entity/common declarations.)
+fn F3d_json_schema() -> serde_json::Value {
+    json!({
+        "NS2": {
+            "entityTypes": {},
+            "actions": {
+                "ActionGroup": {},
+            }
+        },
+        "NS1": {
+            "entityTypes": {},
+            "actions": {
+                "Read": {
+                    "memberOf": [ { "type": "NS2::Action", "id": "ActionGroup" } ],
+                }
+            }
+        }
+    })
+}
+
 // ####
 //
 // For explanations of all of the below tests and their naming, see comments
@@ -1542,6 +1847,76 @@ fn E3d2_human() {
             .build(),
     );
 }
+#[test]
+fn F1a_human() {
+    assert_parses_successfully_human(F1a_human_schema());
+}
+#[test]
+fn F1b_human() {
+    assert_parses_successfully_human(F1b_human_schema());
+}
+#[test]
+fn F1c_human() {
+    assert_parse_error_human(
+        F1c_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F2a_human() {
+    assert_parses_successfully_human(F2a_human_schema());
+}
+#[test]
+fn F2b_human() {
+    assert_parse_error_human(
+        F2b_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F2c_human() {
+    assert_parse_error_human(
+        F2c_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3a_human() {
+    assert_parse_error_human(
+        F3a_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3b_human() {
+    assert_parse_error_human(
+        F3b_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3c_human() {
+    assert_parse_error_human(
+        F3c_human_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3d_human() {
+    assert_parses_successfully_human(F3d_human_schema());
+}
 
 // json versions
 #[test]
@@ -2180,4 +2555,74 @@ fn E3d2_json() {
             .help("`NS2::MyType` has not been declared as an entity type")
             .build(),
     );
+}
+#[test]
+fn F1a_json() {
+    assert_parses_successfully_json(F1a_json_schema());
+}
+#[test]
+fn F1b_json() {
+    assert_parses_successfully_json(F1b_json_schema());
+}
+#[test]
+fn F1c_json() {
+    assert_parse_error_json(
+        F1c_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F2a_json() {
+    assert_parses_successfully_json(F2a_json_schema());
+}
+#[test]
+fn F2b_json() {
+    assert_parse_error_json(
+        F2b_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F2c_json() {
+    assert_parse_error_json(
+        F2c_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3a_json() {
+    assert_parse_error_json(
+        F3a_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3b_json() {
+    assert_parse_error_json(
+        F3b_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3c_json() {
+    assert_parse_error_json(
+        F3c_json_schema(),
+        &ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
+            .help("any actions appearing as parents need to be declared as actions")
+            .build(),
+    );
+}
+#[test]
+fn F3d_json() {
+    assert_parses_successfully_json(F3d_json_schema());
 }

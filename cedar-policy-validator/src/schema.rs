@@ -129,18 +129,27 @@ impl ValidatorSchemaFragment<ConditionalName> {
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_common_defs: &HashSet<Name>,
         all_entity_defs: &HashSet<Name>,
-    ) -> std::result::Result<ValidatorSchemaFragment<Name>, TypeResolutionError> {
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<ValidatorSchemaFragment<Name>> {
         let (nsdefs, errs) = self
             .0
             .into_iter()
-            .map(|ns_def| ns_def.fully_qualify_type_references(all_common_defs, all_entity_defs))
-            .partition_result::<Vec<ValidatorNamespaceDef<Name>>, Vec<TypeResolutionError>, _, _>();
+            .map(|ns_def| {
+                ns_def.fully_qualify_type_references(
+                    all_common_defs,
+                    all_entity_defs,
+                    all_action_defs,
+                )
+            })
+            .partition_result::<Vec<ValidatorNamespaceDef<Name>>, Vec<SchemaError>, _, _>();
         if let Some(errs) = NonEmpty::from_vec(errs) {
-            Err(TypeResolutionError::join_nonempty(errs))
+            Err(SchemaError::join_nonempty(errs))
         } else {
             Ok(ValidatorSchemaFragment(nsdefs))
         }
@@ -289,7 +298,7 @@ impl ValidatorSchema {
             .chain(std::iter::once(cedar_fragment(extensions)))
             .collect::<Vec<_>>();
 
-        // Build the sets of all entity and common type definitions
+        // Build the sets of all entity type, common type, and action definitions
         // (fully-qualified `Name`s) in all fragments.
         let all_entity_defs = fragments
             .iter()
@@ -301,6 +310,11 @@ impl ValidatorSchema {
             .flat_map(|f| f.0.iter())
             .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
             .collect::<HashSet<Name>>();
+        let all_action_defs = fragments
+            .iter()
+            .flat_map(|f| f.0.iter())
+            .flat_map(|ns_def| ns_def.all_declared_action_names().cloned())
+            .collect::<HashSet<EntityUID>>();
 
         // Add aliases for primitive and extension typenames in the empty namespace,
         // so that they can be accessed without `__cedar`.
@@ -326,9 +340,9 @@ impl ValidatorSchema {
             }
         }
 
-        // Now use `all_entity_defs` and `all_common_defs` to resolve all
-        // [`ConditionalName`] type references into fully-qualified [`Name`]
-        // references.
+        // Now use `all_entity_defs`, `all_common_defs`, and `all_action_defs`
+        // to resolve all [`ConditionalName`] type references into
+        // fully-qualified [`Name`] references.
         // ("Resolve" here just means convert to fully-qualified `Name`s; it
         // does not mean inlining common types / typedefs -- that will come
         // later.)
@@ -336,11 +350,16 @@ impl ValidatorSchema {
         // `ValidatorSchemaFragment<Name>`.
         let (fragments, errs) = fragments
             .into_iter()
-            .map(|frag| frag.fully_qualify_type_references(&all_common_defs, &all_entity_defs))
-            .partition_result::<Vec<ValidatorSchemaFragment<Name>>, Vec<TypeResolutionError>, _, _>(
-            );
+            .map(|frag| {
+                frag.fully_qualify_type_references(
+                    &all_common_defs,
+                    &all_entity_defs,
+                    &all_action_defs,
+                )
+            })
+            .partition_result::<Vec<ValidatorSchemaFragment<Name>>, Vec<SchemaError>, _, _>();
         if let Some(errs) = NonEmpty::from_vec(errs) {
-            return Err(TypeResolutionError::join_nonempty(errs).into());
+            return Err(SchemaError::join_nonempty(errs));
         }
 
         // Now that all references are fully-qualified, we can build the aggregate
@@ -432,7 +451,7 @@ impl ValidatorSchema {
         for (euid, action) in action_fragments.iter() {
             for parent in action.parents.iter() {
                 action_children
-                    .entry(parent.clone())
+                    .entry(parent.clone().into())
                     .or_insert_with(HashSet::new)
                     .insert(euid.clone());
             }
@@ -526,10 +545,7 @@ impl ValidatorSchema {
         }
 
         // Undeclared actions in a `memberOf` list.
-        let undeclared_a = undeclared_parent_actions
-            .into_iter()
-            .map(|n| n.to_smolstr())
-            .collect::<BTreeSet<_>>();
+        let undeclared_a = undeclared_parent_actions.into_iter();
         // For actions, we check entity references in the context attribute
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
@@ -551,8 +567,10 @@ impl ValidatorSchema {
         if !undeclared_e.is_empty() {
             return Err(UndeclaredEntityTypesError(undeclared_e).into());
         }
-        if !undeclared_a.is_empty() {
-            return Err(UndeclaredActionsError(undeclared_a).into());
+        if let Some(euids) = NonEmpty::collect(undeclared_a) {
+            // This should not happen, because undeclared actions should be caught
+            // earlier, when we are resolving action names into fully-qualified [`Name`]s.
+            return Err(ActionInvariantViolationError { euids }.into());
         }
 
         Ok(())
@@ -2811,8 +2829,13 @@ mod test_resolver {
             .iter()
             .flat_map(|nsdef| nsdef.all_declared_entity_type_names().cloned())
             .collect();
+        let all_action_defs = schema
+            .0
+            .iter()
+            .flat_map(|nsdef| nsdef.all_declared_action_names().cloned())
+            .collect();
         let schema = schema
-            .fully_qualify_type_references(&all_common_defs, &all_entity_defs)
+            .fully_qualify_type_references(&all_common_defs, &all_entity_defs, &all_action_defs)
             .unwrap();
         let mut type_defs = HashMap::new();
         for def in schema.0 {
