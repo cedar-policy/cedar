@@ -185,15 +185,19 @@ impl NameCollisionsError {
 
 /// Convert a [`SchemaFragment`] to a string containing human schema syntax
 ///
-/// REVIEW: The existing code throws an error if any fully-qualified name in a
-/// non-empty namespace is a valid common type and also a valid entity type.
-/// 1) I think this check is more conservative than necessary? Schemas are
-/// allowed to shadow an entity type with a common type declaration in the same
-/// namespace; see RFCs 24 and 70. What the human syntax can't express is if, in
-/// that situation, we then specifically refer to the shadowed entity type name.
-/// But it's harder to walk all type references than it is to walk all type
-/// declarations, so perhaps the conservative code here is fine.
-/// 2) This code is also likely the cause of #1063; see that issue
+/// As of this writing, this existing code throws an error if any
+/// fully-qualified name in a non-empty namespace is a valid common type and
+/// also a valid entity type.
+//
+// Two notes:
+// 1) This check is more conservative than necessary. Schemas are allowed to
+// shadow an entity type with a common type declaration in the same namespace;
+// see RFCs 24 and 70. What the human syntax can't express is if, in that
+// situation, we then specifically refer to the shadowed entity type name.  But
+// it's harder to walk all type references than it is to walk all type
+// declarations, so the conservative code here is fine; we can always make it
+// less conservative in the future without breaking people.
+// 2) This code is also likely the cause of #1063; see that issue
 pub fn json_schema_to_custom_schema_str<N: Display>(
     json_schema: &SchemaFragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {
