@@ -509,7 +509,10 @@ pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    Json(#[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))] JsonValueWithNoDuplicateKeys),
+    Json(
+        #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
+        JsonValueWithNoDuplicateKeys,
+    ),
 }
 
 impl Schema {

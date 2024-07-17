@@ -41,7 +41,7 @@ thread_local!(
     static AUTHORIZER: Authorizer = Authorizer::new();
 );
 
-/// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types\
+/// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "isAuthorized"))]
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.parse() {

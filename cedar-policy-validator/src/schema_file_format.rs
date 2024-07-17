@@ -65,7 +65,10 @@ use crate::{
 #[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
 pub struct SchemaFragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition<N>>"))]
+    #[cfg_attr(
+        feature = "wasm",
+        tsify(type = "Record<string, NamespaceDefinition<N>>")
+    )]
     pub HashMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
