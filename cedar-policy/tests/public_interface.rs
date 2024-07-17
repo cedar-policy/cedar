@@ -437,7 +437,7 @@ fn change_ids() {
 
 #[test]
 fn get_valid_request_pars_tests() {
-    let policy = Policy::from_str(
+    let policy = Template::from_str(
         r#"
     @id("E1,E2 a,a2 R2")
     permit (principal, action, resource is NS::R2);
@@ -475,31 +475,33 @@ fn get_valid_request_pars_tests() {
     .unwrap()
     .0;
     assert_eq!(
-        get_valid_request_pars(&policy, &schema),
-        (
-            HashSet::from_iter(["NS::E1".parse().unwrap(), "NS::E2".parse().unwrap()]),
-            HashSet::from_iter([
-                r#"NS::Action::"a""#.parse().unwrap(),
-                r#"NS::Action::"a2""#.parse().unwrap()
-            ]),
-            HashSet::from_iter(["NS::R2".parse().unwrap()])
-        )
+        policy.get_valid_request_envs(&schema),
+        HashSet::from_iter([
+            RequestEnv::new(
+                "NS::E1".parse().unwrap(),
+                "NS::Action::\"a\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+            RequestEnv::new(
+                "NS::E2".parse().unwrap(),
+                "NS::Action::\"a\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+            RequestEnv::new(
+                "NS::E2".parse().unwrap(),
+                "NS::Action::\"a2\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+        ])
     );
 
     // refer to undeclared entity type, the result should be all empty sets
-    let policy = Policy::from_str(
+    let policy = Template::from_str(
         r#"
     @id("E1,E2 a,a2 R2")
     permit (principal, action, resource is NS::R3);
     "#,
     )
     .unwrap();
-    assert_eq!(
-        get_valid_request_pars(&policy, &schema),
-        (
-            HashSet::from_iter([]),
-            HashSet::from_iter([]),
-            HashSet::from_iter([])
-        )
-    );
+    assert_eq!(policy.get_valid_request_envs(&schema), HashSet::new(),);
 }

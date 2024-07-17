@@ -2069,6 +2069,58 @@ pub(crate) fn fold_partition<T, A, B, E>(
     Ok((lefts, rights))
 }
 
+/// The "type" of an [`Request`], i.e., the [`EntityTypeName`]s of principal
+/// and resource, and the [`EntityUid`] of action
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RequestEnv {
+    pub(crate) principal: EntityTypeName,
+    pub(crate) action: EntityUid,
+    pub(crate) resource: EntityTypeName,
+}
+
+impl RequestEnv {
+    /// Construct a [`RequestEnv`]
+    pub fn new(principal: EntityTypeName, action: EntityUid, resource: EntityTypeName) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+        }
+    }
+    /// Get the principal type name
+    pub fn principal(&self) -> &EntityTypeName {
+        &self.principal
+    }
+
+    /// Get the action [`EntityUid`]
+    pub fn action(&self) -> &EntityUid {
+        &self.action
+    }
+
+    /// Get the resource type name
+    pub fn resource(&self) -> &EntityTypeName {
+        &self.resource
+    }
+}
+
+impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
+    fn from(value: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
+        match value {
+            cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                ..
+            } => Self {
+                principal: principal.clone().into(),
+                resource: resource.clone().into(),
+                action: action.clone().into(),
+            },
+            _ => unreachable!("unsupported feature"),
+        }
+    }
+}
+
 /// Policy template datatype
 #[derive(Debug, Clone)]
 pub struct Template {
@@ -2247,6 +2299,27 @@ impl Template {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> HashSet<RequestEnv> {
+        let tc = Typechecker::new(
+            &s.0,
+            cedar_policy_validator::ValidationMode::Strict,
+            self.ast.id().clone(),
+        );
+        tc.typecheck_by_request_env(&self.ast)
+            .into_iter()
+            .filter_map(|(env, pc)| {
+                if matches!(pc, PolicyCheck::Success(_)) {
+                    Some(env.into())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -3617,37 +3690,4 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
-}
-
-/// Get a tuple of valid principal [`EntityTypeName`]s, action [`EntityUid`]s, and resource [`EntityTypeName`]s.
-pub fn get_valid_request_pars(
-    p: &Policy,
-    s: &Schema,
-) -> (
-    HashSet<EntityTypeName>,
-    HashSet<EntityUid>,
-    HashSet<EntityTypeName>,
-) {
-    let mut principals = HashSet::new();
-    let mut actions = HashSet::new();
-    let mut resources = HashSet::new();
-    let tc = Typechecker::new(
-        &s.0,
-        cedar_policy_validator::ValidationMode::Strict,
-        p.ast.id().clone(),
-    );
-    for (env, pc) in &tc.typecheck_by_request_env(p.ast.template()) {
-        if matches!(pc, PolicyCheck::Success(_)) {
-            // PANIC SAFETY: `principal_entity_type` returns `Some` when the validation mode is strict
-            #[allow(clippy::unwrap_used)]
-            principals.insert(env.principal_entity_type().cloned().unwrap().into());
-            // PANIC SAFETY: `resource_entity_type` returns `Some` when the validation mode is strict
-            #[allow(clippy::unwrap_used)]
-            resources.insert(env.resource_entity_type().cloned().unwrap().into());
-            // PANIC SAFETY: `action_entity_uid` returns `Some` when the validation mode is strict
-            #[allow(clippy::unwrap_used)]
-            actions.insert(env.action_entity_uid().cloned().unwrap().into());
-        }
-    }
-    (principals, actions, resources)
 }

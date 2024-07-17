@@ -18,7 +18,10 @@
 use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 // Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
 // `*_json_str` APIs will correctly error if the input JSON string contains
@@ -342,6 +345,24 @@ impl Template {
             .add_template(template)
             .wrap_err(format!("failed to add template{msg} to policy set"))
     }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<(HashSet<String>, HashSet<String>, HashSet<String>), miette::Report> {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = HashSet::new();
+        let mut actions = HashSet::new();
+        let mut resources = HashSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((principals, actions, resources))
+    }
 }
 
 /// Represents a set of static policies
@@ -513,6 +534,7 @@ pub enum Schema {
 }
 
 impl Schema {
+    /// Parse a [`Schema`] into a [`crate::Schema`]
     pub(super) fn parse(
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {

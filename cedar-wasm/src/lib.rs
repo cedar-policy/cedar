@@ -22,6 +22,7 @@ mod authorizer;
 mod formatter;
 mod policies_and_templates;
 mod schema_and_entities_and_context;
+mod utils;
 mod validator;
 
 pub use authorizer::wasm_is_authorized;
@@ -32,6 +33,7 @@ pub use policies_and_templates::{
 pub use schema_and_entities_and_context::{
     check_parse_context, check_parse_entities, check_parse_schema,
 };
+pub use utils::*;
 pub use validator::wasm_validate;
 
 #[wasm_bindgen(js_name = "getCedarVersion")]
