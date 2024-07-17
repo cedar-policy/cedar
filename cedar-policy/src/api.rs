@@ -23,6 +23,7 @@
 )]
 
 mod id;
+use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
 mod err;
@@ -3616,4 +3617,37 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
+}
+
+/// Get a tuple of valid principal [`EntityTypeName`]s, action [`EntityUid`]s, and resource [`EntityTypeName`]s.
+pub fn get_valid_request_pars(
+    p: &Policy,
+    s: &Schema,
+) -> (
+    HashSet<EntityTypeName>,
+    HashSet<EntityUid>,
+    HashSet<EntityTypeName>,
+) {
+    let mut principals = HashSet::new();
+    let mut actions = HashSet::new();
+    let mut resources = HashSet::new();
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_validator::ValidationMode::Strict,
+        p.ast.id().clone(),
+    );
+    for (env, pc) in &tc.typecheck_by_request_env(p.ast.template()) {
+        if matches!(pc, PolicyCheck::Success(_)) {
+            // PANIC SAFETY: `principal_entity_type` returns `Some` when the validation mode is strict
+            #[allow(clippy::unwrap_used)]
+            principals.insert(env.principal_entity_type().cloned().unwrap().into());
+            // PANIC SAFETY: `resource_entity_type` returns `Some` when the validation mode is strict
+            #[allow(clippy::unwrap_used)]
+            resources.insert(env.resource_entity_type().cloned().unwrap().into());
+            // PANIC SAFETY: `action_entity_uid` returns `Some` when the validation mode is strict
+            #[allow(clippy::unwrap_used)]
+            actions.insert(env.action_entity_uid().cloned().unwrap().into());
+        }
+    }
+    (principals, actions, resources)
 }
