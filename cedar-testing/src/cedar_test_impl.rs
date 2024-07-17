@@ -29,6 +29,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
 use miette::miette;
 use serde::{Deserialize, Serialize};
+use core::panic;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -201,6 +202,18 @@ pub trait CedarTestImplementation {
         schema: &ValidatorSchema,
         policies: &PolicySet,
         mode: ValidationMode,
+    ) -> TestResult<TestValidationResult>;
+
+    fn validate_request(
+        &self, 
+        schema: &ValidatorSchema,
+        request: &Request
+    ) -> TestResult<TestValidationResult>;
+
+    fn validate_entities(
+        &self,
+        schema: &ValidatorSchema,
+        entities: &Entities
     ) -> TestResult<TestValidationResult>;
 
     /// `ErrorComparisonMode` that should be used for this `CedarTestImplementation`
@@ -393,6 +406,21 @@ impl CedarTestImplementation for RustEngine {
             timing_info: HashMap::from([("validate".into(), Micros(duration.as_micros()))]),
         };
         TestResult::Success(response)
+    }
+    fn validate_entities(
+            &self,
+            schema: &ValidatorSchema,
+            entities: &Entities
+        ) -> TestResult<TestValidationResult> {
+        panic!("TODO");
+    }
+
+    fn validate_request(
+            &self, 
+            schema: &ValidatorSchema,
+            request: &Request
+        ) -> TestResult<TestValidationResult> {
+        panic!("TODO");
     }
 
     fn error_comparison_mode(&self) -> ErrorComparisonMode {
