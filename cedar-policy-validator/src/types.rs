@@ -2125,7 +2125,7 @@ mod test {
             Extensions::all_available(),
         )
         .expect("Schema type should have converted to type.")
-        .resolve_type_defs(&HashMap::new())
+        .resolve_common_type_refs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, type_from_schema_type);
     }

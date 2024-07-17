@@ -64,22 +64,22 @@ fn is_primitive_type_name(name: &str) -> bool {
 /// longer applies: `Foo` refers specifically to the entity/common type `Foo`
 /// in the empty namespace, not `Foo` in the current namespace, wherever `Foo`
 /// appears (in common type definitions, entity attribute definitions, or
-/// as a key in the `type_defs` / `entity_types` maps).
+/// as a key in the `common_types` / `entity_types` maps).
 #[derive(Debug)]
 pub struct ValidatorNamespaceDef {
     /// The (fully-qualified) name of the namespace this is a definition of, or
     /// `None` if this is a definition for the empty namespace.
     ///
     /// This is informational only; it does not change the semantics of any
-    /// definition in `type_defs`, `entity_types`, or `actions`. All
-    /// entity/common type names in `type_defs`, `entity_types`, and `actions`
-    /// are already fully qualified/disambiguated at all appearances.
+    /// definition in `common_types`, `entity_types`, or `actions`. All
+    /// entity/common type names in `common_types`, `entity_types`, and
+    /// `actions` are already fully qualified/disambiguated at all appearances.
     /// This `namespace` field is used only in tests and by the `cedar_policy`
     /// function `SchemaFragment::namespaces()`.
     namespace: Option<Name>,
     /// Common type definitions, which can be used to define entity
     /// type attributes, action contexts, and other common types.
-    pub(super) type_defs: TypeDefs,
+    pub(super) common_types: CommonTypeDefs,
     /// Entity type declarations.
     pub(super) entity_types: EntityTypesDef,
     /// Action declarations.
@@ -100,8 +100,8 @@ impl ValidatorNamespaceDef {
 
         // Convert the type defs, actions and entity types from the schema file
         // into the representation used by the validator.
-        let type_defs =
-            TypeDefs::from_raw_typedefs(namespace_def.common_types, namespace.as_ref())?;
+        let common_types =
+            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types = EntityTypesDef::from_raw_entity_types(
@@ -112,7 +112,7 @@ impl ValidatorNamespaceDef {
 
         Ok(ValidatorNamespaceDef {
             namespace,
-            type_defs,
+            common_types,
             entity_types,
             actions,
         })
@@ -170,18 +170,18 @@ impl ValidatorNamespaceDef {
 /// map) are fully qualified, and inside the [`SchemaType`]s (values in the
 /// map), all entity/common type references are also fully qualified.
 #[derive(Debug)]
-pub struct TypeDefs {
-    pub(super) type_defs: HashMap<Name, SchemaType<Name>>,
+pub struct CommonTypeDefs {
+    pub(super) defs: HashMap<Name, SchemaType<Name>>,
 }
 
-impl TypeDefs {
-    /// Construct a [`TypeDefs`] by converting the structures used by the schema
-    /// format to those used internally by the validator.
-    pub(crate) fn from_raw_typedefs(
+impl CommonTypeDefs {
+    /// Construct a [`CommonTypeDefs`] by converting the structures used by the
+    /// schema format to those used internally by the validator.
+    pub(crate) fn from_raw_common_types(
         schema_file_type_def: HashMap<UnreservedId, SchemaType<RawName>>,
         schema_namespace: Option<&Name>,
     ) -> Result<Self> {
-        let mut type_defs = HashMap::with_capacity(schema_file_type_def.len());
+        let mut defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
             if is_primitive_type_name(id.as_ref()) {
                 return Err(SchemaError::CommonTypeNameConflict(
@@ -189,7 +189,7 @@ impl TypeDefs {
                 ));
             }
             let name = RawName::new(id).qualify_with(schema_namespace);
-            match type_defs.entry(name) {
+            match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(schema_ty.qualify_type_references(schema_namespace));
                 }
@@ -200,7 +200,7 @@ impl TypeDefs {
                 }
             }
         }
-        Ok(Self { type_defs })
+        Ok(Self { defs })
     }
 }
 
@@ -216,7 +216,7 @@ impl TypeDefs {
 /// All [`EntityType`] keys in this map are declared in this schema fragment.
 #[derive(Debug)]
 pub struct EntityTypesDef {
-    pub(super) entity_types: HashMap<EntityType, EntityTypeFragment>,
+    pub(super) defs: HashMap<EntityType, EntityTypeFragment>,
 }
 
 impl EntityTypesDef {
@@ -227,13 +227,12 @@ impl EntityTypesDef {
         schema_namespace: Option<&Name>,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_types: HashMap<EntityType, _> =
-            HashMap::with_capacity(schema_files_types.len());
+        let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
             let ety = cedar_policy_core::ast::EntityType::from(
                 RawName::new(id.clone()).qualify_with(schema_namespace),
             );
-            match entity_types.entry(ety) {
+            match defs.entry(ety) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(EntityTypeFragment::from_raw_entity_type(
                         entity_type,
@@ -246,7 +245,7 @@ impl EntityTypesDef {
                 }
             }
         }
-        Ok(EntityTypesDef { entity_types })
+        Ok(EntityTypesDef { defs })
     }
 }
 
@@ -259,10 +258,10 @@ impl EntityTypesDef {
 #[derive(Debug)]
 pub struct EntityTypeFragment {
     /// The attributes record type for this entity type. The type is wrapped in
-    /// a `WithUnresolvedTypeDefs` because it may refer to common types which
-    /// have not yet been resolved/inlined (e.g., because they are not defined
-    /// in this schema fragment).
-    pub(super) attributes: WithUnresolvedTypeDefs<Type>,
+    /// a `WithUnresolvedCommonTypeRefs` because it may refer to common types
+    /// which have not yet been resolved/inlined (e.g., because they are not
+    /// defined in this schema fragment).
+    pub(super) attributes: WithUnresolvedCommonTypeRefs<Type>,
     /// Direct parent entity types for this entity type.
     /// These are fully qualified entity types, but may be entity types declared
     /// in a different namespace or schema fragment.
@@ -358,10 +357,10 @@ impl ActionsDef {
 #[derive(Debug)]
 pub struct ActionFragment {
     /// The type of the context record for this action. The type is wrapped in
-    /// a `WithUnresolvedTypeDefs` because it may refer to common types which
-    /// have not yet been resolved/inlined (e.g., because they are not defined
-    /// in this schema fragment).
-    pub(super) context: WithUnresolvedTypeDefs<Type>,
+    /// a `WithUnresolvedCommonTypeRefs` because it may refer to common types
+    /// which have not yet been resolved/inlined (e.g., because they are not
+    /// defined in this schema fragment).
+    pub(super) context: WithUnresolvedCommonTypeRefs<Type>,
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec,
     /// The direct parent action entities for this action.
@@ -551,48 +550,53 @@ impl ActionFragment {
 }
 
 type ResolveFunc<T> = dyn FnOnce(&HashMap<&Name, Type>) -> Result<T>;
-/// Represent a type that might be defined in terms of some type definitions
-/// which are not necessarily available in the current namespace.
-pub(crate) enum WithUnresolvedTypeDefs<T> {
+/// Represent a type that might be defined in terms of some common-type
+/// definitions which are not necessarily available in the current namespace.
+pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
     WithUnresolved(Box<ResolveFunc<T>>),
     WithoutUnresolved(T),
 }
 
-impl<T: 'static> WithUnresolvedTypeDefs<T> {
+impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     pub fn new(f: impl FnOnce(&HashMap<&Name, Type>) -> Result<T> + 'static) -> Self {
         Self::WithUnresolved(Box::new(f))
     }
 
-    pub fn map<U: 'static>(self, f: impl FnOnce(T) -> U + 'static) -> WithUnresolvedTypeDefs<U> {
+    pub fn map<U: 'static>(
+        self,
+        f: impl FnOnce(T) -> U + 'static,
+    ) -> WithUnresolvedCommonTypeRefs<U> {
         match self {
-            Self::WithUnresolved(_) => {
-                WithUnresolvedTypeDefs::new(|type_defs| self.resolve_type_defs(type_defs).map(f))
-            }
-            Self::WithoutUnresolved(v) => WithUnresolvedTypeDefs::WithoutUnresolved(f(v)),
+            Self::WithUnresolved(_) => WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+                self.resolve_common_type_refs(common_type_defs).map(f)
+            }),
+            Self::WithoutUnresolved(v) => WithUnresolvedCommonTypeRefs::WithoutUnresolved(f(v)),
         }
     }
 
-    /// Instantiate any names referencing types with the definition of the type
-    /// from the input `HashMap`.
-    pub fn resolve_type_defs(self, type_defs: &HashMap<&Name, Type>) -> Result<T> {
+    /// Resolve references to common types by inlining their definitions from
+    /// the given `HashMap`.
+    pub fn resolve_common_type_refs(self, common_type_defs: &HashMap<&Name, Type>) -> Result<T> {
         match self {
-            WithUnresolvedTypeDefs::WithUnresolved(f) => f(type_defs),
-            WithUnresolvedTypeDefs::WithoutUnresolved(v) => Ok(v),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(f) => f(common_type_defs),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v) => Ok(v),
         }
     }
 }
 
-impl<T: 'static> From<T> for WithUnresolvedTypeDefs<T> {
+impl<T: 'static> From<T> for WithUnresolvedCommonTypeRefs<T> {
     fn from(value: T) -> Self {
         Self::WithoutUnresolved(value)
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for WithUnresolvedTypeDefs<T> {
+impl<T: std::fmt::Debug> std::fmt::Debug for WithUnresolvedCommonTypeRefs<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WithUnresolvedTypeDefs::WithUnresolved(_) => f.debug_tuple("WithUnresolved").finish(),
-            WithUnresolvedTypeDefs::WithoutUnresolved(v) => {
+            WithUnresolvedCommonTypeRefs::WithUnresolved(_) => {
+                f.debug_tuple("WithUnresolved").finish()
+            }
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v) => {
                 f.debug_tuple("WithoutUnresolved").field(v).finish()
             }
         }
@@ -650,7 +654,7 @@ fn parse_action_id_with_namespace(
 pub(crate) fn try_schema_type_into_validator_type(
     schema_ty: SchemaType<Name>,
     extensions: Extensions<'_>,
-) -> Result<WithUnresolvedTypeDefs<Type>> {
+) -> Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
         SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
         SchemaType::Type(SchemaTypeVariant::Long) => Ok(Type::primitive_long().into()),
@@ -703,8 +707,8 @@ pub(crate) fn try_schema_type_into_validator_type(
             }
         }
         SchemaType::CommonTypeRef { type_name } => {
-            Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-                typ_defs
+            Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
+                common_type_defs
                     .get(&type_name)
                     .cloned()
                     .ok_or(UndeclaredCommonTypesError(type_name).into())
@@ -720,8 +724,8 @@ pub(crate) fn try_schema_type_into_validator_type(
 pub(crate) fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, TypeOfAttribute<Name>)>,
     extensions: Extensions<'_>,
-) -> Result<WithUnresolvedTypeDefs<Attributes>> {
-    let attrs_with_type_defs = attrs
+) -> Result<WithUnresolvedCommonTypeRefs<Attributes>> {
+    let attrs_with_common_type_refs = attrs
         .into_iter()
         .map(|(attr, ty)| -> Result<_> {
             Ok((
@@ -733,12 +737,12 @@ pub(crate) fn parse_record_attributes(
             ))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(WithUnresolvedTypeDefs::new(|typ_defs| {
-        attrs_with_type_defs
+    Ok(WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+        attrs_with_common_type_refs
             .into_iter()
             .map(|(s, (attr_ty, is_req))| {
                 attr_ty
-                    .resolve_type_defs(typ_defs)
+                    .resolve_common_type_refs(common_type_defs)
                     .map(|ty| (s, AttributeType::new(ty, is_req)))
             })
             .collect::<Result<Vec<_>>>()

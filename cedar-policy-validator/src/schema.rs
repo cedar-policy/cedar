@@ -253,18 +253,18 @@ impl ValidatorSchema {
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment>,
         extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
-        let mut type_defs = HashMap::new();
+        let mut common_types = HashMap::new();
         let mut entity_type_fragments: HashMap<EntityType, _> = HashMap::new();
         let mut action_fragments = HashMap::new();
 
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
-            // Build aggregate maps for the declared typedefs, entity types, and
-            // actions, checking that nothing is defined twice.  Namespaces were
-            // already added by the `ValidatorNamespaceDef`, so the same base
-            // type name may appear multiple times so long as the namespaces are
-            // different.
-            for (name, ty) in ns_def.type_defs.type_defs {
-                match type_defs.entry(name) {
+            // Build aggregate maps for the declared common types, entity types,
+            // and actions, checking that nothing is defined twice.  Namespaces
+            // were already added by the `ValidatorNamespaceDef`, so the same
+            // base type name may appear multiple times so long as the
+            // namespaces are different.
+            for (name, ty) in ns_def.common_types.defs {
+                match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
                         return Err(DuplicateCommonTypeError(o.key().as_ref().clone()).into());
@@ -272,7 +272,7 @@ impl ValidatorSchema {
                 };
             }
 
-            for (name, entity_type) in ns_def.entity_types.entity_types {
+            for (name, entity_type) in ns_def.entity_types.defs {
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
@@ -291,8 +291,8 @@ impl ValidatorSchema {
             }
         }
 
-        let resolver = CommonTypeResolver::new(&type_defs);
-        let type_defs = resolver.resolve(extensions)?;
+        let resolver = CommonTypeResolver::new(&common_types);
+        let common_types = resolver.resolve(extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -320,7 +320,9 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = Self::record_attributes_or_none(
-                    entity_type.attributes.resolve_type_defs(&type_defs)?,
+                    entity_type
+                        .attributes
+                        .resolve_common_type_refs(&common_types)?,
                 )
                 .ok_or(SchemaError::from(ContextOrShapeNotRecordError(
                     ContextOrShape::EntityTypeShape(name.clone()),
@@ -350,11 +352,12 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-                let (context, open_context_attributes) =
-                    Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
-                        .ok_or(SchemaError::from(ContextOrShapeNotRecordError(
-                            ContextOrShape::ActionContext(name.clone()),
-                        )))?;
+                let (context, open_context_attributes) = Self::record_attributes_or_none(
+                    action.context.resolve_common_type_refs(&common_types)?,
+                )
+                .ok_or(SchemaError::from(ContextOrShapeNotRecordError(
+                    ContextOrShape::ActionContext(name.clone()),
+                )))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
@@ -391,6 +394,7 @@ impl ValidatorSchema {
             entity_children.into_keys(),
             &action_ids,
             action_children.into_keys(),
+            common_types.into_values(),
         )?;
 
         Ok(ValidatorSchema {
@@ -408,6 +412,7 @@ impl ValidatorSchema {
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
+        common_types: impl IntoIterator<Item = Type>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -429,6 +434,11 @@ impl ValidatorSchema {
                     &mut undeclared_e,
                 );
             }
+        }
+
+        // Check for undeclared entity types within common types.
+        for common_type in common_types {
+            Self::check_undeclared_in_type(&common_type, entity_types, &mut undeclared_e);
         }
 
         // Undeclared actions in a `memberOf` list.
@@ -679,11 +689,20 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 /// It facilitates inlining the definitions of common types.
 #[derive(Debug)]
 struct CommonTypeResolver<'a> {
-    /// Common type declarations to resolve
-    type_defs: &'a HashMap<Name, SchemaType<Name>>,
+    /// Definition of each common type.
+    ///
+    /// Definitions (values in the map) may refer to other common-type names,
+    /// but not in a way that causes a cycle.
+    ///
+    /// In this map, names are already fully-qualified, both in common-type
+    /// definitions (keys in the map) and in common-type references appearing in
+    /// [`SchemaType`]s (values in the map).
+    defs: &'a HashMap<Name, SchemaType<Name>>,
     /// The dependency graph among common type names.
     /// The graph contains a vertex for each `Name` and `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a directed edge in the graph.
-    /// A common type name is prefixed with the namespace id where it's declared.
+    ///
+    /// In this map, names are already fully-qualified, both in keys and values
+    /// in the map.
     graph: HashMap<&'a Name, HashSet<&'a Name>>,
 }
 
@@ -691,12 +710,12 @@ impl<'a> CommonTypeResolver<'a> {
     /// Construct the resolver.
     /// Note that this requires that all common-type references are already
     /// fully qualified, because it uses [`Name`] and not [`RawName`].
-    fn new(type_defs: &'a HashMap<Name, SchemaType<Name>>) -> Self {
+    fn new(defs: &'a HashMap<Name, SchemaType<Name>>) -> Self {
         let mut graph = HashMap::new();
-        for (name, ty) in type_defs {
+        for (name, ty) in defs {
             graph.insert(name, HashSet::from_iter(ty.common_type_references()));
         }
-        Self { type_defs, graph }
+        Self { defs, graph }
     }
 
     /// Perform topological sort on the dependency graph
@@ -843,13 +862,13 @@ impl<'a> CommonTypeResolver<'a> {
         for &name in sorted_names.iter() {
             // PANIC SAFETY: `name.basename()` should be an existing common type id
             #[allow(clippy::unwrap_used)]
-            let ty = self.type_defs.get(name).unwrap();
+            let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
             tys.insert(
                 name,
                 try_schema_type_into_validator_type(substituted_ty, extensions)?
-                    .resolve_type_defs(&HashMap::new())?,
+                    .resolve_common_type_refs(&HashMap::new())?,
             );
         }
 
@@ -1405,7 +1424,7 @@ mod test {
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
-        .resolve_type_defs(&HashMap::new())
+        .resolve_common_type_refs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
@@ -1425,7 +1444,7 @@ mod test {
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
-        .resolve_type_defs(&HashMap::new())
+        .resolve_common_type_refs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
@@ -1452,7 +1471,7 @@ mod test {
             Extensions::all_available(),
         )
         .expect("Error converting schema type to type.")
-        .resolve_type_defs(&HashMap::new())
+        .resolve_common_type_refs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
@@ -2241,6 +2260,95 @@ mod test {
     }
 
     #[test]
+    fn undeclared_entity_type_in_common_type() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Entity",
+                      "name": "undeclared"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
+    fn undeclared_entity_type_in_common_type_record() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Record",
+                      "attributes": {
+                        "first": {
+                            "type": "Entity",
+                            "name": "undeclared"
+                        }
+                      }
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
+    fn undeclared_entity_type_in_common_type_set() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Set",
+                      "element": {
+                        "type": "Entity",
+                        "name": "undeclared"
+                      }
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
     fn unknown_extension_type() {
         let src: serde_json::Value = json!({
             "": {
@@ -2654,11 +2762,11 @@ mod test_resolver {
     fn resolve(schema_json: serde_json::Value) -> Result<HashMap<Name, Type>, SchemaError> {
         let sfrag: SchemaFragment<RawName> = serde_json::from_value(schema_json).unwrap();
         let schema: ValidatorSchemaFragment = sfrag.try_into().unwrap();
-        let mut type_defs = HashMap::new();
+        let mut defs = HashMap::new();
         for def in schema.0 {
-            type_defs.extend(def.type_defs.type_defs.into_iter());
+            defs.extend(def.common_types.defs.into_iter());
         }
-        let resolver = CommonTypeResolver::new(&type_defs);
+        let resolver = CommonTypeResolver::new(&defs);
         resolver
             .resolve(Extensions::all_available())
             .map(|map| map.into_iter().map(|(k, v)| (k.clone(), v)).collect())
