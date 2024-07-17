@@ -489,8 +489,8 @@ impl EntityTypeFragment<ConditionalName> {
                 .member_of_types
                 .into_iter()
                 .map(|raw_name| {
-                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                }) // REVIEW: here's another place to adjust if we decide we want to allow common types in this position
+                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity) // Only entity, not common, here for now; see #1064
+                })
                 .collect(),
         }
     }
