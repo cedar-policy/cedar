@@ -868,7 +868,7 @@ fn new_inner(args: &NewArgs) -> Result<()> {
     std::fs::create_dir(dir).into_diagnostic()?;
     let schema_path = dir.join("schema.cedarschema.json");
     let policy_path = dir.join("policy.cedar");
-    let entities_path = dir.join("entities.jon");
+    let entities_path = dir.join("entities.json");
     generate_schema(&schema_path)?;
     generate_policy(&policy_path)?;
     generate_entities(&entities_path)
