@@ -59,7 +59,7 @@ pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown when attempting to parse this
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
@@ -720,6 +720,7 @@ pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: String,
         /// Phantom value for the `Context` type parameter
         #[serde(skip)]

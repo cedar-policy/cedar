@@ -274,7 +274,7 @@ pub enum Policy {
     /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     Human(String),
     /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Policy {
@@ -306,7 +306,7 @@ pub enum Template {
     /// Template in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     Human(String),
     /// Template in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Template {
@@ -509,7 +509,7 @@ pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Schema {

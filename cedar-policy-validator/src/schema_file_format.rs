@@ -62,9 +62,10 @@ use crate::{
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
 pub struct SchemaFragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition<N>>"))]
     pub HashMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
