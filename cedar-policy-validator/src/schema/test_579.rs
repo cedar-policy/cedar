@@ -1132,8 +1132,10 @@ fn A1c() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1154,121 +1156,121 @@ fn A2a2() {
 }
 #[test]
 fn A2b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(A2_human()), &expected_human);
     assert_parse_error_json(A2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A2b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(A2_human()), &expected_human);
     assert_parse_error_json(A2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A2c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(A2_human()), &expected_human);
     assert_parse_error_json(A2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A3a1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a1_human(A3_human()), &expected_human);
     assert_parse_error_json(A3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn A3a2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&a2_human(A3_human()), &expected_human);
     assert_parse_error_json(A3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn A3b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(A3_human()), &expected_human);
     assert_parse_error_json(A3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A3b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(A3_human()), &expected_human);
     assert_parse_error_json(A3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A3c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(A3_human()), &expected_human);
     assert_parse_error_json(A3X1_json(c_json()), &expected_json);
 }
@@ -1307,8 +1309,10 @@ fn B1c() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1329,121 +1333,121 @@ fn B2a2() {
 }
 #[test]
 fn B2b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(B2_human()), &expected_human);
     assert_parse_error_json(B2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B2b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(B2_human()), &expected_human);
     assert_parse_error_json(B2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B2c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(B2_human()), &expected_human);
     assert_parse_error_json(B2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B3a1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a1_human(B3_human()), &expected_human);
     assert_parse_error_json(B3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn B3a2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&a2_human(B3_human()), &expected_human);
     assert_parse_error_json(B3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn B3b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(B3_human()), &expected_human);
     assert_parse_error_json(B3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B3b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(B3_human()), &expected_human);
     assert_parse_error_json(B3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B3c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(B3_human()), &expected_human);
     assert_parse_error_json(B3X1_json(c_json()), &expected_json);
 }
@@ -1482,8 +1486,10 @@ fn C1c() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1504,121 +1510,121 @@ fn C2a2() {
 }
 #[test]
 fn C2b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(C2_human()), &expected_human);
     assert_parse_error_json(C2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C2b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(C2_human()), &expected_human);
     assert_parse_error_json(C2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C2c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(C2_human()), &expected_human);
     assert_parse_error_json(C2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C3a1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a1_human(C3_human()), &expected_human);
     assert_parse_error_json(C3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn C3a2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&a2_human(C3_human()), &expected_human);
     assert_parse_error_json(C3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn C3b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(C3_human()), &expected_human);
     assert_parse_error_json(C3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C3b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common type")
+        .build();
     assert_parse_error_human(&b2_human(C3_human()), &expected_human);
     assert_parse_error_json(C3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C3c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as a common or entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as a common or entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(C3_human()), &expected_human);
     assert_parse_error_json(C3X1_json(c_json()), &expected_json);
 }
@@ -1646,8 +1652,10 @@ fn D1a2() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1670,8 +1678,10 @@ fn D1b2() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1685,8 +1695,10 @@ fn D1c() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1706,136 +1718,136 @@ fn D2a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a2_human(D2_human()), &expected_human);
     assert_parse_error_json(D2_json(a2_json()), &expected_json);
 }
 #[test]
 fn D2b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(D2_human()), &expected_human);
     assert_parse_error_json(D2_json(b1_json()), &expected_json);
 }
 #[test]
 fn D2b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b2_human(D2_human()), &expected_human);
     assert_parse_error_json(D2_json(b2_json()), &expected_json);
 }
 #[test]
 fn D2c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(D2_human()), &expected_human);
     assert_parse_error_json(D2_json(c_json()), &expected_json);
 }
 #[test]
 fn D3a1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a1_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(a1_json()), &expected_json);
 }
 #[test]
 fn D3a2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a2_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(a2_json()), &expected_json);
 }
 #[test]
 fn D3b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(b1_json()), &expected_json);
 }
 #[test]
 fn D3b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b2_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(b2_json()), &expected_json);
 }
 #[test]
 fn D3c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(c_json()), &expected_json);
 }
@@ -1850,14 +1862,12 @@ fn D3d2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&d2_human(D3_human()), &expected_human);
     assert_parse_error_json(D3_json(d2_json()), &expected_json);
 }
@@ -1875,8 +1885,10 @@ fn E1a2() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1899,8 +1911,10 @@ fn E1b2() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1914,8 +1928,10 @@ fn E1c() {
     let expected_human =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
+            // No source location on this error because the JSON structures don't carry source locations,
+            // and since the human-syntax processing works by first converting to the JSON structures,
+            // we lose the source locations at that point.
+            // See #174.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1935,136 +1951,136 @@ fn E2a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a2_human(E2_human()), &expected_human);
     assert_parse_error_json(E2_json(a2_json()), &expected_json);
 }
 #[test]
 fn E2b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(E2_human()), &expected_human);
     assert_parse_error_json(E2_json(b1_json()), &expected_json);
 }
 #[test]
 fn E2b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b2_human(E2_human()), &expected_human);
     assert_parse_error_json(E2_json(b2_json()), &expected_json);
 }
 #[test]
 fn E2c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
-            .help("`NS1::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+        .help("`NS1::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(E2_human()), &expected_human);
     assert_parse_error_json(E2_json(c_json()), &expected_json);
 }
 #[test]
 fn E3a1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a1_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(a1_json()), &expected_json);
 }
 #[test]
 fn E3a2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&a2_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(a2_json()), &expected_json);
 }
 #[test]
 fn E3b1() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b1_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(b1_json()), &expected_json);
 }
 #[test]
 fn E3b2() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS2::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&b2_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(b2_json()), &expected_json);
 }
 #[test]
 fn E3c() {
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            // TODO: why don't we have an underline here? (Uncommenting this produces test failure)
-            //.exactly_one_underline("NS1::MyType")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        // No source location on this error because the JSON structures don't carry source locations,
+        // and since the human-syntax processing works by first converting to the JSON structures,
+        // we lose the source locations at that point.
+        // See #174.
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&c_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(c_json()), &expected_json);
 }
@@ -2079,14 +2095,12 @@ fn E3d2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
-    let expected_json =
-        ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
-            .help("`NS2::MyType` has not been declared as an entity type")
-            .build();
+    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
+    let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+        .help("`NS2::MyType` has not been declared as an entity type")
+        .build();
     assert_parse_error_human(&d2_human(E3_human()), &expected_human);
     assert_parse_error_json(E3_json(d2_json()), &expected_json);
 }
