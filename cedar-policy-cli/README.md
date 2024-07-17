@@ -10,6 +10,10 @@ Cedar.
 This app uses the annotation `@id("PID")` as a simple way to define policy ids.
 This usage is not standard and annotations have custom use depending on the app.
 
+## Install
+
+To install the CLI, run `cargo install cedar-policy-cli`.
+
 ## Build
 
 You will need to install Rust, via [rustup](https://rustup.rs).
