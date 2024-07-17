@@ -274,7 +274,7 @@ pub enum Policy {
     /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     Human(String),
     /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
-    Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "Foo"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Policy {
