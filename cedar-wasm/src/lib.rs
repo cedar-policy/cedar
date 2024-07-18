@@ -21,6 +21,7 @@ use wasm_bindgen::prelude::*;
 mod formatter;
 mod policies_and_templates;
 mod schema_and_entities_and_context;
+mod utils;
 
 pub use cedar_policy::ffi::{is_authorized, validate};
 pub use formatter::wasm_format_policies;
@@ -30,6 +31,7 @@ pub use policies_and_templates::{
 pub use schema_and_entities_and_context::{
     check_parse_context, check_parse_entities, check_parse_schema,
 };
+pub use utils::*;
 
 #[wasm_bindgen(js_name = "getCedarVersion")]
 pub fn get_cedar_version() -> String {
