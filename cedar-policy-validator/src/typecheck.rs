@@ -506,7 +506,7 @@ impl<'a> Typechecker<'a> {
                     type_errors,
                     |_| None,
                 );
-                ans_test.then_typecheck(|typ_test, capability_test| {
+                ans_test.then_typecheck(|typ_test, test_capability| {
                     // If the guard has type `true` or `false`, we short circuit,
                     // looking at only the relevant branch.
                     if typ_test.data() == &Some(Type::singleton_boolean(true)) {
@@ -516,17 +516,17 @@ impl<'a> Typechecker<'a> {
                         // `principal.foo` after a condition `principal has foo`.
                         let ans_then = self.typecheck(
                             request_env,
-                            &prior_capability.union(&capability_test),
+                            &prior_capability.union(&test_capability),
                             then_expr,
                             type_errors,
                         );
 
-                        ans_then.then_typecheck(|typ_then, capability_then| {
+                        ans_then.then_typecheck(|typ_then, then_capability| {
                             TypecheckAnswer::success_with_capability(
                                 typ_then,
                                 // The output capability of the whole `if` expression also
                                 // needs to contain the capability of the condition.
-                                capability_then.union(&capability_test),
+                                then_capability.union(&test_capability),
                             )
                         })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
@@ -537,8 +537,8 @@ impl<'a> Typechecker<'a> {
                         let ans_else =
                             self.typecheck(request_env, prior_capability, else_expr, type_errors);
 
-                        ans_else.then_typecheck(|typ_else, capability_else| {
-                            TypecheckAnswer::success_with_capability(typ_else, capability_else)
+                        ans_else.then_typecheck(|typ_else, else_capability| {
+                            TypecheckAnswer::success_with_capability(typ_else, else_capability)
                         })
                     } else {
                         // When we don't short circuit, the `then` and `else`
@@ -547,11 +547,11 @@ impl<'a> Typechecker<'a> {
                         let ans_then = self
                             .typecheck(
                                 request_env,
-                                &prior_capability.union(&capability_test),
+                                &prior_capability.union(&test_capability),
                                 then_expr,
                                 type_errors,
                             )
-                            .map_capability(|ef| ef.union(&capability_test));
+                            .map_capability(|capability| capability.union(&test_capability));
                         let ans_else =
                             self.typecheck(request_env, prior_capability, else_expr, type_errors);
                         // The type of the if expression is then the least
@@ -561,8 +561,8 @@ impl<'a> Typechecker<'a> {
                         // may exist in that branch. This failure, in addition
                         // to any failure that may have occurred in the test
                         // expression, will propagate to final TypecheckAnswer.
-                        ans_then.then_typecheck(|typ_then, capability_then| {
-                            ans_else.then_typecheck(|typ_else, capability_else| {
+                        ans_then.then_typecheck(|typ_then, then_capability| {
+                            ans_else.then_typecheck(|typ_else, else_capability| {
                                 let lub_ty = self.least_upper_bound_or_error(
                                     e,
                                     vec![typ_then.data().clone(), typ_else.data().clone()],
@@ -583,7 +583,7 @@ impl<'a> Typechecker<'a> {
                                     // operand capability sets.
                                     TypecheckAnswer::success_with_capability(
                                         annot_expr,
-                                        capability_else.intersect(&capability_then),
+                                        else_capability.intersect(&then_capability),
                                     )
                                 } else {
                                     TypecheckAnswer::fail(annot_expr)
