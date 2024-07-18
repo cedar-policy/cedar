@@ -726,7 +726,7 @@ impl<'a> Typechecker<'a> {
                             match (ty_expr_left.data(), ty_expr_right.data()) {
                                 // Now the right operand is always `true`, so we can
                                 // use its capability as the result capability. The left
-                                // operand might have been `true` of `false`, but it
+                                // operand might have been `true` or `false`, but it
                                 // does not affect the value of the `||` if the
                                 // right is always `true`.
                                 (Some(_), Some(Type::True)) => {
@@ -760,7 +760,7 @@ impl<'a> Typechecker<'a> {
                                 }
                                 // When neither has a constant value, the `||`
                                 // evaluates to true if one or both is `true`. This
-                                // means we can only keep capability in the
+                                // means we can only keep capabilities in the
                                 // intersection of their capability sets.
                                 (Some(_), Some(_)) => TypecheckAnswer::success_with_capability(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
