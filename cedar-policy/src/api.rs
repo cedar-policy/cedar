@@ -2103,6 +2103,7 @@ impl RequestEnv {
     }
 }
 
+#[doc(hidden)]
 impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
     fn from(value: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
         match value {
@@ -2116,7 +2117,9 @@ impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
                 resource: resource.clone().into(),
                 action: action.clone().into(),
             },
-            _ => unreachable!("unsupported feature"),
+            //PANIC SAFETY: partial validation should not be enabled and hence `RequestEnv::UndeclaredAction` should not show up
+            #[allow(clippy::unreachable)]
+            _ => unreachable!("used unsupported feature"),
         }
     }
 }
