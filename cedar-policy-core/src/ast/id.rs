@@ -92,7 +92,9 @@ impl FromNormalizedStr for Id {
 
 /// An `Id` that is not equal to `__cedar`, as specified by RFC 52
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-pub struct UnreservedId(pub(crate) Id);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct UnreservedId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] pub(crate) Id);
 
 impl From<UnreservedId> for Id {
     fn from(value: UnreservedId) -> Self {

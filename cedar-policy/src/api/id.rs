@@ -323,7 +323,9 @@ impl From<ast::EntityUID> for EntityUid {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
-pub struct PolicyId(ast::PolicyID);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
 
 impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
@@ -371,7 +373,9 @@ impl From<PolicyId> for ast::PolicyID {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
-pub struct SlotId(ast::SlotId);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct SlotId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId);
 
 impl SlotId {
     /// Get the slot for `principal`

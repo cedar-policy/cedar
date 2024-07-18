@@ -36,6 +36,7 @@
 #![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
 // enable doc_auto_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 /// Rust public API
 mod api;
