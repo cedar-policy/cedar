@@ -29,7 +29,7 @@ impl<'a> CapabilitySet<'a> {
         CapabilitySet(HashSet::new())
     }
 
-    /// An capability set with a single [`Capability`]
+    /// A capability set with a single [`Capability`]
     pub fn singleton(e: Capability<'a>) -> Self {
         let mut set = Self::new();
         set.0.insert(e);

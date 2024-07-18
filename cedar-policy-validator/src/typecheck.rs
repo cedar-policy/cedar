@@ -362,12 +362,11 @@ impl<'a> Typechecker<'a> {
     }
 
     /// This method handles the majority of the work. Given an expression,
-    /// the type for the request, and the a prior capability for the
-    /// expression, return the result of typechecking the expression, and add
-    /// any errors encountered into the `type_errors` list. The result of
-    /// typechecking contains the type of the expression, any current capability of
-    /// the expression, and a flag indicating whether the expression
-    /// successfully typechecked.
+    /// the type for the request, and the prior capability, return the result of
+    /// typechecking the expression, and add any errors encountered into the
+    /// `type_errors` list. The result of typechecking contains the type of the
+    /// expression, any resulting capability after the expression, and a flag
+    /// indicating whether the expression successfully typechecked.
     fn typecheck<'b>(
         &self,
         request_env: &RequestEnv<'_>,
@@ -574,11 +573,11 @@ impl<'a> Typechecker<'a> {
                                     .with_same_source_loc(e)
                                     .ite(typ_test, typ_then, typ_else);
                                 if has_lub {
-                                    // Capability is not handled in the LUB computation,
-                                    // so we need to compute the capability here. When
+                                    // Capabilities are not handled in the LUB computation,
+                                    // so we need to compute resulting capability here. When
                                     // the `||` evaluates to `true`, we know that
                                     // one operand evaluated to true, but we don't
-                                    // know which. This is handled by returning an
+                                    // know which. This is handled by returning a
                                     // capability set that is the intersection of the
                                     // operand capability sets.
                                     TypecheckAnswer::success_with_capability(
@@ -618,7 +617,7 @@ impl<'a> Typechecker<'a> {
                             // Similar to the `then` branch of an `if`
                             // expression, the rhs of an `&&` is typechecked
                             // using an updated prior capability that includes
-                            // capability learned from the lhs to enable
+                            // the capability from the lhs to enable
                             // typechecking expressions like
                             // `principal has foo && principal.foo`. This is
                             // valid because `&&` short circuits at run time, so
