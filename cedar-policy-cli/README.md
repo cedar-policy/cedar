@@ -12,6 +12,8 @@ This usage is not standard and annotations have custom use depending on the app.
 
 ## Install
 
+You will need to install Rust, via [rustup](https://rustup.rs).
+
 To install the CLI, run `cargo install cedar-policy-cli`.
 
 ## Build
