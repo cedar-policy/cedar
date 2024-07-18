@@ -30,7 +30,7 @@ use cedar_policy_core::{
 
 use crate::{
     typecheck::Typechecker,
-    types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
+    types::{AttributeType, CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
     RawName, SchemaFragment, ValidationError, ValidationMode,
@@ -48,10 +48,14 @@ fn assert_typechecks_strict(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
     let mut errs = Vec::new();
-    let answer =
-        typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
-            None
-        });
+    let answer = typechecker.expect_type(
+        env,
+        &CapabilitySet::new(),
+        &e,
+        expected_type,
+        &mut errs,
+        |_| None,
+    );
 
     assert_eq!(errs, vec![], "Expression should not contain any errors.");
     assert_matches!(
@@ -71,10 +75,14 @@ fn assert_strict_type_error(
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
     let mut errs = Vec::new();
-    let answer =
-        typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
-            None
-        });
+    let answer = typechecker.expect_type(
+        env,
+        &CapabilitySet::new(),
+        &e,
+        expected_type,
+        &mut errs,
+        |_| None,
+    );
 
     assert_eq!(errs.into_iter().collect::<Vec<_>>(), vec![expected_error]);
     assert_matches!(
@@ -160,7 +168,7 @@ fn strict_typecheck_catches_regular_type_error() {
         let mut errs = Vec::new();
         typechecker.expect_type(
             &q,
-            &EffectSet::new(),
+            &CapabilitySet::new(),
             &Expr::from_str("1 + false").unwrap(),
             Type::primitive_long(),
             &mut errs,

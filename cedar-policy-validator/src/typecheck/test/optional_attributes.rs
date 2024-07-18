@@ -15,7 +15,7 @@
  */
 
 //! Contains tests for defining optional attributes and typechecking their
-//! access using the ability added by contextual effects.
+//! access using the ability added by capabilities.
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{
@@ -96,7 +96,7 @@ fn simple_and_guard_resource() {
 }
 
 #[test]
-fn principal_and_resource_in_effect() {
+fn principal_and_resource_in_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { resource has name && principal has age && resource.name == "foo" && principal.age == 1};"#,
@@ -116,7 +116,7 @@ fn and_branches_union() {
 }
 
 #[test]
-fn and_rhs_true_has_lhs_effect() {
+fn and_rhs_true_has_lhs_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name && true) && principal.name == "foo" };"#,
@@ -126,7 +126,7 @@ fn and_rhs_true_has_lhs_effect() {
 }
 
 #[test]
-fn and_lhs_true_has_rhs_effect() {
+fn and_lhs_true_has_rhs_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (true && principal has name) && principal.name == "foo" };"#,
@@ -136,7 +136,7 @@ fn and_lhs_true_has_rhs_effect() {
 }
 
 #[test]
-fn and_branches_use_prior_effect() {
+fn and_branches_use_prior_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" && principal.name == "foo") };"#,
@@ -166,7 +166,7 @@ fn or_branches_intersect() {
 }
 
 #[test]
-fn or_lhs_false_has_rhs_effect() {
+fn or_lhs_false_has_rhs_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (false || principal has name) && principal.name == "foo" };"#,
@@ -176,7 +176,7 @@ fn or_lhs_false_has_rhs_effect() {
 }
 
 #[test]
-fn or_rhs_false_has_lhs_effect() {
+fn or_rhs_false_has_lhs_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name || false) && principal.name == "foo" };"#,
@@ -186,7 +186,7 @@ fn or_rhs_false_has_lhs_effect() {
 }
 
 #[test]
-fn or_branches_use_prior_effect() {
+fn or_branches_use_prior_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" || principal.name == "foo") };"#,
@@ -206,7 +206,7 @@ fn then_guarded_access_by_test() {
 }
 
 #[test]
-fn then_guarded_access_by_prior_effect() {
+fn then_guarded_access_by_prior_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then principal.name == "foo" else false) };"#,
@@ -216,7 +216,7 @@ fn then_guarded_access_by_prior_effect() {
 }
 
 #[test]
-fn else_guarded_access_by_prior_effect() {
+fn else_guarded_access_by_prior_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then false else principal.name == "foo") };"#,
@@ -265,7 +265,7 @@ fn if_then_else_then_else_same() {
 }
 
 #[test]
-fn if_then_else_can_use_guard_effect() {
+fn if_then_else_can_use_guard_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"
@@ -428,7 +428,7 @@ fn if_then_else_as_guard_empty_intersect_fails() {
 }
 
 #[test]
-fn resource_effect_access_principal_fails() {
+fn resource_capability_access_principal_fails() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { resource has name && principal.name == "foo" };"#,
@@ -438,7 +438,7 @@ fn resource_effect_access_principal_fails() {
 }
 
 #[test]
-fn not_no_effect() {
+fn not_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { !(principal has name) && principal.name == "foo" };"#,
@@ -448,7 +448,7 @@ fn not_no_effect() {
 }
 
 #[test]
-fn true_no_effect() {
+fn true_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { true && principal.name == "foo" };"#,
@@ -458,7 +458,7 @@ fn true_no_effect() {
 }
 
 #[test]
-fn set_contains_no_effect() {
+fn set_contains_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].contains(principal has name) && principal.name == "foo" };"#,
@@ -468,7 +468,7 @@ fn set_contains_no_effect() {
 }
 
 #[test]
-fn contains_all_no_effect() {
+fn contains_all_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].containsAll([principal has name]) && principal.name == "foo" };"#,
@@ -478,7 +478,7 @@ fn contains_all_no_effect() {
 }
 
 #[test]
-fn contains_any_no_effect() {
+fn contains_any_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { [principal has name].containsAny([principal has name]) && principal.name == "foo" };"#,
@@ -488,7 +488,7 @@ fn contains_any_no_effect() {
 }
 
 #[test]
-fn like_no_effect() {
+fn like_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { "foo" like "bar" && principal.name == "foo" };"#,
@@ -498,7 +498,7 @@ fn like_no_effect() {
 }
 
 #[test]
-fn record_attr_no_effect() {
+fn record_attr_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { {name: true}.name && principal.name == "foo" };"#,
@@ -508,7 +508,7 @@ fn record_attr_no_effect() {
 }
 
 #[test]
-fn record_attr_has_no_effect() {
+fn record_attr_has_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { {name: true} has name && principal.name == "foo" };"#,
@@ -518,7 +518,7 @@ fn record_attr_has_no_effect() {
 }
 
 #[test]
-fn in_no_effect() {
+fn in_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in resource && principal.name == "foo" };"#,
@@ -528,7 +528,7 @@ fn in_no_effect() {
 }
 
 #[test]
-fn in_list_no_effect() {
+fn in_list_no_capability() {
     let policy = parse_policy(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action, resource) when { principal in [resource] && principal.name == "foo" };"#,

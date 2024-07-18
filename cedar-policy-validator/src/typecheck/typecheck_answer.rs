@@ -16,18 +16,18 @@
 
 use cedar_policy_core::ast::Expr;
 
-use crate::types::{EffectSet, Type};
+use crate::types::{CapabilitySet, Type};
 
 /// [`TypecheckAnswer`] holds the result of typechecking an expression.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum TypecheckAnswer<'a> {
-    /// Typechecking succeeded, and we know the type and a possibly empty effect
-    /// set for the expression. The effect set is the set of
+    /// Typechecking succeeded, and we know the type and a possibly empty capability
+    /// set for the expression. The capability set is the set of
     /// (expression, attribute) pairs that are known as safe to access under the
     /// assumption that the expression evaluates to true.
     TypecheckSuccess {
         expr_type: Expr<Option<Type>>,
-        expr_effect: EffectSet<'a>,
+        expr_capability: CapabilitySet<'a>,
     },
     /// Typechecking failed. We might still be able to know the type of the
     /// overall expression, but not always. For instance, an `&&` expression
@@ -43,19 +43,22 @@ pub(crate) enum TypecheckAnswer<'a> {
 
 impl<'a> TypecheckAnswer<'a> {
     /// Construct a successful [`TypecheckAnswer`] with a type but with an empty
-    /// effect set.
+    /// capability set.
     pub fn success(expr_type: Expr<Option<Type>>) -> Self {
         Self::TypecheckSuccess {
             expr_type,
-            expr_effect: EffectSet::new(),
+            expr_capability: CapabilitySet::new(),
         }
     }
 
-    /// Construct a successful [`TypecheckAnswer`] with a type and an effect.
-    pub fn success_with_effect(expr_type: Expr<Option<Type>>, expr_effect: EffectSet<'a>) -> Self {
+    /// Construct a successful [`TypecheckAnswer`] with a type and a capability.
+    pub fn success_with_capability(
+        expr_type: Expr<Option<Type>>,
+        expr_capability: CapabilitySet<'a>,
+    ) -> Self {
         Self::TypecheckSuccess {
             expr_type,
-            expr_effect,
+            expr_capability,
         }
     }
 
@@ -96,19 +99,19 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Transform the effect of this [`TypecheckAnswer`] without modifying the
+    /// Transform the capability of this [`TypecheckAnswer`] without modifying the
     /// success or type.
-    pub fn map_effect<F>(self, f: F) -> Self
+    pub fn map_capability<F>(self, f: F) -> Self
     where
-        F: FnOnce(EffectSet<'a>) -> EffectSet<'a>,
+        F: FnOnce(CapabilitySet<'a>) -> CapabilitySet<'a>,
     {
         match self {
             TypecheckAnswer::TypecheckSuccess {
                 expr_type,
-                expr_effect,
+                expr_capability,
             } => TypecheckAnswer::TypecheckSuccess {
                 expr_type,
-                expr_effect: f(expr_effect),
+                expr_capability: f(expr_capability),
             },
             TypecheckAnswer::TypecheckFail { .. } => self,
             TypecheckAnswer::RecursionLimit => self,
@@ -132,15 +135,15 @@ impl<'a> TypecheckAnswer<'a> {
     /// `TypecheckFail`, otherwise it will be returned unaltered.
     pub fn then_typecheck<F>(self, f: F) -> Self
     where
-        F: FnOnce(Expr<Option<Type>>, EffectSet<'a>) -> TypecheckAnswer<'a>,
+        F: FnOnce(Expr<Option<Type>>, CapabilitySet<'a>) -> TypecheckAnswer<'a>,
     {
         match self {
             TypecheckAnswer::TypecheckSuccess {
                 expr_type,
-                expr_effect,
-            } => f(expr_type, expr_effect),
+                expr_capability,
+            } => f(expr_type, expr_capability),
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-                f(expr_recovery_type, EffectSet::new()).into_fail()
+                f(expr_recovery_type, CapabilitySet::new()).into_fail()
             }
             TypecheckAnswer::RecursionLimit => self,
         }
@@ -155,7 +158,7 @@ impl<'a> TypecheckAnswer<'a> {
         f: F,
     ) -> TypecheckAnswer<'a>
     where
-        F: FnOnce(Vec<(Expr<Option<Type>>, EffectSet<'a>)>) -> TypecheckAnswer<'a>,
+        F: FnOnce(Vec<(Expr<Option<Type>>, CapabilitySet<'a>)>) -> TypecheckAnswer<'a>,
     {
         let mut unwrapped = Vec::new();
         let mut any_failed = false;
@@ -165,10 +168,10 @@ impl<'a> TypecheckAnswer<'a> {
             unwrapped.push(match ans {
                 TypecheckAnswer::TypecheckSuccess {
                     expr_type,
-                    expr_effect,
-                } => (expr_type, expr_effect),
+                    expr_capability,
+                } => (expr_type, expr_capability),
                 TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-                    (expr_recovery_type, EffectSet::new())
+                    (expr_recovery_type, CapabilitySet::new())
                 }
                 TypecheckAnswer::RecursionLimit => {
                     recusion_limit_reached = true;

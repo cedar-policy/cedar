@@ -17,8 +17,8 @@
 //! Defines the type structure for typechecking and various utilities for
 //! constructing and manipulating types.
 
-mod effect;
-pub use effect::*;
+mod capability;
+pub use capability::*;
 mod request_env;
 pub use request_env::*;
 
