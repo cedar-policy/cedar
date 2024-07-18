@@ -574,7 +574,7 @@ impl<'a> Typechecker<'a> {
                                     .ite(typ_test, typ_then, typ_else);
                                 if has_lub {
                                     // Capabilities are not handled in the LUB computation,
-                                    // so we need to compute resulting capability here. When
+                                    // so we need to compute the resulting capability here. When
                                     // the `||` evaluates to `true`, we know that
                                     // one operand evaluated to true, but we don't
                                     // know which. This is handled by returning a
