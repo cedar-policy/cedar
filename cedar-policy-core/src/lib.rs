@@ -18,6 +18,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
+#![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 #[macro_use]
 extern crate lalrpop_util;

@@ -49,6 +49,7 @@ extern crate tsify;
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", serde(rename = "PolicyJson"))]
 pub struct Policy {
     /// `Effect` of the policy or template
     effect: ast::Effect,

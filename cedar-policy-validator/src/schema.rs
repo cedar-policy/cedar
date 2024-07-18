@@ -394,6 +394,7 @@ impl ValidatorSchema {
             entity_children.into_keys(),
             &action_ids,
             action_children.into_keys(),
+            common_types.into_values(),
         )?;
 
         Ok(ValidatorSchema {
@@ -411,6 +412,7 @@ impl ValidatorSchema {
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
+        common_types: impl IntoIterator<Item = Type>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -432,6 +434,11 @@ impl ValidatorSchema {
                     &mut undeclared_e,
                 );
             }
+        }
+
+        // Check for undeclared entity types within common types.
+        for common_type in common_types {
+            Self::check_undeclared_in_type(&common_type, entity_types, &mut undeclared_e);
         }
 
         // Undeclared actions in a `memberOf` list.
@@ -2248,6 +2255,95 @@ mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Demo::id"#)
                     .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
+    fn undeclared_entity_type_in_common_type() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Entity",
+                      "name": "undeclared"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
+    fn undeclared_entity_type_in_common_type_record() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Record",
+                      "attributes": {
+                        "first": {
+                            "type": "Entity",
+                            "name": "undeclared"
+                        }
+                      }
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
+                    .build());
+        });
+    }
+
+    #[test]
+    fn undeclared_entity_type_in_common_type_set() {
+        let src = json!(
+            {
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "Set",
+                      "element": {
+                        "type": "Entity",
+                        "name": "undeclared"
+                      }
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                &src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"undeclared entity type: undeclared"#)
+                    .help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`")
                     .build());
         });
     }

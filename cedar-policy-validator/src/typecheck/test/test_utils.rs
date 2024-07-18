@@ -25,7 +25,7 @@ use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_
 
 use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
-    types::{EffectSet, OpenTag, RequestEnv, Type},
+    types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
     NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
     ValidatorSchema,
@@ -85,7 +85,7 @@ impl Typechecker<'_> {
             resource_slot: None,
         };
         let mut type_errors = Vec::new();
-        let ans = self.typecheck(&request_env, &EffectSet::new(), e, &mut type_errors);
+        let ans = self.typecheck(&request_env, &CapabilitySet::new(), e, &mut type_errors);
         unique_type_errors.extend(type_errors);
         ans
     }

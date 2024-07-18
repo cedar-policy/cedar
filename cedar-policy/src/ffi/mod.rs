@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#![cfg_attr(feature = "wasm", allow(non_snake_case))]
-
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
