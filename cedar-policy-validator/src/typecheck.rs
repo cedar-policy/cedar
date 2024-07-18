@@ -702,7 +702,7 @@ impl<'a> Typechecker<'a> {
                 );
                 ans_left.then_typecheck(|ty_expr_left, capability_left| match ty_expr_left.data() {
                     // Contrary to `&&` where short circuiting did not permit
-                    // any capability, an capability can be maintained when short
+                    // any capability, a capability can be maintained when short
                     // circuiting `||`. We know the left operand is `true`, so
                     // its capability is maintained. The right operand is not
                     // evaluated, so its capability does not need to be considered.

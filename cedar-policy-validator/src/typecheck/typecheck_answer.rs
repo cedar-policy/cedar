@@ -51,7 +51,7 @@ impl<'a> TypecheckAnswer<'a> {
         }
     }
 
-    /// Construct a successful [`TypecheckAnswer`] with a type and an capability.
+    /// Construct a successful [`TypecheckAnswer`] with a type and a capability.
     pub fn success_with_capability(
         expr_type: Expr<Option<Type>>,
         expr_capability: CapabilitySet<'a>,
