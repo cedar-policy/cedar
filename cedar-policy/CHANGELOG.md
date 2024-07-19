@@ -26,8 +26,8 @@ Cedar Language Version: 4.0
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
-- Finalized the `ffi` and `wasm` modules which were preview-released in 3.2.0.
-  This involved a few additional API breaking changes in both. See #757 and #854.
+- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
+  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
