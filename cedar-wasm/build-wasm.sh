@@ -80,7 +80,7 @@ process_types_file() {
     s/{[[:space:]]*||: /{ "||": /g
     s/{[[:space:]]*+: /{ "+": /g
     s/{[[:space:]]*-: /{ "-": /g
-    s/{[[:space:]]*[*]: /{ "*": /g
+    s/{[[:space:]]*\*: /{ "*": /g
     s/{[[:space:]]*\.: /{ ".": /g
     s/ | __skip//g
     s/ { .*: __skip } |//g
