@@ -69,21 +69,21 @@ process_types_file() {
     echo "processing types file: $1"
 
     sed -e '
-    s/{[[:space:]]*!: /{ "!\": /g
-    s/{[[:space:]]*==: /{ "==\": /g
-    s/{[[:space:]]*!=: /{ "!=\": /g
-    s/{[[:space:]]*<: /{ "<\": /g
-    s/{[[:space:]]*<=: /{ "<=\": /g
-    s/{[[:space:]]*>: /{ ">\": /g
-    s/{[[:space:]]*>=: /{ ">=\": /g
-    s/{[[:space:]]*&&: /{ "\&\&\": /g
-    s/{[[:space:]]*||: /{ "||\": /g
+    s/{[[:space:]]*!: /{ "!": /g
+    s/{[[:space:]]*==: /{ "==": /g
+    s/{[[:space:]]*!=: /{ "!=": /g
+    s/{[[:space:]]*<: /{ "<": /g
+    s/{[[:space:]]*<=: /{ "<=": /g
+    s/{[[:space:]]*>: /{ ">": /g
+    s/{[[:space:]]*>=: /{ ">=": /g
+    s/{[[:space:]]*&&: /{ "&&": /g
+    s/{[[:space:]]*||: /{ "||": /g
     s/{[[:space:]]*+: /{ "+": /g
     s/{[[:space:]]*-: /{ "-": /g
     s/{[[:space:]]*[*]: /{ "*": /g
-    s/{[[:space:]]*\.: /{ ".\": /g
+    s/{[[:space:]]*\.: /{ ".": /g
     s/ | __skip//g
-    s/ { .\+: __skip } \|//g
+    s/ { .*: __skip } |//g
     ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
