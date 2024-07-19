@@ -90,4 +90,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: update llvm
+        if: ${{ matrix.os  != 'ubuntu-latest' }}
+        run: brew install llvm && export PATH="/usr/local/opt/llvm/bin:$PATH"
       - run: cd ./cedar-wasm && cargo install wasm-pack && TEST_TS=1 ./build-wasm.sh
