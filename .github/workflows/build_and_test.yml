@@ -99,7 +99,12 @@ jobs:
       - name: install typescript
         if: ${{ matrix.os  != 'ubuntu-latest' }}
         run: npm install -g typescript
-      - name: set TEST_TS env
+      - name: install wasm-pack
+        run: cargo install wasm-pack
+      - name: build wasm (ubuntu)
         if: ${{ matrix.os  == 'ubuntu-latest' }}
-        run: echo "TEST_TS=1" >> $GITHUB_OUTPUT
-      - run: echo $TEST_TS && cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh
+        run: cd ./cedar-wasm && TEST_TS=1 ./build-wasm.sh
+      - name: build wasm (macOS)
+        if: ${{ matrix.os  != 'ubuntu-latest' }}
+        # testing generated ts code fails on macOS
+        run: cd ./cedar-wasm && ./build-wasm.sh
