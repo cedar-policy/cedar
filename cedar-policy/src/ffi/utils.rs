@@ -19,7 +19,7 @@ use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     str::FromStr,
 };
 
@@ -350,12 +350,12 @@ impl Template {
     pub fn get_valid_request_envs(
         self,
         s: Schema,
-    ) -> Result<(HashSet<String>, HashSet<String>, HashSet<String>), miette::Report> {
+    ) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), miette::Report> {
         let t = self.parse(None)?;
         let (s, _) = s.parse()?;
-        let mut principals = HashSet::new();
-        let mut actions = HashSet::new();
-        let mut resources = HashSet::new();
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
         for env in t.get_valid_request_envs(&s) {
             principals.insert(env.principal.to_string());
             actions.insert(env.action.to_string());
