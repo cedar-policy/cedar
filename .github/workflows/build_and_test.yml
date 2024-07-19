@@ -92,8 +92,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: update llvm (macOS)
         if: ${{ matrix.os  == 'macos-latest-large' }}
-        run: brew install llvm && export PATH="/usr/local/opt/llvm/bin:$PATH"
+        run: brew install llvm && echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
       - name: update llvm (macOSarm64)
         if: ${{ matrix.os  == 'macos-latest' }}
-        run: brew install llvm && export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-      - run: cd ./cedar-wasm && cargo install wasm-pack && TEST_TS=1 ./build-wasm.sh
+        run: brew install llvm && echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+      - run: clang --version && cd ./cedar-wasm && cargo install wasm-pack && TEST_TS=1 ./build-wasm.sh
