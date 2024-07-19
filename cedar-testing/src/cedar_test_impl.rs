@@ -214,7 +214,7 @@ pub trait CedarTestImplementation {
     fn validate_entities(
         &self,
         schema: &ValidatorSchema,
-        entities: Vec<Entity>,
+        entities: &Vec<Entity>
     ) -> TestResult<TestValidationResult>;
 
     /// `ErrorComparisonMode` that should be used for this `CedarTestImplementation`
@@ -409,10 +409,10 @@ impl CedarTestImplementation for RustEngine {
         TestResult::Success(response)
     }
     fn validate_entities(
-        &self,
-        schema: &ValidatorSchema,
-        entities: Vec<Entity>,
-    ) -> TestResult<TestValidationResult> {
+            &self,
+            schema: &ValidatorSchema,
+            entities: &Vec<Entity>
+        ) -> TestResult<TestValidationResult> {
         panic!("TODO");
     }
 
