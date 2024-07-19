@@ -343,7 +343,11 @@ mod test {
         });
         let answer = serde_json::from_value(check_parse_schema_json(call).unwrap()).unwrap();
         let errs = assert_check_parse_is_err(answer);
-        assert_exactly_one_error(&errs, "failed to parse schema from JSON: failed to parse schema in JSON format: missing field `actions`", None);
+        assert_exactly_one_error(
+            &errs,
+            "failed to parse schema from JSON: missing field `actions`",
+            None,
+        );
     }
 
     #[test]
