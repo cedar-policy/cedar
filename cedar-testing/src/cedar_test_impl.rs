@@ -28,9 +28,9 @@ use cedar_policy_core::entities::Entities;
 use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
+use core::panic;
 use miette::miette;
 use serde::{Deserialize, Serialize};
-use core::panic;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -206,15 +206,15 @@ pub trait CedarTestImplementation {
     ) -> TestResult<TestValidationResult>;
 
     fn validate_request(
-        &self, 
+        &self,
         schema: &ValidatorSchema,
-        request: &Request
+        request: &Request,
     ) -> TestResult<TestValidationResult>;
 
     fn validate_entities(
         &self,
         schema: &ValidatorSchema,
-        entities: Vec<Entity>
+        entities: Vec<Entity>,
     ) -> TestResult<TestValidationResult>;
 
     /// `ErrorComparisonMode` that should be used for this `CedarTestImplementation`
@@ -409,18 +409,18 @@ impl CedarTestImplementation for RustEngine {
         TestResult::Success(response)
     }
     fn validate_entities(
-            &self,
-            schema: &ValidatorSchema,
-            entities: Vec<Entity>
-        ) -> TestResult<TestValidationResult> {
+        &self,
+        schema: &ValidatorSchema,
+        entities: Vec<Entity>,
+    ) -> TestResult<TestValidationResult> {
         panic!("TODO");
     }
 
     fn validate_request(
-            &self, 
-            schema: &ValidatorSchema,
-            request: &Request
-        ) -> TestResult<TestValidationResult> {
+        &self,
+        schema: &ValidatorSchema,
+        request: &Request,
+    ) -> TestResult<TestValidationResult> {
         panic!("TODO");
     }
 

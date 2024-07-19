@@ -53,7 +53,7 @@ use std::str::FromStr;
 
 /// Entity datatype
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast, Serialize)]
 pub struct Entity(ast::Entity);
 
 impl Entity {
