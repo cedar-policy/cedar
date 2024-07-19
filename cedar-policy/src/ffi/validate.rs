@@ -38,14 +38,6 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
             t: Ok((policies, schema, settings)),
             warnings,
         } => {
-            // if validation is not enabled, stop here
-            if !settings.enabled {
-                return ValidationAnswer::Success {
-                    validation_errors: Vec::new(),
-                    validation_warnings: Vec::new(),
-                    other_warnings: warnings.into_iter().map(Into::into).collect(),
-                };
-            }
             // otherwise, call `Validator::validate`
             let validator = Validator::new(schema);
             let (validation_errors, validation_warnings) = validator
@@ -155,26 +147,14 @@ impl ValidationCall {
 }
 
 /// Configuration for the validation call
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ValidationSettings {
-    /// Whether validation is enabled. If this flag is set to `false`, then
-    /// only parsing is performed. The default value is `true`.
-    enabled: bool,
     /// Used to control how a policy is validated. See comments on [`ValidationMode`].
     mode: ValidationMode,
-}
-
-impl Default for ValidationSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            mode: ValidationMode::default(),
-        }
-    }
 }
 
 /// Error (or warning) for a specified policy after validation

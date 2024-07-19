@@ -20,4 +20,6 @@ mod utils;
 pub use utils::*;
 mod validate;
 pub use validate::*;
+mod check_parse;
+pub use check_parse::*;
 mod tests;
