@@ -19,6 +19,7 @@ Cedar Language Version: 4.0
 - `Context::into_iter` to get the contents of a `Context` and `Context::merge`
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
+- Additional functionality to the JSON FFI including parsing functions
 
 ### Changed
 
