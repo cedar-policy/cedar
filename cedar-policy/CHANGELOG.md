@@ -27,25 +27,30 @@ Cedar Language Version: 4.0
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
-- Finalized the `ffi` module which was preview-released in 3.2.0.
-  This involved a few additional API breaking changes in `ffi`. See #757.
+- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
+  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional.
+  record types that differ in whether an attribute is required or optional. (#769)
 - Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
 - Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
 - Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
   instead of `Option<String>` to set the policy id (#1055, resolving #1049)
-- RFC 52 is implemented (#969). Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and `A::__cedar::B`) will be invalid.
+- Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
+  Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
+`A::__cedar::B`) are now invalid. (#969)
 
 ### Removed
 
 - Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
-- Removed the `error` extension function, which was previously used during partial evaluation.
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
+  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
+  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
+- Removed the `error` extension function, which was previously used during
+  partial evaluation. (#874)
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
