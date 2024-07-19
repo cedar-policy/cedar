@@ -80,11 +80,10 @@ jobs:
 
   wasm-build:
     name: run wasm build script
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain:
-          - stable
+        os: [ubuntu-latest, macos-latest-large, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     env:
       RUSTFLAGS: '-D warnings -F unsafe-code'
