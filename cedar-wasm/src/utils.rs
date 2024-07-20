@@ -7,16 +7,19 @@ use wasm_bindgen::prelude::*;
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[tsify(into_wasm_abi, from_wasm_abi)]
-/// struct that defines the result for the syntax validation function
+/// struct that defines the result of getting valid request environments
 pub enum GetValidRequestEnvsResult {
-    /// represents successful syntax validation
+    /// represents a successful call to [`get_valid_request_envs()`]
     Success {
         principals: Vec<String>,
         actions: Vec<String>,
         resources: Vec<String>,
     },
-    /// represents a syntax error and encloses a vector of the errors
-    Error { error: String },
+    /// represents a failed call to [`get_valid_request_envs()`]
+    Error { 
+      /// the encountered error
+      error: String 
+    },
 }
 
 /// Get valid request environment

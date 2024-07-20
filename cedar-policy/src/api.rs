@@ -2069,7 +2069,7 @@ pub(crate) fn fold_partition<T, A, B, E>(
     Ok((lefts, rights))
 }
 
-/// The "type" of an [`Request`], i.e., the [`EntityTypeName`]s of principal
+/// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
 /// and resource, and the [`EntityUid`] of action
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequestEnv {
