@@ -19,6 +19,10 @@ use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
+use super::{ReservedNameError, UncheckedName};
+
+const RESERVED_ID: &str = "__cedar";
+
 /// Identifiers. Anything in `Id` should be a valid identifier, this means it
 /// does not contain, for instance, spaces or characters like '+'; and also is
 /// not one of the Cedar reserved identifiers (at time of writing,
@@ -50,6 +54,13 @@ impl Id {
     pub fn into_smolstr(self) -> SmolStr {
         self.0
     }
+
+    /// Return if the `Id` is reserved (i.e., `__cedar`)
+    /// Note that it does not test if the `Id` string is a reserved keyword
+    /// as the parser already ensures that it is not
+    pub fn is_reserved(&self) -> bool {
+        self.as_ref() == RESERVED_ID
+    }
 }
 
 impl AsRef<str> for Id {
@@ -79,6 +90,63 @@ impl FromNormalizedStr for Id {
     }
 }
 
+/// An `Id` that is not equal to `__cedar`, as specified by RFC 52
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct UnreservedId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] pub(crate) Id);
+
+impl From<UnreservedId> for Id {
+    fn from(value: UnreservedId) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<Id> for UnreservedId {
+    type Error = ReservedNameError;
+    fn try_from(value: Id) -> Result<Self, Self::Error> {
+        if value.is_reserved() {
+            Err(ReservedNameError(UncheckedName::unqualified_name(value)))
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+impl AsRef<str> for UnreservedId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+impl std::fmt::Display for UnreservedId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::str::FromStr for UnreservedId {
+    type Err = ParseErrors;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Id::from_str(s).and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+    }
+}
+
+impl FromNormalizedStr for UnreservedId {
+    fn describe_self() -> &'static str {
+        "Unreserved Id"
+    }
+}
+
+impl UnreservedId {
+    /// Create an [`UnreservedId`] from an empty string
+    pub(crate) fn empty() -> Self {
+        // PANIC SAFETY: "" does not contain `__cedar`
+        #[allow(clippy::unwrap_used)]
+        Id("".into()).try_into().unwrap()
+    }
+}
+
 struct IdVisitor;
 
 impl<'de> serde::de::Visitor<'de> for IdVisitor {
@@ -105,6 +173,19 @@ impl<'de> Deserialize<'de> for Id {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(IdVisitor)
+    }
+}
+
+/// Deserialize a [`Name`] using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for UnreservedId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_str(IdVisitor)
+            .and_then(|n| n.try_into().map_err(serde::de::Error::custom))
     }
 }
 
@@ -147,6 +228,26 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
             // we use the size hint of a vector of `u8` to get an underestimate of bytes required by the sequence of choices.
             <Vec<u8> as arbitrary::Arbitrary>::size_hint(depth),
         ])
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for UnreservedId {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let id: Id = u.arbitrary()?;
+        match UnreservedId::try_from(id.clone()) {
+            Ok(id) => Ok(id),
+            Err(_) => {
+                // PANIC SAFETY: `___cedar` is a valid unreserved id
+                #[allow(clippy::unwrap_used)]
+                let new_id = format!("_{id}").parse().unwrap();
+                Ok(new_id)
+            }
+        }
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <Id as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 

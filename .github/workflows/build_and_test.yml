@@ -91,4 +91,4 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh
+      - run: cd ./cedar-wasm && cargo install wasm-pack && TEST_TS=1 ./build-wasm.sh

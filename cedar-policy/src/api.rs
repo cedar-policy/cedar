@@ -2976,13 +2976,17 @@ impl RestrictedExpression {
 fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::Name::unqualified_name("decimal".parse().unwrap())
+    ast::UncheckedName::unqualified_name("decimal".parse().unwrap())
+        .try_into()
+        .unwrap()
 }
 
 fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::Name::unqualified_name("ip".parse().unwrap())
+    ast::UncheckedName::unqualified_name("ip".parse().unwrap())
+        .try_into()
+        .unwrap()
 }
 
 impl FromStr for RestrictedExpression {

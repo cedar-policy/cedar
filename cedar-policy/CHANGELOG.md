@@ -38,6 +38,7 @@ Cedar Language Version: 4.0
 - Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
 - Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
   instead of `Option<String>` to set the policy id (#1055, resolving #1049)
+- RFC 52 is implemented (#969). Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and `A::__cedar::B`) will be invalid.
 
 ### Removed
 

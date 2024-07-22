@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.name().basename().as_ref()
+        self.0.as_ref().basename_as_ref().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -120,7 +120,11 @@ impl EntityTypeName {
     /// assert_eq!(components.next(), None);
     /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.name().namespace_components().map(AsRef::as_ref)
+        self.0
+            .name()
+            .as_ref()
+            .namespace_components()
+            .map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
@@ -132,7 +136,7 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.name().namespace()
+        self.0.as_ref().as_ref().namespace()
     }
 }
 
@@ -151,13 +155,6 @@ impl FromStr for EntityTypeName {
 impl std::fmt::Display for EntityTypeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[doc(hidden)]
-impl From<ast::Name> for EntityTypeName {
-    fn from(name: ast::Name) -> Self {
-        Self(name.into())
     }
 }
 
@@ -326,7 +323,9 @@ impl From<ast::EntityUID> for EntityUid {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
-pub struct PolicyId(ast::PolicyID);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
 
 impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
@@ -374,7 +373,9 @@ impl From<PolicyId> for ast::PolicyID {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
-pub struct SlotId(ast::SlotId);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct SlotId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId);
 
 impl SlotId {
     /// Get the slot for `principal`

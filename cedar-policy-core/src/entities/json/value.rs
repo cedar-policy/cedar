@@ -18,10 +18,6 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::ast::{
-    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
-    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
-};
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
     json::err::{EscapeKind, TypeMismatchError},
@@ -29,6 +25,13 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
+use crate::{
+    ast::{
+        expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+        ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
+    },
+    entities::Name,
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -56,7 +59,7 @@ pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown when attempting to parse this
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
@@ -717,6 +720,7 @@ pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: String,
         /// Phantom value for the `Context` type parameter
         #[serde(skip)]

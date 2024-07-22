@@ -41,7 +41,7 @@ use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint,
+    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
@@ -63,7 +63,7 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
     functions: HashSet<&'a ast::Name>,
-    methods: HashSet<&'a str>,
+    methods: HashSet<ast::UnreservedId>,
 }
 
 // Store extension function call styles
@@ -76,7 +76,7 @@ fn load_styles() -> ExtStyles<'static> {
     for func in crate::extensions::Extensions::all_available().all_funcs() {
         match func.style() {
             CallStyle::FunctionStyle => functions.insert(func.name()),
-            CallStyle::MethodStyle => methods.insert(func.name().basename().as_ref()),
+            CallStyle::MethodStyle => methods.insert(func.name().basename()),
         };
     }
     ExtStyles { functions, methods }
@@ -367,6 +367,11 @@ impl Node<Option<cst::Annotation>> {
 }
 
 impl Node<Option<cst::Ident>> {
+    /// Convert `cst::Ident` to `ast::UnreservedId`. Fails for reserved or invalid identifiers
+    pub(crate) fn to_unreserved_ident(&self) -> Result<ast::UnreservedId> {
+        self.to_valid_ident()
+            .and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+    }
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self) -> Result<ast::Id> {
         let ident = self.try_as_inner()?;
@@ -446,7 +451,7 @@ impl Node<Option<cst::Ident>> {
     }
 }
 
-impl ast::Id {
+impl ast::UnreservedId {
     fn to_meth(&self, e: ast::Expr, mut args: Vec<ast::Expr>, loc: &Loc) -> Result<ast::Expr> {
         match self.as_ref() {
             "contains" => extract_single_argument(args.into_iter(), "contains", loc)
@@ -455,22 +460,22 @@ impl ast::Id {
                 .map(|arg| construct_method_contains_all(e, arg, loc.clone())),
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
-            id => {
-                if EXTENSION_STYLES.methods.contains(&id) {
+            _ => {
+                if EXTENSION_STYLES.methods.contains(self) {
                     args.insert(0, e);
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
-                    Ok(construct_ext_meth(id.to_string(), args, loc.clone()))
+                    Ok(construct_ext_meth(self.clone(), args, loc.clone()))
                 } else {
                     let unqual_name = ast::Name::unqualified_name(self.clone());
                     if EXTENSION_STYLES.functions.contains(&unqual_name) {
                         Err(ToASTError::new(
-                            ToASTErrorKind::MethodCallOnFunction(unqual_name.id),
+                            ToASTErrorKind::MethodCallOnFunction(unqual_name.basename()),
                             loc.clone(),
                         )
                         .into())
                     } else {
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(id.to_string()),
+                            ToASTErrorKind::UnknownMethod(self.clone()),
                             loc.clone(),
                         )
                         .into())
@@ -806,8 +811,14 @@ impl ExprOrSpecial<'_> {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
-            Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
-            Self::Name { name, .. } => Ok(name),
+            Self::Var { var, .. } => {
+                // PANIC SAFETY: vars are valid unreserved names
+                #[allow(clippy::unwrap_used)]
+                Ok(ast::UncheckedName::unqualified_name(var.into())
+                    .try_into()
+                    .unwrap())
+            }
+            Self::Name { ref name, .. } => Ok(name.clone()),
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
@@ -1095,7 +1106,7 @@ impl Node<Option<cst::Unary>> {
 
 /// Temporary converted data, mirroring `cst::MemAccess`
 enum AstAccessor {
-    Field(ast::Id),
+    Field(ast::UnreservedId),
     Call(Vec<ast::Expr>),
     Index(SmolStr),
 }
@@ -1148,7 +1159,7 @@ impl Node<Option<cst::Member>> {
                     // replace the object `name` refers to with a default value since it won't be used afterwards
                     let nn = mem::replace(
                         name,
-                        ast::Name::unqualified_name(ast::Id::new_unchecked("")),
+                        ast::Name::unqualified_name(ast::UnreservedId::empty()),
                     );
                     head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
                         expr,
@@ -1176,7 +1187,8 @@ impl Node<Option<cst::Member>> {
                     let var = mem::replace(var, ast::Var::Principal);
                     let args = std::mem::take(a);
                     // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
+
                     head = id
                         .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
                         .map(|expr| Expr {
@@ -1191,7 +1203,7 @@ impl Node<Option<cst::Member>> {
                     let args = std::mem::take(a);
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
                         expr,
                         loc: self.loc.clone(),
@@ -1201,7 +1213,7 @@ impl Node<Option<cst::Member>> {
                 // method call on string literal (same as Expr case)
                 (StrLit { lit, loc: lit_loc }, [Field(i), Call(a), rest @ ..]) => {
                     let args = std::mem::take(a);
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     let maybe_expr = match to_unescaped_string(lit) {
                         Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
                         Err(escape_errs) => {
@@ -1235,11 +1247,11 @@ impl Node<Option<cst::Member>> {
                 // attribute of variable
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
                     let var = mem::replace(var, ast::Var::Principal);
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.into_smolstr(),
+                            id.as_ref().into(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1249,16 +1261,16 @@ impl Node<Option<cst::Member>> {
                 // field of arbitrary expr
                 (Expr { expr, .. }, [Field(i), rest @ ..]) => {
                     let expr = mem::replace(expr, ast::Expr::val(false));
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
-                        expr: construct_expr_attr(expr, id.into_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.as_ref().into(), self.loc.clone()),
                         loc: self.loc.clone(),
                     };
                     tail = rest;
                 }
                 // field of string literal (same as Expr case)
                 (StrLit { lit, loc: lit_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::Id::new_unchecked(""));
+                    let id = mem::replace(i, ast::UnreservedId::empty());
                     let maybe_expr = match to_unescaped_string(lit) {
                         Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
                         Err(escape_errs) => {
@@ -1268,7 +1280,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.into_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.as_ref().into(), self.loc.clone()),
                         loc: self.loc.clone(),
                     })?;
                     tail = rest;
@@ -1325,7 +1337,7 @@ impl Node<Option<cst::MemAccess>> {
 
         match acc {
             cst::MemAccess::Field(i) => {
-                let maybe_ident = i.to_valid_ident();
+                let maybe_ident = i.to_unreserved_ident();
                 maybe_ident.map(AstAccessor::Field)
             }
             cst::MemAccess::Call(args) => {
@@ -1366,10 +1378,14 @@ impl Node<Option<cst::Primary>> {
                         loc: self.loc.clone(),
                     })
                 } else {
-                    n.to_name().map(|name| ExprOrSpecial::Name {
-                        name,
-                        loc: self.loc.clone(),
-                    })
+                    n.to_unchecked_name()
+                        .and_then(|name| match name.try_into() {
+                            Ok(name) => Ok(ExprOrSpecial::Name {
+                                name,
+                                loc: self.loc.clone(),
+                            }),
+                            Err(err) => Err(ParseErrors::singleton(err)),
+                        })
                 }
             }
             cst::Primary::Expr(e) => e.to_expr().map(|expr| ExprOrSpecial::Expr {
@@ -1449,6 +1465,11 @@ impl Node<Option<cst::Name>> {
     }
 
     pub(crate) fn to_name(&self) -> Result<ast::Name> {
+        self.to_unchecked_name()
+            .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
+    }
+
+    pub(crate) fn to_unchecked_name(&self) -> Result<ast::UncheckedName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1489,29 +1510,31 @@ impl Node<Option<cst::Name>> {
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Loc) -> Result<SmolStr> {
-        if !self.path.is_empty() {
+        if !self.0.path.is_empty() {
             Err(ToASTError::new(ToASTErrorKind::PathAsAttribute(self.to_string()), loc).into())
         } else {
-            Ok(self.id.into_smolstr())
+            Ok(self.0.id.into_smolstr())
         }
     }
 
     /// If this name is a known extension function/method name or not
     pub(crate) fn is_known_extension_func_name(&self) -> bool {
         EXTENSION_STYLES.functions.contains(self)
-            || (self.path.is_empty() && EXTENSION_STYLES.methods.contains(self.id.as_ref()))
+            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&self.basename()))
     }
 
     fn into_func(self, args: Vec<ast::Expr>, loc: Loc) -> Result<ast::Expr> {
         // error on standard methods
-        if self.path.is_empty() {
-            let id = self.id.as_ref();
-            if EXTENSION_STYLES.methods.contains(id)
-                || matches!(id, "contains" | "containsAll" | "containsAny")
+        if self.0.path.is_empty() {
+            let id = self.basename();
+            if EXTENSION_STYLES.methods.contains(&id)
+                || matches!(id.as_ref(), "contains" | "containsAll" | "containsAny")
             {
-                return Err(
-                    ToASTError::new(ToASTErrorKind::FunctionCallOnMethod(self.id), loc).into(),
-                );
+                return Err(ToASTError::new(
+                    ToASTErrorKind::FunctionCallOnMethod(self.basename()),
+                    loc,
+                )
+                .into());
             }
         }
         if EXTENSION_STYLES.functions.contains(&self) {
@@ -1643,16 +1666,15 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::Name {
-    ast::Name {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::UncheckedName {
+    ast::UncheckedName {
         id,
         path: Arc::new(path),
         loc: Some(loc),
     }
 }
 fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
-    let eid = ast::Eid::new(n);
-    ast::EntityUID::from_components(p, eid, Some(loc))
+    ast::EntityUID::from_components(p, ast::Eid::new(n), Some(loc))
 }
 fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).val(r)
@@ -1791,9 +1813,8 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
 }
 
 // INVARIANT (MethodStyleArgs), args must be non-empty
-fn construct_ext_meth(n: String, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
-    let id = ast::Id::new_unchecked(n);
-    let name = ast::Name::unqualified_name(id);
+fn construct_ext_meth(n: UnreservedId, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
+    let name = ast::Name::unqualified_name(n);
     // INVARIANT (MethodStyleArgs), args must be non-empty
     ast::ExprBuilder::new()
         .with_source_loc(loc)
@@ -1821,6 +1842,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
+    use ast::{ReservedNameError, UncheckedName};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4490,6 +4512,54 @@ mod tests {
         expect_reserved_ident("false::bar::principal", "false");
         expect_reserved_ident("foo::in::principal", "in");
         expect_reserved_ident("foo::is::bar::principal", "is");
+    }
+
+    #[test]
+    fn reserved_namespace() {
+        assert_matches!(parse_expr(r#"__cedar::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"__cedar::A::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"principal is __cedar::A"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"ip("").__cedar()"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"{__cedar: 0}"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+        assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
+            Err(errs) if matches!(errs.as_ref().first(),
+                ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+        // We allow `__cedar` as an annotation identifier
+        assert_matches!(
+            parse_policy(
+                None,
+                r#"@__cedar("foo") permit(principal, action, resource);"#
+            ),
+            Ok(_)
+        );
     }
 
     #[test]

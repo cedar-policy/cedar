@@ -108,12 +108,6 @@ pub enum ExprNoExt {
     Var(ast::Var),
     /// Template slot
     Slot(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId),
-    /// Unknown (for partial evaluation)
-    Unknown {
-        /// Name of the unknown
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
-        name: SmolStr,
-    },
     /// `!`
     #[serde(rename = "!")]
     Not {
@@ -346,9 +340,12 @@ impl Expr {
         Expr::ExprNoExt(ExprNoExt::Slot(slot))
     }
 
-    /// Partial-evaluation unknowns
+    /// An extension call with one arg, which is the name of the unknown
     pub fn unknown(name: impl Into<SmolStr>) -> Self {
-        Expr::ExprNoExt(ExprNoExt::Unknown { name: name.into() })
+        Expr::ext_call(
+            "unknown".into(),
+            vec![Expr::lit(CedarValueJson::String(name.into()))],
+        )
     }
 
     /// `!`
@@ -570,9 +567,6 @@ impl Expr {
                 .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
-            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => {
-                Ok(ast::Expr::unknown(ast::Unknown::new_untyped(name)))
-            }
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
                 Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
@@ -1112,17 +1106,20 @@ fn interpret_primary(
                 (&[], cst::Ident::Action) => Ok(Either::Right(Expr::var(ast::Var::Action))),
                 (&[], cst::Ident::Resource) => Ok(Either::Right(Expr::var(ast::Var::Resource))),
                 (&[], cst::Ident::Context) => Ok(Either::Right(Expr::var(ast::Var::Context))),
-                (path, cst::Ident::Ident(id)) => Ok(Either::Left(ast::Name::new(
-                    id.parse()?,
-                    path.iter()
-                        .map(|node| {
-                            node.try_as_inner()
-                                .map_err(Into::into)
-                                .and_then(|id| id.to_string().parse().map_err(Into::into))
-                        })
-                        .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
-                    Some(node.loc.clone()),
-                ))),
+                (path, cst::Ident::Ident(id)) => Ok(Either::Left(
+                    ast::UncheckedName::new(
+                        id.parse()?,
+                        path.iter()
+                            .map(|node| {
+                                node.try_as_inner()
+                                    .map_err(Into::into)
+                                    .and_then(|id| id.to_string().parse().map_err(Into::into))
+                            })
+                            .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                        Some(node.loc.clone()),
+                    )
+                    .try_into()?,
+                )),
                 (path, id) => {
                     let (l, r, src) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
@@ -1432,7 +1429,6 @@ impl std::fmt::Display for ExprNoExt {
             ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
             ExprNoExt::Var(v) => write!(f, "{v}"),
             ExprNoExt::Slot(id) => write!(f, "{id}"),
-            ExprNoExt::Unknown { name } => write!(f, "unknown(\"{}\")", name.escape_debug()),
             ExprNoExt::Not { arg } => {
                 write!(f, "!")?;
                 maybe_with_parens(f, arg)
@@ -1610,8 +1606,7 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Record(_)) |
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) |
-        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => write!(f, "{expr}"),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => write!(f, "{expr}"),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning

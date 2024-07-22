@@ -34,7 +34,7 @@ use super::eval_extension_constructor;
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -48,7 +48,7 @@ fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -63,7 +63,7 @@ fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {

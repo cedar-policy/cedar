@@ -46,8 +46,8 @@ pub struct ValidatorActionId {
     ///
     /// This could in principle be [`ast::EntityType`], but we use [`Name`]
     /// because then [`super::ValidatorNamespaceDef<Name>`] contains all of the
-    /// right structures (as opposed to needing [`Name`] for `TypeDefs` / many
-    /// other places, and [`ast::EntityType`] here).
+    /// right structures (as opposed to needing [`Name`] for `CommonTypeDefs` /
+    /// many other places, and [`ast::EntityType`] here).
     ///
     /// We do, however, have the getters of this return [`ast::EntityType`].
     pub(crate) applies_to: ValidatorApplySpec<Name>,

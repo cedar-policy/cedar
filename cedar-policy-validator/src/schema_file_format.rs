@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Eid, EntityUID, Id, Name},
+    ast::{Eid, EntityUID, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -53,7 +53,7 @@ use crate::{
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`SchemaFragment`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`Id`] and unambiguously
+/// _that are being declared here_, which is always an [`UnreservedId`] and unambiguously
 /// refers to the [`Name`] with the appropriate implicit namespace prepended.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
@@ -66,9 +66,13 @@ use crate::{
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
 pub struct SchemaFragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
+    #[cfg_attr(
+        feature = "wasm",
+        tsify(type = "Record<string, NamespaceDefinition<N>>")
+    )]
     pub HashMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
@@ -170,7 +174,7 @@ impl<N: Display> SchemaFragment<N> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`NamespaceDefinition`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an `Id` and unambiguously
+/// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the `Name` with the implicit current/active namespace prepended.)
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -186,16 +190,16 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<Id, SchemaType<N>>,
+    pub common_types: HashMap<UnreservedId, SchemaType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<Id, EntityType<N>>,
+    pub entity_types: HashMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub actions: HashMap<SmolStr, ActionType<N>>,
 }
 
 impl<N> NamespaceDefinition<N> {
     pub fn new(
-        entity_types: impl IntoIterator<Item = (Id, EntityType<N>)>,
+        entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
@@ -288,7 +292,8 @@ impl EntityType<RawName> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AttributesOrContext<N>(
     // We use the usual `SchemaType` deserialization, but it will ultimately
-    // need to be a `Record` or type def which resolves to a `Record`.
+    // need to be a `Record` or common-type reference which resolves to a
+    // `Record`.
     pub SchemaType<N>,
 );
 
@@ -1028,7 +1033,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
                             #[allow(clippy::unwrap_used)]
                             let name = name.unwrap()?;
                             Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                                name: Id::from_normalized_str(&name).map_err(|err| {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
                                     serde::de::Error::custom(format!(
                                         "invalid extension type `{name}`: {err}"
                                     ))
@@ -1104,7 +1109,7 @@ pub enum SchemaTypeVariant<N> {
     /// Extension types
     Extension {
         /// Name of the extension type
-        name: Id,
+        name: UnreservedId,
     },
 }
 
@@ -1256,12 +1261,12 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawName> {
                 name: u.arbitrary()?,
             },
             7 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `ipaddr` is a valid `Id`
+                // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "ipaddr".parse().unwrap(),
             },
             8 => SchemaTypeVariant::Extension {
-                // PANIC SAFETY: `decimal` is a valid `Id`
+                // PANIC SAFETY: `decimal` is a valid `UnreservedId`
                 #[allow(clippy::unwrap_used)]
                 name: "decimal".parse().unwrap(),
             },

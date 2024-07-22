@@ -15,8 +15,7 @@
  */
 
 use crate::schema_errors::TypeResolutionError;
-use cedar_policy_core::ast::{Id, Name};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::ast::{Name, UnreservedId};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
@@ -33,35 +32,26 @@ use std::collections::HashSet;
 pub struct RawName(Name);
 
 impl RawName {
-    /// Create a new `RawName` from the given `Id`
-    pub fn new(id: Id) -> Self {
+    /// Create a new [`RawName`] from the given `Id`
+    pub fn new(id: UnreservedId) -> Self {
         Self(Name::unqualified_name(id))
     }
 
-    /// Create a new `RawName` from the given `Name`.
+    /// Create a new [`RawName`] from the given `Name`.
     ///
     /// Note that if `name` includes explicit namespaces, the result will be a
-    /// `RawName` that also includes those explicit namespaces, as if that
+    /// [`RawName`] that also includes those explicit namespaces, as if that
     /// fully-qualified name appeared directly in the (JSON or human) schema
     /// format.
     /// If `name` does not include explicit namespaces, the result will be a
-    /// `RawName` that also does not include explicit namespaces, which may or
+    /// [`RawName`] that also does not include explicit namespaces, which may or
     /// may not translate back to the original input `name`, due to
     /// namespace-qualification rules.
     pub fn from_name(name: Name) -> Self {
         Self(name)
     }
 
-    /// Create a new `RawName` from a basename, namespace components as `Id`s, and optional source location
-    pub fn from_components(
-        basename: Id,
-        namespace: impl IntoIterator<Item = Id>,
-        loc: Option<Loc>,
-    ) -> Self {
-        Self(Name::new(basename, namespace, loc))
-    }
-
-    /// Create a new `RawName` by parsing the provided string, which should contain
+    /// Create a new [`RawName`] by parsing the provided string, which should contain
     /// an unqualified `Name` (no explicit namespaces)
     pub fn parse_unqualified_name(
         s: &str,
@@ -69,7 +59,7 @@ impl RawName {
         Name::parse_unqualified_name(s).map(RawName)
     }
 
-    /// Create a new `RawName` by parsing the provided string, which should contain
+    /// Create a new [`RawName`] by parsing the provided string, which should contain
     /// a `Name` in normalized form.
     ///
     /// (See the [`cedar_policy_core::FromNormalizedStr`] trait.)
@@ -116,7 +106,7 @@ impl RawName {
     /// Note that if the [`RawName`] is the name of a primitive or extension
     /// type (without explicit `__cedar`), it will resolve via (2) above,
     /// because the primitive/extension type names will be added as defined
-    /// typedefs in the empty namespace (aliasing to the real `__cedar`
+    /// common types in the empty namespace (aliasing to the real `__cedar`
     /// definitions), assuming the user didn't themselves define those names
     /// in the empty namespace.
     pub fn conditionally_qualify_with(

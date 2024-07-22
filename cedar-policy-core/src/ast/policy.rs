@@ -2146,7 +2146,7 @@ mod test {
     #[test]
     fn test_iter_once() {
         let id = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid"),
             None,
         );
@@ -2158,12 +2158,12 @@ mod test {
     #[test]
     fn test_iter_mult() {
         let id1 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid1"),
             None,
         );
         let id2 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid2"),
             None,
         );
