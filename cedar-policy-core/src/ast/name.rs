@@ -406,10 +406,10 @@ impl From<UnreservedId> for Name {
 impl TryFrom<Name> for UnreservedId {
     type Error = ();
     fn try_from(value: Name) -> Result<Self, Self::Error> {
-        if value.0.path.is_empty() {
-            Err(())
-        } else {
+        if value.0.is_unqualified() {
             Ok(value.basename())
+        } else {
+            Err(())
         }
     }
 }
