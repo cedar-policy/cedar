@@ -19,6 +19,8 @@
 use clap::Parser;
 use miette::ErrorHook;
 
+#[cfg(feature = "partial-eval")]
+use cedar_policy_cli::partial_authorize;
 use cedar_policy_cli::{
     authorize, check_parse, evaluate, format_policies, link, new, translate_policy,
     translate_schema, validate, visualize, CedarExitCode, Cli, Commands, ErrorFormat,
@@ -51,5 +53,7 @@ fn main() -> CedarExitCode {
         Commands::Visualize(args) => visualize(&args),
         Commands::TranslateSchema(args) => translate_schema(&args),
         Commands::New(args) => new(&args),
+        #[cfg(feature = "partial-eval")]
+        Commands::PartiallyAuthorize(args) => partial_authorize(&args),
     }
 }
