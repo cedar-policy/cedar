@@ -207,8 +207,8 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new(ty_name.clone())
-                    .qualify_with(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone())
+                    .qualify_with_name(name.as_ref())
                     .to_smolstr()
             })
             .collect();
@@ -216,8 +216,8 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .common_types
             .keys()
             .map(|ty_name| {
-                RawName::new(ty_name.clone())
-                    .qualify_with(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone())
+                    .qualify_with_name(name.as_ref())
                     .to_smolstr()
             })
             .collect();

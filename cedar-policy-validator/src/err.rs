@@ -288,7 +288,7 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Name, UncheckedName},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name},
         parser::join_with_conjunction,
         transitive_closure,
     };
@@ -435,7 +435,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) UncheckedName);
+    pub struct DuplicateCommonTypeError(pub(crate) InternalName);
 
     /// Cycle in action hierarchy error
     //
@@ -453,7 +453,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) Name);
+    pub struct CycleInCommonTypeReferencesError(pub(crate) InternalName);
 
     /// Action declared in `entityType` list error
     //
@@ -655,8 +655,8 @@ pub mod schema_errors {
     #[error("internal invariant violated: failed to find a common-type definition for {name}")]
     #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
     pub struct CommonTypeInvariantViolationError {
-        /// Fully-qualified [`Name`] of the common type we failed to find a definition for
-        pub(crate) name: Name,
+        /// Fully-qualified [`InternalName`] of the common type we failed to find a definition for
+        pub(crate) name: InternalName,
     }
 
     /// Could not find a definition for an action, at a point in the code where

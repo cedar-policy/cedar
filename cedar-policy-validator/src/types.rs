@@ -773,6 +773,15 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
 /// is exactly that entity type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct EntityLUB {
+    /// We store `EntityType` here because these are entity types.
+    /// As of this writing, `EntityType` is backed by `Name` (rather than
+    /// `InternalName`), so this excludes entity types containing `__cedar`.
+    /// As of this writing, there are no valid entity types that contain
+    /// `__cedar`.
+    /// If that changes in the future, we will have to change this here to
+    /// `InternalName`, or change `EntityType` to be backed by `InternalName`
+    /// instead of `Name`.
+    //
     // INVARIANT: Non-empty set.
     lub_elements: BTreeSet<EntityType>,
 }

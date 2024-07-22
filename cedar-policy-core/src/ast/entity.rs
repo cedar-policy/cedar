@@ -61,15 +61,14 @@ impl EntityType {
         self.0.as_ref().loc()
     }
 
-    /// Calls [`Name::qualify_with`] on the underlying [`Name`]
+    /// Calls [`Name::qualify_with_name`] on the underlying [`Name`]
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
-        Self(self.0.qualify_with(namespace))
+        Self(self.0.qualify_with_name(namespace))
     }
 
     /// Wraps [`Name::from_normalized_str`]
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
-        UncheckedName::from_normalized_str(src)
-            .and_then(|n| n.try_into().map(Self).map_err(ParseErrors::singleton))
+        Name::from_normalized_str(src).map(Into::into)
     }
 }
 

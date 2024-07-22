@@ -17,18 +17,18 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityUID, Name, PartialValueSerializedAsExpr},
+    ast::{self, EntityUID, InternalName, PartialValueSerializedAsExpr},
     transitive_closure::TCNode,
 };
 use itertools::Itertools;
 use nonempty::NonEmpty;
-use ref_cast::RefCast;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
+use super::internal_name_to_entity_type;
 use crate::{
-    schema::TypeResolutionError,
+    schema::SchemaError,
     types::{Attributes, Type},
     ConditionalName,
 };
@@ -43,14 +43,7 @@ pub struct ValidatorActionId {
     pub(crate) name: EntityUID,
 
     /// The principals and resources that the action can be applied to.
-    ///
-    /// This could in principle be [`ast::EntityType`], but we use [`Name`]
-    /// because then [`super::ValidatorNamespaceDef<Name>`] contains all of the
-    /// right structures (as opposed to needing [`Name`] for `CommonTypeDefs` /
-    /// many other places, and [`ast::EntityType`] here).
-    ///
-    /// We do, however, have the getters of this return [`ast::EntityType`].
-    pub(crate) applies_to: ValidatorApplySpec<Name>,
+    pub(crate) applies_to: ValidatorApplySpec<ast::EntityType>,
 
     /// The set of actions that can be members of this action. When this
     /// structure is initially constructed, the field will contain direct
@@ -83,28 +76,22 @@ impl ValidatorActionId {
 
     /// The [`ast::EntityType`]s that can be the `principal` for this action.
     pub fn applies_to_principals(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.applies_to
-            .principal_apply_spec
-            .iter()
-            .map(RefCast::ref_cast)
+        self.applies_to.applicable_principal_types()
     }
 
     /// The [`ast::EntityType`]s that can be the `resource` for this action.
     pub fn applies_to_resources(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.applies_to
-            .resource_apply_spec
-            .iter()
-            .map(RefCast::ref_cast)
+        self.applies_to.applicable_resource_types()
     }
 
     /// Is the given principal type applicable for this spec?
     pub fn is_applicable_principal_type(&self, ty: &ast::EntityType) -> bool {
-        self.applies_to.principal_apply_spec.contains(ty.as_ref())
+        self.applies_to.is_applicable_principal_type(ty)
     }
 
     /// Is the given resource type applicable for this spec?
     pub fn is_applicable_resource_type(&self, ty: &ast::EntityType) -> bool {
-        self.applies_to.resource_apply_spec.contains(ty.as_ref())
+        self.applies_to.is_applicable_resource_type(ty)
     }
 }
 
@@ -130,12 +117,12 @@ impl TCNode<EntityUID> for ValidatorActionId {
 ///
 /// The parameter `N` represents the type of entity type names stored in this
 /// [`ValidatorApplySpec`]. For instance, this could be [`crate::RawName`],
-/// [`crate::ConditionalName`], or [`Name`], depending on whether the
+/// [`crate::ConditionalName`], or [`InternalName`], depending on whether the
 /// names have been resolved into fully-qualified names yet.
-/// (It could also in principle be [`ast::EntityType`], which like [`Name`]
-/// always represents a fully-qualified name, but as of this writing we always
-/// use [`Name`] for the parameter here when we want to indicate names have been
-/// fully qualified.)
+/// (It could also in principle be [`ast::EntityType`], which like
+/// [`InternalName`] and [`Name`] always represents a fully-qualified name, but
+/// as of this writing we always use [`Name`] or [`InternalName`] for the
+/// parameter here when we want to indicate names have been fully qualified.)
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ValidatorApplySpec<N> {
@@ -157,59 +144,58 @@ impl<N> ValidatorApplySpec<N> {
     }
 }
 
-impl ValidatorApplySpec<Name> {
+impl ValidatorApplySpec<ast::EntityType> {
     /// Is the given principal type applicable for this spec?
-    ///
-    /// This accepts `ty` as either [`Name`] or [`ast::EntityType`], or any
-    /// other `AsRef<Name>`
-    #[allow(dead_code)]
-    pub fn is_applicable_principal_type(&self, ty: impl AsRef<Name>) -> bool {
-        self.principal_apply_spec.contains(ty.as_ref())
+    pub fn is_applicable_principal_type(&self, ty: &ast::EntityType) -> bool {
+        self.principal_apply_spec.contains(ty)
     }
 
     /// Get the applicable principal types for this spec.
     pub fn applicable_principal_types(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.principal_apply_spec.iter().map(RefCast::ref_cast)
+        self.principal_apply_spec.iter()
     }
 
     /// Is the given resource type applicable for this spec?
-    ///
-    /// This accepts `ty` as either [`Name`] or [`ast::EntityType`], or any
-    /// other `AsRef<Name>`
-    #[allow(dead_code)]
-    pub fn is_applicable_resource_type(&self, ty: impl AsRef<Name>) -> bool {
-        self.resource_apply_spec.contains(ty.as_ref())
+    pub fn is_applicable_resource_type(&self, ty: &ast::EntityType) -> bool {
+        self.resource_apply_spec.contains(ty)
     }
 
     /// Get the applicable resource types for this spec.
     pub fn applicable_resource_types(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.resource_apply_spec.iter().map(RefCast::ref_cast)
+        self.resource_apply_spec.iter()
     }
 }
 
 impl ValidatorApplySpec<ConditionalName> {
     /// Convert this [`ValidatorApplySpec<ConditionalName>`] into a
-    /// [`ValidatorApplySpec<Name>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
+    /// [`ValidatorApplySpec<ast::EntityType>`] by fully-qualifying all
+    /// typenames that appear anywhere in any definitions, and checking that
+    /// none of these typenames contain `__cedar`.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> Result<ValidatorApplySpec<Name>, crate::schema::TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> Result<ValidatorApplySpec<ast::EntityType>, crate::schema::SchemaError> {
         let (principal_apply_spec, principal_errs) = self
             .principal_apply_spec
             .into_iter()
-            .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
-            .partition_result::<_, Vec<TypeResolutionError>, _, _>();
+            .map(|cname| {
+                let internal_name = cname.resolve(all_common_defs, all_entity_defs)?.clone();
+                internal_name_to_entity_type(internal_name).map_err(Into::into)
+            })
+            .partition_result::<_, Vec<SchemaError>, _, _>();
         let (resource_apply_spec, resource_errs) = self
             .resource_apply_spec
             .into_iter()
-            .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
-            .partition_result::<_, Vec<TypeResolutionError>, _, _>();
+            .map(|cname| {
+                let internal_name = cname.resolve(all_common_defs, all_entity_defs)?.clone();
+                internal_name_to_entity_type(internal_name).map_err(Into::into)
+            })
+            .partition_result::<_, Vec<SchemaError>, _, _>();
         match (
             NonEmpty::from_vec(principal_errs),
             NonEmpty::from_vec(resource_errs),
@@ -218,12 +204,12 @@ impl ValidatorApplySpec<ConditionalName> {
                 principal_apply_spec,
                 resource_apply_spec,
             }),
-            (Some(principal_errs), None) => Err(TypeResolutionError::join_nonempty(principal_errs)),
-            (None, Some(resource_errs)) => Err(TypeResolutionError::join_nonempty(resource_errs)),
+            (Some(principal_errs), None) => Err(SchemaError::join_nonempty(principal_errs)),
+            (None, Some(resource_errs)) => Err(SchemaError::join_nonempty(resource_errs)),
             (Some(principal_errs), Some(resource_errs)) => {
                 let mut errs = principal_errs;
                 errs.extend(resource_errs);
-                Err(TypeResolutionError::join_nonempty(errs))
+                Err(SchemaError::join_nonempty(errs))
             }
         }
     }

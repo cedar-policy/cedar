@@ -21,7 +21,7 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
+        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
         PartialValueSerializedAsExpr, UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
@@ -32,7 +32,7 @@ use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{raw_name::RawName, ValidatorApplySpec};
+use super::{internal_name_to_entity_type, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     fuzzy_match::fuzzy_search,
@@ -57,14 +57,18 @@ use crate::{
 /// attributes/parents fields in this [`ValidatorNamespaceDef`], including
 /// recursively. (It doesn't affect the type of common and entity type names
 /// _that are being declared here_, which are already fully-qualified in this
-/// representation.)
+/// representation. It only affects the type of common and entity type
+/// _references_.)
 /// For example:
 /// - `N` = [`ConditionalName`]: References to entity/common types are not
 ///     yet fully qualified/disambiguated
-/// - `N` = [`Name`]: All names have been resolved into fully-qualified
-///     [`Name`]s
+/// - `N` = [`InternalName`]: All references to entity/common types have been
+///     resolved into fully-qualified [`InternalName`]s
+///
+/// `A` is like `N`, but `A` governs typenames in `appliesTo` fields, while
+/// `N` governs all other type references.
 #[derive(Debug)]
-pub struct ValidatorNamespaceDef<N> {
+pub struct ValidatorNamespaceDef<N, A> {
     /// The (fully-qualified) name of the namespace this is a definition of, or
     /// `None` if this is a definition for the empty namespace.
     ///
@@ -76,29 +80,29 @@ pub struct ValidatorNamespaceDef<N> {
     /// implicit `namespace` directly any longer.
     /// This `namespace` field is used only in tests and by the `cedar_policy`
     /// function `SchemaFragment::namespaces()`.
-    namespace: Option<Name>,
+    namespace: Option<InternalName>,
     /// Common type definitions, which can be used to define entity
     /// type attributes, action contexts, and other common types.
     pub(super) common_types: CommonTypeDefs<N>,
     /// Entity type declarations.
     pub(super) entity_types: EntityTypesDef<N>,
     /// Action declarations.
-    pub(super) actions: ActionsDef<N>,
+    pub(super) actions: ActionsDef<N, A>,
 }
 
-impl<N> ValidatorNamespaceDef<N> {
-    /// Get the fully-qualified [`Name`]s of all entity types declared in this
-    /// [`ValidatorNamespaceDef`].
-    pub fn all_declared_entity_type_names(&self) -> impl Iterator<Item = &Name> {
+impl<N, A> ValidatorNamespaceDef<N, A> {
+    /// Get the fully-qualified [`InternalName`]s of all entity types declared
+    /// in this [`ValidatorNamespaceDef`].
+    pub fn all_declared_entity_type_names(&self) -> impl Iterator<Item = &InternalName> {
         self.entity_types
             .defs
             .keys()
-            .map(|ety| ety.as_ref())
+            .map(|ety| ety.as_ref().as_ref())
     }
 
-    /// Get the fully-qualified [`Name`]s of all common types declared in this
-    /// [`ValidatorNamespaceDef`].
-    pub fn all_declared_common_type_names(&self) -> impl Iterator<Item = &Name> {
+    /// Get the fully-qualified [`InternalName`]s of all common types declared
+    /// in this [`ValidatorNamespaceDef`].
+    pub fn all_declared_common_type_names(&self) -> impl Iterator<Item = &InternalName> {
         self.common_types.defs.keys()
     }
 
@@ -108,21 +112,21 @@ impl<N> ValidatorNamespaceDef<N> {
         self.actions.actions.keys()
     }
 
-    /// The fully-qualified [`Name`] of the namespace this is a definition of.
+    /// The fully-qualified [`InternalName`] of the namespace this is a definition of.
     /// `None` indicates this definition is for the empty namespace.
-    pub fn namespace(&self) -> Option<&Name> {
+    pub fn namespace(&self) -> Option<&InternalName> {
         self.namespace.as_ref()
     }
 }
 
-impl ValidatorNamespaceDef<ConditionalName> {
+impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// Construct a new [`ValidatorNamespaceDef<ConditionalName>`] from the raw [`NamespaceDefinition`]
     pub fn from_namespace_definition(
-        namespace: Option<Name>,
+        namespace: Option<InternalName>,
         namespace_def: NamespaceDefinition<RawName>,
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
-    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName>> {
+    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
         Self::check_action_behavior(&namespace_def, action_behavior)?;
@@ -148,9 +152,9 @@ impl ValidatorNamespaceDef<ConditionalName> {
     /// only the given common-type definitions, which are already given in
     /// terms of [`ConditionalName`]s.
     pub fn from_common_type_defs(
-        namespace: Option<Name>,
+        namespace: Option<InternalName>,
         defs: HashMap<UnreservedId, SchemaType<ConditionalName>>,
-    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName>> {
+    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
         let common_types = CommonTypeDefs::from_conditionalname_typedefs(defs, namespace.as_ref())?;
         Ok(ValidatorNamespaceDef {
             namespace,
@@ -167,9 +171,9 @@ impl ValidatorNamespaceDef<ConditionalName> {
     /// Unlike `from_common_type_defs()`, this function cannot fail, because
     /// there is only one def so it cannot have a name collision with itself
     pub fn from_common_type_def(
-        namespace: Option<Name>,
+        namespace: Option<InternalName>,
         def: (UnreservedId, SchemaType<ConditionalName>),
-    ) -> ValidatorNamespaceDef<ConditionalName> {
+    ) -> ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         let common_types = CommonTypeDefs::from_conditionalname_typedef(def, namespace.as_ref());
         ValidatorNamespaceDef {
             namespace,
@@ -180,8 +184,8 @@ impl ValidatorNamespaceDef<ConditionalName> {
     }
 
     /// Convert this [`ValidatorNamespaceDef<ConditionalName>`] into a
-    /// [`ValidatorNamespaceDef<Name>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
+    /// [`ValidatorNamespaceDef<InternalName>`] by fully-qualifying all
+    /// typenames that appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
@@ -190,10 +194,10 @@ impl ValidatorNamespaceDef<ConditionalName> {
     /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
         all_action_defs: &HashSet<EntityUID>,
-    ) -> Result<ValidatorNamespaceDef<Name>, SchemaError> {
+    ) -> Result<ValidatorNamespaceDef<InternalName, EntityType>, SchemaError> {
         match (
             self.common_types
                 .fully_qualify_type_references(all_common_defs, all_entity_defs),
@@ -268,14 +272,15 @@ impl ValidatorNamespaceDef<ConditionalName> {
     }
 }
 
-/// Holds a map from (fully qualified) [`Name`]s of common type definitions to
-/// their corresponding [`SchemaType`]. The common type [`Name`]s (keys in the
-/// map) are fully qualified, but inside the [`SchemaType`]s (values in the
-/// map), entity/common type references may or may not be fully qualified yet,
-/// depending on `N`; see notes on [`SchemaType`].
+/// Holds a map from (fully qualified) [`InternalName`]s of common type
+/// definitions to their corresponding [`SchemaType`]. The common type
+/// [`InternalName`]s (keys in the map) are fully qualified, but inside the
+/// [`SchemaType`]s (values in the map), entity/common type references may or
+/// may not be fully qualified yet, depending on `N`; see notes on
+/// [`SchemaType`].
 #[derive(Debug)]
 pub struct CommonTypeDefs<N> {
-    pub(super) defs: HashMap<Name, SchemaType<N>>,
+    pub(super) defs: HashMap<InternalName, SchemaType<N>>,
 }
 
 impl CommonTypeDefs<ConditionalName> {
@@ -284,11 +289,11 @@ impl CommonTypeDefs<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_common_types(
         schema_file_type_def: HashMap<UnreservedId, SchemaType<RawName>>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry
@@ -296,7 +301,7 @@ impl CommonTypeDefs<ConditionalName> {
                 }
                 Entry::Occupied(oentry) => {
                     return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().as_ref().clone(),
+                        oentry.key().clone(),
                     )));
                 }
             }
@@ -310,11 +315,11 @@ impl CommonTypeDefs<ConditionalName> {
     /// directly supply [`ConditionalName`]s in the typedefs
     pub(crate) fn from_conditionalname_typedefs(
         input_type_defs: HashMap<UnreservedId, SchemaType<ConditionalName>>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(input_type_defs.len());
         for (id, schema_ty) in input_type_defs {
-            let name = RawName::new(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(schema_ty);
@@ -337,28 +342,28 @@ impl CommonTypeDefs<ConditionalName> {
     /// with itself
     pub(crate) fn from_conditionalname_typedef(
         (id, schema_ty): (UnreservedId, SchemaType<ConditionalName>),
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
     ) -> Self {
         Self {
             defs: HashMap::from_iter([(
-                RawName::new(id).qualify_with(schema_namespace),
+                RawName::new_from_unreserved(id).qualify_with(schema_namespace),
                 schema_ty,
             )]),
         }
     }
 
     /// Convert this [`CommonTypeDefs<ConditionalName>`] into a
-    /// [`CommonTypeDefs<Name>`] by fully-qualifying all typenames that appear
-    /// anywhere in any definitions.
+    /// [`CommonTypeDefs<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> Result<CommonTypeDefs<Name>, TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> Result<CommonTypeDefs<InternalName>, TypeResolutionError> {
         Ok(CommonTypeDefs {
             defs: self
                 .defs
@@ -405,13 +410,13 @@ impl EntityTypesDef<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_entity_types(
         schema_files_types: HashMap<UnreservedId, schema_file_format::EntityType<RawName>>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
         for (id, entity_type) in schema_files_types {
-            let ety = cedar_policy_core::ast::EntityType::from(
-                RawName::new(id.clone()).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
-            );
+            let ety = internal_name_to_entity_type(
+                RawName::new_from_unreserved(id).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            )?;
             match defs.entry(ety) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(EntityTypeFragment::from_raw_entity_type(
@@ -428,17 +433,17 @@ impl EntityTypesDef<ConditionalName> {
     }
 
     /// Convert this [`EntityTypesDef<ConditionalName>`] into a
-    /// [`EntityTypesDef<Name>`] by fully-qualifying all typenames that appear
-    /// anywhere in any definitions.
+    /// [`EntityTypesDef<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> Result<EntityTypesDef<Name>, TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> Result<EntityTypesDef<InternalName>, TypeResolutionError> {
         Ok(EntityTypesDef {
             defs: self
                 .defs
@@ -480,7 +485,7 @@ impl EntityTypeFragment<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_entity_type(
         schema_file_type: schema_file_format::EntityType<RawName>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
     ) -> Self {
         Self {
             attributes: schema_file_type
@@ -491,15 +496,15 @@ impl EntityTypeFragment<ConditionalName> {
                 .member_of_types
                 .into_iter()
                 .map(|raw_name| {
-                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
                     // Only entity, not common, here for now; see #1064
+                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
                 })
                 .collect(),
         }
     }
 
     /// Convert this [`EntityTypeFragment<ConditionalName>`] into a
-    /// [`EntityTypeFragment<Name>`] by fully-qualifying all typenames that
+    /// [`EntityTypeFragment<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
@@ -507,15 +512,15 @@ impl EntityTypeFragment<ConditionalName> {
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> Result<EntityTypeFragment<Name>, TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> Result<EntityTypeFragment<InternalName>, TypeResolutionError> {
         // Fully qualify typenames appearing in `attributes`
         let fully_qual_attributes = self
             .attributes
             .fully_qualify_type_references(all_common_defs, all_entity_defs);
         // Fully qualify typenames appearing in `parents`
-        let parents: HashSet<Name> = self
+        let parents: HashSet<InternalName> = self
             .parents
             .into_iter()
             .map(|parent| parent.resolve(all_common_defs, all_entity_defs).cloned())
@@ -548,8 +553,8 @@ impl EntityTypeFragment<ConditionalName> {
 /// to their corresponding [`ActionFragment`]. The action [`EntityUID`]s (keys
 /// in the map) are fully qualified, but inside the [`ActionFragment`]s (values
 /// in the map), entity/common type references (including references to other actions)
-/// may or may not be fully qualified yet, depending on `N`. See notes on
-/// [`ActionFragment`].
+/// may or may not be fully qualified yet, depending on `N` and `A`. See notes
+/// on [`ActionFragment`].
 ///
 /// The [`ActionFragment`]s may also reference undeclared entity/common types
 /// and actions (that will be declared in a different schema fragment).
@@ -559,11 +564,11 @@ impl EntityTypeFragment<ConditionalName> {
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
 #[derive(Debug)]
-pub struct ActionsDef<N> {
-    pub(super) actions: HashMap<EntityUID, ActionFragment<N>>,
+pub struct ActionsDef<N, A> {
+    pub(super) actions: HashMap<EntityUID, ActionFragment<N, A>>,
 }
 
-impl<N> ActionsDef<N> {
+impl<N, A> ActionsDef<N, A> {
     /// Construct an empty [`ActionsDef`] defining no entity types.
     pub fn new() -> Self {
         Self {
@@ -572,19 +577,19 @@ impl<N> ActionsDef<N> {
     }
 }
 
-impl ActionsDef<ConditionalName> {
+impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
         schema_file_actions: HashMap<SmolStr, ActionType<RawName>>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
         extensions: Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::with_capacity(schema_file_actions.len());
         for (action_id_str, action_type) in schema_file_actions {
             let action_uid =
                 ActionEntityUID::default_type(action_id_str.clone()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
-            match actions.entry(action_uid.into()) {
+            match actions.entry(action_uid.try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
@@ -602,9 +607,9 @@ impl ActionsDef<ConditionalName> {
         Ok(Self { actions })
     }
 
-    /// Convert this [`ActionsDef<ConditionalName>`] into a [`ActionsDef<Name>`]
-    /// by fully-qualifying all typenames that appear anywhere in any
-    /// definitions.
+    /// Convert this [`ActionsDef<ConditionalName>`] into a
+    /// [`ActionsDef<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
@@ -613,10 +618,10 @@ impl ActionsDef<ConditionalName> {
     /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
         all_action_defs: &HashSet<EntityUID>,
-    ) -> Result<ActionsDef<Name>, SchemaError> {
+    ) -> Result<ActionsDef<InternalName, EntityType>, SchemaError> {
         Ok(ActionsDef {
             actions: self
                 .actions
@@ -641,16 +646,19 @@ impl ActionsDef<ConditionalName> {
 /// In this representation, references to common types may not yet have been
 /// fully resolved/inlined, and entity/common type references (including
 /// references to other actions) may not yet be fully qualified, depending on
-/// `N`. This [`ActionFragment`] may also reference undeclared entity/common
+/// `N` and `A`. This [`ActionFragment`] may also reference undeclared entity/common
 /// types and actions (that will be declared in a different schema fragment).
+///
+/// `A` is used for typenames in `applies_to`, and `N` is used for all other
+/// type references.
 #[derive(Debug)]
-pub struct ActionFragment<N> {
+pub struct ActionFragment<N, A> {
     /// The type of the context record for this action. This may contain
     /// references to common types which have not yet been resolved/inlined
     /// (e.g., because they are not defined in this schema fragment).
     pub(super) context: SchemaType<N>,
     /// The principals and resources that an action can be applied to.
-    pub(super) applies_to: ValidatorApplySpec<N>,
+    pub(super) applies_to: ValidatorApplySpec<A>,
     /// The direct parent action entities for this action.
     /// These may be actions declared in a different namespace or schema
     /// fragment, and thus not declared yet.
@@ -666,11 +674,11 @@ pub struct ActionFragment<N> {
     pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
-impl ActionFragment<ConditionalName> {
+impl ActionFragment<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_action(
         action_uid: &EntityUID,
         action_type: schema_file_format::ActionType<RawName>,
-        schema_namespace: Option<&Name>,
+        schema_namespace: Option<&InternalName>,
         extensions: Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
@@ -718,8 +726,8 @@ impl ActionFragment<ConditionalName> {
     }
 
     /// Convert this [`ActionFragment<ConditionalName>`] into an
-    /// [`ActionFragment<Name>`] by fully-qualifying all typenames that appear
-    /// anywhere in any definitions.
+    /// [`ActionFragment<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
@@ -728,10 +736,10 @@ impl ActionFragment<ConditionalName> {
     /// EUIDs that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
         all_action_defs: &HashSet<EntityUID>,
-    ) -> Result<ActionFragment<Name>, SchemaError> {
+    ) -> Result<ActionFragment<InternalName, EntityType>, SchemaError> {
         Ok(ActionFragment {
             context: self
                 .context
@@ -745,7 +753,6 @@ impl ActionFragment<ConditionalName> {
                 .map(|parent| {
                     parent
                         .fully_qualify_type_references(all_action_defs)
-                        .map(Into::into)
                         .map_err(Into::into)
                 })
                 .collect::<Result<_, SchemaError>>()?,
@@ -860,7 +867,7 @@ impl ActionFragment<ConditionalName> {
     }
 }
 
-type ResolveFunc<T> = dyn FnOnce(&HashMap<&Name, Type>) -> crate::err::Result<T>;
+type ResolveFunc<T> = dyn FnOnce(&HashMap<&InternalName, Type>) -> crate::err::Result<T>;
 /// Represent a type that might be defined in terms of some common-type
 /// definitions which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
@@ -869,7 +876,9 @@ pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
 }
 
 impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
-    pub fn new(f: impl FnOnce(&HashMap<&Name, Type>) -> crate::err::Result<T> + 'static) -> Self {
+    pub fn new(
+        f: impl FnOnce(&HashMap<&InternalName, Type>) -> crate::err::Result<T> + 'static,
+    ) -> Self {
         Self::WithUnresolved(Box::new(f))
     }
 
@@ -894,7 +903,7 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     /// return a `TypeResolutionError`.
     pub fn resolve_common_type_refs(
         self,
-        common_type_defs: &HashMap<&Name, Type>,
+        common_type_defs: &HashMap<&InternalName, Type>,
     ) -> crate::err::Result<T> {
         match self {
             WithUnresolvedCommonTypeRefs::WithUnresolved(f) => f(common_type_defs),
@@ -922,10 +931,14 @@ impl<T: std::fmt::Debug> std::fmt::Debug for WithUnresolvedCommonTypeRefs<T> {
     }
 }
 
-impl TryInto<ValidatorNamespaceDef<ConditionalName>> for NamespaceDefinition<RawName> {
+impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
+    for NamespaceDefinition<RawName>
+{
     type Error = SchemaError;
 
-    fn try_into(self) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName>> {
+    fn try_into(
+        self,
+    ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
         ValidatorNamespaceDef::from_namespace_definition(
             None,
             self,
@@ -942,7 +955,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName>> for NamespaceDefinition<Raw
 /// will also fail for some types that can be written in the schema, but are
 /// not yet implemented in the typechecking logic.
 pub(crate) fn try_schema_type_into_validator_type(
-    schema_ty: SchemaType<Name>,
+    schema_ty: SchemaType<InternalName>,
     extensions: Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
@@ -974,7 +987,7 @@ pub(crate) fn try_schema_type_into_validator_type(
             }
         }
         SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
-            Ok(Type::named_entity_reference(name.into()).into())
+            Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
         }
         SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
             let extension_type_name = Name::unqualified_name(name);
@@ -1003,10 +1016,11 @@ pub(crate) fn try_schema_type_into_validator_type(
                     .cloned()
                     // We should always have `Some` here, because if the common type
                     // wasn't defined, that error should have been caught earlier,
-                    // when the `SchemaType<Name>` was created by resolving a
-                    // `ConditionalName` into a fully-qualified `Name`. Nonetheless,
-                    // instead of panicking if that internal invariant is violated,
-                    // it's easy to return this dynamic error instead.
+                    // when the `SchemaType<InternalName>` was created by resolving a
+                    // `ConditionalName` into a fully-qualified `InternalName`.
+                    // Nonetheless, instead of panicking if that internal
+                    // invariant is violated, it's easy to return this dynamic
+                    // error instead.
                     .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
@@ -1020,9 +1034,11 @@ pub(crate) fn try_schema_type_into_validator_type(
                     None => {
                         // It wasn't a common type, so we assume it must be a valid
                         // entity type. Otherwise, we would have had an error earlier,
-                        // when the `SchemaType<Name>` was created by resolving a
-                        // `ConditionalName` into a fully-qualified `Name`.
-                        Ok(Type::named_entity_reference(EntityType::from(type_name)))
+                        // when the `SchemaType<InternalName>` was created by resolving a
+                        // `ConditionalName` into a fully-qualified `InternalName`.
+                        Ok(Type::named_entity_reference(internal_name_to_entity_type(
+                            type_name,
+                        )?))
                     }
                 }
             }))
@@ -1035,7 +1051,7 @@ pub(crate) fn try_schema_type_into_validator_type(
 /// types of the attributes into the [`Type`] data structure used by the
 /// validator, and return the result as an [`Attributes`] structure.
 fn parse_record_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, TypeOfAttribute<Name>)>,
+    attrs: impl IntoIterator<Item = (SmolStr, TypeOfAttribute<InternalName>)>,
     extensions: Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs

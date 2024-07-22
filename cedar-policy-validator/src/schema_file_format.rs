@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::{
-    ast::{Eid, EntityUID, Name, UnreservedId},
+    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -53,14 +53,16 @@ use crate::{
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`SchemaFragment`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`UnreservedId`] and unambiguously
-/// refers to the [`Name`] with the appropriate implicit namespace prepended.)
+/// _that are being declared here_, which is always an [`UnreservedId`] and
+/// unambiguously refers to the [`InternalName`] with the appropriate implicit
+/// namespace prepended.
+/// It only affects the type of common and entity type _references_.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
 /// - `N` = [`ConditionalName`]: a [`SchemaFragment`] which has been partially
 ///     processed, by converting [`RawName`]s into [`ConditionalName`]s
-/// - `N` = [`Name`]: a [`SchemaFragment`] in which all names have been
-///     resolved into fully-qualified [`Name`]s
+/// - `N` = [`InternalName`]: a [`SchemaFragment`] in which all names have been
+///     resolved into fully-qualified [`InternalName`]s
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
@@ -175,7 +177,7 @@ impl<N: Display> SchemaFragment<N> {
 /// attributes/parents fields in this [`NamespaceDefinition`], including
 /// recursively. (It doesn't affect the type of common and entity type names
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
-/// refers to the `Name` with the implicit current/active namespace prepended.)
+/// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
@@ -214,7 +216,7 @@ impl NamespaceDefinition<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> NamespaceDefinition<ConditionalName> {
         NamespaceDefinition {
             common_types: self
@@ -266,7 +268,7 @@ impl EntityType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> EntityType<ConditionalName> {
         EntityType {
             member_of_types: self
@@ -322,7 +324,7 @@ impl AttributesOrContext<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> AttributesOrContext<ConditionalName> {
         AttributesOrContext(self.0.conditionally_qualify_type_references(ns))
     }
@@ -362,7 +364,7 @@ impl ActionType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> ActionType<ConditionalName> {
         ActionType {
             attributes: self.attributes,
@@ -408,7 +410,7 @@ impl ApplySpec<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> ApplySpec<ConditionalName> {
         ApplySpec {
             resource_types: self
@@ -470,7 +472,7 @@ impl ActionEntityUID<RawName> {
     /// (Conditionally) prefix this action entity UID's typename with the given namespace
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> ActionEntityUID<ConditionalName> {
         ActionEntityUID {
             id: self.id,
@@ -486,7 +488,7 @@ impl ActionEntityUID<RawName> {
     }
 
     /// Unconditionally prefix this action entity UID's typename with the given namespace
-    pub fn qualify_with(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
+    pub fn qualify_with(self, ns: Option<&InternalName>) -> ActionEntityUID<InternalName> {
         ActionEntityUID {
             id: self.id,
             ty: {
@@ -503,7 +505,7 @@ impl ActionEntityUID<RawName> {
 
 impl ActionEntityUID<ConditionalName> {
     /// Convert this [`ActionEntityUID<ConditionalName>`] into an
-    /// [`ActionEntityUID<Name>`] by fully-qualifying its typename.
+    /// [`ActionEntityUID<InternalName>`] by fully-qualifying its typename.
     ///
     /// `all_action_defs` needs to be the full set of all fully-qualified action
     /// EUIDs that are defined in the schema (in all schema fragments).
@@ -512,20 +514,24 @@ impl ActionEntityUID<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_action_defs: &HashSet<EntityUID>,
-    ) -> std::result::Result<EntityUID, ActionResolutionError> {
+    ) -> std::result::Result<ActionEntityUID<InternalName>, ActionResolutionError> {
         for possibility in self.possibilities() {
-            let possibility = possibility.into();
-            if all_action_defs.contains(&possibility) {
-                return Ok(possibility);
+            // This ignores any possibilities that aren't valid `EntityUID`,
+            // because we know that all defined actions are valid `EntityUID`s
+            // (because `all_action_defs` has type `&HashSet<EntityUID>`).
+            if let Ok(euid) = EntityUID::try_from(possibility.clone()) {
+                if all_action_defs.contains(&euid) {
+                    return Ok(possibility);
+                }
             }
         }
         return Err(ActionResolutionError(nonempty!(self)));
     }
 
-    /// Get the possible fully-qualified [`ActionEntityUID<Name>`]s which this
-    /// [`ActionEntityUID<ConditionalName>`] might resolve to, in priority order
-    /// (highest-priority first).
-    pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<Name>> + '_ {
+    /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
+    /// which this [`ActionEntityUID<ConditionalName>`] might resolve to, in
+    /// priority order (highest-priority first).
+    pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<InternalName>> + '_ {
         // PANIC SAFETY: by INVARIANT on self.ty
         #[allow(clippy::expect_used)]
         let ty = self.ty.as_ref().expect("by INVARIANT on self.ty");
@@ -552,6 +558,21 @@ impl From<ActionEntityUID<Name>> for EntityUID {
         #[allow(clippy::expect_used)]
         let ty = aeuid.ty.expect("by INVARIANT on self.ty");
         EntityUID::from_components(ty.into(), Eid::new(aeuid.id), None)
+    }
+}
+
+impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
+    type Error = <InternalName as TryInto<Name>>::Error;
+    fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = aeuid.ty.expect("by INVARIANT on self.ty");
+        let ty = Name::try_from(ty)?;
+        Ok(EntityUID::from_components(
+            ty.into(),
+            Eid::new(aeuid.id),
+            None,
+        ))
     }
 }
 
@@ -666,7 +687,7 @@ impl SchemaType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> SchemaType<ConditionalName> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.conditionally_qualify_type_references(ns)),
@@ -693,18 +714,18 @@ impl SchemaType<RawName> {
 }
 
 impl SchemaType<ConditionalName> {
-    /// Convert this [`SchemaType<ConditionalName>`] into a [`SchemaType<Name>`]
-    /// by fully-qualifying all typenames that appear anywhere in any
-    /// definitions.
+    /// Convert this [`SchemaType<ConditionalName>`] into a
+    /// [`SchemaType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> std::result::Result<SchemaType<Name>, TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<SchemaType<InternalName>, TypeResolutionError> {
         match self {
             Self::Type(stv) => Ok(SchemaType::Type(
                 stv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
@@ -1117,7 +1138,7 @@ impl SchemaTypeVariant<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
     ) -> SchemaTypeVariant<ConditionalName> {
         match self {
             Self::Boolean => SchemaTypeVariant::Boolean,
@@ -1176,17 +1197,17 @@ impl SchemaTypeVariant<RawName> {
 
 impl SchemaTypeVariant<ConditionalName> {
     /// Convert this [`SchemaTypeVariant<ConditionalName>`] into a
-    /// [`SchemaTypeVariant<Name>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
+    /// [`SchemaTypeVariant<InternalName>`] by fully-qualifying all typenames
+    /// that appear anywhere in any definitions.
     ///
     /// `all_common_defs` and `all_entity_defs` need to be the full set of all
     /// fully-qualified typenames (of common and entity types respectively) that
     /// are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<Name>,
-        all_entity_defs: &HashSet<Name>,
-    ) -> std::result::Result<SchemaTypeVariant<Name>, TypeResolutionError> {
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<SchemaTypeVariant<InternalName>, TypeResolutionError> {
         match self {
             Self::Boolean => Ok(SchemaTypeVariant::Boolean),
             Self::Long => Ok(SchemaTypeVariant::Long),

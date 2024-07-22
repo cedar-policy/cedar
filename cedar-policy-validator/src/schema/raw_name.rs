@@ -15,29 +15,34 @@
  */
 
 use crate::schema_errors::TypeResolutionError;
-use cedar_policy_core::ast::{Name, UnreservedId};
+use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-/// A newtype which indicates that the contained `Name` may not yet be
+/// A newtype which indicates that the contained [`InternalName`] may not yet be
 /// fully-qualified.
 ///
-/// You can convert it to a fully-qualified `Name` using `.qualify_with()` or
-/// `.conditionally_qualify_with()`.
+/// You can convert it to a fully-qualified [`InternalName`] using
+/// `.qualify_with()`, `.qualify_with_name()`, or `.conditionally_qualify_with()`.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct RawName(Name);
+pub struct RawName(InternalName);
 
 impl RawName {
-    /// Create a new [`RawName`] from the given `Id`
-    pub fn new(id: UnreservedId) -> Self {
-        Self(Name::unqualified_name(id))
+    /// Create a new [`RawName`] from the given [`Id`]
+    pub fn new(id: Id) -> Self {
+        Self(InternalName::unqualified_name(id))
     }
 
-    /// Create a new [`RawName`] from the given `Name`.
+    /// Create a new [`RawName`] from the given [`UnreservedId`]
+    pub fn new_from_unreserved(id: UnreservedId) -> Self {
+        Self::new(id.into())
+    }
+
+    /// Create a new [`RawName`] from the given [`InternalName`].
     ///
     /// Note that if `name` includes explicit namespaces, the result will be a
     /// [`RawName`] that also includes those explicit namespaces, as if that
@@ -47,27 +52,27 @@ impl RawName {
     /// [`RawName`] that also does not include explicit namespaces, which may or
     /// may not translate back to the original input `name`, due to
     /// namespace-qualification rules.
-    pub fn from_name(name: Name) -> Self {
+    pub fn from_name(name: InternalName) -> Self {
         Self(name)
     }
 
     /// Create a new [`RawName`] by parsing the provided string, which should contain
-    /// an unqualified `Name` (no explicit namespaces)
+    /// an unqualified `InternalName` (no explicit namespaces)
     pub fn parse_unqualified_name(
         s: &str,
     ) -> Result<Self, cedar_policy_core::parser::err::ParseErrors> {
-        Name::parse_unqualified_name(s).map(RawName)
+        InternalName::parse_unqualified_name(s).map(RawName)
     }
 
     /// Create a new [`RawName`] by parsing the provided string, which should contain
-    /// a `Name` in normalized form.
+    /// an `InternalName` in normalized form.
     ///
     /// (See the [`cedar_policy_core::FromNormalizedStr`] trait.)
     pub fn from_normalized_str(
         s: &str,
     ) -> Result<Self, cedar_policy_core::parser::err::ParseErrors> {
         use cedar_policy_core::FromNormalizedStr;
-        Name::from_normalized_str(s).map(RawName)
+        InternalName::from_normalized_str(s).map(RawName)
     }
 
     /// Is this `RawName` unqualified, that is, written without any _explicit_
@@ -78,13 +83,22 @@ impl RawName {
         self.0.is_unqualified()
     }
 
-    /// Convert this [`RawName`] to a [`Name`] by adding the given `ns` as its
-    /// prefix, or by no-op if `ns` is `None`.
+    /// Convert this [`RawName`] to an [`InternalName`] by adding the given `ns`
+    /// as its prefix, or by no-op if `ns` is `None`.
     ///
     /// Note that if the [`RawName`] already had a non-empty explicit namespace,
     /// no additional prefixing will be done, even if `ns` is `Some`.
-    pub fn qualify_with(self, ns: Option<&Name>) -> Name {
+    pub fn qualify_with(self, ns: Option<&InternalName>) -> InternalName {
         self.0.qualify_with(ns)
+    }
+
+    /// Convert this [`RawName`] to an [`InternalName`] by adding the given `ns`
+    /// as its prefix, or by no-op if `ns` is `None`.
+    ///
+    /// Note that if the [`RawName`] already had a non-empty explicit namespace,
+    /// no additional prefixing will be done, even if `ns` is `Some`.
+    pub fn qualify_with_name(self, ns: Option<&Name>) -> InternalName {
+        self.0.qualify_with_name(ns)
     }
 
     /// Convert this [`RawName`] to a [`ConditionalName`].
@@ -111,7 +125,7 @@ impl RawName {
     /// in the empty namespace.
     pub fn conditionally_qualify_with(
         self,
-        ns: Option<&Name>,
+        ns: Option<&InternalName>,
         reference_type: ReferenceType,
     ) -> ConditionalName {
         let possibilities = if self.is_unqualified() {
@@ -152,9 +166,9 @@ impl std::fmt::Display for RawName {
 }
 
 impl std::str::FromStr for RawName {
-    type Err = <Name as std::str::FromStr>::Err;
+    type Err = <InternalName as std::str::FromStr>::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Name::from_str(s).map(RawName)
+        InternalName::from_str(s).map(RawName)
     }
 }
 
@@ -177,12 +191,12 @@ pub struct ConditionalName {
     /// The [`ConditionalName`] may refer to any of these `possibilities`, depending
     /// on which of them are declared (in any schema fragment).
     ///
-    /// These are in descending priority order. If the first `Name` is declared
-    /// (in any schema fragment), then this `ConditionalName` refers to the first
-    /// `Name`. If that `Name` is not declared in any schema fragment, then we
-    /// check the second `Name`, etc.
+    /// These are in descending priority order. If the first `InternalName` is
+    /// declared (in any schema fragment), then this `ConditionalName` refers to
+    /// the first `InternalName`. If that `InternalName` is not declared in any
+    /// schema fragment, then we check the second `InternalName`, etc.
     ///
-    /// All of the contained `Name`s must be fully-qualified.
+    /// All of the contained `InternalName`s must be fully-qualified.
     ///
     /// Typical example: In
     /// ```ignore
@@ -191,7 +205,7 @@ pub struct ConditionalName {
     /// `Foo` is a `ConditionalName` with `possibilities = [NS::Foo, Foo]`.
     /// That is, if `NS::Foo` exists, `Foo` refers to `NS::Foo`, but otherwise,
     /// `Foo` refers to the `Foo` declared in the empty namespace.
-    possibilities: NonEmpty<Name>,
+    possibilities: NonEmpty<InternalName>,
     /// Whether the [`ConditionalName`] can resolve to a common-type name, an
     /// entity-type name, or both
     reference_type: ReferenceType,
@@ -202,8 +216,8 @@ pub struct ConditionalName {
 
 impl ConditionalName {
     /// Create a [`ConditionalName`] which unconditionally resolves to the given
-    /// fully-qualified [`Name`].
-    pub fn unconditional(name: Name, reference_type: ReferenceType) -> Self {
+    /// fully-qualified [`InternalName`].
+    pub fn unconditional(name: InternalName, reference_type: ReferenceType) -> Self {
         ConditionalName {
             possibilities: nonempty!(name.clone()),
             reference_type,
@@ -217,21 +231,32 @@ impl ConditionalName {
         &self.raw
     }
 
-    /// Get the possible fully-qualified [`Name`]s which this [`ConditionalName`]
+    /// Get the possible fully-qualified [`InternalName`]s which this [`ConditionalName`]
     /// might resolve to, in priority order (highest-priority first).
-    pub(crate) fn possibilities(&self) -> impl Iterator<Item = &Name> {
+    pub(crate) fn possibilities(&self) -> impl Iterator<Item = &InternalName> {
         self.possibilities.iter()
     }
 
-    /// Resolve the [`ConditionalName`] into a fully-qualified [`Name`], given that
-    /// `all_defined_common_types` and `all_defined_entity_types` represent all
-    /// fully-qualified [`Name`]s defined in all schema fragments, as common and
-    /// entity types respectively.
+    /// Resolve the [`ConditionalName`] into a fully-qualified [`InternalName`],
+    /// given that `all_defined_common_types` and `all_defined_entity_types`
+    /// represent all fully-qualified [`InternalName`]s defined in all schema
+    /// fragments, as common and entity types respectively.
+    ///
+    /// Note that this returns [`InternalName`], because type references may
+    /// resolve to an internal name like `__cedar::String`.
+    /// In general, as noted on [`InternalName`], [`InternalName`]s are valid
+    /// to appear as type _references_, and we generally expect
+    /// [`ConditionalName`]s to also represent type _references_.
+    ///
+    /// `all_defined_common_types` and `all_defined_entity_types` are also
+    /// defined as [`InternalName`], because some names containing `__cedar`
+    /// might be internally defined/valid, even though it is not valid for
+    /// _end-users_ to define those names.
     pub fn resolve<'a>(
         self,
-        all_defined_common_types: &'a HashSet<Name>,
-        all_defined_entity_types: &'a HashSet<Name>,
-    ) -> Result<&'a Name, TypeResolutionError> {
+        all_defined_common_types: &'a HashSet<InternalName>,
+        all_defined_entity_types: &'a HashSet<InternalName>,
+    ) -> Result<&'a InternalName, TypeResolutionError> {
         for possibility in self.possibilities.iter() {
             // Per RFC 24, we give priority to trying to resolve to a common
             // type, before trying to resolve to an entity type.

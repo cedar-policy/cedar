@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use cedar_policy_core::{
-    ast::{Id, Name, UncheckedName, UnreservedId},
+    ast::{Id, Name, UnreservedId},
     extensions::Extensions,
     parser::{Loc, Node},
 };
@@ -42,17 +42,9 @@ use super::{
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
-impl TryFrom<Path> for RawName {
-    type Error = ToJsonSchemaError;
-    fn try_from(p: Path) -> Result<Self, Self::Error> {
-        let loc = p.loc().clone();
-        match Name::try_from(UncheckedName::from(p)) {
-            Ok(n) => Ok(RawName::from_name(n)),
-            Err(e) => Err(ToJsonSchemaError::ReservedName(Node::with_source_loc(
-                e.name().to_smolstr(),
-                loc,
-            ))),
-        }
+impl From<Path> for RawName {
+    fn from(p: Path) -> Self {
+        RawName::from_name(p.into())
     }
 }
 
@@ -99,21 +91,21 @@ fn is_valid_ext_type(ty: &Id, extensions: Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn human_type_to_json_type(ty: Node<Type>) -> Result<SchemaType<RawName>, ToJsonSchemaError> {
+pub fn human_type_to_json_type(ty: Node<Type>) -> SchemaType<RawName> {
     match ty.node {
-        Type::Set(t) => Ok(SchemaType::Type(SchemaTypeVariant::Set {
-            element: Box::new(human_type_to_json_type(*t)?),
-        })),
-        Type::Ident(p) => Ok(SchemaType::EntityOrCommonTypeRef {
-            type_name: RawName::try_from(p)?,
+        Type::Set(t) => SchemaType::Type(SchemaTypeVariant::Set {
+            element: Box::new(human_type_to_json_type(*t)),
         }),
-        Type::Record(fields) => Ok(SchemaType::Type(SchemaTypeVariant::Record {
+        Type::Ident(p) => SchemaType::EntityOrCommonTypeRef {
+            type_name: RawName::from(p),
+        },
+        Type::Record(fields) => SchemaType::Type(SchemaTypeVariant::Record {
             attributes: fields
                 .into_iter()
                 .map(|field| convert_attr_decl(field.node))
-                .collect::<Result<_, _>>()?,
+                .collect(),
             additional_attributes: false,
-        })),
+        }),
     }
 }
 
@@ -143,16 +135,23 @@ fn split_unqualified_namespace(
     }
 }
 
-/// Converts a CST namespace to the JSON namespace
+/// Converts a CST namespace to a JSON namespace
 fn convert_namespace(
     namespace: Namespace,
 ) -> Result<(Option<Name>, NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
     let ns_name = namespace
         .name
-        .map(|p| RawName::try_from(p.node))
-        .transpose()
-        .map_err(ToJsonSchemaError::from)?
-        .map(|raw| raw.qualify_with(None)); // namespace names are always written already-fully-qualified in the human syntax
+        .clone()
+        .map(|p| {
+            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the human syntax
+            Name::try_from(internal_name).map_err(|e| {
+                ToJsonSchemaError::ReservedName(Node {
+                    node: e.name().to_smolstr(),
+                    loc: p.loc,
+                })
+            })
+        })
+        .transpose()?;
     let def = namespace.try_into()?;
     Ok((ns_name, def))
 }
@@ -185,7 +184,7 @@ impl TryFrom<Namespace> for NamespaceDefinition<RawName> {
                         loc: name_loc,
                     })
                 })?;
-                Ok((id, human_type_to_json_type(decl.def)?))
+                Ok((id, human_type_to_json_type(decl.def)))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -216,14 +215,7 @@ fn convert_action_decl(
             principal_types: vec![],
             context: AttributesOrContext::default(),
         });
-    let member_of = parents
-        .map(|parents| {
-            parents
-                .into_iter()
-                .map(convert_qual_name)
-                .collect::<Result<_, _>>()
-        })
-        .transpose()?;
+    let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
     let ty = ActionType {
         attributes: None, // Action attributes are currently unsupported in the natural schema
         applies_to: Some(applies_to),
@@ -233,11 +225,11 @@ fn convert_action_decl(
     Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
 }
 
-fn convert_qual_name(qn: Node<QualName>) -> Result<ActionEntityUID<RawName>, ToJsonSchemaError> {
-    Ok(ActionEntityUID {
+fn convert_qual_name(qn: Node<QualName>) -> ActionEntityUID<RawName> {
+    ActionEntityUID {
         id: qn.node.eid,
-        ty: qn.node.path.map(TryInto::try_into).transpose()?,
-    })
+        ty: qn.node.path.map(Into::into),
+    }
 }
 
 // Convert the applies to decls
@@ -266,7 +258,7 @@ fn convert_app_decls(
                 }
                 None => {
                     context = Some(Node::with_source_loc(
-                        convert_context_decl(context_decl)?,
+                        convert_context_decl(context_decl),
                         loc,
                     ));
                 }
@@ -293,10 +285,7 @@ fn convert_app_decls(
                 }
                 None => {
                     principal_types = Some(Node::with_source_loc(
-                        entity_tys
-                            .iter()
-                            .map(|n| n.clone().try_into())
-                            .collect::<Result<_, _>>()?,
+                        entity_tys.iter().map(|n| n.clone().into()).collect(),
                         loc,
                     ))
                 }
@@ -322,10 +311,7 @@ fn convert_app_decls(
                 }
                 None => {
                     resource_types = Some(Node::with_source_loc(
-                        entity_tys
-                            .iter()
-                            .map(|n| n.clone().try_into())
-                            .collect::<Result<_, _>>()?,
+                        entity_tys.iter().map(|n| n.clone().into()).collect(),
                         loc,
                     ))
                 }
@@ -354,7 +340,7 @@ fn convert_app_decls(
 fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
     UnreservedId::try_from(node.node).map_err(|e| {
         ToJsonSchemaError::ReservedName(Node {
-            node: e.to_smolstr(),
+            node: e.name().to_smolstr(),
             loc: node.loc,
         })
     })
@@ -366,12 +352,8 @@ fn convert_entity_decl(
 ) -> Result<impl Iterator<Item = (UnreservedId, EntityType<RawName>)>, ToJsonSchemaErrors> {
     // First build up the defined entity type
     let etype = EntityType {
-        member_of_types: e
-            .member_of_types
-            .into_iter()
-            .map(RawName::try_from)
-            .collect::<Result<Vec<RawName>, _>>()?,
-        shape: convert_attr_decls(e.attrs)?,
+        member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
+        shape: convert_attr_decls(e.attrs),
     };
 
     // Then map over all of the bound names
@@ -385,49 +367,41 @@ fn convert_entity_decl(
 }
 
 /// Create a Record Type from a vector of `AttrDecl`s
-fn convert_attr_decls(
-    attrs: Vec<Node<AttrDecl>>,
-) -> Result<AttributesOrContext<RawName>, ToJsonSchemaError> {
-    Ok(AttributesOrContext(SchemaType::Type(
-        SchemaTypeVariant::Record {
-            attributes: attrs
-                .into_iter()
-                .map(|attr| convert_attr_decl(attr.node))
-                .collect::<Result<_, _>>()?,
-            additional_attributes: false,
-        },
-    )))
+fn convert_attr_decls(attrs: Vec<Node<AttrDecl>>) -> AttributesOrContext<RawName> {
+    AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
+        attributes: attrs
+            .into_iter()
+            .map(|attr| convert_attr_decl(attr.node))
+            .collect(),
+        additional_attributes: false,
+    }))
 }
 
 /// Create a context decl
-fn convert_context_decl(
-    decl: Either<Path, Vec<Node<AttrDecl>>>,
-) -> Result<AttributesOrContext<RawName>, ToJsonSchemaErrors> {
-    Ok(AttributesOrContext(match decl {
+fn convert_context_decl(decl: Either<Path, Vec<Node<AttrDecl>>>) -> AttributesOrContext<RawName> {
+    AttributesOrContext(match decl {
         Either::Left(p) => SchemaType::CommonTypeRef {
-            type_name: p.try_into()?,
+            type_name: p.into(),
         },
         Either::Right(attrs) => SchemaType::Type(SchemaTypeVariant::Record {
             attributes: attrs
                 .into_iter()
                 .map(|attr| convert_attr_decl(attr.node))
-                .collect::<Result<_, _>>()?,
+                .collect(),
             additional_attributes: false,
         }),
-    }))
+    })
 }
 
 /// Convert an attribute type from an `AttrDecl`
-fn convert_attr_decl(
-    attr: AttrDecl,
-) -> Result<(SmolStr, TypeOfAttribute<RawName>), ToJsonSchemaError> {
-    Ok((
+fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, TypeOfAttribute<RawName>) {
+    (
         attr.name.node,
         TypeOfAttribute {
-            ty: human_type_to_json_type(attr.ty)?,
+            ty: human_type_to_json_type(attr.ty),
             required: attr.required,
         },
-    ))
+    )
 }
 
 /// Takes a collection of results returning multiple errors
@@ -470,7 +444,15 @@ impl NamespaceRecord {
         let ns = namespace
             .name
             .clone()
-            .map(|n| RawName::try_from(n.node).map(|n| n.qualify_with(None)))
+            .map(|n| {
+                let internal_name = RawName::from(n.node).qualify_with(None); // namespace names are already fully-qualified
+                Name::try_from(internal_name).map_err(|e| {
+                    ToJsonSchemaError::ReservedName(Node {
+                        node: e.name().to_smolstr(),
+                        loc: n.loc,
+                    })
+                })
+            })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
 
