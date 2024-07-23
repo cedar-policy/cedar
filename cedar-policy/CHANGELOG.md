@@ -20,7 +20,7 @@ Cedar Language Version: 4.0
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
-  and conversion between the Cedar and JSON formats (#??)
+  and conversion between the Cedar and JSON formats (#1087)
 
 ### Changed
 
