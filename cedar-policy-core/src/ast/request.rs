@@ -111,7 +111,7 @@ impl Request {
         resource: (EntityUID, Option<Loc>),
         context: Context,
         schema: Option<&S>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
             principal: EntityUIDEntry::known(principal.0, principal.1),
@@ -136,7 +136,7 @@ impl Request {
         resource: EntityUIDEntry,
         context: Option<Context>,
         schema: Option<&S>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
             principal,
@@ -267,11 +267,11 @@ impl Context {
     /// evaluating the `RestrictedExpr`.
     pub fn from_expr(
         expr: BorrowedRestrictedExpr<'_>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
         match expr.expr_kind() {
             ExprKind::Record { .. } => {
-                let evaluator = RestrictedEvaluator::new(&extensions);
+                let evaluator = RestrictedEvaluator::new(extensions);
                 let pval = evaluator.partial_interpret(expr)?;
                 // The invariant on `from_restricted_partial_val_unchecked`
                 // is satisfied because `expr` is a restricted expression,
@@ -296,7 +296,7 @@ impl Context {
     /// evaluating the `RestrictedExpr`.
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
         match RestrictedExpr::record(pairs) {
             Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
@@ -377,7 +377,7 @@ impl Context {
                 let expr = BorrowedRestrictedExpr::new_unchecked(&expr);
 
                 let extns = Extensions::all_available();
-                let eval = RestrictedEvaluator::new(&extns);
+                let eval = RestrictedEvaluator::new(extns);
                 let partial_value = eval.partial_interpret(expr)?;
 
                 // The invariant on `from_restricted_partial_val_unchecked`
@@ -541,7 +541,7 @@ pub trait RequestSchema {
     fn validate_request(
         &self,
         request: &Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error>;
 }
 
@@ -553,7 +553,7 @@ impl RequestSchema for RequestSchemaAllPass {
     fn validate_request(
         &self,
         _request: &Request,
-        _extensions: Extensions<'_>,
+        _extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

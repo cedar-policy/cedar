@@ -261,7 +261,7 @@ mod test {
 
     #[track_caller]
     fn assert_check_parse_is_ok(parse_result: CheckParseAnswer) {
-        assert_matches!(parse_result, CheckParseAnswer::Success)
+        assert_matches!(parse_result, CheckParseAnswer::Success);
     }
 
     #[track_caller]
@@ -331,7 +331,7 @@ mod test {
           }
         });
         let answer = serde_json::from_value(check_parse_schema_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer)
+        assert_check_parse_is_ok(answer);
     }
 
     #[test]
@@ -389,7 +389,7 @@ mod test {
             }
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer)
+        assert_check_parse_is_ok(answer);
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod test {
             ]
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer)
+        assert_check_parse_is_ok(answer);
     }
 
     #[test]
@@ -491,7 +491,7 @@ mod test {
 
         });
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer)
+        assert_check_parse_is_ok(answer);
     }
 
     #[test]

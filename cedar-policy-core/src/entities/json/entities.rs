@@ -69,7 +69,7 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 
     /// Whether to compute, enforce, or assume TC for entities parsed using this
     /// parser.
@@ -111,7 +111,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
     /// responsible for ensuring that TC holds before calling this method.
     pub fn new(
         schema: Option<&'s S>,
-        extensions: Extensions<'e>,
+        extensions: &'e Extensions<'e>,
         tc_computation: TCComputation,
     ) -> Self {
         Self {
@@ -238,7 +238,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         match self.schema {
             None => Ok(entity),
             Some(schema) => {
-                let checker = EntitySchemaConformanceChecker::new(schema, self.extensions.clone());
+                let checker = EntitySchemaConformanceChecker::new(schema, self.extensions);
                 checker.validate_entity(&entity)?;
                 Ok(entity)
             }
@@ -258,12 +258,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
             .collect::<Result<_, _>>()?;
-        Entities::from_entities(
-            entities,
-            self.schema,
-            self.tc_computation,
-            self.extensions.clone(),
-        )
+        Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
     }
 
     /// Internal function that parses an `EntityJson` into an `Entity`.
@@ -300,7 +295,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             }
         };
-        let vparser = ValueParser::new(self.extensions.clone());
+        let vparser = ValueParser::new(self.extensions);
         let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
             .attrs
             .into_iter()
@@ -366,7 +361,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         Some(v) => v,
                     };
                     let expected_ty =
-                        match schematype_of_partialvalue(expected_val, self.extensions.clone()) {
+                        match schematype_of_partialvalue(expected_val, self.extensions) {
                             Ok(ty) => Ok(Some(ty)),
                             Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
                                 Err(JsonDeserializationError::EntitySchemaConformance(
@@ -435,7 +430,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents, &self.extensions)?)
+        Ok(Entity::new(uid, attrs, parents, self.extensions)?)
     }
 }
 

@@ -94,13 +94,13 @@ impl Extensions<'static> {
     }
 
     /// An [`Extensions`] object with static lifetime contain all available extensions.
-    pub fn all_available() -> Extensions<'static> {
-        ALL_AVAILABLE_EXTENSIONS.clone()
+    pub fn all_available() -> &'static Extensions<'static> {
+        &ALL_AVAILABLE_EXTENSIONS
     }
 
     /// Get a new `Extensions` with no extensions enabled.
-    pub fn none() -> Extensions<'static> {
-        EXTENSIONS_NONE.clone()
+    pub fn none() -> &'static Extensions<'static> {
+        &EXTENSIONS_NONE
     }
 }
 

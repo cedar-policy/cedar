@@ -768,7 +768,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
     ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValueSerializedAsExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
         let mut attr_values: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = BTreeMap::new();
-        let evaluator = RestrictedEvaluator::new(&extensions);
+        let evaluator = RestrictedEvaluator::new(extensions);
 
         for (k, v) in m {
             let t = Self::jsonval_to_type_helper(&v, action_id);
