@@ -444,14 +444,22 @@ pub struct ActionEntityUID<N> {
     /// If this is `Some`, the last component of the `N` should be `Action`.
     ///
     /// INVARIANT: This can only be `None` in the `N` = `RawName` case.
+    /// This invariant is upheld by all the code below that constructs
+    /// `ActionEntityUID`.
+    /// We also rely on `ActionEntityUID<N>` only being `Deserialize` for
+    /// `N` = `RawName`, so that you can't create an `ActionEntityUID` that
+    /// violates this invariant via deserialization.
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ty: Option<N>,
+    ty: Option<N>,
 }
 
-impl<N> ActionEntityUID<N> {
+impl ActionEntityUID<RawName> {
     /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
+    //
+    // This function is only available for `RawName` and not other values of `N`,
+    // in order to uphold the INVARIANT on self.ty.
     pub fn default_type(id: SmolStr) -> Self {
         Self { id, ty: None }
     }
@@ -474,6 +482,8 @@ impl ActionEntityUID<RawName> {
         self,
         ns: Option<&InternalName>,
     ) -> ActionEntityUID<ConditionalName> {
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<ConditionalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
         ActionEntityUID {
             id: self.id,
             ty: {
@@ -489,6 +499,8 @@ impl ActionEntityUID<RawName> {
 
     /// Unconditionally prefix this action entity UID's typename with the given namespace
     pub fn qualify_with(self, ns: Option<&InternalName>) -> ActionEntityUID<InternalName> {
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<InternalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
         ActionEntityUID {
             id: self.id,
             ty: {
@@ -504,6 +516,13 @@ impl ActionEntityUID<RawName> {
 }
 
 impl ActionEntityUID<ConditionalName> {
+    /// Get the action type, as a [`ConditionalName`].
+    pub fn ty(&self) -> &ConditionalName {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+
     /// Convert this [`ActionEntityUID<ConditionalName>`] into an
     /// [`ActionEntityUID<InternalName>`] by fully-qualifying its typename.
     ///
@@ -532,13 +551,14 @@ impl ActionEntityUID<ConditionalName> {
     /// which this [`ActionEntityUID<ConditionalName>`] might resolve to, in
     /// priority order (highest-priority first).
     pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<InternalName>> + '_ {
-        // PANIC SAFETY: by INVARIANT on self.ty
-        #[allow(clippy::expect_used)]
-        let ty = self.ty.as_ref().expect("by INVARIANT on self.ty");
-        ty.possibilities().map(|possibility| ActionEntityUID {
-            id: self.id.clone(),
-            ty: Some(possibility.clone()),
-        })
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing `ActionEntityUID<InternalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
+        self.ty()
+            .possibilities()
+            .map(|possibility| ActionEntityUID {
+                id: self.id.clone(),
+                ty: Some(possibility.clone()),
+            })
     }
 
     /// Convert this [`ActionEntityUID<ConditionalName>`] back into a [`ActionEntityUID<RawName>`].
@@ -552,22 +572,34 @@ impl ActionEntityUID<ConditionalName> {
     }
 }
 
-impl From<ActionEntityUID<Name>> for EntityUID {
-    fn from(aeuid: ActionEntityUID<Name>) -> Self {
+impl ActionEntityUID<Name> {
+    /// Get the action type, as a [`Name`].
+    pub fn ty(&self) -> &Name {
         // PANIC SAFETY: by INVARIANT on self.ty
         #[allow(clippy::expect_used)]
-        let ty = aeuid.ty.expect("by INVARIANT on self.ty");
-        EntityUID::from_components(ty.into(), Eid::new(aeuid.id), None)
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+}
+
+impl ActionEntityUID<InternalName> {
+    /// Get the action type, as an [`InternalName`].
+    pub fn ty(&self) -> &InternalName {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+}
+
+impl From<ActionEntityUID<Name>> for EntityUID {
+    fn from(aeuid: ActionEntityUID<Name>) -> Self {
+        EntityUID::from_components(aeuid.ty().clone().into(), Eid::new(aeuid.id), None)
     }
 }
 
 impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     type Error = <InternalName as TryInto<Name>>::Error;
     fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
-        // PANIC SAFETY: by INVARIANT on self.ty
-        #[allow(clippy::expect_used)]
-        let ty = aeuid.ty.expect("by INVARIANT on self.ty");
-        let ty = Name::try_from(ty)?;
+        let ty = Name::try_from(aeuid.ty().clone())?;
         Ok(EntityUID::from_components(
             ty.into(),
             Eid::new(aeuid.id),
