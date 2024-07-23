@@ -54,8 +54,8 @@ impl From<Path> for RawName {
 ///     * The `SchemaFragment`
 ///     * An iterator of warnings that were generated
 ///
-/// TODO: In the future, these warnings should be generated later in the
-/// process, such that we apply the same checks to JSON and human schemas
+/// TODO(#1085): These warnings should be generated later in the process, such
+/// that we apply the same checks to JSON and human schemas
 pub fn custom_schema_to_json_schema(
     schema: Schema,
     extensions: Extensions<'_>,
@@ -63,9 +63,11 @@ pub fn custom_schema_to_json_schema(
     // combine all of the declarations in unqualified (empty) namespaces into a
     // single unqualified namespace
     //
-    // TODO: In the future, we could also combine namespaces with matching
-    // non-empty names, to allow reopening a namespace within the same (human)
-    // schema fragment.
+    // TODO(#1086): If we want to allow reopening a namespace within the same
+    // (human) schema fragment, then in this step we would also need to combine
+    // namespaces with matching non-empty names, so that all definitions from
+    // that namespace make it into the JSON schema structure under that
+    // namespace's key.
     let (qualified_namespaces, unqualified_namespace) =
         split_unqualified_namespace(schema.into_iter().map(|n| n.node));
     // Create a single iterator for all namespaces
