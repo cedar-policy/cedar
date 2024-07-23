@@ -79,10 +79,19 @@ pub fn format_json_str(json: &str) -> Result<String, serde_json::Error> {
 pub struct FormattingCall {
     /// Policy text. May define multiple policies or templates in the Cedar policy format.
     policy_text: String,
-    /// Line width
+    /// Line width (default is 80)
+    #[serde(default = "default_line_width")]
     line_width: usize,
-    /// Indentation width
+    /// Indentation width (default is 2)
+    #[serde(default = "default_indent_width")]
     indent_width: isize,
+}
+
+const fn default_line_width() -> usize {
+    80
+}
+const fn default_indent_width() -> isize {
+    2
 }
 
 /// Result struct for formatting
@@ -144,6 +153,16 @@ mod test {
 
         let result = assert_format_succeeds(json);
         assert_eq!(result, "permit (\n    principal in UserGroup::\"alice_friends\",\n    action == Action::\"viewPhoto\",\n    resource\n);");
+    }
+
+    #[test]
+    fn test_format_succeed_default_values() {
+        let json = json!({
+        "policyText": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);",
+        });
+
+        let result = assert_format_succeeds(json);
+        assert_eq!(result, "permit (\n  principal in UserGroup::\"alice_friends\",\n  action == Action::\"viewPhoto\",\n  resource\n);");
     }
 
     #[test]
