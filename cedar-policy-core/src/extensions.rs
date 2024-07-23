@@ -23,6 +23,9 @@ pub mod ipaddr;
 pub mod decimal;
 pub mod partial_evaluation;
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
@@ -30,42 +33,69 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 lazy_static::lazy_static! {
-    static ref ALL_AVAILABLE_EXTENSIONS: Vec<Extension> = vec![
+    static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
         #[cfg(feature = "ipaddr")]
         ipaddr::extension(),
         #[cfg(feature = "decimal")]
         decimal::extension(),
         partial_evaluation::extension(),
     ];
+
+    static ref ALL_AVAILABLE_EXTENSIONS : Extensions<'static> = Extensions::build_all_available();
+
+    static ref EXTENSIONS_NONE : Extensions<'static> = Extensions { extensions: &[], functions: Arc::new(HashMap::new()) };
 }
 
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
 /// Clone is cheap for this type.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Debug)]
 pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
+    /// All extension functions, collected from every extension used to construct the this object.
+    functions: Arc<HashMap<Name, &'a ExtensionFunction>>,
 }
 
 impl Extensions<'static> {
     /// Get a new `Extensions` containing data on all the available extensions.
+    fn build_all_available() -> Extensions<'static> {
+        // PANIC SAFETY: This functions is early in on in many different tests, so any panic will be noticed immediately.
+        #[allow(clippy::expect_used)]
+        Self::specific_extensions(&ALL_AVAILABLE_EXTENSION_OBJECTS)
+            .expect("Default extensions should never error on initialization")
+    }
+
+    /// An [`Extensions`] object with static lifetime contain all available extensions.
     pub fn all_available() -> Extensions<'static> {
-        Extensions {
-            extensions: &ALL_AVAILABLE_EXTENSIONS,
-        }
+        ALL_AVAILABLE_EXTENSIONS.clone()
     }
 
     /// Get a new `Extensions` with no extensions enabled.
     pub fn none() -> Extensions<'static> {
-        Extensions { extensions: &[] }
+        EXTENSIONS_NONE.clone()
     }
 }
 
 impl<'a> Extensions<'a> {
     /// Get a new `Extensions` with these specific extensions enabled.
-    pub fn specific_extensions(extensions: &'a [Extension]) -> Extensions<'a> {
-        Extensions { extensions }
+    pub fn specific_extensions(
+        extensions: &'a [Extension],
+    ) -> core::result::Result<Extensions<'a>, FuncMultiplyDefinedError> {
+        let mut functions = HashMap::new();
+        for ext in extensions.iter() {
+            for f in ext.funcs() {
+                if functions.insert(f.name().clone(), f).is_some() {
+                    return Err(FuncMultiplyDefinedError {
+                        name: f.name().clone(),
+                    });
+                }
+            }
+        }
+        Ok(Extensions {
+            extensions,
+            functions: Arc::new(functions),
+        })
     }
 
     /// Get the names of all active extensions.
@@ -83,30 +113,15 @@ impl<'a> Extensions<'a> {
 
     /// Get the extension function with the given name, from these extensions.
     ///
-    /// Returns an error if the function is not defined by any extension, or if
-    /// it is defined multiple times.
+    /// Returns an error if the function is not defined by any extension
     pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
-        // NOTE: in the future, we could build a single HashMap of function
-        // name to ExtensionFunction, combining all extension functions
-        // into one map, to make this lookup faster.
-        let extension_funcs: Vec<&ExtensionFunction> = self
-            .extensions
-            .iter()
-            .filter_map(|ext| ext.get_func(name))
-            .collect();
-        match extension_funcs.first() {
+        match self.functions.get(name) {
             None => Err(extension_function_lookup_errors::FuncDoesNotExistError {
                 name: name.clone(),
                 source_loc: None,
             }
             .into()),
-            Some(first) if extension_funcs.len() == 1 => Ok(first),
-            _ => Err(extension_function_lookup_errors::FuncMultiplyDefinedError {
-                name: name.clone(),
-                num_defs: extension_funcs.len(),
-                source_loc: None,
-            }
-            .into()),
+            Some(func) => Ok(func),
         }
     }
 
@@ -150,6 +165,17 @@ impl<'a> Extensions<'a> {
     }
 }
 
+/// Tried to construct an extensions struct where an extension function was
+/// defined by multiple extensions. This is an internal error, so it should not
+/// become part of the public API unless we publicly expose user-defined
+/// extensions function.
+#[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
+#[error("extension function `{name}` is defined multiple times")]
+pub struct FuncMultiplyDefinedError {
+    /// Name of the function that was multiply defined
+    pub(crate) name: Name,
+}
+
 /// Errors thrown when looking up an extension function in [`Extensions`].
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -161,12 +187,6 @@ pub enum ExtensionFunctionLookupError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
-
-    /// Tried to call a function but it was defined multiple times (e.g., by
-    /// multiple different extensions)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    FuncMultiplyDefined(#[from] extension_function_lookup_errors::FuncMultiplyDefinedError),
 
     /// Attempted to typecheck a function without a return type
     #[error(transparent)]
@@ -186,7 +206,6 @@ impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
             Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::FuncMultiplyDefined(e) => e.source_loc.as_ref(),
             Self::HasNoType(e) => e.source_loc.as_ref(),
             Self::MultipleConstructorsSameSignature(e) => e.source_loc.as_ref(),
         }
@@ -200,9 +219,6 @@ impl ExtensionFunctionLookupError {
                     ..e
                 })
             }
-            Self::FuncMultiplyDefined(e) => Self::FuncMultiplyDefined(
-                extension_function_lookup_errors::FuncMultiplyDefinedError { source_loc, ..e },
-            ),
             Self::HasNoType(e) => {
                 Self::HasNoType(extension_function_lookup_errors::HasNoTypeError {
                     source_loc,
@@ -242,36 +258,6 @@ pub mod extension_function_lookup_errors {
     }
 
     impl Diagnostic for FuncDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Tried to call a function that doesn't exist
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("extension function `{name}` is defined {num_defs} times")]
-    pub struct FuncMultiplyDefinedError {
-        /// Name of the function that was multiply defined
-        pub(crate) name: Name,
-        /// How many times that function is defined
-        pub(crate) num_defs: usize,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for FuncMultiplyDefinedError {
         impl_diagnostic_from_source_loc_field!();
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {

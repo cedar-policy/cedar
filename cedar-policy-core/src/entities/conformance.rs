@@ -98,8 +98,11 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match typecheck_value_against_schematype(val, &expected_ty, self.extensions)
-                        {
+                        match typecheck_value_against_schematype(
+                            val,
+                            &expected_ty,
+                            self.extensions.clone(),
+                        ) {
                             Ok(()) => {} // typecheck passes
                             Err(TypecheckError::TypeMismatch(err)) => {
                                 return Err(EntitySchemaConformanceError::type_mistmatch(

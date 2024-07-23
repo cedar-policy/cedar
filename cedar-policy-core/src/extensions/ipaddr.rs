@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn ip_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn ip_range_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -729,7 +729,7 @@ mod tests {
     #[test]
     fn ip_equality() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -773,7 +773,7 @@ mod tests {
     #[test]
     fn is_loopback_and_is_multicast() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -867,7 +867,7 @@ mod tests {
     #[test]
     fn ip_is_in_range() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -987,7 +987,7 @@ mod tests {
     #[test]
     fn more_ip_semantics() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);

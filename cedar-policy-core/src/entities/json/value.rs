@@ -503,7 +503,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            self.extensions,
+                            self.extensions.clone(),
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -578,7 +578,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            self.extensions,
+                            self.extensions.clone(),
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -635,34 +635,39 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
-                    .map_err(|e| match e {
-                        GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::heterogeneous_set(uid, attr, err),
+                let argty =
+                    schematype_of_restricted_expr(arg.as_borrowed(), self.extensions.clone())
+                        .map_err(|e| match e {
+                            GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
+                                JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                                    JsonDeserializationError::EntitySchemaConformance(
+                                        EntitySchemaConformanceError::heterogeneous_set(
+                                            uid, attr, err,
+                                        ),
+                                    )
+                                }
+                                ctx => JsonDeserializationError::heterogeneous_set(ctx, err),
+                            },
+                            GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
+                                JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                                    JsonDeserializationError::EntitySchemaConformance(
+                                        EntitySchemaConformanceError::extension_function_lookup(
+                                            uid, attr, err,
+                                        ),
+                                    )
+                                }
+                                ctx => {
+                                    JsonDeserializationError::extension_function_lookup(ctx, err)
+                                }
+                            },
+                            GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
+                            | GetSchemaTypeError::NontrivialResidual { .. } => {
+                                JsonDeserializationError::unknown_in_implicit_constructor_arg(
+                                    ctx(),
+                                    arg.clone(),
                                 )
                             }
-                            ctx => JsonDeserializationError::heterogeneous_set(ctx, err),
-                        },
-                        GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid, attr, err,
-                                    ),
-                                )
-                            }
-                            ctx => JsonDeserializationError::extension_function_lookup(ctx, err),
-                        },
-                        GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
-                        | GetSchemaTypeError::NontrivialResidual { .. } => {
-                            JsonDeserializationError::unknown_in_implicit_constructor_arg(
-                                ctx(),
-                                arg.clone(),
-                            )
-                        }
-                    })?;
+                        })?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(

@@ -346,7 +346,7 @@ pub fn schematype_of_restricted_expr(
         ExprKind::Lit(lit) => Ok(schematype_of_lit(lit)),
         ExprKind::Set(elements) => {
             let element_types = elements.iter().map(|el| {
-                schematype_of_restricted_expr(BorrowedRestrictedExpr::new_unchecked(el), extensions) // assuming the invariant holds for the set as a whole, it will also hold for each element
+                schematype_of_restricted_expr(BorrowedRestrictedExpr::new_unchecked(el), extensions.clone()) // assuming the invariant holds for the set as a whole, it will also hold for each element
             });
             schematype_of_set_elements(element_types)
         }
@@ -355,7 +355,7 @@ pub fn schematype_of_restricted_expr(
                 attrs: map.iter().map(|(k, v)| {
                     let attr_type = schematype_of_restricted_expr(
                         BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
-                        extensions,
+                        extensions.clone(),
                     )?;
                     // we can't know if the attribute is required or optional,
                     // but marking it optional is more flexible -- allows the

@@ -74,11 +74,11 @@ pub fn custom_schema_to_json_schema(
         .collect::<Vec<_>>();
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
-    let warnings = compute_namespace_warnings(&names, extensions);
+    let warnings = compute_namespace_warnings(&names, extensions.clone());
     let fragment = collect_all_errors(
         all_namespaces
             .into_iter()
-            .map(|ns| convert_namespace(&names, ns, extensions)),
+            .map(|ns| convert_namespace(&names, ns, extensions.clone())),
     )?
     .collect();
     Ok((
@@ -520,7 +520,7 @@ impl<'a> ConversionContext<'a> {
         // After RFC 52, any name containing `__cedar` is reserved and hence
         // we can look up the Cedar namespace first
         if is_cedar {
-            return search_cedar_namespace(base, loc, self.extensions);
+            return search_cedar_namespace(base, loc, self.extensions.clone());
         }
         // After this, all paths must be unreserved
         let name = p.try_into()?;
@@ -556,7 +556,7 @@ impl<'a> ConversionContext<'a> {
             Ok(SchemaType::CommonTypeRef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
             Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
-        } else if let Ok(ty) = search_cedar_namespace(base, loc.clone(), self.extensions) {
+        } else if let Ok(ty) = search_cedar_namespace(base, loc.clone(), self.extensions.clone()) {
             Ok(ty)
         } else {
             Err(
@@ -709,7 +709,7 @@ fn compute_namespace_warnings<'a>(
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     fragment
         .values()
-        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions))
+        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions.clone()))
 }
 
 fn make_warning_for_shadowing<'a>(
@@ -729,14 +729,14 @@ fn make_warning_for_shadowing<'a>(
             warnings.push(warning);
         }
         // Check if it shadows a builtin
-        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions) {
+        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions.clone()) {
             warnings.push(warning);
         }
     }
     let entity_shadows = n
         .entities
         .iter()
-        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions));
+        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions.clone()));
     warnings.into_iter().chain(entity_shadows)
 }
 

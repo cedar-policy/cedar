@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn decimal_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn decimal_equality() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -542,7 +542,7 @@ mod tests {
 
     fn decimal_ops_helper(op: &str, tests: Vec<((Expr, Expr), bool)>) {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -609,7 +609,7 @@ mod tests {
         // evaluation errors
 
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
