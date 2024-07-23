@@ -83,6 +83,10 @@ harness = false
 name = "extension_fn_validation"
 harness = false
 
+[[bench]]
+name = "transitive_closure"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
