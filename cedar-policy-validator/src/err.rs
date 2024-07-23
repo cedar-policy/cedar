@@ -256,7 +256,7 @@ impl SchemaError {
         // if we have any `TypeResolutionError`s, we can report all of those at once (but have to drop the others).
         // Same for `ActionResolutionError`s.
         // Any other error, we can just report the first one and have to drop the others.
-        let (type_res_errors, other_errors): (Vec<_>, Vec<_>) =
+        let (type_res_errors, non_type_res_errors): (Vec<_>, Vec<_>) =
             errs.into_iter().partition_map(|e| match e {
                 SchemaError::TypeResolution(e) => Either::Left(e),
                 _ => Either::Right(e),
@@ -265,16 +265,21 @@ impl SchemaError {
             schema_errors::TypeResolutionError::join_nonempty(errs).into()
         } else {
             let (action_res_errors, other_errors): (Vec<_>, Vec<_>) =
-                other_errors.into_iter().partition_map(|e| match e {
+                non_type_res_errors.into_iter().partition_map(|e| match e {
                     SchemaError::ActionResolution(e) => Either::Left(e),
                     _ => Either::Right(e),
                 });
             if let Some(errs) = NonEmpty::from_vec(action_res_errors) {
                 schema_errors::ActionResolutionError::join_nonempty(errs).into()
             } else {
-                // PANIC SAFETY: `other_errors` was created by partitioning a `NonEmpty` into what we now know is an empty vector and this, so this cannot be empty
+                // We partitioned a `NonEmpty` (`errs`) into what we now know is an empty vector
+                // (`type_res_errors`) and `non_type_res_errors`, so `non_type_res_errors` cannot
+                // be empty. Then we partitioned `non_type_res_errors` into what we now know is an
+                // empty vector (`action_res_errors`) and `other_errors`, so `other_errors` cannot
+                // be empty.
+                // PANIC SAFETY: see comments immediately above
                 #[allow(clippy::expect_used)]
-                other_errors.into_iter().next().expect("cannot be nonempty")
+                other_errors.into_iter().next().expect("cannot be empty")
             }
         }
     }
