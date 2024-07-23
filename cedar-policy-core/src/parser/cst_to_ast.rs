@@ -45,6 +45,7 @@ use crate::ast::{
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -452,7 +453,7 @@ impl Node<Option<cst::Ident>> {
 }
 
 impl ast::UnreservedId {
-    fn to_meth(&self, e: ast::Expr, mut args: Vec<ast::Expr>, loc: &Loc) -> Result<ast::Expr> {
+    fn to_meth(&self, e: ast::Expr, args: Vec<ast::Expr>, loc: &Loc) -> Result<ast::Expr> {
         match self.as_ref() {
             "contains" => extract_single_argument(args.into_iter(), "contains", loc)
                 .map(|arg| construct_method_contains(e, arg, loc.clone())),
@@ -462,8 +463,10 @@ impl ast::UnreservedId {
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
             _ => {
                 if EXTENSION_STYLES.methods.contains(self) {
-                    args.insert(0, e);
-                    // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
+                    let args = NonEmpty {
+                        head: e,
+                        tail: args,
+                    };
                     Ok(construct_ext_meth(self.clone(), args, loc.clone()))
                 } else {
                     let unqual_name = ast::Name::unqualified_name(self.clone());
@@ -1804,10 +1807,9 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
         .contains_any(e0, e1)
 }
 
-// INVARIANT (MethodStyleArgs), args must be non-empty
-fn construct_ext_meth(n: UnreservedId, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
+fn construct_ext_meth(n: UnreservedId, args: NonEmpty<ast::Expr>, loc: Loc) -> ast::Expr {
     let name = ast::Name::unqualified_name(n);
-    // INVARIANT (MethodStyleArgs), args must be non-empty
+    // Satisfies INVARIANT (MethodStyleArgs), because `args` is a `NonEmpty`, so it's not empty.
     ast::ExprBuilder::new()
         .with_source_loc(loc)
         .call_extension_fn(name, args)
