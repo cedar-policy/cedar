@@ -560,7 +560,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Error)]
-    #[error("failed to parse schema in JSON format: {err}")]
+    #[error("{err}")]
     pub struct JsonDeserializationError {
         /// Error thrown by the `serde_json` crate
         err: serde_json::Error,

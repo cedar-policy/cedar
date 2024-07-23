@@ -532,13 +532,10 @@ impl Node<Option<cst::VariableDef>> {
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
             // special check for the syntax `_ in _ is _`
             if op == &cst::RelOp::In {
-                match rel_expr.to_expr() {
-                    Ok(expr) => {
-                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
-                            return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
-                        }
+                if let Ok(expr) = rel_expr.to_expr() {
+                    if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                        return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
                     }
-                    Err(_) => (), // ignore
                 }
             }
             let eref = rel_expr.to_ref_or_slot(var)?;
@@ -597,15 +594,10 @@ impl Node<Option<cst::VariableDef>> {
             let action_constraint = match op {
                 cst::RelOp::In => {
                     // special check for the syntax `_ in _ is _`
-                    match rel_expr.to_expr() {
-                        Ok(expr) => {
-                            if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
-                                return Err(self
-                                    .to_ast_err(ToASTErrorKind::IsInActionScope)
-                                    .into());
-                            }
+                    if let Ok(expr) = rel_expr.to_expr() {
+                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
                         }
-                        Err(_) => (), // ignore
                     }
                     match rel_expr.to_refs(ast::Var::Action)? {
                         OneOrMultipleRefs::Single(single_ref) => {

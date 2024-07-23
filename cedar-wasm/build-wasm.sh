@@ -19,6 +19,11 @@
 #
 # This sript requires wasm-pack and (if TEST_TS is set) tsc. To install wasm-pack, run
 # `cargo install wasm-pack`. To install tsc, run `npm install -g typescript`.
+#
+# This script may not work on macOS. If you encounter an error like
+# `error: failed to build archive: 'wasm32.o': section too large`,
+# please upgrade the LLVM version using homebrew.
+
 set -e
 main () {
     rm -rf pkg || true
@@ -62,21 +67,24 @@ fix_package_json_files() {
 process_types_file() {
     local types_file="$1"
     echo "processing types file: $1"
-    sed -i "s/[{]\s*!: /{ \"!\": /g" "$types_file"
-    sed -i "s/[{]\s*==: /{ \"==\": /g" "$types_file"
-    sed -i "s/[{]\s*!=: /{ \"!=\": /g" "$types_file"
-    sed -i "s/[{]\s*<: /{ \"<\": /g" "$types_file"
-    sed -i "s/[{]\s*<=: /{ \"<=\": /g" "$types_file"
-    sed -i "s/[{]\s*>: /{ \">\": /g" "$types_file"
-    sed -i "s/[{]\s*>=: /{ \">=\": /g" "$types_file"
-    sed -i "s/[{]\s*&&: /{ \"\&\&\": /g" "$types_file"
-    sed -i "s/[{]\s*||: /{ \"||\": /g" "$types_file"
-    sed -i "s/[{]\s*[+]: /{ \"+\": /g" "$types_file"
-    sed -i "s/[{]\s*-: /{ \"-\": /g" "$types_file"
-    sed -i "s/[{]\s*[*]: /{ \"*\": /g" "$types_file"
-    sed -i "s/[{]\s*\.: /{ \".\": /g" "$types_file"
-    sed -i "s/ | __skip//g" "$types_file"
-    sed -i "s/ { .\+: __skip } |//g" "$types_file"
+
+    sed -e '
+    s/{[[:space:]]*!: /{ "!": /g
+    s/{[[:space:]]*==: /{ "==": /g
+    s/{[[:space:]]*!=: /{ "!=": /g
+    s/{[[:space:]]*<: /{ "<": /g
+    s/{[[:space:]]*<=: /{ "<=": /g
+    s/{[[:space:]]*>: /{ ">": /g
+    s/{[[:space:]]*>=: /{ ">=": /g
+    s/{[[:space:]]*&&: /{ "&&": /g
+    s/{[[:space:]]*||: /{ "||": /g
+    s/{[[:space:]]*+: /{ "+": /g
+    s/{[[:space:]]*-: /{ "-": /g
+    s/{[[:space:]]*\*: /{ "*": /g
+    s/{[[:space:]]*\.: /{ ".": /g
+    s/ | __skip//g
+    s/ { .*: __skip } |//g
+    ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
     echo "export type TypeOfAttribute<N> = SchemaType<N> & { required?: boolean };" >> "$types_file"

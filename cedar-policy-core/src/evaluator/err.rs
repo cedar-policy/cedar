@@ -153,8 +153,8 @@ impl EvaluationError {
             Self::NonValue(e) => {
                 Self::NonValue(evaluation_errors::NonValueError { source_loc, ..e })
             }
-            Self::RecursionLimit(e) => {
-                Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc, ..e })
+            Self::RecursionLimit(_) => {
+                Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc })
             }
         }
     }
