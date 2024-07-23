@@ -1400,10 +1400,10 @@ mod test {
                             principal_types: vec![principal_type.parse().unwrap()],
                             context: AttributesOrContext::default(),
                         }),
-                        member_of: Some(vec![ActionEntityUID {
-                            ty: None,
-                            id: action_parent_name.into(),
-                        }]),
+                        member_of: Some(vec![ActionEntityUID::new(
+                            None,
+                            action_parent_name.into(),
+                        )]),
                         attributes: None,
                     },
                 ),
@@ -1411,10 +1411,10 @@ mod test {
                     action_parent_name.into(),
                     ActionType {
                         applies_to: None,
-                        member_of: Some(vec![ActionEntityUID {
-                            ty: None,
-                            id: action_grandparent_name.into(),
-                        }]),
+                        member_of: Some(vec![ActionEntityUID::new(
+                            None,
+                            action_grandparent_name.into(),
+                        )]),
                         attributes: None,
                     },
                 ),

@@ -228,10 +228,7 @@ fn convert_action_decl(
 }
 
 fn convert_qual_name(qn: Node<QualName>) -> ActionEntityUID<RawName> {
-    ActionEntityUID {
-        id: qn.node.eid,
-        ty: qn.node.path.map(Into::into),
-    }
+    ActionEntityUID::new(qn.node.path.map(Into::into), qn.node.eid)
 }
 
 // Convert the applies to decls

@@ -456,6 +456,12 @@ pub struct ActionEntityUID<N> {
 }
 
 impl ActionEntityUID<RawName> {
+    /// Create a new `ActionEntityUID<RawName>`.
+    /// `ty` = `None` is shorthand for `Action`.
+    pub fn new(ty: Option<RawName>, id: SmolStr) -> Self {
+        Self { id, ty }
+    }
+
     /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
     //
     // This function is only available for `RawName` and not other values of `N`,
