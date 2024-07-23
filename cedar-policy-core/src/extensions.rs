@@ -28,9 +28,10 @@ use std::sync::Arc;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
-use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
+
+use self::extension_function_lookup_errors::FuncDoesNotExistError;
 
 lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
@@ -81,7 +82,7 @@ impl<'a> Extensions<'a> {
     /// Get a new `Extensions` with these specific extensions enabled.
     pub fn specific_extensions(
         extensions: &'a [Extension],
-    ) -> core::result::Result<Extensions<'a>, FuncMultiplyDefinedError> {
+    ) -> std::result::Result<Extensions<'a>, FuncMultiplyDefinedError> {
         let mut functions = HashMap::new();
         for ext in extensions.iter() {
             for f in ext.funcs() {
@@ -114,13 +115,15 @@ impl<'a> Extensions<'a> {
     /// Get the extension function with the given name, from these extensions.
     ///
     /// Returns an error if the function is not defined by any extension
-    pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
+    pub fn func(
+        &self,
+        name: &Name,
+    ) -> std::result::Result<&ExtensionFunction, FuncDoesNotExistError> {
         match self.functions.get(name) {
-            None => Err(extension_function_lookup_errors::FuncDoesNotExistError {
+            None => Err(FuncDoesNotExistError {
                 name: name.clone(),
                 source_loc: None,
-            }
-            .into()),
+            }),
             Some(func) => Ok(func),
         }
     }
@@ -202,39 +205,6 @@ pub enum ExtensionFunctionLookupError {
     ),
 }
 
-impl ExtensionFunctionLookupError {
-    pub(crate) fn source_loc(&self) -> Option<&Loc> {
-        match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::HasNoType(e) => e.source_loc.as_ref(),
-            Self::MultipleConstructorsSameSignature(e) => e.source_loc.as_ref(),
-        }
-    }
-
-    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
-        match self {
-            Self::FuncDoesNotExist(e) => {
-                Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
-                    source_loc,
-                    ..e
-                })
-            }
-            Self::HasNoType(e) => {
-                Self::HasNoType(extension_function_lookup_errors::HasNoTypeError {
-                    source_loc,
-                    ..e
-                })
-            }
-            Self::MultipleConstructorsSameSignature(e) => Self::MultipleConstructorsSameSignature(
-                extension_function_lookup_errors::MultipleConstructorsSameSignatureError {
-                    source_loc,
-                    ..e
-                },
-            ),
-        }
-    }
-}
-
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
@@ -255,6 +225,16 @@ pub mod extension_function_lookup_errors {
         pub(crate) name: Name,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
+    impl FuncDoesNotExistError {
+        pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+            Self { source_loc, ..self }
+        }
+
+        pub(crate) fn source_loc(&self) -> Option<&Loc> {
+            self.source_loc.as_ref()
+        }
     }
 
     impl Diagnostic for FuncDoesNotExistError {

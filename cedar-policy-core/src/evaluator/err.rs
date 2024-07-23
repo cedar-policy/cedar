@@ -53,7 +53,9 @@ pub enum EvaluationError {
     /// An error occurred when looking up an extension function
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
+    FailedExtensionFunctionLookup(
+        #[from] crate::extensions::extension_function_lookup_errors::FuncDoesNotExistError,
+    ),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation

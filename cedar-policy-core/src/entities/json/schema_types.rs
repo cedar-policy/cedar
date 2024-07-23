@@ -366,7 +366,7 @@ pub fn schematype_of_restricted_expr(
             })
         }
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-            let efunc = extensions.func(fn_name)?;
+            let efunc = extensions.func(fn_name).map_err(ExtensionFunctionLookupError::FuncDoesNotExist)?;
             Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType(extension_function_lookup_errors::HasNoTypeError {
                 name: efunc.name().clone(),
                 source_loc: rexpr.source_loc().cloned(),
