@@ -1151,7 +1151,7 @@ fn A1c() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1177,7 +1177,7 @@ fn A2b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1192,7 +1192,7 @@ fn A2b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
@@ -1207,7 +1207,7 @@ fn A2c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1222,7 +1222,7 @@ fn A3a1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1237,7 +1237,7 @@ fn A3a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1252,7 +1252,7 @@ fn A3b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1267,7 +1267,7 @@ fn A3b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1282,7 +1282,7 @@ fn A3c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1328,7 +1328,7 @@ fn B1c() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1354,7 +1354,7 @@ fn B2b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1369,7 +1369,7 @@ fn B2b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
@@ -1384,7 +1384,7 @@ fn B2c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1399,7 +1399,7 @@ fn B3a1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1414,7 +1414,7 @@ fn B3a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1429,7 +1429,7 @@ fn B3b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1444,7 +1444,7 @@ fn B3b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1459,7 +1459,7 @@ fn B3c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1505,7 +1505,7 @@ fn C1c() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1531,7 +1531,7 @@ fn C2b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1546,7 +1546,7 @@ fn C2b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
@@ -1561,7 +1561,7 @@ fn C2c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1576,7 +1576,7 @@ fn C3a1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1591,7 +1591,7 @@ fn C3a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1606,7 +1606,7 @@ fn C3b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1621,7 +1621,7 @@ fn C3b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
@@ -1636,7 +1636,7 @@ fn C3c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1671,7 +1671,7 @@ fn D1a2() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1697,7 +1697,7 @@ fn D1b2() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1714,7 +1714,7 @@ fn D1c() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1739,7 +1739,7 @@ fn D2a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1754,7 +1754,7 @@ fn D2b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1769,7 +1769,7 @@ fn D2b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1784,7 +1784,7 @@ fn D2c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1799,7 +1799,7 @@ fn D3a1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1814,7 +1814,7 @@ fn D3a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1829,7 +1829,7 @@ fn D3b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1844,7 +1844,7 @@ fn D3b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1859,7 +1859,7 @@ fn D3c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -1904,7 +1904,7 @@ fn E1a2() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1930,7 +1930,7 @@ fn E1b2() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1947,7 +1947,7 @@ fn E1c() {
             // No source location on this error because the JSON structures don't carry source locations,
             // and since the human-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
-            // See #174.
+            // See #1084.
             .build();
     let expected_json =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
@@ -1972,7 +1972,7 @@ fn E2a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -1987,7 +1987,7 @@ fn E2b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -2002,7 +2002,7 @@ fn E2b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -2017,7 +2017,7 @@ fn E2c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
@@ -2032,7 +2032,7 @@ fn E3a1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -2047,7 +2047,7 @@ fn E3a2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -2062,7 +2062,7 @@ fn E3b1() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -2077,7 +2077,7 @@ fn E3b2() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
@@ -2092,7 +2092,7 @@ fn E3c() {
         // No source location on this error because the JSON structures don't carry source locations,
         // and since the human-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
-        // See #174.
+        // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
