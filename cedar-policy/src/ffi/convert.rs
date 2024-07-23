@@ -173,7 +173,7 @@ pub enum SchemaToTextAnswer {
         /// Warnings
         warnings: Vec<DetailedError>,
     },
-    /// Represents a failed call(e.g., because the input is ill-formed)
+    /// Represents a failed call (e.g., because the input is ill-formed)
     Failure {
         /// Errors
         errors: Vec<DetailedError>,
