@@ -190,7 +190,7 @@ pub enum SchemaToJsonAnswer {
     /// Represents a successful call
     Success {
         /// JSON format schema
-        #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson"))]
+        #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
         json: JsonValueWithNoDuplicateKeys,
         /// Warnings
         warnings: Vec<DetailedError>,
