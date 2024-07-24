@@ -64,7 +64,6 @@ wrap_core_error!(IncompatibleTypes);
 wrap_core_error!(UnsafeAttributeAccess);
 wrap_core_error!(UnsafeOptionalAttributeAccess);
 wrap_core_error!(UndefinedFunction);
-wrap_core_error!(MultiplyDefinedFunction);
 wrap_core_error!(WrongNumberArguments);
 wrap_core_error!(WrongCallStyle);
 wrap_core_error!(FunctionArgumentValidation);

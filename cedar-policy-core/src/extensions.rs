@@ -350,6 +350,34 @@ pub mod extension_function_lookup_errors {
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
 
+/// Utilities shared with the `cedar-policy-validator` extensions module.
+pub mod util {
+    use std::collections::{hash_map::Entry, HashMap};
+
+    /// Utility to build a `HashMap` of key value pairs from an iterator,
+    /// returning an `Err` result if there are any duplicate keys in the
+    /// iterator.
+    pub fn collect_no_duplicates<K, V>(
+        i: impl Iterator<Item = (K, V)>,
+    ) -> std::result::Result<HashMap<K, V>, K>
+    where
+        K: Clone + std::hash::Hash + Eq,
+    {
+        let mut map = HashMap::with_capacity(i.size_hint().0);
+        for (k, v) in i {
+            match map.entry(k) {
+                Entry::Occupied(occupied) => {
+                    return Err(occupied.key().clone());
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(v);
+                }
+            }
+        }
+        Ok(map)
+    }
+}
+
 #[cfg(test)]
 pub mod test {
     use super::*;

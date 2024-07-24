@@ -436,35 +436,6 @@ impl Diagnostic for UndefinedFunction {
     impl_diagnostic_from_on_expr_field!();
 }
 
-/// Structure containing details about a multiply defined function error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, extension function defined multiple times: {name}")]
-pub struct MultiplyDefinedFunction {
-    /// [`Expr`] containing a call to a multiply defined function
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Name of the multiply defined function
-    pub name: String,
-}
-
-impl std::hash::Hash for MultiplyDefinedFunction {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.name.hash(state);
-    }
-}
-impl PartialEq for MultiplyDefinedFunction {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.name == other.name
-    }
-}
-
-impl Diagnostic for MultiplyDefinedFunction {
-    impl_diagnostic_from_on_expr_field!();
-}
-
 /// Structure containing details about a wrong number of arguments error.
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]

@@ -377,10 +377,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndefinedFunction(#[from] validation_errors::UndefinedFunction),
-    /// Multiply defined extension function.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MultiplyDefinedFunction(#[from] validation_errors::MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -421,7 +417,6 @@ impl ValidationError {
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
-            Self::MultiplyDefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
             Self::WrongCallStyle(e) => e.policy_id(),
             Self::FunctionArgumentValidation(e) => e.policy_id(),
@@ -459,9 +454,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::UndefinedFunction(e) => {
                 Self::UndefinedFunction(e.into())
-            }
-            cedar_policy_validator::ValidationError::MultiplyDefinedFunction(e) => {
-                Self::MultiplyDefinedFunction(e.into())
             }
             cedar_policy_validator::ValidationError::WrongNumberArguments(e) => {
                 Self::WrongNumberArguments(e.into())
