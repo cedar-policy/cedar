@@ -300,9 +300,6 @@ impl ExtensionFunction {
     }
 
     /// Get the argument types of the `ExtensionFunction`.
-    ///
-    /// If any given argument type is not constant (function works with multiple
-    /// `SchemaType`s) then this will be `None` for that argument.
     pub fn arg_types(&self) -> &[SchemaType] {
         &self.arg_types
     }
