@@ -76,7 +76,7 @@ pub struct Extensions<'a> {
 impl Extensions<'static> {
     /// Get a new `Extensions` containing data on all the available extensions.
     fn build_all_available() -> Extensions<'static> {
-        // PANIC SAFETY: This functions is early in on in many different tests, so any panic will be noticed immediately.
+        // PANIC SAFETY: Builtin extensions define functions/constructors only once. Also tested by many different test cases.
         #[allow(clippy::expect_used)]
         Self::specific_extensions(&ALL_AVAILABLE_EXTENSION_OBJECTS)
             .expect("Default extensions should never error on initialization")
