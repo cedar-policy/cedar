@@ -295,12 +295,21 @@ pub enum GetSchemaTypeError {
     /// residual which is not just a single `Unknown`). For now, we do not
     /// attempt to compute the [`SchemaType`] in these cases, and just return
     /// this error.
-    #[error("cannot compute type of nontrivial residual `{residual}`")]
-    NontrivialResidual {
-        /// Nontrivial residual which we were trying to compute the
-        /// [`SchemaType`] of
-        residual: Box<Expr>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NontrivialResidual(#[from] NontrivialResidualError),
+}
+
+/// Found a set whose elements don't all have the same type.  This doesn't match
+/// any possible schema.
+#[derive(Debug, Diagnostic, Error)]
+#[error("set elements have different types: {ty1} and {ty2}")]
+#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
+pub struct HeterogeneousSetError {
+    /// First element type which was found
+    ty1: Box<SchemaType>,
+    /// Second element type which was found
+    ty2: Box<SchemaType>,
 }
 
 /// Trying to compute the [`SchemaType`], but the value or expression
@@ -325,16 +334,16 @@ impl std::fmt::Display for UnknownInsufficientTypeInfoError {
     }
 }
 
-/// Found a set whose elements don't all have the same type.  This doesn't match
-/// any possible schema.
+/// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
+/// residual which is not just a single `Unknown`). For now, we do not
+/// attempt to compute the [`SchemaType`] in these cases, and just return
+/// this error.
 #[derive(Debug, Diagnostic, Error)]
-#[error("set elements have different types: {ty1} and {ty2}")]
-#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
-pub struct HeterogeneousSetError {
-    /// First element type which was found
-    ty1: Box<SchemaType>,
-    /// Second element type which was found
-    ty2: Box<SchemaType>,
+#[error("cannot compute type of nontrivial residual `{residual}`")]
+pub struct NontrivialResidualError {
+    /// Nontrivial residual which we were trying to compute the
+    /// [`SchemaType`] of
+    residual: Box<Expr>,
 }
 
 /// Get the [`SchemaType`] of a restricted expression.
@@ -526,9 +535,10 @@ pub fn schematype_of_partialvalue(
             Err(_) => {
                 // the PartialValue is a residual that isn't a valid restricted expression.
                 // For now we don't try to determine the type in this case.
-                Err(GetSchemaTypeError::NontrivialResidual {
+                Err(NontrivialResidualError {
                     residual: Box::new(expr.clone()),
-                })
+                }
+                .into())
             }
         },
     }
