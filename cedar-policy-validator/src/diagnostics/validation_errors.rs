@@ -409,9 +409,7 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 
 /// Structure containing details about an undefined function error.
 #[derive(Error, Debug, Clone, Eq)]
-#[error(
-    "internal invariant violated. For policy `{policy_id}`, undefined extension function: {name}"
-)]
+#[error("for policy `{policy_id}`, undefined extension function: {name}")]
 pub struct UndefinedFunction {
     /// [`Expr`] that contains a call to an undefined function
     pub on_expr: Expr,
@@ -436,10 +434,6 @@ impl PartialEq for UndefinedFunction {
 
 impl Diagnostic for UndefinedFunction {
     impl_diagnostic_from_on_expr_field!();
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the policy that failed to validate"))
-    }
 }
 
 /// Structure containing details about a multiply defined function error.

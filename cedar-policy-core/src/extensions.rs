@@ -291,7 +291,7 @@ pub mod extension_function_lookup_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("internal invariant violated. Extension function `{name}` does not exist")]
+    #[error("extension function `{name}` does not exist")]
     pub struct FuncDoesNotExistError {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
@@ -301,10 +301,6 @@ pub mod extension_function_lookup_errors {
 
     impl Diagnostic for FuncDoesNotExistError {
         impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the policy that errored during evaluation"))
-        }
     }
 }
 
