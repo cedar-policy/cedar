@@ -325,7 +325,7 @@ impl std::fmt::Display for UnknownInsufficientTypeInfoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "cannot compute type because of insufficient type information for"
+            "cannot compute type because of insufficient type information for "
         )?;
         match &self.unknown {
             Some(u) => write!(f, "`{u}`"),
