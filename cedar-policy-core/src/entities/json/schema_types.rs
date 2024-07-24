@@ -20,6 +20,7 @@ use crate::ast::{
 };
 use crate::entities::Name;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::impl_diagnostic_from_expr_field;
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -338,12 +339,16 @@ impl std::fmt::Display for UnknownInsufficientTypeInfoError {
 /// residual which is not just a single `Unknown`). For now, we do not
 /// attempt to compute the [`SchemaType`] in these cases, and just return
 /// this error.
-#[derive(Debug, Diagnostic, Error)]
+#[derive(Debug, Error)]
 #[error("cannot compute type of nontrivial residual `{residual}`")]
 pub struct NontrivialResidualError {
     /// Nontrivial residual which we were trying to compute the
     /// [`SchemaType`] of
     residual: Box<Expr>,
+}
+
+impl Diagnostic for NontrivialResidualError {
+    impl_diagnostic_from_expr_field!(residual);
 }
 
 /// Get the [`SchemaType`] of a restricted expression.
