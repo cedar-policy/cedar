@@ -74,7 +74,7 @@ pub struct Extensions<'a> {
     extensions: &'a [Extension],
     /// All extension functions, collected from every extension used to
     /// construct this object.  Built ahead of time so that we know during
-    /// extension function lookup that at most one extension functions exists
+    /// extension function lookup that at most one extension function exists
     /// for a name. This should also make the lookup more efficient.
     functions: Arc<HashMap<&'a Name, &'a ExtensionFunction>>,
     /// All single argument extension function constructors, indexed by their
