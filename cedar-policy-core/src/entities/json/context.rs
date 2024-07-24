@@ -21,7 +21,7 @@ use super::{
 use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
 use miette::Diagnostic;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Trait for schemas that can inform the parsing of Context data
@@ -36,7 +36,7 @@ pub struct NullContextSchema;
 impl ContextSchema for NullContextSchema {
     fn context_type(&self) -> SchemaType {
         SchemaType::Record {
-            attrs: HashMap::new(),
+            attrs: BTreeMap::new(),
             open_attrs: false,
         }
     }

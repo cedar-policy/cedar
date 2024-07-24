@@ -676,7 +676,6 @@ impl<'e> ValueParser<'e> {
                         },
                         &argty,
                     )
-                    .map_err(|err| JsonDeserializationError::extension_function_lookup(ctx(), err))?
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),

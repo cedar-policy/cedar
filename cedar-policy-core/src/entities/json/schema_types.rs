@@ -25,11 +25,11 @@ use crate::extensions::{
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum SchemaType {
     /// Boolean
     Bool,
@@ -47,7 +47,7 @@ pub enum SchemaType {
     /// Record, with the specified attributes having the specified types
     Record {
         /// Attributes and their types
-        attrs: HashMap<SmolStr, AttributeType>,
+        attrs: BTreeMap<SmolStr, AttributeType>,
         /// Can a record with this type have attributes other than those specified in `attrs`
         open_attrs: bool,
     },
@@ -67,7 +67,7 @@ pub enum SchemaType {
 }
 
 /// Attribute type structure used in [`SchemaType`]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
     attr_type: SchemaType,
@@ -361,7 +361,7 @@ pub fn schematype_of_restricted_expr(
                     // but marking it optional is more flexible -- allows the
                     // attribute type to `is_consistent_with()` more types
                     Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?,
+                }).collect::<Result<BTreeMap<_,_>, GetSchemaTypeError>>()?,
                 open_attrs: false,
             })
         }
