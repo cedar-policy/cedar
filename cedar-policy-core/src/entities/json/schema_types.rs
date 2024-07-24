@@ -394,27 +394,14 @@ pub fn schematype_of_restricted_expr(
         }
         ExprKind::ExtensionFunctionApp { fn_name, args  } => {
             let efunc = extensions.func(fn_name).map_err(ExtensionFunctionLookupError::FuncDoesNotExist)?;
-            // The return type is `None` only when the function is an "unknown"
-            match efunc.return_type() {
-                Some(return_type) => Ok(return_type.clone()),
-                None => {
-                    let name =args.get(0).and_then(|arg| {
-                        if let ExprKind::Lit(Literal::String(name)) =  arg.expr_kind() {
-                            Some(name)
-                        } else {
-                            None
-                        }
-                    });
-                    Err(UnknownInsufficientTypeInfoError {
-                        unknown: name.map(|name|
-                            Unknown {
-                                name: name.clone(),
-                                type_annotation: None,
-                            }
-                        )
-                    }.into())
-                }
-            }
+            efunc.return_type().cloned().ok_or_else(|| {
+                // The return type is `None` only when the function is an "unknown"
+                // We obtained `args` by deconstructing `rexpr`, which was restricted, all args are also restricted expressions.
+                let first_arg = args.first().map(BorrowedRestrictedExpr::new_unchecked);
+                let name = first_arg.as_ref().and_then(BorrowedRestrictedExpr::as_string);
+                let unknown = name.cloned().map(Unknown::new_untyped);
+                UnknownInsufficientTypeInfoError { unknown }.into()
+            })
         }
         ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
             None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),

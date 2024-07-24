@@ -198,7 +198,7 @@ impl<'a> Extensions<'a> {
     ) -> Option<&ExtensionFunction> {
         self.single_arg_constructors
             .get(&(arg_type, return_type))
-            .map(|e| *e)
+            .copied()
     }
 }
 
