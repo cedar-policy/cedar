@@ -67,7 +67,7 @@ pub struct ExtensionSchemas<'a> {
 
 impl<'a> ExtensionSchemas<'a> {
     fn build_all_available() -> ExtensionSchemas<'static> {
-        // PANIC SAFETY: Builtin extensions define functions. Also tested by many different test cases.
+        // PANIC SAFETY: Builtin extension function definitions never conflict. Also tested by many different test cases.
         #[allow(clippy::expect_used)]
         ExtensionSchemas::specific_extension_schemas(&ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS)
             .expect("Default extension schemas should never error on initialization")
