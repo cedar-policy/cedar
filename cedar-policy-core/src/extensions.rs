@@ -55,10 +55,20 @@ lazy_static::lazy_static! {
     };
 }
 
+/// Structure representing the type signature of an extension function
+/// constructor. We assume constructors take exactly one argument.
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub(crate) struct ExtensionConstructorSignature<'a> {
+    /// The type of the constructors single argument.
+    pub(crate) argument_type: &'a SchemaType,
+    /// The constructors return type.
+    pub(crate) return_type: &'a SchemaType,
+}
+
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
 /// Clone is cheap for this type.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
@@ -70,7 +80,7 @@ pub struct Extensions<'a> {
     /// All single argument extension function constructors, index by the
     /// signature (a tuple `(arg_type, return type)`). Built ahead of time so
     /// that we know each constructor has a unique type signature.
-    single_arg_constructors: Arc<HashMap<(&'a SchemaType, &'a SchemaType), &'a ExtensionFunction>>,
+    single_arg_constructors: Arc<HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>>,
 }
 
 impl Extensions<'static> {
@@ -129,19 +139,25 @@ impl<'a> Extensions<'a> {
         let single_arg_constructors = Self::collect_no_duplicates(
             extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
                 if f.is_constructor() {
-                    if let (Some(arg_ty), Some(ret_ty)) = (f.arg_types().first(), f.return_type()) {
-                        return Some(((arg_ty, ret_ty), f));
+                    if let (Some(argument_type), Some(return_type)) =
+                        (f.arg_types().first(), f.return_type())
+                    {
+                        return Some((
+                            ExtensionConstructorSignature {
+                                argument_type,
+                                return_type,
+                            },
+                            f,
+                        ));
                     }
                 }
                 None
             }),
         )
-        .map_err(
-            |(arg_type, return_type)| MultipleConstructorsSameSignatureError {
-                return_type: Box::new(return_type.clone()),
-                arg_type: Box::new(arg_type.clone()),
-            },
-        )?;
+        .map_err(|sig| MultipleConstructorsSameSignatureError {
+            arg_type: Box::new(sig.argument_type.clone()),
+            return_type: Box::new(sig.return_type.clone()),
+        })?;
 
         Ok(Extensions {
             extensions,
@@ -193,12 +209,9 @@ impl<'a> Extensions<'a> {
     /// `Err` is returned in the case that multiple constructors have that signature.
     pub(crate) fn lookup_single_arg_constructor(
         &self,
-        return_type: &SchemaType,
-        arg_type: &SchemaType,
+        type_signature: &ExtensionConstructorSignature<'_>,
     ) -> Option<&ExtensionFunction> {
-        self.single_arg_constructors
-            .get(&(arg_type, return_type))
-            .copied()
+        self.single_arg_constructors.get(type_signature).copied()
     }
 }
 
@@ -244,10 +257,10 @@ mod extension_initialization_errors {
         "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
     )]
     pub struct MultipleConstructorsSameSignatureError {
-        /// return type of the shared constructor signature
-        pub(crate) return_type: Box<SchemaType>,
         /// argument type of the shared constructor signature
         pub(crate) arg_type: Box<SchemaType>,
+        /// return type of the shared constructor signature
+        pub(crate) return_type: Box<SchemaType>,
     }
 }
 

@@ -18,11 +18,6 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::entities::{
-    conformance::err::EntitySchemaConformanceError,
-    json::err::{EscapeKind, TypeMismatchError},
-    schematype_of_restricted_expr, GetSchemaTypeError,
-};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use crate::{
@@ -31,6 +26,14 @@ use crate::{
         ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
     },
     entities::Name,
+};
+use crate::{
+    entities::{
+        conformance::err::EntitySchemaConformanceError,
+        json::err::{EscapeKind, TypeMismatchError},
+        schematype_of_restricted_expr, GetSchemaTypeError,
+    },
+    extensions::ExtensionConstructorSignature,
 };
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -668,20 +671,19 @@ impl<'e> ValueParser<'e> {
                                 )
                             }
                         })?;
+                let expected_return_type = SchemaType::Extension {
+                    name: expected_typename,
+                };
                 let func = self
                     .extensions
-                    .lookup_single_arg_constructor(
-                        &SchemaType::Extension {
-                            name: expected_typename.clone(),
-                        },
-                        &argty,
-                    )
+                    .lookup_single_arg_constructor(&ExtensionConstructorSignature {
+                        argument_type: &argty,
+                        return_type: &expected_return_type,
+                    })
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),
-                            SchemaType::Extension {
-                                name: expected_typename,
-                            },
+                            expected_return_type,
                             argty.clone(),
                         )
                     })?;
