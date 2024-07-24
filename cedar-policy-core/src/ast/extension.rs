@@ -121,8 +121,10 @@ pub struct ExtensionFunction {
     /// The return type of this function, as a `SchemaType`. We require that
     /// this be constant -- any given extension function must always return a
     /// value of this `SchemaType`.
-    /// If `return_type` is `None`, the function may never return a value.
-    /// (ie: it functions as the `Never` type)
+    ///
+    /// `return_type` is `None` if and only if this function represents an
+    /// "unknown" value for partial evaluation. Such a function may only return
+    /// a fully unknown residual and may never return a value.
     return_type: Option<SchemaType>,
     /// The argument types that this function expects, as `SchemaType`s.
     arg_types: Vec<SchemaType>,
@@ -173,8 +175,9 @@ impl ExtensionFunction {
         )
     }
 
-    /// Create a new `ExtensionFunction` taking one argument, that never returns a value
-    pub fn unary_never(
+    /// Create a new `ExtensionFunction` to represent a function which is an
+    /// "unknown" in partial evaluation. Please don't use this for anything else.
+    pub fn partial_eval_unknown(
         name: Name,
         style: CallStyle,
         func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
@@ -290,7 +293,8 @@ impl ExtensionFunction {
     }
 
     /// Get the return type of the `ExtensionFunction`
-    /// `None` represents the `Never` type.
+    /// `None` is returned exactly when this function represents an "unknown"
+    /// for partial evaluation.
     pub fn return_type(&self) -> Option<&SchemaType> {
         self.return_type.as_ref()
     }

@@ -222,6 +222,7 @@ pub enum ExtensionInitializationError {
     ),
 }
 
+/// Error subtypes for [`ExtensionInitializationError`]
 mod extension_initialization_errors {
     use crate::{ast::Name, entities::SchemaType};
     use miette::Diagnostic;
@@ -261,11 +262,6 @@ pub enum ExtensionFunctionLookupError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
-
-    /// Attempted to typecheck a function without a return type
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HasNoType(#[from] extension_function_lookup_errors::HasNoTypeError),
 }
 
 /// Error subtypes for [`ExtensionFunctionLookupError`]
@@ -301,44 +297,6 @@ pub mod extension_function_lookup_errors {
 
     impl Diagnostic for FuncDoesNotExistError {
         impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Attempted to typecheck a function without a return type
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("extension function `{name}` has no return type")]
-    pub struct HasNoTypeError {
-        /// Name of the function that has no return type
-        pub(crate) name: Name,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for HasNoTypeError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
     }
 }
 

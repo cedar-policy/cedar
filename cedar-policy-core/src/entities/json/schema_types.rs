@@ -19,9 +19,7 @@ use crate::ast::{
     Value, ValueKind,
 };
 use crate::entities::Name;
-use crate::extensions::{
-    extension_function_lookup_errors, ExtensionFunctionLookupError, Extensions,
-};
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -290,11 +288,9 @@ pub enum GetSchemaTypeError {
     /// Trying to compute the [`SchemaType`], but the value or expression
     /// contains an [`Unknown`] that has insufficient type information
     /// associated in order to compute the `SchemaType`
-    #[error("cannot compute type because of insufficient type information for `{unknown}`")]
-    UnknownInsufficientTypeInfo {
-        /// `Unknown` which has insufficient type information
-        unknown: Unknown,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownInsufficientTypeInfo(#[from] UnknownInsufficientTypeInfoError),
     /// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
     /// residual which is not just a single `Unknown`). For now, we do not
     /// attempt to compute the [`SchemaType`] in these cases, and just return
@@ -305,6 +301,28 @@ pub enum GetSchemaTypeError {
         /// [`SchemaType`] of
         residual: Box<Expr>,
     },
+}
+
+/// Trying to compute the [`SchemaType`], but the value or expression
+/// contains an [`Unknown`] that has insufficient type information
+/// associated in order to compute the `SchemaType`
+#[derive(Debug, Diagnostic, Error)]
+pub struct UnknownInsufficientTypeInfoError {
+    /// `Unknown` which has insufficient type information
+    unknown: Option<Unknown>,
+}
+
+impl std::fmt::Display for UnknownInsufficientTypeInfoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cannot compute type because of insufficient type information for"
+        )?;
+        match &self.unknown {
+            Some(u) => write!(f, "`{u}`"),
+            None => write!(f, "unknown"),
+        }
+    }
 }
 
 /// Found a set whose elements don't all have the same type.  This doesn't match
@@ -365,18 +383,35 @@ pub fn schematype_of_restricted_expr(
                 open_attrs: false,
             })
         }
-        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+        ExprKind::ExtensionFunctionApp { fn_name, args  } => {
             let efunc = extensions.func(fn_name).map_err(ExtensionFunctionLookupError::FuncDoesNotExist)?;
-            Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType(extension_function_lookup_errors::HasNoTypeError {
-                name: efunc.name().clone(),
-                source_loc: rexpr.source_loc().cloned(),
-            }))?)
+            // The return type is `None` only when the function is an "unknown"
+            match efunc.return_type() {
+                Some(return_type) => Ok(return_type.clone()),
+                None => {
+                    let name =args.get(0).and_then(|arg| {
+                        if let ExprKind::Lit(Literal::String(name)) =  arg.expr_kind() {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    });
+                    Err(UnknownInsufficientTypeInfoError {
+                        unknown: name.map(|name|
+                            Unknown {
+                                name: name.clone(),
+                                type_annotation: None,
+                            }
+                        )
+                    }.into())
+                }
+            }
         }
         ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
-            None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
             Some(ty) => match SchemaType::from_ty(ty.clone()) {
                 Some(ty) => Ok(ty),
-                None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+                None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
             }
         }
         // PANIC SAFETY. Unreachable by invariant on restricted expressions
