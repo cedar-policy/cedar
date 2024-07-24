@@ -26,9 +26,7 @@ use cedar_policy_core::parser::Loc;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{
-    CallStyle, EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var,
-};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
@@ -467,40 +465,6 @@ impl PartialEq for WrongNumberArguments {
 }
 
 impl Diagnostic for WrongNumberArguments {
-    impl_diagnostic_from_on_expr_field!();
-}
-
-/// Structure containing details about a wrong call style error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, wrong call style in extension function application. Expected {expected}, got {actual}")]
-pub struct WrongCallStyle {
-    /// [`Expr`] containing a call in the wrong style
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Expected call style
-    pub expected: CallStyle,
-    /// Actual call style
-    pub actual: CallStyle,
-}
-
-impl std::hash::Hash for WrongCallStyle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.expected.hash(state);
-        self.actual.hash(state);
-    }
-}
-
-impl PartialEq for WrongCallStyle {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.expected == other.expected
-            && self.actual == other.actual
-    }
-}
-
-impl Diagnostic for WrongCallStyle {
     impl_diagnostic_from_on_expr_field!();
 }
 

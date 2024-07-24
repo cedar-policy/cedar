@@ -381,10 +381,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     WrongNumberArguments(#[from] validation_errors::WrongNumberArguments),
-    /// Incorrect call style in an extension function application.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WrongCallStyle(#[from] validation_errors::WrongCallStyle),
     /// Error returned by custom extension function argument validation
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -418,7 +414,6 @@ impl ValidationError {
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
-            Self::WrongCallStyle(e) => e.policy_id(),
             Self::FunctionArgumentValidation(e) => e.policy_id(),
             Self::EmptySetForbidden(e) => e.policy_id(),
             Self::NonLitExtConstructor(e) => e.policy_id(),
@@ -457,9 +452,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::WrongNumberArguments(e) => {
                 Self::WrongNumberArguments(e.into())
-            }
-            cedar_policy_validator::ValidationError::WrongCallStyle(e) => {
-                Self::WrongCallStyle(e.into())
             }
             cedar_policy_validator::ValidationError::FunctionArgumentValidation(e) => {
                 Self::FunctionArgumentValidation(e.into())

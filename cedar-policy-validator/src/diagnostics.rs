@@ -131,9 +131,6 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     WrongNumberArguments(#[from] validation_errors::WrongNumberArguments),
     /// Incorrect call style in an extension function application.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WrongCallStyle(#[from] validation_errors::WrongCallStyle),
     /// Error returned by custom extension function argument validation
     #[diagnostic(transparent)]
     #[error(transparent)]
