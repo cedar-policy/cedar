@@ -73,13 +73,13 @@ pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
     /// All extension functions, collected from every extension used to
-    /// construct the this object.  Built ahead of time so that we can know
-    /// during extension function lookup that at most one extension functions
-    /// exists for a name. This should also make the lookup more efficient.
+    /// construct this object.  Built ahead of time so that we know during
+    /// extension function lookup that at most one extension functions exists
+    /// for a name. This should also make the lookup more efficient.
     functions: Arc<HashMap<&'a Name, &'a ExtensionFunction>>,
-    /// All single argument extension function constructors, index by the
-    /// signature (a tuple `(arg_type, return type)`). Built ahead of time so
-    /// that we know each constructor has a unique type signature.
+    /// All single argument extension function constructors, indexed by their
+    /// type signature. Built ahead of time so that we know each constructor has
+    /// a unique type signature.
     single_arg_constructors: Arc<HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>>,
 }
 
@@ -104,6 +104,9 @@ impl Extensions<'static> {
 }
 
 impl<'a> Extensions<'a> {
+    // Utility to build a `HashMap` of key value pairs from an iterator,
+    // returning an `Err` result if there are any duplicate keys in the
+    // iterator.
     fn collect_no_duplicates<K, V>(
         i: impl Iterator<Item = (K, V)>,
     ) -> std::result::Result<HashMap<K, V>, K>
@@ -128,6 +131,7 @@ impl<'a> Extensions<'a> {
     pub fn specific_extensions(
         extensions: &'a [Extension],
     ) -> std::result::Result<Extensions<'a>, ExtensionInitializationError> {
+        // Build functions map, ensuring that no functions share the same name.
         let functions = Self::collect_no_duplicates(
             extensions
                 .iter()
@@ -136,6 +140,7 @@ impl<'a> Extensions<'a> {
         )
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
+        // Build the constructor map, ensuring that no constructors share a type signature.
         let single_arg_constructors = Self::collect_no_duplicates(
             extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
                 if f.is_constructor() {
@@ -186,13 +191,13 @@ impl<'a> Extensions<'a> {
         &self,
         name: &Name,
     ) -> std::result::Result<&ExtensionFunction, FuncDoesNotExistError> {
-        match self.functions.get(name) {
-            None => Err(FuncDoesNotExistError {
+        self.functions
+            .get(name)
+            .copied()
+            .ok_or_else(|| FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: None,
-            }),
-            Some(func) => Ok(func),
-        }
+                source_loc: name.loc().cloned(),
+            })
     }
 
     /// Iterate over all extension functions defined by all of these extensions.
@@ -217,11 +222,10 @@ impl<'a> Extensions<'a> {
 
 /// Errors occurring while initializing extensions. There are internal errors, so
 /// this enum should not become part of the public API unless we publicly expose
-/// user-defined extensions function.
+/// user-defined extension function.
 #[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
 pub enum ExtensionInitializationError {
-    /// Tried to construct an extensions struct where an extension function was
-    /// defined by multiple extensions.
+    /// An extension function was defined by multiple extensions.
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncMultiplyDefined(#[from] extension_initialization_errors::FuncMultiplyDefinedError),
@@ -241,8 +245,7 @@ mod extension_initialization_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    /// Tried to construct an extensions struct where an extension function was
-    /// defined by multiple extensions.
+    /// An extension function was defined by multiple extensions.
     #[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
     #[error("extension function `{name}` is defined multiple times")]
     pub struct FuncMultiplyDefinedError {
@@ -296,16 +299,6 @@ pub mod extension_function_lookup_errors {
         pub(crate) name: Name,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl FuncDoesNotExistError {
-        pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
-            Self { source_loc, ..self }
-        }
-
-        pub(crate) fn source_loc(&self) -> Option<&Loc> {
-            self.source_loc.as_ref()
-        }
     }
 
     impl Diagnostic for FuncDoesNotExistError {

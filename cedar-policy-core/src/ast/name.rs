@@ -480,6 +480,11 @@ impl Name {
         #![allow(clippy::unwrap_used)]
         self.0.basename().clone().try_into().unwrap()
     }
+
+    /// Get the source location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc()
+    }
 }
 
 /// Error occurred when a reserved name is used

@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::{extensions::extension_function_lookup_errors, parser::Loc};
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
@@ -103,7 +103,7 @@ impl EvaluationError {
             Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
             Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
             Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
+            Self::FailedExtensionFunctionLookup(e) => e.source_loc.as_ref(),
             Self::TypeError(e) => e.source_loc.as_ref(),
             Self::WrongNumArguments(e) => e.source_loc.as_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
@@ -135,9 +135,9 @@ impl EvaluationError {
                     ..e
                 })
             }
-            Self::FailedExtensionFunctionLookup(e) => {
-                Self::FailedExtensionFunctionLookup(e.with_maybe_source_loc(source_loc))
-            }
+            Self::FailedExtensionFunctionLookup(e) => Self::FailedExtensionFunctionLookup(
+                extension_function_lookup_errors::FuncDoesNotExistError { source_loc, ..e },
+            ),
             Self::TypeError(e) => Self::TypeError(evaluation_errors::TypeError { source_loc, ..e }),
             Self::WrongNumArguments(e) => {
                 Self::WrongNumArguments(evaluation_errors::WrongNumArgumentsError {

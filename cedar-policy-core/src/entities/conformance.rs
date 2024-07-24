@@ -191,7 +191,7 @@ pub fn typecheck_restricted_expr_against_schematype(
     // checking whether the schematypes are "consistent", wouldn't it be less
     // confusing, more efficient, and maybe even more precise to just typecheck
     // directly?
-    match schematype_of_restricted_expr(expr, extensions) {
+    match schematype_of_restricted_expr(expr, &extensions) {
         Ok(actual_ty) => {
             if actual_ty.is_consistent_with(expected_ty) {
                 // typecheck passes
