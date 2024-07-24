@@ -51,7 +51,7 @@ lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_SCHEMAS : ExtensionSchemas<'static> = ExtensionSchemas::build_all_available();
 }
 
-/// Aggregate structure containing function signature for multiple [`ExtensionSchema`].
+/// Aggregate structure containing function signatures for multiple [`ExtensionSchema`].
 /// Ensures that no function name is defined mode than once.
 // Intentionally not deriving `Clone` to avoid clones of the `HashMap`. For the
 // moment, it's easy to pass this around by reference. We could make this
@@ -115,7 +115,7 @@ fn eval_extension_constructor(
     evaluator.interpret(constructor_call_expr.as_borrowed())
 }
 
-/// Errors occurring while initializing extensions. There are internal errors, so
+/// Errors occurring while initializing extensions. These are internal errors, so
 /// this enum should not become part of the public API unless we publicly expose
 /// user-defined extension function.
 #[derive(Diagnostic, Debug, Error)]
