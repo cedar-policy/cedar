@@ -53,9 +53,9 @@ lazy_static::lazy_static! {
 
 /// Aggregate structure containing function signatures for multiple [`ExtensionSchema`].
 /// Ensures that no function name is defined mode than once.
-// Intentionally not deriving `Clone` to avoid clones of the `HashMap`. For the
-// moment, it's easy to pass this around by reference. We could make this
-// `Arc<..>` if that becomes annoying.
+/// Intentionally does not derive `Clone` to avoid clones of the `HashMap`. For the
+/// moment, it's easy to pass this around by reference. We could make this
+/// `Arc<..>` if that becomes annoying.
 #[derive(Debug)]
 pub struct ExtensionSchemas<'a> {
     /// Types for all extension functions, collected from every extension used
