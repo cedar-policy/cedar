@@ -129,9 +129,7 @@ impl<'a> Extensions<'a> {
         let single_arg_constructors = Self::collect_no_duplicates(
             extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
                 if f.is_constructor() {
-                    if let (Some(Some(arg_ty)), Some(ret_ty)) =
-                        (f.arg_types().first(), f.return_type())
-                    {
+                    if let (Some(arg_ty), Some(ret_ty)) = (f.arg_types().first(), f.return_type()) {
                         return Some(((arg_ty, ret_ty), f));
                     }
                 }

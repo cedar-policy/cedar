@@ -124,10 +124,8 @@ pub struct ExtensionFunction {
     /// If `return_type` is `None`, the function may never return a value.
     /// (ie: it functions as the `Never` type)
     return_type: Option<SchemaType>,
-    /// The argument types that this function expects, as `SchemaType`s. If any
-    /// given argument type is not constant (function works with multiple
-    /// `SchemaType`s) then this will be `None` for that argument.
-    arg_types: Vec<Option<SchemaType>>,
+    /// The argument types that this function expects, as `SchemaType`s.
+    arg_types: Vec<SchemaType>,
 }
 
 impl ExtensionFunction {
@@ -137,7 +135,7 @@ impl ExtensionFunction {
         style: CallStyle,
         func: ExtensionFunctionObject,
         return_type: Option<SchemaType>,
-        arg_types: Vec<Option<SchemaType>>,
+        arg_types: Vec<SchemaType>,
     ) -> Self {
         Self {
             name,
@@ -180,7 +178,7 @@ impl ExtensionFunction {
         name: Name,
         style: CallStyle,
         func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
-        arg_type: Option<SchemaType>,
+        arg_type: SchemaType,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -205,7 +203,7 @@ impl ExtensionFunction {
         style: CallStyle,
         func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
         return_type: SchemaType,
-        arg_type: Option<SchemaType>,
+        arg_type: SchemaType,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -232,7 +230,7 @@ impl ExtensionFunction {
             dyn Fn(Value, Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
         >,
         return_type: SchemaType,
-        arg_types: (Option<SchemaType>, Option<SchemaType>),
+        arg_types: (SchemaType, SchemaType),
     ) -> Self {
         Self::new(
             name.clone(),
@@ -262,7 +260,7 @@ impl ExtensionFunction {
                 + 'static,
         >,
         return_type: SchemaType,
-        arg_types: (Option<SchemaType>, Option<SchemaType>, Option<SchemaType>),
+        arg_types: (SchemaType, SchemaType, SchemaType),
     ) -> Self {
         Self::new(
             name.clone(),
@@ -301,7 +299,7 @@ impl ExtensionFunction {
     ///
     /// If any given argument type is not constant (function works with multiple
     /// `SchemaType`s) then this will be `None` for that argument.
-    pub fn arg_types(&self) -> &[Option<SchemaType>] {
+    pub fn arg_types(&self) -> &[SchemaType] {
         &self.arg_types
     }
 
@@ -312,10 +310,8 @@ impl ExtensionFunction {
     pub fn is_constructor(&self) -> bool {
         // return type is an extension type
         matches!(self.return_type(), Some(SchemaType::Extension { .. }))
-        // all arg types are `Some()`
-        && self.arg_types().iter().all(Option::is_some)
         // no argument is an extension type
-        && !self.arg_types().iter().any(|ty| matches!(ty, Some(SchemaType::Extension { .. })))
+        && !self.arg_types().iter().any(|ty| matches!(ty, SchemaType::Extension { .. }))
     }
 
     /// Call the `ExtensionFunction` with the given args

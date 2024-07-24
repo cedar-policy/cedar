@@ -628,19 +628,14 @@ impl Type {
                         _ => return Ok(false),
                     }
                     for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
-                        match expected_arg_ty {
-                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
-                            Some(ty) => {
-                                if typecheck_restricted_expr_against_schematype(
-                                    actual_arg,
-                                    ty,
-                                    extensions.clone(),
-                                )
-                                .is_err()
-                                {
-                                    return Ok(false);
-                                }
-                            }
+                        if typecheck_restricted_expr_against_schematype(
+                            actual_arg,
+                            expected_arg_ty,
+                            extensions.clone(),
+                        )
+                        .is_err()
+                        {
+                            return Ok(false);
                         }
                     }
                     // if we got here, then the return type and arg types typecheck

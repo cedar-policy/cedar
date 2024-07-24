@@ -38,7 +38,7 @@ pub fn extension() -> Extension {
             "unknown".parse().unwrap(),
             CallStyle::FunctionStyle,
             Box::new(create_new_unknown),
-            Some(SchemaType::String),
+            SchemaType::String,
         )],
     )
 }
