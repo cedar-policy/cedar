@@ -208,10 +208,8 @@ impl<'a> Extensions<'a> {
     }
 
     /// Lookup a single-argument constructor by its return type and argument type.
-    /// This will ignore polymorphic functions (that accept multiple argument types).
     ///
-    /// `Ok(None)` means no constructor has that signature.
-    /// `Err` is returned in the case that multiple constructors have that signature.
+    /// `None` means no constructor has that signature.
     pub(crate) fn lookup_single_arg_constructor(
         &self,
         type_signature: &ExtensionConstructorSignature<'_>,
