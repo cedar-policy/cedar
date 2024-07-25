@@ -219,11 +219,11 @@ impl<'e> Evaluator<'e> {
     /// 1) A boolean, if complete evaluation was possible
     /// 2) An error, if the policy is guaranteed to error
     /// 3) A residual, if complete evaluation was impossible
-    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
-    /// current `request`.
-    /// This is _different than_ "if the current `request` should be allowed" --
-    /// it doesn't consider whether we're processing a `Permit` policy or a
-    /// `Forbid` policy.
+    ///    The bool indicates whether the policy applies, ie, "is satisfied" for the
+    ///    current `request`.
+    ///    This is _different than_ "if the current `request` should be allowed" --
+    ///    it doesn't consider whether we're processing a `Permit` policy or a
+    ///    `Forbid` policy.
     pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
         match self.partial_interpret(&p.condition(), p.env())? {
             PartialValue::Value(v) => v.get_as_bool().map(Either::Left),

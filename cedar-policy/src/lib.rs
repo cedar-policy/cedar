@@ -31,9 +31,14 @@
     rustdoc::invalid_html_tags,
     rustdoc::invalid_rust_codeblocks,
     rustdoc::bare_urls,
-    clippy::doc_markdown
+    clippy::doc_markdown,
+    clippy::doc_lazy_continuation
 )]
-#![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
+#![allow(
+    clippy::needless_doctest_main,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn
+)]
 // enable doc_auto_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
