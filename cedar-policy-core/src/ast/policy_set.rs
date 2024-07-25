@@ -34,6 +34,7 @@ pub struct PolicySet {
     /// A body is either:
     ///    - A Body of a `Template`, which has slots that need to be filled in
     ///    - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots
+    ///
     /// The static policy's [`PolicyID`] is the same in both `templates` and `links`
     templates: HashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
