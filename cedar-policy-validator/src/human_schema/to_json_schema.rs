@@ -98,9 +98,9 @@ pub fn human_type_to_json_type(ty: Node<Type>) -> SchemaType<RawName> {
         Type::Set(t) => SchemaType::Type(SchemaTypeVariant::Set {
             element: Box::new(human_type_to_json_type(*t)),
         }),
-        Type::Ident(p) => SchemaType::EntityOrCommonTypeRef {
+        Type::Ident(p) => SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
             type_name: RawName::from(p),
-        },
+        }),
         Type::Record(fields) => SchemaType::Type(SchemaTypeVariant::Record {
             attributes: fields
                 .into_iter()

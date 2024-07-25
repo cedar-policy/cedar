@@ -62,6 +62,7 @@ impl<N: Display> Display for SchemaType<N> {
             SchemaType::Type(ty) => match ty {
                 SchemaTypeVariant::Boolean => write!(f, "__cedar::Bool"),
                 SchemaTypeVariant::Entity { name } => write!(f, "{name}"),
+                SchemaTypeVariant::EntityOrCommon { type_name } => write!(f, "{type_name}"),
                 SchemaTypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
                 SchemaTypeVariant::Long => write!(f, "__cedar::Long"),
                 SchemaTypeVariant::Record {
@@ -87,8 +88,7 @@ impl<N: Display> Display for SchemaType<N> {
                 SchemaTypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 SchemaTypeVariant::String => write!(f, "__cedar::String"),
             },
-            SchemaType::CommonTypeRef { type_name }
-            | SchemaType::EntityOrCommonTypeRef { type_name } => write!(f, "{type_name}"),
+            SchemaType::CommonTypeRef { type_name } => write!(f, "{type_name}"),
         }
     }
 }

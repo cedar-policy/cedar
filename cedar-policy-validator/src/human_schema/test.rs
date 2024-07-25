@@ -568,9 +568,9 @@ namespace Baz {action "Foo" appliesTo {
                     attributes,
                     additional_attributes: false,
                 }) => {
-                    let expected = SchemaType::EntityOrCommonTypeRef {
+                    let expected = SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
-                    };
+                    });
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
                 }
@@ -590,16 +590,16 @@ namespace Baz {action "Foo" appliesTo {
                 let attribute = attributes.get("repo").expect("No `repo`");
                 assert_has_type(
                     attribute,
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "Repository".parse().unwrap(),
-                    },
+                    }),
                 );
                 let attribute = attributes.get("reporter").expect("No `repo`");
                 assert_has_type(
                     attribute,
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
-                    },
+                    }),
                 );
             }
             _ => panic!("bad type on `Issue`"),
@@ -616,9 +616,9 @@ namespace Baz {action "Foo" appliesTo {
                     attributes,
                     additional_attributes: false,
                 }) => {
-                    let expected = SchemaType::EntityOrCommonTypeRef {
+                    let expected = SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
-                    };
+                    });
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
                 }
@@ -689,16 +689,16 @@ namespace Baz {action "Foo" appliesTo {
             }) => {
                 assert_has_type(
                     attributes.get("personalGroup").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "Group".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("blocked").unwrap(),
                     SchemaType::Type(SchemaTypeVariant::Set {
-                        element: Box::new(SchemaType::EntityOrCommonTypeRef {
+                        element: Box::new(SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                             type_name: "User".parse().unwrap(),
-                        }),
+                        })),
                     }),
                 );
             }
@@ -719,9 +719,9 @@ namespace Baz {action "Foo" appliesTo {
             }) => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
-                    },
+                    }),
                 );
             }
             _ => panic!("Wrong type"),
@@ -738,39 +738,39 @@ namespace Baz {action "Foo" appliesTo {
             }) => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("isPrivate").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "Bool".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("publicAccess").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "String".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("viewACL").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "DocumentShare".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("modifyACL").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "DocumentShare".parse().unwrap(),
-                    },
+                    }),
                 );
                 assert_has_type(
                     attributes.get("manageACL").unwrap(),
-                    SchemaType::EntityOrCommonTypeRef {
+                    SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "DocumentShare".parse().unwrap(),
-                    },
+                    }),
                 );
             }
             _ => panic!("Wrong type"),
@@ -913,7 +913,7 @@ namespace Baz {action "Foo" appliesTo {
                 assert!(!additional_attributes);
                 let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
                 assert!(required);
-                assert_matches!(ty, SchemaType::EntityOrCommonTypeRef { type_name } => {
+                assert_matches!(ty, SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             }
@@ -1456,17 +1456,17 @@ mod translator_tests {
                 let TypeOfAttribute { ty, required } = attributes.get("name").unwrap();
                 {
                     assert!(required);
-                    let expected = SchemaType::EntityOrCommonTypeRef {
+                    let expected = SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "id".parse().unwrap(),
-                    };
+                    });
                     assert_eq!(ty, &expected);
                 }
                 let TypeOfAttribute { ty, required } = attributes.get("email").unwrap();
                 {
                     assert!(required);
-                    let expected = SchemaType::EntityOrCommonTypeRef {
+                    let expected = SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                         type_name: "email_address".parse().unwrap(),
-                    };
+                    });
                     assert_eq!(ty, &expected);
                 }
             }

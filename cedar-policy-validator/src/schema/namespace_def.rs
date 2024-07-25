@@ -1024,7 +1024,7 @@ pub(crate) fn try_schema_type_into_validator_type(
                     .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
-        SchemaType::EntityOrCommonTypeRef { type_name } => {
+        SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 // First check if it's a common type, because in the edge case where
                 // the name is both a valid common type name and a valid entity type

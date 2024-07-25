@@ -20,6 +20,10 @@ Cedar Language Version: 4.0
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
+- Schema JSON syntax now accepts a type `EntityOrCommon` representing a typename
+  that can resolve to either an entity or common type, matching the behavior
+  of typenames written in the human-readable (Cedar) syntax. (#1060, as part of
+  resolving #579)
 
 ### Changed
 

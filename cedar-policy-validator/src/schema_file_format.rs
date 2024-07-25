@@ -639,29 +639,20 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaType<N> {
-    /// One of the standard types exposed to users
+    /// One of the standard types exposed to users.
+    ///
+    /// This branch also includes the "entity-or-common-type-reference" possibility.
     Type(SchemaTypeVariant<N>),
     /// Reference to a common type
+    ///
+    /// This is only used for references that _must_ resolve to common types.
+    /// References that may resolve to either common or entity types can use
+    /// `SchemaType::Type(SchemaTypeVariant::EntityOrCommon)`.
     CommonTypeRef {
         /// Name of the common type.
         /// For the important case of `N` = [`RawName`], this is the schema JSON
         /// format, and the `RawName` is exactly how it appears in the schema;
         /// may not yet be fully qualified
-        #[serde(rename = "type")]
-        type_name: N,
-    },
-    /// Reference that may resolve to either an entity or common type
-    EntityOrCommonTypeRef {
-        /// Name of the entity or common type.
-        /// Since `serde(untagged)` matches the first variant that works,
-        /// this variant can never be constructed by the `Deserialize`
-        /// implementation, as any structure that would fit this would
-        /// first fit `CommonTypeRef` above.
-        /// This is intended; the JSON syntax in question is specified to
-        /// resolve to only a common type.
-        /// This variant (`EntityOrCommonTypeRef`) exists only for the use
-        /// of the human-schema parser, so that we can represent all valid
-        /// human-syntax schemas in this format.
         #[serde(rename = "type")]
         type_name: N,
     },
@@ -681,17 +672,19 @@ impl<N> SchemaType<N> {
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
                 element.common_type_references()
             }
+            SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
+                Box::new(std::iter::once(type_name))
+            }
             SchemaType::CommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
-            SchemaType::EntityOrCommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
     /// (recursively)? Returns `None` if this is a `CommonTypeRef` or
-    /// `EntityOrCommonTypeRef` because we can't easily check the type
-    /// of a common type reference, accounting for namespaces, without first
-    /// converting to a [`crate::types::Type`].
+    /// `EntityOrCommon` because we can't easily check the type of a common type
+    /// reference, accounting for namespaces, without first converting to a
+    /// [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
@@ -704,7 +697,7 @@ impl<N> SchemaType<N> {
                     None => None,
                 }),
             Self::Type(_) => Some(false),
-            Self::CommonTypeRef { .. } | Self::EntityOrCommonTypeRef { .. } => None,
+            Self::CommonTypeRef { .. } => None,
         }
     }
 
@@ -732,9 +725,6 @@ impl SchemaType<RawName> {
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
                 type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
             },
-            Self::EntityOrCommonTypeRef { type_name } => SchemaType::EntityOrCommonTypeRef {
-                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::CommonOrEntity),
-            },
         }
     }
 
@@ -742,9 +732,6 @@ impl SchemaType<RawName> {
         match self {
             Self::Type(stv) => SchemaType::Type(stv.into_n()),
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
-                type_name: type_name.into(),
-            },
-            Self::EntityOrCommonTypeRef { type_name } => SchemaType::EntityOrCommonTypeRef {
                 type_name: type_name.into(),
             },
         }
@@ -769,9 +756,6 @@ impl SchemaType<ConditionalName> {
                 stv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
             )),
             Self::CommonTypeRef { type_name } => Ok(SchemaType::CommonTypeRef {
-                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
-            }),
-            Self::EntityOrCommonTypeRef { type_name } => Ok(SchemaType::EntityOrCommonTypeRef {
                 type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
             }),
         }
@@ -1165,6 +1149,31 @@ pub enum SchemaTypeVariant<N> {
         /// may not yet be fully qualified
         name: N,
     },
+    /// Reference that may resolve to either an entity or common type
+    EntityOrCommon {
+        /// Name of the entity or common type.
+        /// For the important case of `N` = `RawName`, this is the schema JSON
+        /// format, and the `RawName` is exactly how it appears in the schema;
+        /// may not yet be fully qualified.
+        ///
+        /// There is no possible ambiguity in the JSON syntax between this and
+        /// `Entity`, nor between this and `SchemaType::Common`.
+        /// - To represent a must-be-entity-type reference in the JSON syntax,
+        ///     use `{ "type": "Entity", "name": "foo" }`. This ser/de as
+        ///     `SchemaType::Type(SchemaTypeVariant::Entity)`.
+        /// - To represent a must-be-common-type reference in the JSON syntax,
+        ///     use `{ "type": "foo" }`. This ser/de as
+        ///     `SchemaType::CommonTypeRef`.
+        /// - To represent an either-entity-or-common-type reference in the
+        ///     JSON syntax, use `{ "type": "EntityOrCommon", "name": "foo" }`.
+        ///     This ser/de as `SchemaType::Type(SchemaTypeVariant::EntityOrCommon`.
+        ///
+        /// You can still use `{ "type": "Entity" }` alone (no `"name"` key) to
+        /// indicate a common type named `Entity`, and likewise for
+        /// `EntityOrCommon`.
+        #[serde(rename = "name")]
+        type_name: N,
+    },
     /// Extension types
     Extension {
         /// Name of the extension type
@@ -1185,6 +1194,9 @@ impl SchemaTypeVariant<RawName> {
             Self::Extension { name } => SchemaTypeVariant::Extension { name },
             Self::Entity { name } => SchemaTypeVariant::Entity {
                 name: name.conditionally_qualify_with(ns, ReferenceType::Entity), // `Self::Entity` must resolve to an entity type, not a common type
+            },
+            Self::EntityOrCommon { type_name } => SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::CommonOrEntity),
             },
             Self::Set { element } => SchemaTypeVariant::Set {
                 element: Box::new(element.conditionally_qualify_type_references(ns)),
@@ -1215,6 +1227,9 @@ impl SchemaTypeVariant<RawName> {
             Self::Long => SchemaTypeVariant::Long,
             Self::String => SchemaTypeVariant::String,
             Self::Entity { name } => SchemaTypeVariant::Entity { name: name.into() },
+            Self::EntityOrCommon { type_name } => SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.into(),
+            },
             Self::Record {
                 attributes,
                 additional_attributes,
@@ -1253,6 +1268,9 @@ impl SchemaTypeVariant<ConditionalName> {
             Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
             Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
                 name: name.resolve(all_common_defs, all_entity_defs)?.clone(),
+            }),
+            Self::EntityOrCommon { type_name } => Ok(SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
             }),
             Self::Set { element } => Ok(SchemaTypeVariant::Set {
                 element: Box::new(

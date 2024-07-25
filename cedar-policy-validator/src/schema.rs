@@ -848,9 +848,9 @@ fn single_alias_in_empty_namespace(
         None,
         (
             id,
-            SchemaType::EntityOrCommonTypeRef {
+            SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
                 type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
-            },
+            }),
         ),
     )])
 }
@@ -1037,7 +1037,7 @@ impl<'a> CommonTypeResolver<'a> {
                 .get(&type_name)
                 .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
                 .cloned(),
-            SchemaType::EntityOrCommonTypeRef { type_name } => {
+            SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
                 match resolve_table.get(&type_name) {
                     Some(def) => Ok(def.clone()),
                     None => Ok(SchemaType::Type(SchemaTypeVariant::Entity {
