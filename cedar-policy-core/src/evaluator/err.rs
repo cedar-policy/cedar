@@ -15,7 +15,8 @@
  */
 
 use crate::ast::*;
-use crate::{extensions::extension_function_lookup_errors, parser::Loc};
+use crate::extensions::ExtensionFunctionLookupError;
+use crate::parser::Loc;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
@@ -53,9 +54,7 @@ pub enum EvaluationError {
     /// An error occurred when looking up an extension function
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FailedExtensionFunctionLookup(
-        #[from] crate::extensions::extension_function_lookup_errors::FuncDoesNotExistError,
-    ),
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
@@ -103,7 +102,7 @@ impl EvaluationError {
             Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
             Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
             Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::FailedExtensionFunctionLookup(e) => e.source_loc.as_ref(),
+            Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
             Self::TypeError(e) => e.source_loc.as_ref(),
             Self::WrongNumArguments(e) => e.source_loc.as_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
@@ -135,9 +134,9 @@ impl EvaluationError {
                     ..e
                 })
             }
-            Self::FailedExtensionFunctionLookup(e) => Self::FailedExtensionFunctionLookup(
-                extension_function_lookup_errors::FuncDoesNotExistError { source_loc, ..e },
-            ),
+            Self::FailedExtensionFunctionLookup(e) => {
+                Self::FailedExtensionFunctionLookup(e.with_maybe_source_loc(source_loc))
+            }
             Self::TypeError(e) => Self::TypeError(evaluation_errors::TypeError { source_loc, ..e }),
             Self::WrongNumArguments(e) => {
                 Self::WrongNumArguments(evaluation_errors::WrongNumArgumentsError {

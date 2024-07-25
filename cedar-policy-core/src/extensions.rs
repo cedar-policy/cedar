@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
+use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -190,14 +191,14 @@ impl<'a> Extensions<'a> {
     pub fn func(
         &self,
         name: &Name,
-    ) -> std::result::Result<&ExtensionFunction, FuncDoesNotExistError> {
-        self.functions
-            .get(name)
-            .copied()
-            .ok_or_else(|| FuncDoesNotExistError {
+    ) -> std::result::Result<&ExtensionFunction, ExtensionFunctionLookupError> {
+        self.functions.get(name).copied().ok_or_else(|| {
+            FuncDoesNotExistError {
                 name: name.clone(),
                 source_loc: name.loc().cloned(),
-            })
+            }
+            .into()
+        })
     }
 
     /// Iterate over all extension functions defined by all of these extensions.
@@ -276,6 +277,25 @@ pub enum ExtensionFunctionLookupError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
+}
+
+impl ExtensionFunctionLookupError {
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
+        match self {
+            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
+        }
+    }
+
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        match self {
+            Self::FuncDoesNotExist(e) => {
+                Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
+                    source_loc,
+                    ..e
+                })
+            }
+        }
+    }
 }
 
 /// Error subtypes for [`ExtensionFunctionLookupError`]

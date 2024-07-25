@@ -35,7 +35,7 @@ use cedar_policy_core::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
     entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
-    extensions::{ExtensionFunctionLookupError, Extensions},
+    extensions::Extensions,
 };
 
 use crate::{validation_errors::LubHelp, ValidationMode};
@@ -614,9 +614,7 @@ impl Type {
             },
             Type::ExtensionType { name } => match restricted_expr.as_extn_fn_call() {
                 Some((fn_name, args)) => {
-                    let func = extensions
-                        .func(fn_name)
-                        .map_err(ExtensionFunctionLookupError::FuncDoesNotExist)?;
+                    let func = extensions.func(fn_name)?;
                     match func.return_type() {
                         Some(cedar_policy_core::entities::SchemaType::Extension {
                             name: actual_name,

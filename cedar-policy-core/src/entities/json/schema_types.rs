@@ -398,7 +398,7 @@ pub fn schematype_of_restricted_expr(
             })
         }
         ExprKind::ExtensionFunctionApp { fn_name, args  } => {
-            let efunc = extensions.func(fn_name).map_err(ExtensionFunctionLookupError::FuncDoesNotExist)?;
+            let efunc = extensions.func(fn_name)?;
             efunc.return_type().cloned().ok_or_else(|| {
                 // The return type is `None` only when the function is an "unknown"
                 // We obtained `args` by deconstructing `rexpr`, which was restricted, all args are also restricted expressions.
