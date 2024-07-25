@@ -32,7 +32,7 @@
     rustdoc::invalid_rust_codeblocks,
     rustdoc::bare_urls,
     clippy::doc_markdown,
-    clippy::doc_lazy_continuation,
+    clippy::doc_lazy_continuation
 )]
 #![allow(
     clippy::needless_doctest_main,
