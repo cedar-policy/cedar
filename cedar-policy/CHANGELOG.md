@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The "Cedar Language Version" refers to the language version as documented in the [Cedar Policy Language Guide](https://docs.cedarpolicy.com/other/doc-history.html). The language version may differ from the Rust crate version because a breaking change for the Cedar Rust API may or may not be a breaking change for the Cedar language.
 
-Starting with version 4.0, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Languages marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
+Starting with version 4.0, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
 ## [Unreleased]
 Cedar Language Version: 4.0
