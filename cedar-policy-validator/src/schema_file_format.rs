@@ -1711,7 +1711,7 @@ mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Entity"#)
-                    // TODO: this help message could suggest that the user needs to add a `name` field
+                    // TODO(#1094): this help message could suggest that the user needs to add a `name` field
                     .help("`Entity` has not been declared as a common type")
                     .build());
         });
