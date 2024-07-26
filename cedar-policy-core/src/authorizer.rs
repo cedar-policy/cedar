@@ -68,7 +68,7 @@ impl Authorizer {
     /// Create a new `Authorizer`
     pub fn new() -> Self {
         Self {
-            extensions: crate::extensions::Extensions::all_available(), // set at compile time
+            extensions: Extensions::all_available(), // set at compile time
             error_handling: Default::default(),
         }
     }
