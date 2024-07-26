@@ -172,7 +172,7 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
-                        let efunc = self.extensions.func(fn_name).map_err(|err| err.with_maybe_source_loc(expr.source_loc().cloned()))?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&values)
                     },
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
@@ -541,10 +541,7 @@ impl<'e> Evaluator<'e> {
                 match split(args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
-                        let efunc = self
-                            .extensions
-                            .func(fn_name)
-                            .map_err(|err| err.with_maybe_source_loc(loc.cloned()))?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&vals)
                     }
                     Either::Right(residuals) => Ok(PartialValue::Residual(

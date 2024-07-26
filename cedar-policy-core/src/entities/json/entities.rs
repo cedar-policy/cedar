@@ -238,7 +238,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         match self.schema {
             None => Ok(entity),
             Some(schema) => {
-                let checker = EntitySchemaConformanceChecker::new(schema, self.extensions);
+                let checker = EntitySchemaConformanceChecker::new(schema, self.extensions.clone());
                 checker.validate_entity(&entity)?;
                 Ok(entity)
             }
@@ -258,7 +258,12 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
             .collect::<Result<_, _>>()?;
-        Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
+        Entities::from_entities(
+            entities,
+            self.schema,
+            self.tc_computation,
+            self.extensions.clone(),
+        )
     }
 
     /// Internal function that parses an `EntityJson` into an `Entity`.
@@ -295,7 +300,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             }
         };
-        let vparser = ValueParser::new(self.extensions);
+        let vparser = ValueParser::new(self.extensions.clone());
         let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
             .attrs
             .into_iter()
@@ -361,7 +366,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         Some(v) => v,
                     };
                     let expected_ty =
-                        match schematype_of_partialvalue(expected_val, self.extensions) {
+                        match schematype_of_partialvalue(expected_val, self.extensions.clone()) {
                             Ok(ty) => Ok(Some(ty)),
                             Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
                                 Err(JsonDeserializationError::EntitySchemaConformance(
