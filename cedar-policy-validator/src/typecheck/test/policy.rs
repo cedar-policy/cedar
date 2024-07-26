@@ -123,7 +123,7 @@ fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_simple_schema(
     p: impl Into<Arc<Template>>,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails(simple_schema_file(), p, expected_type_errors)
 }
@@ -131,7 +131,7 @@ fn assert_policy_typecheck_fails_simple_schema(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_warns_simple_schema(
     p: impl Into<Arc<Template>>,
-    expected_warnings: Vec<ValidationWarning>,
+    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     assert_policy_typecheck_warns(simple_schema_file(), p, expected_warnings)
 }
@@ -139,7 +139,7 @@ fn assert_policy_typecheck_warns_simple_schema(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_permissive_fails_simple_schema(
     p: impl Into<Arc<Template>>,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails_for_mode(
         simple_schema_file(),
@@ -152,7 +152,7 @@ fn assert_policy_typecheck_permissive_fails_simple_schema(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_permissive_warns_simple_schema(
     p: impl Into<Arc<Template>>,
-    expected_warnings: Vec<ValidationWarning>,
+    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     assert_policy_typecheck_warns_for_mode(
         simple_schema_file(),
@@ -299,7 +299,7 @@ fn policy_invalid_attribute() {
     let src = r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#;
     assert_policy_typecheck_fails_simple_schema(
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(src, "resource.file_type"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
@@ -317,7 +317,7 @@ fn policy_invalid_attribute_2() {
     let src = r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#;
     assert_policy_typecheck_fails_simple_schema(
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(src, "principal.age"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
@@ -336,7 +336,7 @@ fn policy_context_invalid_attribute() {
         r#"permit(principal, action == Action::"view_photo", resource) when { context.fake };"#;
     assert_policy_typecheck_fails_simple_schema(
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(src, "context.fake"),
             PolicyID::from_string("0"),
             AttributeAccess::Context(
@@ -414,7 +414,7 @@ fn policy_impossible_scope() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -430,7 +430,7 @@ fn policy_impossible_literal_euids() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -446,7 +446,7 @@ fn policy_impossible_not_has() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -470,7 +470,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -483,7 +483,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -496,7 +496,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -509,7 +509,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -522,7 +522,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -535,7 +535,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -548,7 +548,7 @@ fn policy_in_action_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -564,7 +564,7 @@ fn policy_action_in_impossible() {
     .expect("Policy should parse.");
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -609,7 +609,7 @@ fn entity_lub_cant_access_attribute_not_shared() {
     let p = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_permissive_fails_simple_schema(
         p,
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(
                 src,
                 r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#,
@@ -640,7 +640,7 @@ fn entity_attribute_recommendation() {
         Some("file_type".into()),
         false,
     );
-    assert_policy_typecheck_fails_simple_schema(p, vec![expected]);
+    assert_policy_typecheck_fails_simple_schema(p, [expected]);
 }
 
 #[test]
@@ -660,7 +660,7 @@ fn entity_lub_cant_have_undeclared_attribute() {
     .expect("Policy should parse.");
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -688,7 +688,7 @@ fn is_impossible() {
     let p = parse_policy(None, r#"permit(principal is Photo, action, resource);"#).unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -696,7 +696,7 @@ fn is_impossible() {
     let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -727,7 +727,7 @@ fn is_entity_lub() {
     .unwrap();
     assert_policy_typecheck_permissive_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -754,7 +754,7 @@ fn is_action() {
     .unwrap();
     assert_policy_typecheck_warns_simple_schema(
         p.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             p.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -766,7 +766,7 @@ fn entity_record_lub_is_none() {
     let src = r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else {name: "bob"}).name == "jane" };"#;
     assert_policy_typecheck_fails_simple_schema(
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
-        vec![ValidationError::incompatible_types(
+        [ValidationError::incompatible_types(
             get_loc(src, r#"if 1 > 0 then User::"alice" else {name: "bob"}"#),
             PolicyID::from_string("0"),
             [
@@ -821,7 +821,7 @@ fn optional_attr_fail() {
     assert_policy_typecheck_fails(
         schema,
         policy,
-        vec![ValidationError::unsafe_optional_attribute_access(
+        [ValidationError::unsafe_optional_attribute_access(
             get_loc(src, "principal.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
@@ -859,7 +859,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
     assert_policy_typecheck_fails(
         schema,
         policy,
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, "true"),
             PolicyID::from_string("0"),
             Type::primitive_long(),
@@ -916,7 +916,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -930,7 +930,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -944,7 +944,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -958,7 +958,7 @@ fn action_groups() {
     assert_policy_typecheck_warns(
         schema,
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -1008,7 +1008,7 @@ fn record_entity_lub_non_term() {
     assert_policy_typecheck_fails(
         schema,
         policy,
-        vec![ValidationError::incompatible_types(
+        [ValidationError::incompatible_types(
             get_loc(src, r#"if principal.bar then principal.foo else U::"b""#),
             PolicyID::from_string("policy0"),
             [
@@ -1143,7 +1143,7 @@ mod templates {
         let src = r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.bogus };"#;
         assert_policy_typecheck_fails_simple_schema(
             parse_policy_template(None, src).unwrap(),
-            vec![ValidationError::unsafe_attribute_access(
+            [ValidationError::unsafe_attribute_access(
                 get_loc(src, "resource.bogus"),
                 PolicyID::from_string("policy0"),
                 AttributeAccess::EntityLUB(
@@ -1172,7 +1172,7 @@ mod templates {
         let src = r#"permit(principal == ?principal, action, resource) when { principal has age && principal.bogus > 0 };"#;
         assert_policy_typecheck_fails_simple_schema(
             parse_policy_template(None, src).unwrap(),
-            vec![ValidationError::unsafe_attribute_access(
+            [ValidationError::unsafe_attribute_access(
                 get_loc(src, "principal.bogus"),
                 PolicyID::from_string("policy0"),
                 AttributeAccess::EntityLUB(
@@ -1194,7 +1194,7 @@ mod templates {
         .unwrap();
         assert_policy_typecheck_warns_simple_schema(
             template.clone(),
-            vec![ValidationWarning::impossible_policy(
+            [ValidationWarning::impossible_policy(
                 template.loc().cloned(),
                 PolicyID::from_string("policy0"),
             )],

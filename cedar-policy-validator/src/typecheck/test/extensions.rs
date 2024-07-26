@@ -52,7 +52,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(ipaddr_name.clone()),
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
@@ -65,7 +65,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(ipaddr_name.clone()),
-        vec![ValidationError::function_argument_validation(
+        [ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as IP address: `\"foo\"`".into(),
@@ -76,7 +76,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![ValidationError::wrong_number_args(
+        [ValidationError::wrong_number_args(
             get_loc(src, src),
             expr_id_placeholder(),
             1,
@@ -88,7 +88,7 @@ fn ip_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::extension(ipaddr_name),
@@ -133,7 +133,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(decimal_name.clone()),
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
@@ -146,7 +146,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(decimal_name.clone()),
-        vec![ValidationError::function_argument_validation(
+        [ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as a decimal value: `\"foo\"`".into(),
@@ -157,7 +157,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![ValidationError::wrong_number_args(
+        [ValidationError::wrong_number_args(
             get_loc(src, src),
             expr_id_placeholder(),
             2,
@@ -169,7 +169,7 @@ fn decimal_extension_typecheck_fails() {
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, "4"),
             expr_id_placeholder(),
             Type::extension(decimal_name),
