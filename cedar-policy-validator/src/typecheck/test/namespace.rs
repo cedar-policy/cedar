@@ -24,14 +24,14 @@ use std::str::FromStr;
 use std::vec;
 
 use cedar_policy_core::{
-    ast::{EntityUID, Expr, PolicyID, StaticPolicy},
+    ast::{Expr, PolicyID, StaticPolicy},
     extensions::Extensions,
     parser::parse_policy,
 };
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
-    assert_typecheck_fails, assert_typechecks, expr_id_placeholder,
+    assert_typecheck_fails, assert_typechecks, expr_id_placeholder, get_loc,
 };
 use crate::{
     diagnostics::ValidationError,
@@ -138,11 +138,12 @@ fn namespaced_entity_get_attr() {
 
 #[test]
 fn namespaced_entity_can_type_error() {
+    let src = r#"N::S::Foo::"alice" > 1"#;
     assert_expr_typecheck_fails_namespace_schema(
-        Expr::from_str(r#"N::S::Foo::"alice" > 1"#).expect("Expr should parse."),
+        Expr::from_str(src).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
         vec![ValidationError::expected_type(
-            Expr::from_str(r#"N::S::Foo::"alice""#).expect("Expr should parse."),
+            get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::named_entity_reference_from_str("N::S::Foo"),
@@ -361,13 +362,14 @@ fn multiple_namespaces_attributes() {
         Expr::from_str("A::Foo::\"foo\".x").unwrap(),
         Type::named_entity_reference_from_str("B::Foo"),
     );
+    let src = "B::Foo::\"foo\".x";
     assert_typecheck_fails(
         schema,
-        Expr::from_str("B::Foo::\"foo\".x").unwrap(),
+        Expr::from_str(src).unwrap(),
         None,
         vec![ValidationError::unsafe_attribute_access(
-            Expr::from_str("B::Foo::\"foo\".x").unwrap(),
-            PolicyID::from_string("policy0"),
+            get_loc(src, src),
+            PolicyID::from_string("expr"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("B::Foo".parse().unwrap()),
                 vec!["x".into()],
@@ -495,20 +497,17 @@ fn assert_policy_typecheck_fails_namespace_schema(
 
 #[test]
 fn namespaced_entity_is_wrong_type_and() {
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"
+    let src = r#"
             permit(principal, action, resource)
             when {
                 (true && N::S::Foo::"alice")
             };
-            "#,
-    )
-    .expect("Policy should parse.");
+        "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
         vec![ValidationError::expected_type(
-            Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+            get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
@@ -519,20 +518,17 @@ fn namespaced_entity_is_wrong_type_and() {
 
 #[test]
 fn namespaced_entity_is_wrong_type_when() {
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"
+    let src = r#"
             permit(principal, action, resource)
             when {
                 N::S::Foo::"alice"
             };
-            "#,
-    )
-    .expect("Policy should parse.");
+            "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
         vec![ValidationError::expected_type(
-            Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+            get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),

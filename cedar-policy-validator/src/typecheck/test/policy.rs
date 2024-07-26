@@ -18,19 +18,17 @@
 //! files.
 // GRCOV_STOP_COVERAGE
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use cedar_policy_core::{
-    ast::{EntityUID, Expr, PolicyID, Template, Var},
+    ast::{EntityUID, Expr, PolicyID, Template},
     parser::{parse_policy, parse_policy_template},
 };
-use smol_str::SmolStr;
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_fails_for_mode,
     assert_policy_typecheck_warns, assert_policy_typecheck_warns_for_mode,
-    assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks,
+    assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks, get_loc,
 };
 use crate::{
     diagnostics::ValidationError,
@@ -298,52 +296,48 @@ fn policy_action_in() {
 
 #[test]
 fn policy_invalid_attribute() {
+    let src = r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#;
     assert_policy_typecheck_fails_simple_schema(
-            parse_policy(
-                Some(PolicyID::from_string("0")),
-                r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#
-            ).expect("Policy should parse."),
-            vec![
-                ValidationError::unsafe_attribute_access(
-                    Expr::get_attr(Expr::var(Var::Resource), "file_type".into()),
-        PolicyID::from_string("0"),
-                    AttributeAccess::EntityLUB(EntityLUB::single_entity("Group".parse().unwrap()), vec!["file_type".into()]),
-                    Some("name".into()),
-                    false,
-            )
-            ],
-        );
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
+        vec![ValidationError::unsafe_attribute_access(
+            get_loc(src, "resource.file_type"),
+            PolicyID::from_string("0"),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("Group".parse().unwrap()),
+                vec!["file_type".into()],
+            ),
+            Some("name".into()),
+            false,
+        )],
+    );
 }
 
 #[test]
 fn policy_invalid_attribute_2() {
+    let src = r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#;
     assert_policy_typecheck_fails_simple_schema(
-            parse_policy(
-                Some(PolicyID::from_string("0")),
-                r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#
-            ).expect("Policy should parse."),
-            vec![
-                ValidationError::unsafe_attribute_access(
-                    Expr::get_attr(Expr::var(Var::Principal), "age".into()),
-        PolicyID::from_string("0"),
-                    AttributeAccess::EntityLUB(EntityLUB::single_entity("Group".parse().unwrap()), vec!["age".into()]),
-                    Some("name".into()),
-                    false
-                ),
-            ]
-        );
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
+        vec![ValidationError::unsafe_attribute_access(
+            get_loc(src, "principal.age"),
+            PolicyID::from_string("0"),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("Group".parse().unwrap()),
+                vec!["age".into()],
+            ),
+            Some("name".into()),
+            false,
+        )],
+    );
 }
 
 #[test]
 fn policy_context_invalid_attribute() {
+    let src =
+        r#"permit(principal, action == Action::"view_photo", resource) when { context.fake };"#;
     assert_policy_typecheck_fails_simple_schema(
-        parse_policy(
-            Some(PolicyID::from_string("0")),
-            r#"permit(principal, action == Action::"view_photo", resource) when { context.fake };"#,
-        )
-        .expect("Policy should parse."),
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
         vec![ValidationError::unsafe_attribute_access(
-            Expr::get_attr(Expr::var(Var::Context), "fake".into()),
+            get_loc(src, "context.fake"),
             PolicyID::from_string("0"),
             AttributeAccess::Context(
                 r#"Action::"view_photo""#.parse().unwrap(),
@@ -611,16 +605,15 @@ fn entity_lub_no_common_attributes_is_entity() {
 
 #[test]
 fn entity_lub_cant_access_attribute_not_shared() {
-    let p = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action, resource == Group::"foo") when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name == "bob"};"#,
-    )
-    .expect("Policy should parse.");
+    let src = r#"permit(principal, action, resource == Group::"foo") when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name == "bob"};"#;
+    let p = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_permissive_fails_simple_schema(
         p,
         vec![ValidationError::unsafe_attribute_access(
-            Expr::from_str(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
-                .unwrap(),
+            get_loc(
+                src,
+                r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#,
+            ),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap())
@@ -635,12 +628,10 @@ fn entity_lub_cant_access_attribute_not_shared() {
 
 #[test]
 fn entity_attribute_recommendation() {
-    let p = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#
-    ).expect("Policy should parse");
+    let src = r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#;
+    let p = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse");
     let expected = ValidationError::unsafe_attribute_access(
-        Expr::get_attr(Expr::var(Var::Resource), "filetype".into()),
+        get_loc(src, "resource.filetype"),
         PolicyID::from_string("0"),
         AttributeAccess::EntityLUB(
             EntityLUB::single_entity("Photo".parse().unwrap()),
@@ -772,22 +763,22 @@ fn is_action() {
 
 #[test]
 fn entity_record_lub_is_none() {
-    assert_policy_typecheck_fails_simple_schema(parse_policy(
-            Some(PolicyID::from_string("0")),
-            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else {name: "bob"}).name == "jane" };"#
-        ).expect("Policy should parse."),
-        vec![
-            ValidationError::incompatible_types(
-                Expr::from_str(r#"if 1 > 0 then User::"alice" else {name: "bob"}"#).unwrap(),
-        PolicyID::from_string("0"),
-                [
-                    Type::closed_record_with_required_attributes([("name".into(), Type::primitive_string())]),
-                    Type::named_entity_reference_from_str("User"),
-                ],
-                LubHelp::EntityRecord,
-                LubContext::Conditional,
-            )
-        ],
+    let src = r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else {name: "bob"}).name == "jane" };"#;
+    assert_policy_typecheck_fails_simple_schema(
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
+        vec![ValidationError::incompatible_types(
+            get_loc(src, r#"if 1 > 0 then User::"alice" else {name: "bob"}"#),
+            PolicyID::from_string("0"),
+            [
+                Type::closed_record_with_required_attributes([(
+                    "name".into(),
+                    Type::primitive_string(),
+                )]),
+                Type::named_entity_reference_from_str("User"),
+            ],
+            LubHelp::EntityRecord,
+            LubContext::Conditional,
+        )],
     );
 }
 
@@ -824,21 +815,18 @@ fn optional_attr_fail() {
         }"#,
     )
     .expect("Expected valid schema");
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action, resource) when { principal.name == "foo" };"#,
-    )
-    .expect("Policy should parse.");
-    let optional_attr: SmolStr = "name".into();
+
+    let src = r#"permit(principal, action, resource) when { principal.name == "foo" };"#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema,
         policy,
         vec![ValidationError::unsafe_optional_attribute_access(
-            Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone()),
+            get_loc(src, "principal.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
-                vec![optional_attr],
+                vec!["name".into()],
             ),
         )],
     );
@@ -865,16 +853,14 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
         }"#,
     )
     .expect("Expected valid schema");
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action, resource) when { 1 > true };"#,
-    )
-    .expect("Policy should parse.");
+
+    let src = r#"permit(principal, action, resource) when { 1 > true };"#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema,
         policy,
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "true"),
             PolicyID::from_string("0"),
             Type::primitive_long(),
             Type::True,
@@ -1016,15 +1002,14 @@ fn record_entity_lub_non_term() {
         }
       }))
     .unwrap();
-    let policy = parse_policy(
-         None,
-         r#"permit(principal, action, resource) when {if principal.bar then principal.foo else U::"b"};"#,
-    ).expect("Policy should parse.");
+
+    let src = r#"permit(principal, action, resource) when {if principal.bar then principal.foo else U::"b"};"#;
+    let policy = parse_policy(None, src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema,
         policy,
         vec![ValidationError::incompatible_types(
-            Expr::from_str(r#"if principal.bar then principal.foo else U::"b""#).unwrap(),
+            get_loc(src, r#"if principal.bar then principal.foo else U::"b""#),
             PolicyID::from_string("policy0"),
             [
                 Type::closed_record_with_required_attributes([(
@@ -1155,16 +1140,16 @@ mod templates {
 
     #[test]
     fn resource_slot_error_body() {
+        let src = r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.bogus };"#;
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(
-                None,
-                r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.bogus };"#,
-            )
-            .unwrap(),
+            parse_policy_template(None, src).unwrap(),
             vec![ValidationError::unsafe_attribute_access(
-                Expr::from_str("resource.bogus").unwrap(),
-        PolicyID::from_string("0"),
-                AttributeAccess::EntityLUB(EntityLUB::single_entity("Group".parse().unwrap()), vec!["bogus".into()]),
+                get_loc(src, "resource.bogus"),
+                PolicyID::from_string("policy0"),
+                AttributeAccess::EntityLUB(
+                    EntityLUB::single_entity("Group".parse().unwrap()),
+                    vec!["bogus".into()],
+                ),
                 Some("name".to_string()),
                 false,
             )],
@@ -1184,16 +1169,16 @@ mod templates {
 
     #[test]
     fn principal_slot_error_body() {
+        let src = r#"permit(principal == ?principal, action, resource) when { principal has age && principal.bogus > 0 };"#;
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(
-                None,
-                r#"permit(principal == ?principal, action, resource) when { principal has age && principal.bogus > 0 };"#,
-            )
-            .unwrap(),
+            parse_policy_template(None, src).unwrap(),
             vec![ValidationError::unsafe_attribute_access(
-                Expr::from_str("principal.bogus").unwrap(),
-        PolicyID::from_string("0"),
-                AttributeAccess::EntityLUB(EntityLUB::single_entity("User".parse().unwrap()), vec!["bogus".into()]),
+                get_loc(src, "principal.bogus"),
+                PolicyID::from_string("policy0"),
+                AttributeAccess::EntityLUB(
+                    EntityLUB::single_entity("User".parse().unwrap()),
+                    vec!["bogus".into()],
+                ),
                 Some("age".to_string()),
                 false,
             )],

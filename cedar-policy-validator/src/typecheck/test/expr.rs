@@ -35,7 +35,7 @@ use super::test_utils::{
     assert_typecheck_fails, assert_typecheck_fails_empty_schema,
     assert_typecheck_fails_empty_schema_without_type, assert_typecheck_fails_for_mode,
     assert_typechecks, assert_typechecks_empty_schema, assert_typechecks_empty_schema_permissive,
-    assert_typechecks_for_mode, empty_schema_file, expr_id_placeholder,
+    assert_typechecks_for_mode, empty_schema_file, expr_id_placeholder, get_loc,
 };
 
 #[test]
@@ -139,11 +139,11 @@ fn set_typechecks() {
 
 #[test]
 fn heterogeneous_set() {
-    let set = Expr::set([Expr::val(true), Expr::val(1)]);
+    let src = "[true, 1]";
     assert_typecheck_fails_empty_schema_without_type(
-        set.clone(),
+        src.parse().unwrap(),
         vec![ValidationError::incompatible_types(
-            set,
+            get_loc(src, src),
             expr_id_placeholder(),
             vec![Type::singleton_boolean(true), Type::primitive_long()],
             LubHelp::None,
@@ -170,53 +170,54 @@ fn and_typechecks() {
 
 #[test]
 fn and_typecheck_fails() {
+    let src = "1 && true";
     assert_typecheck_fails_empty_schema(
-        Expr::and(Expr::val(1), Expr::val(true)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
         )],
     );
+
+    let src = "(1 > 0) && 2";
     assert_typecheck_fails_empty_schema(
-        Expr::and(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(1)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "2"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
         )],
     );
+
+    let src = "(1 > false) && true";
     assert_typecheck_fails_empty_schema(
-        Expr::and(
-            Expr::greater(Expr::val(1), Expr::val(true)),
-            Expr::val(true),
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
-            Type::singleton_boolean(true),
+            Type::singleton_boolean(false),
             None,
         )],
     );
+
+    let src = "true && (1 > false)";
     assert_typecheck_fails_empty_schema(
-        Expr::and(
-            Expr::val(true),
-            Expr::greater(Expr::val(1), Expr::val(true)),
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
-            Type::singleton_boolean(true),
+            Type::singleton_boolean(false),
             None,
         )],
     );
@@ -248,11 +249,12 @@ fn or_left_true_ignores_right() {
 
 #[test]
 fn or_right_true_fails_left() {
+    let src = "1 || false";
     assert_typecheck_fails_empty_schema(
-        Expr::or(Expr::val(1), Expr::val(true)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
@@ -298,64 +300,64 @@ fn or_false() {
 
 #[test]
 fn or_typecheck_fails() {
+    let src = "1 || true";
     assert_typecheck_fails_empty_schema(
-        Expr::or(Expr::val(1), Expr::val(true)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
         )],
     );
+
+    let src = "(2 > 0) || 1";
     assert_typecheck_fails_empty_schema(
-        Expr::or(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(1)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
         )],
     );
+
+    let src = "(1 > true) || false";
     assert_typecheck_fails_empty_schema(
-        Expr::or(
-            Expr::greater(Expr::val(1), Expr::val(true)),
-            Expr::val(false),
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "true"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
         )],
     );
+
+    let src = "(1 > false) || true";
     assert_typecheck_fails_empty_schema(
-        Expr::or(
-            Expr::greater(Expr::val(1), Expr::val(true)),
-            Expr::val(true),
-        ),
+        src.parse().unwrap(),
         Type::singleton_boolean(true),
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
-            Type::singleton_boolean(true),
+            Type::singleton_boolean(false),
             None,
         )],
     );
+
+    let src = "false || (1 > true)";
     assert_typecheck_fails_empty_schema(
-        Expr::or(
-            Expr::val(false),
-            Expr::greater(Expr::val(1), Expr::val(true)),
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(true),
+            get_loc(src, "true"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(true),
@@ -609,11 +611,12 @@ fn record_lub_has_typechecks_permissive() {
 
 #[test]
 fn has_typecheck_fails() {
+    let src = "true has attr";
     assert_typecheck_fails_empty_schema(
-        Expr::has_attr(Expr::val(true), "attr".into()),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_one_of_types(
-            Expr::val(true),
+            get_loc(src, "true"),
             expr_id_placeholder(),
             vec![Type::any_entity_reference(), Type::any_record()],
             Type::singleton_boolean(true),
@@ -633,21 +636,15 @@ fn record_get_attr_typechecks() {
 
 #[test]
 fn record_get_attr_incompatible() {
-    let attr: SmolStr = "foo".into();
-    let if_expr = Expr::ite(
-        Expr::less(Expr::val(1), Expr::val(0)),
-        Expr::record([(attr.clone(), Expr::val(true))]).unwrap(),
-        Expr::record([(attr.clone(), Expr::val(1))]).unwrap(),
-    );
-
+    let src = "(if (1 > 0) then {foo: true} else {foo: 1}).foo";
     assert_typecheck_fails_for_mode(
         empty_schema_file(),
-        Expr::get_attr(if_expr.clone(), attr.clone()),
+        src.parse().unwrap(),
         None,
         vec![ValidationError::unsafe_attribute_access(
-            Expr::get_attr(if_expr, attr.clone()),
+            get_loc(src, src),
             expr_id_placeholder(),
-            AttributeAccess::Other(vec![attr]),
+            AttributeAccess::Other(vec!["foo".into()]),
             None,
             true,
         )],
@@ -657,10 +654,11 @@ fn record_get_attr_incompatible() {
 
 #[test]
 fn record_get_attr_typecheck_fails() {
+    let src = "2.foo";
     assert_typecheck_fails_empty_schema_without_type(
-        Expr::get_attr(Expr::val(2), "foo".into()),
+        src.parse().unwrap(),
         vec![ValidationError::expected_one_of_types(
-            Expr::val(2),
+            get_loc(src, "2"),
             expr_id_placeholder(),
             vec![Type::any_entity_reference(), Type::any_record()],
             Type::primitive_long(),
@@ -671,20 +669,15 @@ fn record_get_attr_typecheck_fails() {
 
 #[test]
 fn record_get_attr_lub_typecheck_fails() {
-    let attr: SmolStr = "foo".into();
-    let if_expr = Expr::ite(
-        Expr::less(Expr::val(0), Expr::val(1)),
-        Expr::record([(attr.clone(), Expr::val(true))]).unwrap(),
-        Expr::val(1),
-    );
+    let src = "(if (0 < 1) then {foo: true} else 1).foo";
     assert_typecheck_fails_empty_schema_without_type(
-        Expr::get_attr(if_expr.clone(), attr.clone()),
+        src.parse().unwrap(),
         vec![ValidationError::incompatible_types(
-            if_expr,
+            get_loc(src, "if (0 < 1) then {foo: true} else 1"),
             expr_id_placeholder(),
             vec![
                 Type::closed_record_with_required_attributes([(
-                    attr,
+                    "foo".into(),
                     Type::singleton_boolean(true),
                 )]),
                 Type::primitive_long(),
@@ -697,13 +690,13 @@ fn record_get_attr_lub_typecheck_fails() {
 
 #[test]
 fn record_get_attr_does_not_exist() {
-    let attr: SmolStr = "foo".into();
+    let src = "{}.foo";
     assert_typecheck_fails_empty_schema_without_type(
-        Expr::get_attr(Expr::record([]).unwrap(), attr.clone()),
+        src.parse().unwrap(),
         vec![ValidationError::unsafe_attribute_access(
-            Expr::get_attr(Expr::record([]).unwrap(), attr.clone()),
+            get_loc(src, src),
             expr_id_placeholder(),
-            AttributeAccess::Other(vec![attr]),
+            AttributeAccess::Other(vec!["foo".into()]),
             None,
             false,
         )],
@@ -712,18 +705,13 @@ fn record_get_attr_does_not_exist() {
 
 #[test]
 fn record_get_attr_lub_does_not_exist() {
-    let attr: SmolStr = "foo".into();
-    let if_expr = Expr::ite(
-        Expr::val(true),
-        Expr::record([]).unwrap(),
-        Expr::record([(attr.clone(), Expr::val(1))]).unwrap(),
-    );
+    let src = "(if true then {} else {foo: 1}).foo";
     assert_typecheck_fails_empty_schema_without_type(
-        Expr::get_attr(if_expr.clone(), attr.clone()),
+        src.parse().unwrap(),
         vec![ValidationError::unsafe_attribute_access(
-            Expr::get_attr(if_expr, attr.clone()),
+            get_loc(src, src),
             expr_id_placeholder(),
-            AttributeAccess::Other(vec![attr]),
+            AttributeAccess::Other(vec!["foo".into()]),
             None,
             false,
         )],
@@ -770,19 +758,20 @@ fn in_set_typechecks_strict() {
 
 #[test]
 fn in_typecheck_fails() {
+    let src = "0 in true";
     assert_typecheck_fails_empty_schema(
-        Expr::is_in(Expr::val(0), Expr::val(true)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![
             ValidationError::expected_type(
-                Expr::val(0),
+                get_loc(src, "0"),
                 expr_id_placeholder(),
                 Type::any_entity_reference(),
                 Type::primitive_long(),
                 Some(UnexpectedTypeHelp::TryUsingContains),
             ),
             ValidationError::expected_one_of_types(
-                Expr::val(true),
+                get_loc(src, "true"),
                 expr_id_placeholder(),
                 vec![
                     Type::set(Type::any_entity_reference()),
@@ -806,36 +795,38 @@ fn contains_typechecks() {
 #[test]
 fn contains_typecheck_fails() {
     use crate::types::AttributeType;
+    let src = r#""foo".contains("bar")"#;
     assert_typecheck_fails_empty_schema(
-        Expr::contains(Expr::val("foo"), Expr::val("bar")),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val("foo"),
+            get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::any_set(),
             Type::primitive_string(),
             Some(UnexpectedTypeHelp::TryUsingLike),
         )],
     );
+
+    let src = r#"1.contains("bar")"#;
     assert_typecheck_fails_empty_schema(
-        Expr::contains(Expr::val(1), Expr::val("bar")),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::any_set(),
             Type::primitive_long(),
             None,
         )],
     );
+
+    let src = r#"{foo: 1}.contains("foo")"#;
     assert_typecheck_fails_empty_schema(
-        Expr::contains(
-            Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
-            Expr::val("foo"),
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
+            get_loc(src, "{foo: 1}"),
             expr_id_placeholder(),
             Type::any_set(),
             Type::closed_record_with_attributes([(
@@ -886,19 +877,20 @@ fn contains_all_typechecks() {
 
 #[test]
 fn contains_all_typecheck_fails() {
+    let src = "1.containsAll(true)";
     assert_typecheck_fails_empty_schema(
-        Expr::contains_all(Expr::val(1), Expr::val(true)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![
             ValidationError::expected_type(
-                Expr::val(1),
+                get_loc(src, "1"),
                 expr_id_placeholder(),
                 Type::any_set(),
                 Type::primitive_long(),
                 None,
             ),
             ValidationError::expected_type(
-                Expr::val(true),
+                get_loc(src, "true"),
                 expr_id_placeholder(),
                 Type::any_set(),
                 Type::singleton_boolean(true),
@@ -954,18 +946,12 @@ fn like_typechecks() {
 
 #[test]
 fn like_typecheck_fails() {
+    let src = r#"1 like "bar""#;
     assert_typecheck_fails_empty_schema(
-        Expr::like(
-            Expr::val(1),
-            vec![
-                PatternElem::Char('b'),
-                PatternElem::Char('a'),
-                PatternElem::Char('r'),
-            ],
-        ),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
@@ -984,19 +970,20 @@ fn less_than_typechecks() {
 
 #[test]
 fn less_than_typecheck_fails() {
+    let src = "true < false";
     assert_typecheck_fails_empty_schema(
-        Expr::less(Expr::val(true), Expr::val(false)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![
             ValidationError::expected_type(
-                Expr::val(true),
+                get_loc(src, "true"),
                 expr_id_placeholder(),
                 Type::primitive_long(),
                 Type::singleton_boolean(true),
                 None,
             ),
             ValidationError::expected_type(
-                Expr::val(false),
+                get_loc(src, "false"),
                 expr_id_placeholder(),
                 Type::primitive_long(),
                 Type::singleton_boolean(false),
@@ -1014,11 +1001,12 @@ fn not_typechecks() {
 
 #[test]
 fn not_typecheck_fails() {
+    let src = "!1";
     assert_typecheck_fails_empty_schema(
-        Expr::not(Expr::val(1)),
+        src.parse().unwrap(),
         Type::primitive_boolean(),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
@@ -1053,15 +1041,11 @@ fn if_false_ignores_then() {
 
 #[test]
 fn if_no_lub_error() {
-    let if_expr = Expr::ite(
-        Expr::less(Expr::val(1), Expr::val(2)),
-        Expr::val(1),
-        Expr::val("test"),
-    );
+    let src = r#"if (1 < 2) then 1 else "test""#;
     assert_typecheck_fails_empty_schema_without_type(
-        if_expr.clone(),
+        src.parse().unwrap(),
         vec![ValidationError::incompatible_types(
-            if_expr,
+            get_loc(src, src),
             expr_id_placeholder(),
             vec![Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
@@ -1072,19 +1056,19 @@ fn if_no_lub_error() {
 
 #[test]
 fn if_typecheck_fails() {
-    let if_expr = Expr::ite(Expr::val("fail"), Expr::val(1), Expr::val("test"));
+    let src = r#"if "fail" then 1 else "test""#;
     assert_typecheck_fails_empty_schema_without_type(
-        if_expr.clone(),
+        src.parse().unwrap(),
         vec![
             ValidationError::incompatible_types(
-                if_expr,
+                get_loc(src, src),
                 expr_id_placeholder(),
                 vec![Type::primitive_long(), Type::primitive_string()],
                 LubHelp::None,
                 LubContext::Conditional,
             ),
             ValidationError::expected_type(
-                Expr::val("fail"),
+                get_loc(src, r#""fail""#),
                 expr_id_placeholder(),
                 Type::primitive_boolean(),
                 Type::primitive_string(),
@@ -1102,12 +1086,12 @@ fn neg_typechecks() {
 
 #[test]
 fn neg_typecheck_fails() {
-    let neg_expr = Expr::neg(Expr::val("foo"));
+    let src = r#"-"foo""#;
     assert_typecheck_fails_empty_schema(
-        neg_expr,
+        src.parse().unwrap(),
         Type::primitive_long(),
         vec![ValidationError::expected_type(
-            Expr::val("foo"),
+            get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
@@ -1124,12 +1108,12 @@ fn mul_typechecks() {
 
 #[test]
 fn mul_typecheck_fails() {
-    let neg_expr = Expr::mul(Expr::val("foo"), Expr::val(2));
+    let src = r#""foo" * 2"#;
     assert_typecheck_fails_empty_schema(
-        neg_expr,
+        src.parse().unwrap(),
         Type::primitive_long(),
         vec![ValidationError::expected_type(
-            Expr::val("foo"),
+            get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
@@ -1148,12 +1132,12 @@ fn add_sub_typechecks() {
 
 #[test]
 fn add_sub_typecheck_fails() {
-    let add_expr = Expr::add(Expr::val(1), Expr::val("foo"));
+    let src = r#"1 + "foo""#;
     assert_typecheck_fails_empty_schema(
-        add_expr,
+        src.parse().unwrap(),
         Type::primitive_long(),
         vec![ValidationError::expected_type(
-            Expr::val("foo"),
+            get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
@@ -1161,12 +1145,12 @@ fn add_sub_typecheck_fails() {
         )],
     );
 
-    let sub_expr = Expr::sub(Expr::val("bar"), Expr::val(2));
+    let src = r#""bar" - 2"#;
     assert_typecheck_fails_empty_schema(
-        sub_expr,
+        src.parse().unwrap(),
         Type::primitive_long(),
         vec![ValidationError::expected_type(
-            Expr::val("bar"),
+            get_loc(src, r#""bar""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
@@ -1179,12 +1163,13 @@ fn add_sub_typecheck_fails() {
 fn is_typecheck_fails() {
     let schema: NamespaceDefinition<RawName> =
         serde_json::from_value(json!({ "entityTypes": { "User": {}, }, "actions": {} })).unwrap();
+    let src = r#"1 is User"#;
     assert_typecheck_fails(
         schema,
-        r#"1 is User"#.parse().unwrap(),
+        src.parse().unwrap(),
         Some(Type::primitive_boolean()),
         vec![ValidationError::expected_type(
-            Expr::val(1),
+            get_loc(src, "1"),
             expr_id_placeholder(),
             Type::any_entity_reference(),
             Type::primitive_long(),
