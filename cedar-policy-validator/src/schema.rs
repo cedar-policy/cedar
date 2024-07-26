@@ -104,7 +104,7 @@ impl ValidatorSchemaFragment {
                         fragment_ns,
                         ns_def,
                         action_behavior,
-                        extensions,
+                        extensions.clone(),
                     )
                 })
                 .collect::<Result<Vec<_>>>()?,
@@ -211,7 +211,7 @@ impl ValidatorSchema {
         extensions: Extensions<'_>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions.clone())?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -225,7 +225,7 @@ impl ValidatorSchema {
         extensions: Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions.clone())?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -242,7 +242,7 @@ impl ValidatorSchema {
             [ValidatorSchemaFragment::from_schema_fragment(
                 schema_file,
                 action_behavior,
-                extensions,
+                extensions.clone(),
             )?],
             extensions,
         )
@@ -867,7 +867,7 @@ impl<'a> CommonTypeResolver<'a> {
             resolve_table.insert(name, substituted_ty.clone());
             tys.insert(
                 name,
-                try_schema_type_into_validator_type(substituted_ty, extensions)?
+                try_schema_type_into_validator_type(substituted_ty, extensions.clone())?
                     .resolve_common_type_refs(&HashMap::new())?,
             );
         }

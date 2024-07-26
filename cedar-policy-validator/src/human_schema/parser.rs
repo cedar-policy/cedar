@@ -101,7 +101,7 @@ pub fn parse_type(
     extensions: Extensions<'_>,
 ) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
     let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
-    Ok(custom_type_to_json_type(ty, extensions)?)
+    Ok(custom_type_to_json_type(ty, extensions.clone())?)
 }
 
 /// Parse a schema fragment, in human syntax, into a [`crate::SchemaFragment`],
@@ -117,7 +117,7 @@ pub fn parse_natural_schema_fragment<'a>(
     HumanSyntaxParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
-    let tuple = custom_schema_to_json_schema(ast, extensions)?;
+    let tuple = custom_schema_to_json_schema(ast, extensions.clone())?;
     Ok(tuple)
 }
 

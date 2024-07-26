@@ -19,17 +19,16 @@ use crate::ast::{
     Value, ValueKind,
 };
 use crate::entities::Name;
-use crate::extensions::{
-    extension_function_lookup_errors, ExtensionFunctionLookupError, Extensions,
-};
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::impl_diagnostic_from_expr_field;
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum SchemaType {
     /// Boolean
     Bool,
@@ -47,7 +46,7 @@ pub enum SchemaType {
     /// Record, with the specified attributes having the specified types
     Record {
         /// Attributes and their types
-        attrs: HashMap<SmolStr, AttributeType>,
+        attrs: BTreeMap<SmolStr, AttributeType>,
         /// Can a record with this type have attributes other than those specified in `attrs`
         open_attrs: bool,
     },
@@ -67,7 +66,7 @@ pub enum SchemaType {
 }
 
 /// Attribute type structure used in [`SchemaType`]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
     attr_type: SchemaType,
@@ -290,21 +289,16 @@ pub enum GetSchemaTypeError {
     /// Trying to compute the [`SchemaType`], but the value or expression
     /// contains an [`Unknown`] that has insufficient type information
     /// associated in order to compute the `SchemaType`
-    #[error("cannot compute type because of insufficient type information for `{unknown}`")]
-    UnknownInsufficientTypeInfo {
-        /// `Unknown` which has insufficient type information
-        unknown: Unknown,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownInsufficientTypeInfo(#[from] UnknownInsufficientTypeInfoError),
     /// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
     /// residual which is not just a single `Unknown`). For now, we do not
     /// attempt to compute the [`SchemaType`] in these cases, and just return
     /// this error.
-    #[error("cannot compute type of nontrivial residual `{residual}`")]
-    NontrivialResidual {
-        /// Nontrivial residual which we were trying to compute the
-        /// [`SchemaType`] of
-        residual: Box<Expr>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NontrivialResidual(#[from] NontrivialResidualError),
 }
 
 /// Found a set whose elements don't all have the same type.  This doesn't match
@@ -317,6 +311,44 @@ pub struct HeterogeneousSetError {
     ty1: Box<SchemaType>,
     /// Second element type which was found
     ty2: Box<SchemaType>,
+}
+
+/// Trying to compute the [`SchemaType`], but the value or expression
+/// contains an [`Unknown`] that has insufficient type information
+/// associated in order to compute the `SchemaType`
+#[derive(Debug, Diagnostic, Error)]
+pub struct UnknownInsufficientTypeInfoError {
+    /// `Unknown` which has insufficient type information
+    unknown: Option<Unknown>,
+}
+
+impl std::fmt::Display for UnknownInsufficientTypeInfoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cannot compute type because of insufficient type information for "
+        )?;
+        match &self.unknown {
+            Some(u) => write!(f, "`{u}`"),
+            None => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
+/// residual which is not just a single `Unknown`). For now, we do not
+/// attempt to compute the [`SchemaType`] in these cases, and just return
+/// this error.
+#[derive(Debug, Error)]
+#[error("cannot compute type of nontrivial residual `{residual}`")]
+pub struct NontrivialResidualError {
+    /// Nontrivial residual which we were trying to compute the
+    /// [`SchemaType`] of
+    residual: Box<Expr>,
+}
+
+impl Diagnostic for NontrivialResidualError {
+    impl_diagnostic_from_expr_field!(residual);
 }
 
 /// Get the [`SchemaType`] of a restricted expression.
@@ -340,7 +372,7 @@ pub struct HeterogeneousSetError {
 /// residuals, only simple unknowns.
 pub fn schematype_of_restricted_expr(
     rexpr: BorrowedRestrictedExpr<'_>,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<SchemaType, GetSchemaTypeError> {
     match rexpr.expr_kind() {
         ExprKind::Lit(lit) => Ok(schematype_of_lit(lit)),
@@ -361,22 +393,26 @@ pub fn schematype_of_restricted_expr(
                     // but marking it optional is more flexible -- allows the
                     // attribute type to `is_consistent_with()` more types
                     Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?,
+                }).collect::<Result<BTreeMap<_,_>, GetSchemaTypeError>>()?,
                 open_attrs: false,
             })
         }
-        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+        ExprKind::ExtensionFunctionApp { fn_name, args  } => {
             let efunc = extensions.func(fn_name)?;
-            Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType(extension_function_lookup_errors::HasNoTypeError {
-                name: efunc.name().clone(),
-                source_loc: rexpr.source_loc().cloned(),
-            }))?)
+            efunc.return_type().cloned().ok_or_else(|| {
+                // The return type is `None` only when the function is an "unknown"
+                // We obtained `args` by deconstructing `rexpr`, which was restricted, all args are also restricted expressions.
+                let first_arg = args.first().map(BorrowedRestrictedExpr::new_unchecked);
+                let name = first_arg.as_ref().and_then(BorrowedRestrictedExpr::as_string);
+                let unknown = name.cloned().map(Unknown::new_untyped);
+                UnknownInsufficientTypeInfoError { unknown }.into()
+            })
         }
         ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
-            None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
             Some(ty) => match SchemaType::from_ty(ty.clone()) {
                 Some(ty) => Ok(ty),
-                None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+                None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
             }
         }
         // PANIC SAFETY. Unreachable by invariant on restricted expressions
@@ -487,13 +523,14 @@ pub fn schematype_of_partialvalue(
     match pvalue {
         PartialValue::Value(v) => schematype_of_value(v).map_err(Into::into),
         PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-            Ok(expr) => schematype_of_restricted_expr(expr, extensions),
+            Ok(expr) => schematype_of_restricted_expr(expr, &extensions),
             Err(_) => {
                 // the PartialValue is a residual that isn't a valid restricted expression.
                 // For now we don't try to determine the type in this case.
-                Err(GetSchemaTypeError::NontrivialResidual {
+                Err(NontrivialResidualError {
                     residual: Box::new(expr.clone()),
-                })
+                }
+                .into())
             }
         },
     }
