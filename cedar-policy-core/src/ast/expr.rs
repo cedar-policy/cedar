@@ -182,7 +182,7 @@ impl From<PartialValue> for Expr {
 
 impl<T> ExprKind<T> {
     /// Describe this operator for error messages.
-    pub fn operator_description(self: ExprKind<T>) -> String {
+    pub fn operator_description(self: &ExprKind<T>) -> String {
         match self {
             ExprKind::Lit(_) => "literal".to_string(),
             ExprKind::Var(_) => "variable".to_string(),
