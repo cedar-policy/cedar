@@ -406,10 +406,10 @@ impl From<UnreservedId> for Name {
 impl TryFrom<Name> for UnreservedId {
     type Error = ();
     fn try_from(value: Name) -> Result<Self, Self::Error> {
-        if value.0.path.is_empty() {
-            Err(())
-        } else {
+        if value.0.is_unqualified() {
             Ok(value.basename())
+        } else {
+            Err(())
         }
     }
 }
@@ -479,6 +479,11 @@ impl Name {
         // PANIC SAFETY: Any component of a `Name` is a `UnreservedId`
         #![allow(clippy::unwrap_used)]
         self.0.basename().clone().try_into().unwrap()
+    }
+
+    /// Get the source location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc()
     }
 }
 

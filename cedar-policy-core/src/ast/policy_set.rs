@@ -30,11 +30,11 @@ use thiserror::Error;
 #[serde(try_from = "LiteralPolicySet")]
 #[serde(into = "LiteralPolicySet")]
 pub struct PolicySet {
-    /// `templates` contains all bodies of policies in the `PolicySet`
+    /// `templates` contains all bodies of policies in the `PolicySet`.
     /// A body is either:
-    ///    - A Body of a `Template`, which has slots that need to be filled in
-    ///    - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots
-    /// The static policy's [`PolicyID`] is the same in both `templates` and `links`
+    /// - A Body of a `Template`, which has slots that need to be filled in
+    /// - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots.
+    ///   The static policy's [`PolicyID`] is the same in both `templates` and `links`.
     templates: HashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
     /// A `StaticPolicy` must have exactly one `Policy` in `links`

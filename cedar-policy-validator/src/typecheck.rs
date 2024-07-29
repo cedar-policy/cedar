@@ -23,15 +23,11 @@ mod test;
 mod typecheck_answer;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    iter::zip,
-};
+use std::{borrow::Cow, collections::HashSet, iter::zip};
 
 use crate::{
-    extension_schema::{ExtensionFunctionType, ExtensionSchema},
-    extensions::all_available_extension_schemas,
+    extension_schema::ExtensionFunctionType,
+    extensions::ExtensionSchemas,
     fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
@@ -66,7 +62,7 @@ pub enum PolicyCheck {
 #[derive(Debug)]
 pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
-    extensions: HashMap<Name, ExtensionSchema>,
+    extensions: &'static ExtensionSchemas<'static>,
     mode: ValidationMode,
     policy_id: PolicyID,
 }
@@ -79,10 +75,7 @@ impl<'a> Typechecker<'a> {
         policy_id: PolicyID,
     ) -> Typechecker<'a> {
         // Set the extensions using `all_available_extension_schemas`.
-        let extensions = all_available_extension_schemas()
-            .into_iter()
-            .map(|ext| (ext.name().clone(), ext))
-            .collect();
+        let extensions = ExtensionSchemas::all_available();
         Self {
             schema,
             extensions,
@@ -2195,37 +2188,15 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Lookup an extension function type by name. If the extension function
-    /// does not exist or if multiple extension function with the same name are
-    /// defined, instead return a closure that will construct an appropriate
-    /// error.  A closure is returned rather than constructing the error in this
-    /// function so that we can use the function in the strict typechecker where
-    /// a different instantiation of the generic expression type is used.
-    fn lookup_extension_function<'b>(
-        &'b self,
-        f: &'b Name,
-    ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> ValidationError + 'b> {
-        let extension_funcs: Vec<&ExtensionFunctionType> = self
-            .extensions
-            .iter()
-            .filter_map(|(_, ext)| ext.get_function_type(f))
-            .collect();
-
-        let fn_name_str = f.to_string();
-        match extension_funcs.first() {
-            Some(e) if extension_funcs.len() == 1 => Ok(e),
-            _ => Err(move |e| {
-                if extension_funcs.is_empty() {
-                    ValidationError::undefined_extension(e, self.policy_id.clone(), fn_name_str)
-                } else {
-                    ValidationError::multiply_defined_extension(
-                        e,
-                        self.policy_id.clone(),
-                        fn_name_str,
-                    )
-                }
-            }),
-        }
+    /// Lookup an extension function type by name.
+    fn lookup_extension_function(
+        &self,
+        f: &Name,
+        e: &Expr,
+    ) -> Result<&ExtensionFunctionType, ValidationError> {
+        self.extensions.func_type(f).ok_or_else(|| {
+            ValidationError::undefined_extension(e.clone(), self.policy_id.clone(), f.to_string())
+        })
     }
 
     /// Utility called by the main typecheck method to handle extension function
@@ -2253,7 +2224,7 @@ impl<'a> Typechecker<'a> {
                 .collect::<Option<Vec<_>>>()
         };
 
-        match self.lookup_extension_function(fn_name) {
+        match self.lookup_extension_function(fn_name, ext_expr) {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
@@ -2324,7 +2295,7 @@ impl<'a> Typechecker<'a> {
                 }
             }
             Err(typ_err) => {
-                type_errors.push(typ_err(ext_expr.clone()));
+                type_errors.push(typ_err);
                 match typed_arg_exprs(type_errors) {
                     Some(typed_args) => TypecheckAnswer::fail(
                         ExprBuilder::with_data(None)

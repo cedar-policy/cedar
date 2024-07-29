@@ -18,15 +18,10 @@
 
 use wasm_bindgen::prelude::*;
 
-mod formatter;
-mod policies_and_templates;
-
 pub use cedar_policy::ffi::{
-    check_parse_context, check_parse_entities, check_parse_policy_set, check_parse_schema,
-    is_authorized, validate,
+    check_parse_context, check_parse_entities, check_parse_policy_set, check_parse_schema, format,
+    is_authorized, policy_to_json, policy_to_text, schema_to_json, schema_to_text, validate,
 };
-pub use formatter::wasm_format_policies;
-pub use policies_and_templates::{policy_text_from_json, policy_text_to_json};
 
 #[wasm_bindgen(js_name = "getCedarVersion")]
 pub fn get_cedar_version() -> String {

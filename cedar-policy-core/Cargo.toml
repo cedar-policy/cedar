@@ -57,3 +57,6 @@ lalrpop = "0.20.0"
 
 [dev-dependencies]
 cool_asserts = "2.0"
+
+[lints.rust]
+unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
