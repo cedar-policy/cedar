@@ -552,8 +552,23 @@ impl Schema {
     pub(super) fn parse(
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
+        let (schema_frag, warnings) = self.parse_schema_fragment()?;
+        Ok((schema_frag.try_into()?, warnings))
+    }
+
+    /// Return a [`crate::SchemaFragment`], which can be printed with `.to_string()`
+    /// and converted to JSON with `.to_json()`.
+    pub(super) fn parse_schema_fragment(
+        self,
+    ) -> Result<
+        (
+            crate::SchemaFragment,
+            Box<dyn Iterator<Item = SchemaWarning>>,
+        ),
+        miette::Report,
+    > {
         match self {
-            Self::Human(str) => crate::Schema::from_str_natural(&str)
+            Self::Human(str) => crate::SchemaFragment::from_str_natural(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,
@@ -561,7 +576,7 @@ impl Schema {
                     )
                 })
                 .wrap_err("failed to parse schema from string"),
-            Self::Json(val) => crate::Schema::from_json_value(val.into())
+            Self::Json(val) => crate::SchemaFragment::from_json_value(val.into())
                 .map(|sch| {
                     (
                         sch,

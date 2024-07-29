@@ -21,7 +21,7 @@ use super::{
 use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
 use miette::Diagnostic;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Trait for schemas that can inform the parsing of Context data
@@ -36,7 +36,7 @@ pub struct NullContextSchema;
 impl ContextSchema for NullContextSchema {
     fn context_type(&self) -> SchemaType {
         SchemaType::Record {
-            attrs: HashMap::new(),
+            attrs: BTreeMap::new(),
             open_attrs: false,
         }
     }
@@ -82,12 +82,12 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
         &self,
         json: serde_json::Value,
     ) -> Result<Context, ContextJsonDeserializationError> {
-        let vparser = ValueParser::new(self.extensions);
+        let vparser = ValueParser::new(self.extensions.clone());
         let expected_ty = self.schema.map(|s| s.context_type());
         let rexpr = vparser.val_into_restricted_expr(json, expected_ty.as_ref(), || {
             JsonDeserializationErrorContext::Context
         })?;
-        Context::from_expr(rexpr.as_borrowed(), self.extensions)
+        Context::from_expr(rexpr.as_borrowed(), self.extensions.clone())
             .map_err(ContextJsonDeserializationError::ContextCreation)
     }
 

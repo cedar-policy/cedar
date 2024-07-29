@@ -1920,8 +1920,8 @@ impl PolicySet {
     ///   1) The map passed in `vals` may not match the slots in the template
     ///   2) The `new_id` may conflict w/ a policy that already exists in the set
     ///   3) `template_id` does not correspond to a template. Either the id is
-    ///   not in the policy set, or it is in the policy set but is either a
-    ///   linked or static policy rather than a template
+    ///      not in the policy set, or it is in the policy set but is either a
+    ///      linked or static policy rather than a template
     #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,

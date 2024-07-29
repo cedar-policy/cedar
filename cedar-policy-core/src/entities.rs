@@ -174,7 +174,7 @@ impl Entities {
             // We do this before adding the actions, because we trust the
             // actions were already validated as part of constructing the
             // `Schema`
-            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions.clone());
             for entity in entity_map.values() {
                 if !entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
@@ -196,7 +196,7 @@ impl Entities {
         // schema already satisfies TC, and action and non-action entities
         // can never be in the same hierarchy when using schema-based parsing.
         if let Some(schema) = schema {
-            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions.clone());
             for entity in entity_map.values() {
                 if entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
