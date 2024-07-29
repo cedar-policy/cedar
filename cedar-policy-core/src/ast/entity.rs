@@ -422,6 +422,9 @@ impl Entity {
         }
     }
 
+    /// Test if two `Entity` objects are deep/structurally equal.
+    /// That is, not only do they have the same UID, but also the same
+    /// attributes, attribute values, and ancestors.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
     }

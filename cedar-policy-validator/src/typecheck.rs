@@ -40,7 +40,7 @@ use crate::{
 
 use cedar_policy_core::ast::{
     BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var, ACTION_ENTITY_TYPE,
+    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
 
 #[cfg(not(target_arch = "wasm32"))]

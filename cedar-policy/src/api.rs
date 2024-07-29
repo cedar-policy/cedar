@@ -25,7 +25,7 @@
 mod id;
 use cedar_policy_validator::entity_slicing::compute_entity_slice_manifest;
 pub use cedar_policy_validator::entity_slicing::{
-    AccessTrie, EntityManifest, EntitySliceError, RequestEntityManifest,
+    AccessTrie, EntityManifest, EntitySliceError, RootAccessTrie,
 };
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
