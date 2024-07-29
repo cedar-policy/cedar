@@ -104,7 +104,6 @@ pub enum Commands {
     Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
-    #[cfg(feature = "partial-eval")]
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
 }
@@ -510,6 +509,10 @@ pub struct PartiallyAuthorizeArgs {
     #[arg(short, long)]
     pub timing: bool,
 }
+
+#[cfg(not(feature = "partial-eval"))]
+#[derive(Debug, Args)]
+pub struct PartiallyAuthorizeArgs;
 
 #[derive(Args, Debug)]
 pub struct VisualizeArgs {
@@ -1227,6 +1230,14 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
             }
             CedarExitCode::Failure
         }
+    }
+}
+
+#[cfg(not(feature = "partial-eval"))]
+pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
+    {
+        eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
+        return CedarExitCode::Failure;
     }
 }
 
