@@ -516,6 +516,11 @@ impl Name {
         // cannot contain `__cedar` -- they were already `Name`s
         Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
     }
+
+    /// Get the source location
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc()
+    }
 }
 
 /// Error when a reserved name is used where it is not allowed

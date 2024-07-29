@@ -83,7 +83,7 @@ impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
         ValidatorSchemaFragment::from_schema_fragment(
             self,
             ActionBehavior::default(),
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
     }
 }
@@ -109,7 +109,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     pub fn from_schema_fragment(
         fragment: SchemaFragment<RawName>,
         action_behavior: ActionBehavior,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self> {
         Ok(Self(
             fragment
@@ -194,7 +194,7 @@ impl TryFrom<NamespaceDefinition<RawName>> for ValidatorSchema {
     fn try_from(nsd: NamespaceDefinition<RawName>) -> Result<ValidatorSchema> {
         ValidatorSchema::from_schema_fragments(
             [ValidatorSchemaFragment::from_namespaces([nsd.try_into()?])],
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
     }
 }
@@ -203,7 +203,7 @@ impl TryFrom<SchemaFragment<RawName>> for ValidatorSchema {
     type Error = SchemaError;
 
     fn try_from(frag: SchemaFragment<RawName>) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([frag.try_into()?], Extensions::all_available())
+        ValidatorSchema::from_schema_fragments([frag.try_into()?], &Extensions::all_available())
     }
 }
 
@@ -219,7 +219,7 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] from a JSON value in the appropriate
     /// shape.
-    pub fn from_json_value(json: serde_json::Value, extensions: Extensions<'_>) -> Result<Self> {
+    pub fn from_json_value(json: serde_json::Value, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             SchemaFragment::<RawName>::from_json_value(json)?,
             ActionBehavior::default(),
@@ -229,7 +229,7 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] from a string containing JSON in the
     /// appropriate shape.
-    pub fn from_json_str(json: &str, extensions: Extensions<'_>) -> Result<Self> {
+    pub fn from_json_str(json: &str, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             SchemaFragment::<RawName>::from_json_str(json)?,
             ActionBehavior::default(),
@@ -239,7 +239,7 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] directly from a file containing JSON
     /// in the appropriate shape.
-    pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
+    pub fn from_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             SchemaFragment::<RawName>::from_file(file)?,
             ActionBehavior::default(),
@@ -249,12 +249,12 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] directly from a file containing Cedar
     /// "natural" schema syntax.
-    pub fn from_file_natural(
+    pub fn from_file_natural<'a>(
         r: impl std::io::Read,
-        extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
+        extensions: &'_ Extensions<'a>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions.clone())?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -265,10 +265,10 @@ impl ValidatorSchema {
     /// schema syntax.
     pub fn from_str_natural<'a>(
         src: &str,
-        extensions: Extensions<'a>,
+        extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions.clone())?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -279,7 +279,7 @@ impl ValidatorSchema {
     pub(crate) fn from_schema_frag(
         schema_file: SchemaFragment<RawName>,
         action_behavior: ActionBehavior,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         Self::from_schema_fragments(
             [ValidatorSchemaFragment::from_schema_fragment(
@@ -294,7 +294,7 @@ impl ValidatorSchema {
     /// Construct a [`ValidatorSchema`] from some number of [`ValidatorSchemaFragment`]s.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName, ConditionalName>>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         let mut fragments = fragments
             .into_iter()
@@ -407,7 +407,7 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_types = resolver.resolve(extensions)?;
+        let common_types = resolver.resolve(&extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -796,10 +796,10 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
                     None,
                     self.0,
                     crate::ActionBehavior::PermitAttributes,
-                    Extensions::all_available(),
+                    &Extensions::all_available(),
                 )?,
             ])],
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
     }
 }
@@ -807,7 +807,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
 /// Get a `ValidatorSchemaFragment` describing the items that implicitly exist
 /// in the `__cedar` namespace.
 fn cedar_fragment(
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     // PANIC SAFETY: these are valid `Id`s
     #[allow(clippy::unwrap_used)]
@@ -1076,7 +1076,7 @@ impl<'a> CommonTypeResolver<'a> {
 
     // Resolve common type references, returning a map from (fully-qualified)
     // [`InternalName`] of a common type to its [`Type`] definition
-    fn resolve(&self, extensions: Extensions<'_>) -> Result<HashMap<&'a InternalName, Type>> {
+    fn resolve(&self, extensions: &Extensions<'_>) -> Result<HashMap<&'a InternalName, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
         })?;
@@ -1621,7 +1621,7 @@ mod test {
         let schema = ValidatorSchemaFragment::from_schema_fragment(
             schema_json,
             ActionBehavior::ProhibitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         );
         match schema {
             Err(e) => {
@@ -1657,7 +1657,7 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
             .expect("Error converting schema type to type.")
             .resolve_common_type_refs(&HashMap::new())
             .unwrap();
@@ -1684,7 +1684,7 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
             .expect("Error converting schema type to type.")
             .resolve_common_type_refs(&HashMap::new())
             .unwrap();
@@ -1713,7 +1713,7 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
             .expect("Error converting schema type to type.")
             .resolve_common_type_refs(&HashMap::new())
             .unwrap();
@@ -1757,7 +1757,7 @@ mod test {
     #[test]
     fn schema_no_fragments() {
         let schema =
-            ValidatorSchema::from_schema_fragments([], Extensions::all_available()).unwrap();
+            ValidatorSchema::from_schema_fragments([], &Extensions::all_available()).unwrap();
         assert!(schema.entity_types.is_empty());
         assert!(schema.action_ids.is_empty());
     }
@@ -2056,7 +2056,7 @@ mod test {
             .unwrap();
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .unwrap();
 
@@ -2097,7 +2097,7 @@ mod test {
 
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
-            Extensions::all_available(),
+            &Extensions::all_available(),
         );
 
         // should error because schema fragments have duplicate types
@@ -2317,7 +2317,7 @@ mod test {
                 action_uid,
                 HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
                 HashSet::new(),
-                &Extensions::none(),
+                &&Extensions::none(),
             )
             .unwrap(),
         );
@@ -2454,7 +2454,7 @@ mod test {
               }
         );
         let schema =
-            ValidatorSchema::from_json_value(src.clone(), Extensions::all_available()).unwrap();
+            ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available()).unwrap();
         let mut attributes = schema
             .get_entity_type(&"Demo::User".parse().unwrap())
             .unwrap()
@@ -2494,7 +2494,7 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2521,7 +2521,7 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2553,7 +2553,7 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2583,7 +2583,7 @@ mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2615,7 +2615,7 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2651,7 +2651,7 @@ mod test {
                 }
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2678,7 +2678,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2705,7 +2705,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2745,7 +2745,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2775,7 +2775,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2805,7 +2805,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2835,7 +2835,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2865,7 +2865,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2895,7 +2895,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2925,7 +2925,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Ok(_));
     }
 
@@ -2938,7 +2938,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -2948,7 +2948,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -2962,7 +2962,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -2976,7 +2976,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -2990,7 +2990,7 @@ mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -3047,7 +3047,7 @@ mod test_resolver {
         }
         let resolver = CommonTypeResolver::new(&defs);
         resolver
-            .resolve(Extensions::all_available())
+            .resolve(&Extensions::all_available())
             .map(|map| map.into_iter().map(|(k, v)| (k.clone(), v)).collect())
     }
 

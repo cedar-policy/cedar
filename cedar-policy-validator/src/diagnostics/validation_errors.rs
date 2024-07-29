@@ -21,8 +21,8 @@ use thiserror::Error;
 
 use std::fmt::Display;
 
-use cedar_policy_core::impl_diagnostic_from_source_loc_field;
 use cedar_policy_core::parser::Loc;
+use cedar_policy_core::{impl_diagnostic_from_expr_field, impl_diagnostic_from_source_loc_field};
 
 use std::collections::BTreeSet;
 
@@ -35,29 +35,14 @@ use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use itertools::Itertools;
 use smol_str::SmolStr;
 
-// This macro implements `cedar_policy_core::impl_diagnostic_from_source_loc_field`
-// for the validation error variants that have `on_expr` instead.  Some variants
-// use `on_expr` instead of `source_loc` because many tests were written to
-// check that an error was raised on a particular expression rather than at a
-// source location.  Storing the `Expr` should not be required because we only
+// Specialize `impl_diagnostics_from_expr_field` to `on_expr`.
+// Storing the `Expr` should not be required because we only
 // care about the source location emended in the expression.  To avoid cloning
 // expressions when constructing errors, we should remove `on_expr` and rewrite
 // the affected tests to only check for the correct `source_loc`.
 macro_rules! impl_diagnostic_from_on_expr_field {
     () => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.on_expr
-                .source_loc()
-                .as_ref()
-                .map(|loc| &loc.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.on_expr.source_loc().as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-        }
+        impl_diagnostic_from_expr_field!(on_expr);
     };
 }
 

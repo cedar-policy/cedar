@@ -108,7 +108,7 @@ pub fn parse_natural_schema_fragment<'a>(
     HumanSyntaxParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
-    let tuple = custom_schema_to_json_schema(ast, extensions)?;
+    let tuple = custom_schema_to_json_schema(ast, extensions.clone())?;
     Ok(tuple)
 }
 

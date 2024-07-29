@@ -1299,7 +1299,7 @@ impl TryInto<Schema> for SchemaFragment {
         Ok(Schema(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1352,7 +1352,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1363,7 +1363,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
                 json,
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1374,7 +1374,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_str(
                 json,
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1384,17 +1384,17 @@ impl Schema {
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?))
     }
 
     /// Parse the schema from a reader
     pub fn from_file_natural(
         file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
             file,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
@@ -1405,7 +1405,7 @@ impl Schema {
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
             src,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
@@ -1934,8 +1934,8 @@ impl PolicySet {
     ///   1) The map passed in `vals` may not match the slots in the template
     ///   2) The `new_id` may conflict w/ a policy that already exists in the set
     ///   3) `template_id` does not correspond to a template. Either the id is
-    ///   not in the policy set, or it is in the policy set but is either a
-    ///   linked or static policy rather than a template
+    ///      not in the policy set, or it is in the policy set but is either a
+    ///      linked or static policy rather than a template
     #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,

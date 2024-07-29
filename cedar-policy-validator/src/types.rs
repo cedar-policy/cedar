@@ -552,7 +552,7 @@ impl Type {
             } => match restricted_expr.as_set_elements() {
                 Some(elts) => {
                     for elt in elts {
-                        if !el_type.typecheck_restricted_expr(elt, extensions)? {
+                        if !el_type.typecheck_restricted_expr(elt, extensions.clone())? {
                             return Ok(false);
                         }
                     }
@@ -584,10 +584,10 @@ impl Type {
                     for (k, attr_val) in &record {
                         match attrs.get_attr(k) {
                             Some(attr_ty) => {
-                                if !attr_ty
-                                    .attr_type
-                                    .typecheck_restricted_expr(attr_val.to_owned(), extensions)?
-                                {
+                                if !attr_ty.attr_type.typecheck_restricted_expr(
+                                    attr_val.to_owned(),
+                                    extensions.clone(),
+                                )? {
                                     return Ok(false);
                                 }
                             }
@@ -626,17 +626,14 @@ impl Type {
                         _ => return Ok(false),
                     }
                     for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
-                        match expected_arg_ty {
-                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
-                            Some(ty) => {
-                                if typecheck_restricted_expr_against_schematype(
-                                    actual_arg, ty, extensions,
-                                )
-                                .is_err()
-                                {
-                                    return Ok(false);
-                                }
-                            }
+                        if typecheck_restricted_expr_against_schematype(
+                            actual_arg,
+                            expected_arg_ty,
+                            extensions.clone(),
+                        )
+                        .is_err()
+                        {
+                            return Ok(false);
                         }
                     }
                     // if we got here, then the return type and arg types typecheck
@@ -1801,7 +1798,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -1912,7 +1909,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2038,7 +2035,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2080,7 +2077,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2125,7 +2122,7 @@ mod test {
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
         let (schema, _) =
-            ValidatorSchema::from_str_natural(&type_str, Extensions::all_available()).unwrap();
+            ValidatorSchema::from_str_natural(&type_str, &Extensions::all_available()).unwrap();
         assert_eq!(
             &schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())

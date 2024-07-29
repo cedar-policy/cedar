@@ -182,7 +182,7 @@ impl<'de> Deserialize<'de> for Id {
     }
 }
 
-/// Deserialize a [`Name`] using `from_normalized_str`
+/// Deserialize a [`UnreservedId`] using `from_normalized_str`
 /// This deserialization implementation is used in the JSON schema format.
 impl<'de> Deserialize<'de> for UnreservedId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

@@ -1705,7 +1705,7 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,

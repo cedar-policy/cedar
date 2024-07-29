@@ -76,7 +76,7 @@ pub fn custom_schema_to_json_schema(
         .collect::<Vec<_>>();
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
-    let warnings = compute_namespace_warnings(&names, extensions);
+    let warnings = compute_namespace_warnings(&names, extensions.clone());
     let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
         SchemaFragment(fragment),
@@ -514,7 +514,7 @@ fn compute_namespace_warnings<'a>(
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     fragment
         .values()
-        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions))
+        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions.clone()))
 }
 
 fn make_warning_for_shadowing<'a>(
@@ -534,14 +534,14 @@ fn make_warning_for_shadowing<'a>(
             warnings.push(warning);
         }
         // Check if it shadows a builtin
-        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions) {
+        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions.clone()) {
             warnings.push(warning);
         }
     }
     let entity_shadows = n
         .entities
         .iter()
-        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions));
+        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions.clone()));
     warnings.into_iter().chain(entity_shadows)
 }
 

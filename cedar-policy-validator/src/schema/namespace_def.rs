@@ -125,7 +125,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         namespace: Option<InternalName>,
         namespace_def: NamespaceDefinition<RawName>,
         action_behavior: ActionBehavior,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
@@ -583,7 +583,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_actions(
         schema_file_actions: HashMap<SmolStr, ActionType<RawName>>,
         schema_namespace: Option<&InternalName>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::with_capacity(schema_file_actions.len());
         for (action_id_str, action_type) in schema_file_actions {
@@ -679,7 +679,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         action_uid: &EntityUID,
         action_type: schema_file_format::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
@@ -764,7 +764,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
     fn convert_attr_jsonval_map_to_attributes(
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValueSerializedAsExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
         let mut attr_values: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = BTreeMap::new();
@@ -943,7 +943,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
             None,
             self,
             ActionBehavior::default(),
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
     }
 }
@@ -956,7 +956,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
 /// not yet implemented in the typechecking logic.
 pub(crate) fn try_schema_type_into_validator_type(
     schema_ty: SchemaType<InternalName>,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
         SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
@@ -1052,7 +1052,7 @@ pub(crate) fn try_schema_type_into_validator_type(
 /// validator, and return the result as an [`Attributes`] structure.
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, TypeOfAttribute<InternalName>)>,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
         .into_iter()
