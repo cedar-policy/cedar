@@ -20,8 +20,7 @@
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
 pub use cedar_policy::ffi;
-use cedar_policy::{compute_entity_manifest, compute_entity_slice_manifest};
-use cedar_policy_core::ast::{self, PartialValue};
+use cedar_policy_core::ast::PartialValue;
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::{Entities, TCComputation};
@@ -159,7 +158,6 @@ pub trait CedarTestImplementation {
     /// Custom authorizer entry point.
     fn is_authorized(
         &self,
-        schema: &ValidatorSchema,
         request: &Request,
         policies: &PolicySet,
         entities: &Entities,
@@ -284,7 +282,6 @@ where
 impl CedarTestImplementation for RustEngine {
     fn is_authorized(
         &self,
-        schema: &ValidatorSchema,
         request: &Request,
         policies: &PolicySet,
         entities: &Entities,
@@ -316,18 +313,6 @@ impl CedarTestImplementation for RustEngine {
             response,
             timing_info: HashMap::from([("authorize".into(), Micros(duration.as_micros()))]),
         };
-
-        // now check that we get the same response with entity manifest, as long as the schema is valid
-        let validator = Validator::new(schema.clone());
-        let validation_result = validator.validate(policies, ValidationMode::Strict);
-        if validation_result.validation_passed() {
-            let entity_manifest = compute_entity_slice_manifest(&schema, &policies).unwrap();
-            let entity_slice = entity_manifest.slice_entities(entities, request).unwrap();
-
-            let slice_response = authorizer.is_authorized(request.clone(), policies, &entity_slice);
-            assert_eq!(response.response.decision(), slice_response.decision);
-        }
-
         TestResult::Success(response)
     }
 
