@@ -61,20 +61,6 @@ pub struct RequestType {
     pub resource: EntityType,
 }
 
-impl RequestType {
-    /// Create a human-readable string for the request types,
-    /// written as a tuple of three elements.
-    /// TODO would be better as a cedar struct?
-    pub fn to_str_natural(&self) -> String {
-        format!(
-            "({} {} {})",
-            self.principal.name(),
-            self.action,
-            self.resource.name(),
-        )
-    }
-}
-
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
@@ -217,7 +203,7 @@ impl Request {
     /// This includes the types of the principal, action, resource,
     /// and context.
     /// Returns `None` if the request is not fully concrete.
-    pub fn to_concrete_env(&self) -> Option<RequestType> {
+    pub fn to_request_type(&self) -> Option<RequestType> {
         Some(RequestType {
             principal: self.principal.uid()?.clone().components().0,
             action: self.action.uid()?.clone(),

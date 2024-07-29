@@ -543,7 +543,7 @@ pub fn load_entities_simplified(
 ) -> Result<Entities, EntitySliceError> {
     let Some(primary_slice) = manifest.per_action.get(
         &request
-            .to_concrete_env()
+            .to_request_type()
             .ok_or(EntitySliceError::PartialRequestError)?,
     ) else {
         // if the request type isn't in the manifest, we need no data

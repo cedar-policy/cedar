@@ -72,34 +72,6 @@ pub struct Entities {
 }
 
 impl Entities {
-    /// The implementation of [`Eq`] and [`PartialEq`] on [`Entities`]
-    /// only checks equality by id for entities in the store.
-    /// This method checks that the entities are equal deeply,
-    /// using `[Entity::deep_equal]` to check equality.
-    pub fn deep_equal(&self, other: &Self) -> bool {
-        if self.mode != other.mode {
-            false
-        } else {
-            for (key, value) in &self.entities {
-                if let Some(other_value) = other.entities.get(key) {
-                    if !value.deep_equal(other_value) {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            }
-
-            for key in other.entities.keys() {
-                if !self.entities.contains_key(key) {
-                    return false;
-                }
-            }
-
-            true
-        }
-    }
-
     /// Create a fresh `Entities` with no entities
     pub fn new() -> Self {
         Self {
