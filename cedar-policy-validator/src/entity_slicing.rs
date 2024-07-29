@@ -181,77 +181,6 @@ fn union_fields<T: Clone>(first: &Fields<T>, second: &Fields<T>) -> Fields<T> {
     res
 }
 
-impl EntityManifest {
-    /// Use this entity manifest to
-    /// find an entity slice using an existing [`Entities`] store.
-    pub fn slice_entities(
-        &self,
-        entities: &Entities,
-        request: &Request,
-    ) -> Result<Entities, EntitySliceError> {
-        let request_type = request
-            .to_concrete_env()
-            .ok_or(EntitySliceError::PartialRequestError)?;
-        self.per_action
-            .get(&request_type)
-            .map(|primary| primary.slice_entities(entities, request))
-            .unwrap_or(Ok(Entities::default()))
-    }
-
-    /// Flatten this manifest into a [`FlatEntityManifest`]
-    pub fn to_flat_entity_manifest(&self) -> FlatEntityManifest {
-        let mut per_action: FlatPerAction = Default::default();
-
-        for (action, primary) in &self.per_action {
-            per_action.insert(action.clone(), primary.to_flat_primary_slice());
-        }
-        FlatEntityManifest { per_action }
-    }
-
-    /// Convert this manifest into a human-readable format.
-    /// The format specifies the request types, then
-    /// prints all the flattened paths as cedar expressions.
-    pub fn to_str_natural(&self) -> String {
-        let flattened = self.to_flat_entity_manifest();
-        let exprs = flattened.to_exprs();
-        let mut res = String::new();
-        for (types, exprs) in exprs {
-            res.push_str(&format!("{} {{\n", types.to_str_natural()));
-            for expr in exprs {
-                res.push_str(&format!("  {}\n", expr));
-            }
-            res.push_str("}\n");
-        }
-        res
-    }
-}
-
-impl FlatEntityManifest {
-    /// Convert this flattened manifest into a list of cedar expressions.
-    /// The expressions only use the constructors [`ExprKind::GetAttr`] and [`Var`].
-    /// They may also have the shape `principal in expr` to denote that
-    /// the parents of `expr` are needed.
-    pub fn to_exprs(&self) -> HashMap<RequestType, Vec<Expr>> {
-        let mut res: HashMap<RequestType, Vec<Expr>> = Default::default();
-        for (types, path) in &self.per_action {
-            let exprs = path.to_exprs();
-            res.insert(types.clone(), exprs);
-        }
-        res
-    }
-}
-
-impl FlatPrimarySlice {
-    fn to_exprs(&self) -> Vec<Expr> {
-        let mut res = vec![];
-        for slice in &self.data {
-            let expr = slice.to_expr();
-            res.push(expr);
-        }
-        res
-    }
-}
-
 impl FlatEntitySlice {
     /// Given a path of fields to access, convert to a tree
     /// (the [`Fields`] data structure.
@@ -282,68 +211,6 @@ impl FlatEntitySlice {
         primary_map.insert(self.root.clone(), current);
         PrimarySlice { trie: primary_map }
     }
-
-    fn to_expr(&self) -> Expr {
-        let mut expr = self.root.to_expr();
-
-        for field in &self.path {
-            expr = Expr::get_attr(expr, field.clone());
-        }
-
-        if self.parents_required {
-            expr = Expr::binary_app(BinaryOp::In, Expr::var(Var::Principal), expr);
-        }
-        expr
-    }
-
-    /// Converts compatible expressions to a [`FlatEntitySlice`]
-    /// Compatible expressions start with a variable, with
-    /// any number of [`ExprKin::GetAttr`], and optionally are wrapped with
-    /// `principal in <expr>`
-    fn from_expr(expr: &Expr) -> Option<FlatEntitySlice> {
-        let (mut current_expr, parents_required) = match expr.expr_kind() {
-            ExprKind::BinaryApp {
-                op: BinaryOp::In,
-                arg1,
-                arg2,
-            } => {
-                if **arg1 != Expr::var(Var::Principal) {
-                    return None;
-                }
-                (arg2.clone(), true)
-            }
-            _ => (Arc::new(expr.clone()), false),
-        };
-
-        let mut path = vec![];
-        loop {
-            match current_expr.expr_kind() {
-                ExprKind::GetAttr { expr, attr } => {
-                    path.push(attr.clone());
-                    current_expr = expr.clone();
-                }
-                ExprKind::Var(var) => {
-                    path.reverse();
-
-                    return Some(FlatEntitySlice {
-                        root: EntityRoot::Var(*var),
-                        path,
-                        parents_required,
-                    });
-                }
-                ExprKind::Lit(Literal::EntityUID(literal)) => {
-                    path.reverse();
-
-                    return Some(FlatEntitySlice {
-                        root: EntityRoot::Literal((**literal).clone()),
-                        path,
-                        parents_required,
-                    });
-                }
-                _ => return None,
-            }
-        }
-    }
 }
 
 impl EntityRoot {
@@ -358,78 +225,6 @@ impl EntityRoot {
 }
 
 impl PrimarySlice {
-    /// Given entities and a request, return a new entitity store
-    /// which is a slice of the old one.
-    fn slice_entities(
-        &self,
-        entities: &Entities,
-        request: &Request,
-    ) -> Result<Entities, EntitySliceError> {
-        let mut res = HashMap::<EntityUID, Entity>::new();
-        for (root, slice) in &self.trie {
-            match root {
-                EntityRoot::Literal(lit) => {
-                    slice.slice_entity(entities, lit, &mut res)?;
-                }
-                EntityRoot::Var(Var::Action) => {
-                    let entity_id = request
-                        .action()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?;
-                    slice.slice_entity(entities, entity_id, &mut res)?;
-                }
-                EntityRoot::Var(Var::Principal) => {
-                    let entity_id = request
-                        .principal()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?;
-                    slice.slice_entity(entities, entity_id, &mut res)?;
-                }
-                EntityRoot::Var(Var::Resource) => {
-                    let resource_id = request
-                        .resource()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?;
-                    slice.slice_entity(entities, resource_id, &mut res)?;
-                }
-                EntityRoot::Var(Var::Context) => {
-                    if slice.children.is_empty() {
-                        // no data loading needed
-                    } else {
-                        let partial_val: PartialValue = PartialValue::from(
-                            request
-                                .context()
-                                .ok_or(EntitySliceError::PartialRequestError)?
-                                .clone(),
-                        );
-                        let PartialValue::Value(val) = partial_val else {
-                            return Err(EntitySliceError::PartialRequestError);
-                        };
-                        slice.slice_val(entities, &val, &mut res);
-                    }
-                }
-            }
-        }
-        Ok(Entities::from_entities(
-            res.into_values(),
-            None::<&NoEntitiesSchema>,
-            TCComputation::AssumeAlreadyComputed,
-            Extensions::all_available(),
-        )?)
-    }
-
-    fn to_flat_primary_slice(&self) -> FlatPrimarySlice {
-        let mut data: Vec<FlatEntitySlice> = vec![];
-
-        for (root, slice) in &self.trie {
-            for flattened in slice.to_flat_entity_slice(root) {
-                data.push(flattened);
-            }
-        }
-
-        FlatPrimarySlice { data }
-    }
-
     /// Create an empty [`PrimarySlice`] that requires no data
     pub fn new() -> Self {
         Self {
@@ -473,129 +268,11 @@ impl<T: Clone> EntitySlice<T> {
 }
 
 impl EntitySlice {
-    /// Given an entities store, an entity id, and a resulting store
-    /// Slice the entities and put them in the resulting store.
-    fn slice_entity(
-        &self,
-        entities: &Entities,
-        lit: &EntityUID,
-        res: &mut HashMap<EntityUID, Entity>,
-    ) -> Result<(), EntitySliceError> {
-        // If the entity is not present, no need to slice
-        let Dereference::Data(entity) = entities.entity(lit) else {
-            return Ok(());
-        };
-        let mut new_entity = HashMap::<SmolStr, PartialValue>::new();
-        for (field, slice) in &self.children {
-            // only slice when field is available
-            if let Some(pval) = entity.get(field).cloned() {
-                let PartialValue::Value(val) = pval else {
-                    return Err(EntitySliceError::PartialEntity);
-                };
-                let sliced = slice.slice_val(entities, &val, res)?;
-
-                new_entity.insert(field.clone(), PartialValue::Value(sliced));
-            }
-        }
-
-        let new_ancestors = if self.parents_required {
-            entity.ancestors().cloned().collect()
-        } else {
-            HashSet::new()
-        };
-
-        let new_entity =
-            Entity::new_with_attr_partial_value(lit.clone(), new_entity, new_ancestors);
-
-        #[allow(clippy::expect_used)]
-        if let Some(existing) = res.get_mut(lit) {
-            // Here we union the new entity with any existing one
-            // PANIC SAFETY: Entities in the entity store with the same ID should be compatible to union together.
-            *existing = existing
-                .union(&new_entity)
-                .expect("Incompatible values found in entity store");
-        } else {
-            res.insert(lit.clone(), new_entity);
-        }
-        Ok(())
-    }
-
-    fn slice_val(
-        &self,
-        entities: &Entities,
-        val: &Value,
-        res: &mut HashMap<EntityUID, Entity>,
-    ) -> Result<Value, EntitySliceError> {
-        // unless this is an entity id, parents should not be required
-        assert!(
-            !self.parents_required
-                || matches!(val.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
-        );
-
-        Ok(match val.value_kind() {
-            ValueKind::Lit(Literal::EntityUID(id)) => {
-                self.slice_entity(entities, id, res)?;
-                val.clone()
-            }
-            ValueKind::Set(_) | ValueKind::ExtensionValue(_) | ValueKind::Lit(_) => {
-                if !self.children.is_empty() {
-                    return Err(EntitySliceError::IncompatibleEntityManifest(val.clone()));
-                }
-
-                val.clone()
-            }
-            ValueKind::Record(record) => {
-                let mut new_map = BTreeMap::<SmolStr, Value>::new();
-                for (field, slice) in &self.children {
-                    // only slice when field is available
-                    if let Some(v) = record.get(field) {
-                        new_map.insert(field.clone(), slice.slice_val(entities, v, res)?);
-                    }
-                }
-
-                Value::new(ValueKind::record(new_map), None)
-            }
-        })
-    }
-
     fn new() -> Self {
         Self {
             children: Default::default(),
             parents_required: false,
             data: (),
-        }
-    }
-
-    fn to_flat_entity_slice(&self, root: &EntityRoot) -> Vec<FlatEntitySlice> {
-        let mut flattened_reversed = self.flatten_reversed(root);
-        for flattened in flattened_reversed.iter_mut() {
-            flattened.path.reverse();
-        }
-        flattened_reversed
-    }
-
-    /// Builds a [`FlatEntitySlice`] in reversed order for efficient
-    /// `push` operation.
-    fn flatten_reversed(&self, root: &EntityRoot) -> Vec<FlatEntitySlice> {
-        if self.children.is_empty() {
-            vec![FlatEntitySlice {
-                root: root.clone(),
-                path: vec![],
-                parents_required: false,
-            }]
-        } else {
-            let mut res = vec![];
-            for (key, value) in &self.children {
-                for mut flattened in value.flatten_reversed(root) {
-                    if flattened.parents_required {
-                        res.push(flattened.clone());
-                    }
-                    flattened.path.push(key.clone());
-                    flattened.parents_required = self.parents_required;
-                    res.push(flattened);
-                }
-            }
-            res
         }
     }
 }
@@ -1025,67 +702,9 @@ fn find_remaining_entities_value(
 
 #[cfg(test)]
 mod entity_slice_tests {
-    use cedar_policy_core::{ast::{Context, PolicyID}, entities::EntityJsonParser, parser::parse_policy};
-
-    use crate::CoreSchema;
+    use cedar_policy_core::{ast::PolicyID, parser::parse_policy};
 
     use super::*;
-
-    fn expect_entity_slice_to(
-        original: serde_json::Value,
-        expected: serde_json::Value,
-        schema: &ValidatorSchema,
-        manifest: &EntityManifest,
-    ) {
-        let request = Request::new(
-            (
-                EntityUID::with_eid_and_type("User", "oliver").unwrap(),
-                None,
-            ),
-            (
-                EntityUID::with_eid_and_type("Action", "Read").unwrap(),
-                None,
-            ),
-            (
-                EntityUID::with_eid_and_type("Document", "dummy").unwrap(),
-                None,
-            ),
-            Context::empty(),
-            Some(schema),
-            Extensions::all_available(),
-        )
-        .unwrap();
-
-        let schema = CoreSchema::new(schema);
-        let parser: EntityJsonParser<'_, '_, CoreSchema<'_>> = EntityJsonParser::new(
-            Some(&schema),
-            Extensions::all_available(),
-            TCComputation::AssumeAlreadyComputed,
-        );
-        let original_entities = parser.from_json_value(original).unwrap();
-
-        // Entity slicing results in invalid entity stores
-        // since attributes may be missing.
-        let parser_without_validation: EntityJsonParser<'_, '_> = EntityJsonParser::new(
-            None,
-            Extensions::all_available(),
-            TCComputation::AssumeAlreadyComputed,
-        );
-        let expected_entities = parser_without_validation.from_json_value(expected).unwrap();
-
-        let sliced_entities = manifest
-            .slice_entities(&original_entities, &request)
-            .unwrap();
-
-        #[allow(clippy::panic)]
-        if !sliced_entities.deep_equal(&expected_entities) {
-            panic!(
-                "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",
-                expected_entities.to_json_value().unwrap(),
-                sliced_entities.to_json_value().unwrap()
-            );
-        }
-    }
 
     #[test]
     fn test_simple_entity_manifest() {
@@ -1158,44 +777,6 @@ action Read appliesTo {
 }"#;
         let expected_manifest = serde_json::from_str(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-
-        let entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "name" : "Oliver"
-                    },
-                    "parents" : []
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "oliver2"},
-                    "attrs" : {
-                        "name" : "Oliver2"
-                    },
-                    "parents" : []
-                },
-            ]
-        );
-
-        let expected_entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "name" : "Oliver"
-                    },
-                    "parents" : []
-                },
-            ]
-        );
-
-        expect_entity_slice_to(
-            entities_json,
-            expected_entities_json,
-            &schema,
-            &expected_manifest,
-        );
     }
 
     #[test]
@@ -1247,49 +828,6 @@ action Read appliesTo {
 }"#;
         let expected_manifest = serde_json::from_str(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-
-        let entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "name" : "Oliver"
-                    },
-                    "parents" : []
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "oliver2"},
-                    "attrs" : {
-                        "name" : "Oliver2"
-                    },
-                    "parents" : []
-                },
-            ]
-        );
-
-        let expected_entities_json = serde_json::json!([
-            {
-                "uid" : { "type" : "User", "id" : "oliver"},
-                "attrs" : {
-                    "name" : "Oliver"
-                },
-                "parents" : []
-            },
-            {
-                "uid" : { "type" : "User", "id" : "oliver2"},
-                "attrs" : {
-                    "name" : "Oliver2"
-                },
-                "parents" : []
-            },
-        ]);
-
-        expect_entity_slice_to(
-            entities_json,
-            expected_entities_json,
-            &schema,
-            &expected_manifest,
-        );
     }
 
     #[test]
@@ -1340,34 +878,6 @@ action Read appliesTo {
 }"#;
         let expected_manifest = serde_json::from_str(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-
-        let entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "name" : "Oliver"
-                    },
-                    "parents" : []
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "oliver2"},
-                    "attrs" : {
-                        "name" : "Oliver2"
-                    },
-                    "parents" : []
-                },
-            ]
-        );
-
-        let expected_entities_json = serde_json::json!([]);
-
-        expect_entity_slice_to(
-            entities_json,
-            expected_entities_json,
-            &schema,
-            &expected_manifest,
-        );
     }
 
     #[test]
@@ -1442,60 +952,6 @@ action Read appliesTo {
 }"#;
         let expected_manifest = serde_json::from_str(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-
-        let entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "name" : "Oliver",
-                        "manager": { "type" : "User", "id" : "george"}
-                    },
-                    "parents" : [
-                        { "type" : "Document", "id" : "oliverdocument"}
-                    ]
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "george"},
-                    "attrs" : {
-                        "name" : "George",
-                        "manager": { "type" : "User", "id" : "george"}
-                    },
-                    "parents" : [
-                        { "type" : "Document", "id" : "georgedocument"}
-                    ]
-                },
-            ]
-        );
-
-        let expected_entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                        "manager": { "__entity": { "type" : "User", "id" : "george"} }
-                    },
-                    "parents" : [
-                        { "type" : "Document", "id" : "oliverdocument"}
-                    ]
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "george"},
-                    "attrs" : {
-                    },
-                    "parents" : [
-                        { "type" : "Document", "id" : "georgedocument"}
-                    ]
-                },
-            ]
-        );
-
-        expect_entity_slice_to(
-            entities_json,
-            expected_entities_json,
-            &schema,
-            &expected_manifest,
-        );
     }
 
     #[test]
@@ -1719,68 +1175,6 @@ action Read appliesTo {
 }"#;
         let expected_manifest = serde_json::from_str(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-
-        let entities_json = serde_json::json!(
-            [
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                    },
-                    "parents" : [
-                    ]
-                },
-                {
-                    "uid": { "type": "Document", "id": "dummy"},
-                    "attrs": {
-                        "metadata": { "type": "Metadata", "id": "olivermetadata"},
-                        "readers": [{"type": "User", "id": "oliver"}]
-                    },
-                    "parents": [],
-                },
-                {
-                    "uid": { "type": "Metadata", "id": "olivermetadata"},
-                    "attrs": {
-                        "owner": { "type": "User", "id": "oliver"},
-                        "time": "now"
-                    },
-                    "parents": [],
-                },
-            ]
-        );
-
-        let expected_entities_json = serde_json::json!(
-            [
-                {
-                    "uid": { "type": "Document", "id": "dummy"},
-                    "attrs": {
-                        "metadata": {"__entity": { "type": "Metadata", "id": "olivermetadata"}},
-                        "readers": [{ "__entity": {"type": "User", "id": "oliver"}}]
-                    },
-                    "parents": [],
-                },
-                {
-                    "uid": { "type": "Metadata", "id": "olivermetadata"},
-                    "attrs": {
-                        "owner": {"__entity": { "type": "User", "id": "oliver"}},
-                    },
-                    "parents": [],
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                    },
-                    "parents" : [
-                    ]
-                },
-            ]
-        );
-
-        expect_entity_slice_to(
-            entities_json,
-            expected_entities_json,
-            &schema,
-            &expected_manifest,
-        );
     }
 
     #[test]
