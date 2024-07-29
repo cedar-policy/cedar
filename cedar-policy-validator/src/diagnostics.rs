@@ -126,18 +126,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndefinedFunction(#[from] validation_errors::UndefinedFunction),
-    /// Multiply defined extension function.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MultiplyDefinedFunction(#[from] validation_errors::MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.
     #[error(transparent)]
     #[diagnostic(transparent)]
     WrongNumberArguments(#[from] validation_errors::WrongNumberArguments),
     /// Incorrect call style in an extension function application.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WrongCallStyle(#[from] validation_errors::WrongCallStyle),
     /// Error returned by custom extension function argument validation
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -275,19 +268,6 @@ impl ValidationError {
 
     pub(crate) fn undefined_extension(on_expr: Expr, policy_id: PolicyID, name: String) -> Self {
         validation_errors::UndefinedFunction {
-            on_expr,
-            policy_id,
-            name,
-        }
-        .into()
-    }
-
-    pub(crate) fn multiply_defined_extension(
-        on_expr: Expr,
-        policy_id: PolicyID,
-        name: String,
-    ) -> Self {
-        validation_errors::MultiplyDefinedFunction {
             on_expr,
             policy_id,
             name,

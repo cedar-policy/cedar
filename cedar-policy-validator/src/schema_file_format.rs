@@ -62,9 +62,13 @@ use crate::{
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
 pub struct SchemaFragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
+    #[cfg_attr(
+        feature = "wasm",
+        tsify(type = "Record<string, NamespaceDefinition<N>>")
+    )]
     pub HashMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
@@ -1472,7 +1476,7 @@ mod test {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"failed to parse schema in JSON format: unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
         });

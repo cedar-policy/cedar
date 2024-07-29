@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The "Cedar Language Version" refers to the language version as documented in the [Cedar Policy Language Guide](https://docs.cedarpolicy.com/other/doc-history.html). The language version may differ from the Rust crate version because a breaking change for the Cedar Rust API may or may not be a breaking change for the Cedar language.
 
+Starting with version 4.0, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
+
 ## [Unreleased]
 Cedar Language Version: 4.0
 
@@ -19,6 +21,8 @@ Cedar Language Version: 4.0
 - `Context::into_iter` to get the contents of a `Context` and `Context::merge`
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
+- Additional functionality to the JSON FFI including parsing utilities (#1079)
+  and conversion between the Cedar and JSON formats (#1087)
 
 ### Changed
 
@@ -26,25 +30,30 @@ Cedar Language Version: 4.0
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
-- Finalized the `ffi` module which was preview-released in 3.2.0.
-  This involved a few additional API breaking changes in `ffi`. See #757.
+- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
+  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Removed unnecessary lifetimes from some validation related structs (#715)
-- Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional.
-- Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
+- (*) Changed policy validation to reject comparisons and conditionals between
+  record types that differ in whether an attribute is required or optional. (#769)
+- (*) Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
   can be common type names; updated the error message when common type names
   conflict with built-in primitive type names (#974, partially resolving #973)
 - Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
 - Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
   instead of `Option<String>` to set the policy id (#1055, resolving #1049)
-- RFC 52 is implemented (#969). Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and `A::__cedar::B`) will be invalid.
+- (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
+  Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
+`A::__cedar::B`) are now invalid. (#969)
 
 ### Removed
 
-- Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
-- Removed the `error` extension function, which was previously used during partial evaluation.
+- (*) Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
+  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
+  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
+- Removed the `error` extension function, which was previously used during
+  partial evaluation. (#874)
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
@@ -62,12 +71,12 @@ Cedar Language Version: 4.0
 
 ### Fixed
 
-- JSON format Cedar schemas will now fail to parse if they reference an unknown
+- (*) JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
-- JSON format Cedar policies will now fail to parse if the action scope
+- (*) JSON format Cedar policies will now fail to parse if the action scope
   constraint contains a non-action entity type, matching the behavior for
   human-readable Cedar policies. (#943, resolving #925)
-- JSON format Cedar policies will now fail to parse if any annotations are not
+- (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
 
 ## [3.2.1] - 2024-05-31

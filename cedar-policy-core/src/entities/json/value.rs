@@ -18,11 +18,6 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::entities::{
-    conformance::err::EntitySchemaConformanceError,
-    json::err::{EscapeKind, TypeMismatchError},
-    schematype_of_restricted_expr, GetSchemaTypeError,
-};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use crate::{
@@ -31,6 +26,14 @@ use crate::{
         ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
     },
     entities::Name,
+};
+use crate::{
+    entities::{
+        conformance::err::EntitySchemaConformanceError,
+        json::err::{EscapeKind, TypeMismatchError},
+        schematype_of_restricted_expr, GetSchemaTypeError,
+    },
+    extensions::ExtensionConstructorSignature,
 };
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -59,7 +62,7 @@ pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown when attempting to parse this
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
@@ -503,7 +506,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            self.extensions,
+                            &self.extensions,
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -578,7 +581,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            self.extensions,
+                            &self.extensions,
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -635,7 +638,7 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
+                let argty = schematype_of_restricted_expr(arg.as_borrowed(), &self.extensions)
                     .map_err(|e| match e {
                         GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
@@ -663,21 +666,19 @@ impl<'e> ValueParser<'e> {
                             )
                         }
                     })?;
+                let expected_return_type = SchemaType::Extension {
+                    name: expected_typename,
+                };
                 let func = self
                     .extensions
-                    .lookup_single_arg_constructor(
-                        &SchemaType::Extension {
-                            name: expected_typename.clone(),
-                        },
-                        &argty,
-                    )
-                    .map_err(|err| JsonDeserializationError::extension_function_lookup(ctx(), err))?
+                    .lookup_single_arg_constructor(&ExtensionConstructorSignature {
+                        argument_type: &argty,
+                        return_type: &expected_return_type,
+                    })
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),
-                            SchemaType::Extension {
-                                name: expected_typename,
-                            },
+                            expected_return_type,
                             argty.clone(),
                         )
                     })?;
@@ -720,6 +721,7 @@ pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: String,
         /// Phantom value for the `Context` type parameter
         #[serde(skip)]

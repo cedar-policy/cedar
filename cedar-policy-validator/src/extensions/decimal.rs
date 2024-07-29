@@ -84,22 +84,19 @@ pub fn extension_schema() -> ExtensionSchema {
     let decimal_ext = decimal::extension();
     let decimal_ty = Type::extension(decimal_ext.name().clone());
 
-    let fun_tys: Vec<ExtensionFunctionType> = decimal_ext
-        .funcs()
-        .map(|f| {
-            let return_type = get_return_type(f.name(), &decimal_ty);
-            debug_assert!(f
-                .return_type()
-                .map(|ty| return_type.is_consistent_with(ty))
-                .unwrap_or_else(|| return_type == Type::Never));
-            ExtensionFunctionType::new(
-                f.name().clone(),
-                get_argument_types(f.name(), &decimal_ty),
-                return_type,
-                get_argument_check(f.name()),
-            )
-        })
-        .collect();
+    let fun_tys = decimal_ext.funcs().map(|f| {
+        let return_type = get_return_type(f.name(), &decimal_ty);
+        debug_assert!(f
+            .return_type()
+            .map(|ty| return_type.is_consistent_with(ty))
+            .unwrap_or_else(|| return_type == Type::Never));
+        ExtensionFunctionType::new(
+            f.name().clone(),
+            get_argument_types(f.name(), &decimal_ty),
+            return_type,
+            get_argument_check(f.name()),
+        )
+    });
     ExtensionSchema::new(decimal_ext.name().clone(), fun_tys)
 }
 

@@ -16,6 +16,7 @@
 
 //! Utility functions and types for JSON interface
 use crate::{PolicyId, SchemaWarning, SlotId};
+use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
@@ -274,13 +275,13 @@ pub enum Policy {
     /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     Human(String),
     /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Policy {
     /// Parse a [`Policy`] into a [`crate::Policy`]. Takes an optional id
     /// argument that sets the policy id. If the argument is `None` then a
-    /// default id will be assigned.
+    /// default id will be assigned. Will return an error if passed a template.
     pub(super) fn parse(self, id: Option<PolicyId>) -> Result<crate::Policy, miette::Report> {
         let msg = id
             .clone()
@@ -294,7 +295,9 @@ impl Policy {
     }
 }
 
-/// Represents a policy template in either the Cedar or JSON policy format
+/// Represents a policy template in either the Cedar or JSON policy format.
+/// This format can also be used to represent static policies (which can be
+/// thought of as templates with zero slots).
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -306,7 +309,7 @@ pub enum Template {
     /// Template in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     Human(String),
     /// Template in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
 
 impl Template {
@@ -367,9 +370,17 @@ impl StaticPolicySet {
     /// Parse a [`StaticPolicySet`] into a [`crate::PolicySet`]
     pub(super) fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
         match self {
-            Self::Concatenated(str) => crate::PolicySet::from_str(&str)
-                .wrap_err("failed to parse policies from string")
-                .map_err(|e| vec![e]),
+            Self::Concatenated(str) => {
+                let policies = crate::PolicySet::from_str(&str)
+                    .wrap_err("failed to parse policies from string")
+                    .map_err(|e| vec![e])?;
+                // make sure the parsed policies are all static policies
+                if policies.templates().count() > 0 {
+                    Err(vec![miette!("static policy set includes a template")])
+                } else {
+                    Ok(policies)
+                }
+            }
             Self::Set(set) => {
                 let mut errs = Vec::new();
                 let policies = set
@@ -509,15 +520,33 @@ pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
     Human(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
-    Json(JsonValueWithNoDuplicateKeys),
+    Json(
+        #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
+        JsonValueWithNoDuplicateKeys,
+    ),
 }
 
 impl Schema {
     pub(super) fn parse(
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
+        let (schema_frag, warnings) = self.parse_schema_fragment()?;
+        Ok((schema_frag.try_into()?, warnings))
+    }
+
+    /// Return a [`crate::SchemaFragment`], which can be printed with `.to_string()`
+    /// and converted to JSON with `.to_json()`.
+    pub(super) fn parse_schema_fragment(
+        self,
+    ) -> Result<
+        (
+            crate::SchemaFragment,
+            Box<dyn Iterator<Item = SchemaWarning>>,
+        ),
+        miette::Report,
+    > {
         match self {
-            Self::Human(str) => crate::Schema::from_str_natural(&str)
+            Self::Human(str) => crate::SchemaFragment::from_str_natural(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,
@@ -525,7 +554,7 @@ impl Schema {
                     )
                 })
                 .wrap_err("failed to parse schema from string"),
-            Self::Json(val) => crate::Schema::from_json_value(val.into())
+            Self::Json(val) => crate::SchemaFragment::from_json_value(val.into())
                 .map(|sch| {
                     (
                         sch,
@@ -811,6 +840,25 @@ mod test {
             .exactly_one_underline("permit(principal == ?principal, action, resource);")
             .help("try removing the template slot(s) from this policy")
             .build(),
+        );
+
+        // Invalid static policy set - the second policy is a template
+        let policies_json = json!(
+            "
+            permit(principal == User::\"alice\", action, resource); 
+            permit(principal == ?principal, action, resource);
+        "
+        );
+        let policies: StaticPolicySet =
+            serde_json::from_value(policies_json).expect("failed to parse from JSON");
+        let errs = policies
+            .parse()
+            .expect_err("should have failed to convert to static policy set");
+        assert_length_matches(&errs, 1);
+        expect_err(
+            "permit(principal == ?principal, action, resource);",
+            &errs[0],
+            &ExpectedErrorMessageBuilder::error("static policy set includes a template").build(),
         );
 
         // Invalid static policy set - `policy1` is actually multiple policies

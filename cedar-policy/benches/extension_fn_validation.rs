@@ -23,7 +23,10 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 // PANIC SAFETY: benchmarking
 #[allow(clippy::unwrap_used)]
 pub fn extension_fn_validation(c: &mut Criterion) {
-    let (schema, _) = Schema::from_str_natural("action Act appliesTo { context: {}};").unwrap();
+    let (schema, _) = Schema::from_str_natural(
+        "entity E; action Act appliesTo { principal: E, resource: E, context: {}};",
+    )
+    .unwrap();
     let validator = Validator::new(schema);
 
     let policy_set = PolicySet::from_policies([Policy::from_str(
