@@ -180,6 +180,30 @@ impl From<PartialValue> for Expr {
     }
 }
 
+impl<T> ExprKind<T> {
+    /// Describe this operator for error messages.
+    pub fn operator_description(self: ExprKind<T>) -> String {
+        match self {
+            ExprKind::Lit(_) => "literal".to_string(),
+            ExprKind::Var(_) => "variable".to_string(),
+            ExprKind::Slot(_) => "slot".to_string(),
+            ExprKind::Unknown(_) => "unknown".to_string(),
+            ExprKind::If { .. } => "if".to_string(),
+            ExprKind::And { .. } => "&&".to_string(),
+            ExprKind::Or { .. } => "||".to_string(),
+            ExprKind::UnaryApp { op, .. } => op.to_string(),
+            ExprKind::BinaryApp { op, .. } => op.to_string(),
+            ExprKind::ExtensionFunctionApp { fn_name, .. } => fn_name.to_string(),
+            ExprKind::GetAttr { .. } => "get attribute".to_string(),
+            ExprKind::HasAttr { .. } => "has attribute".to_string(),
+            ExprKind::Like { .. } => "like".to_string(),
+            ExprKind::Is { .. } => "is".to_string(),
+            ExprKind::Set(_) => "set".to_string(),
+            ExprKind::Record(_) => "record".to_string(),
+        }
+    }
+}
+
 impl<T> Expr<T> {
     fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
