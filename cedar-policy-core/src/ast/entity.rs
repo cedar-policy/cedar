@@ -318,49 +318,6 @@ pub struct Entity {
 }
 
 impl Entity {
-    /// The implementation of [`Eq`] and [`PartialEq`] for
-    /// entities just compares entity ids.
-    /// This implementation does a more traditional, deep equality
-    /// check comparing attributes, ancestors, and the id.
-    pub fn deep_equal(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
-    }
-
-    /// Union two compatible entities, creating a new entity
-    /// with atributes from both.
-    /// The union is deep, meaning that if both entities have
-    /// records these records get unioned.
-    /// Returns `None` when incompatible.
-    pub fn union(&self, other: &Self) -> Option<Self> {
-        if self.uid() != other.uid() {
-            return None;
-        }
-
-        let mut new_attrs: HashMap<SmolStr, PartialValue> = self
-            .attrs
-            .iter()
-            .map(|item| (item.0.clone(), item.1.as_ref().clone()))
-            .collect();
-        for (key, val) in &other.attrs {
-            if let Some(v) = new_attrs.get_mut(key) {
-                *v = v.union(val.as_ref())?;
-            } else {
-                new_attrs.insert(key.clone(), val.as_ref().clone());
-            }
-        }
-
-        let mut new_ancestors = self.ancestors.clone();
-        for ancestor in &other.ancestors {
-            new_ancestors.insert(ancestor.clone());
-        }
-
-        Some(Entity::new_with_attr_partial_value(
-            self.uid().clone(),
-            new_attrs,
-            new_ancestors,
-        ))
-    }
-
     /// Create a new `Entity` with this UID, attributes, and ancestors
     pub fn new(
         uid: EntityUID,
@@ -465,9 +422,6 @@ impl Entity {
         }
     }
 
-    /// Test if two `Entity` objects are deep/structurally equal.
-    /// That is, not only do they have the same UID, but also the same
-    /// attributes, attribute values, and ancestors.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
     }

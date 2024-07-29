@@ -27,8 +27,6 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
-aws-sdk-dynamodb = "1.32.0"
-futures = "0.3.1"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
