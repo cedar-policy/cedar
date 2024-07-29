@@ -117,7 +117,7 @@ fn eval_extension_constructor(
 
 /// Errors occurring while initializing extensions. These are internal errors, so
 /// this enum should not become part of the public API unless we publicly expose
-/// user-defined extension function.
+/// user-defined extension functions.
 #[derive(Diagnostic, Debug, Error)]
 pub enum ExtensionInitializationError {
     /// An extension function was defined by multiple extensions.
