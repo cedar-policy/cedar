@@ -23,10 +23,11 @@
 )]
 
 mod id;
-use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
+use cedar_policy_validator::entity_slicing::compute_entity_slice_manifest;
 pub use cedar_policy_validator::entity_slicing::{
-    self, compute_entity_slice_manifest, EntityManifest, EntitySliceError,
+    EntityManifest, EntitySlice, EntitySliceError, PrimarySlice,
 };
+use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
 mod err;
@@ -4275,7 +4276,6 @@ action CreateList in Create appliesTo {
     }
 }
 
-
 /// Given a schema and policy set, compute an entity slice manifest.
 /// The manifest describes the data required to answer requests
 /// for each action type.
@@ -4284,41 +4284,4 @@ pub fn compute_entity_manifest(
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
     compute_entity_slice_manifest(&schema.0, &pset.ast)
-}
-
-/// Implement this trait to efficiently load entities based on
-/// the entity manifest.
-/// This entity loader is called "Simple" for two reasons:
-/// 1) First, it is not synchronous- `load_entity` is called multiple times.
-/// 2) Second, it is not precise- the entity manifest only requires some
-/// fields to be loaded.
-pub trait SimpleEntityLoader {
-    /// Simple entity loaders must implement `load_entity`,
-    /// a function that loads an entities based on their [`EntityUID`]s.
-    /// For each element of `entity_ids`, returns the corresponding
-    /// [`Entity`] in the output vector.
-    fn load_entity(&mut self, entity_ids: &[&EntityUid]) -> Vec<Entity>;
-
-    /// Loads all the entities needed for a request
-    /// using the `load_entity` function.
-    fn load(
-        &mut self,
-        entity_manifest: &EntityManifest,
-        request: &Request,
-    ) -> Result<Entities, EntitySliceError> {
-        Ok(Entities(entity_slicing::load_entities_simplified(
-            &entity_manifest,
-            &request.0,
-            &mut |entity_id| {
-                let uids = entity_id
-                    .into_iter()
-                    .map(|euid| EntityUid::from_str(&euid.to_string()).unwrap())
-                    .collect::<Vec<_>>();
-                self.load_entity(uids.iter().collect::<Vec<_>>().as_slice())
-                    .into_iter()
-                    .map(|ele| ele.0)
-                    .collect()
-            },
-        )?))
-    }
 }
