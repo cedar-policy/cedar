@@ -117,15 +117,32 @@ pub struct FlatEntitySlice {
     pub parents_required: bool,
 }
 
+/// Entity manifest computation does not handle the full
+/// cedar language. In particular, the policies must follow the
+/// following grammar:
+/// <expr> = <datapath-expr>
+///          <datapath-expr> in <expr>
+///          <expr> + <expr>
+///          if <expr> { <expr> } { <expr> }
+///          ... all other cedar operators not mentioned by datapath-expr
+
+/// <datapath-expr> = <datapath-expr>.<field>
+///                   <datapath-expr> has <field>
+///                   <variable>
+///                   <entity literal>
+/// 
+/// The `get_expr_path` function handles `datapath-expr` expressions.
+/// This error message tells the user not to use certain operators
+/// before accessing record or entity attributes, breaking this grammar.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("For policy `{policy_id}`, failed to analyze expression while computing entity manifest.`")]
-struct FailedAnalysisError {
+pub struct FailedAnalysisError {
     /// Source location
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// The kind of the expression that was unexpected
-    pub expr_kind: ExprKind,
+    pub expr_kind: ExprKind<Option<Type>>,
 }
 
 impl Diagnostic for FailedAnalysisError {
@@ -334,7 +351,7 @@ pub fn compute_entity_slice_manifest(
 
 fn compute_primary_slice(
     expr: &Expr<Option<Type>>,
-    policy_id: PolicyID,
+    policy_id: &PolicyID,
 ) -> Result<RootAccessTrie, EntitySliceError> {
     let mut primary_slice = RootAccessTrie::new();
     add_to_primary_slice(&mut primary_slice, expr, policy_id, false)?;
@@ -344,7 +361,7 @@ fn compute_primary_slice(
 fn add_to_primary_slice(
     primary_slice: &mut RootAccessTrie,
     expr: &Expr<Option<Type>>,
-    policy_id: PolicyID,
+    policy_id: &PolicyID,
     should_load_all: bool,
 ) -> Result<(), EntitySliceError> {
     match expr.expr_kind() {
@@ -500,7 +517,7 @@ fn entity_slice_from_type(ty: &Type) -> AccessTrie {
 /// starting with a variable.
 fn get_expr_path(
     expr: &Expr<Option<Type>>,
-    policy_id: PolicyID,
+    policy_id: &PolicyID,
 ) -> Result<FlatEntitySlice, EntitySliceError> {
     Ok(match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
@@ -537,8 +554,8 @@ fn get_expr_path(
         ExprKind::Unknown(_) => Err(EntitySliceError::PartialExpressionError)?,
         _ => Err(EntitySliceError::FailedAnalysis(FailedAnalysisError {
             source_loc: expr.source_loc().cloned(),
-            policy_id,
-            expr_kind: expr.expr_kind(),
+            policy_id: policy_id.clone(),
+            expr_kind: expr.expr_kind().clone(),
         }))?,
     })
 }
