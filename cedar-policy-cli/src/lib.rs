@@ -1253,7 +1253,7 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
                 None => {
                     println!("UNKNOWN");
                     println!("All policy residuals:");
-                    for p in ans.all_residuals() {
+                    for p in ans.nontrivial_residuals() {
                         println!("{p}");
                     }
                     CedarExitCode::Unknown
