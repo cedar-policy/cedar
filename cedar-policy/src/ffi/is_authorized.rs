@@ -1126,7 +1126,8 @@ pub mod test {
             },
             "entities": []
         });
-        assert_is_not_authorized_json(call);
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(&errs, "static policy set includes a template", None);
     }
 
     #[test]

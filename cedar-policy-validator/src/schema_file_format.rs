@@ -1476,7 +1476,7 @@ mod test {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"failed to parse schema in JSON format: unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
         });

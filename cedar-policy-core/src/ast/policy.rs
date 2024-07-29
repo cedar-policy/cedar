@@ -68,6 +68,7 @@ impl Template {
     // GRCOV_BEGIN_COVERAGE
 
     /// Construct a `Template` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -94,6 +95,7 @@ impl Template {
     }
 
     /// Construct a template from an expression/annotations that are already [`std::sync::Arc`] allocated
+    #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -827,6 +829,7 @@ impl StaticPolicy {
     }
 
     /// Construct a `StaticPolicy` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1025,6 +1028,7 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
+    #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1048,6 +1052,7 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,

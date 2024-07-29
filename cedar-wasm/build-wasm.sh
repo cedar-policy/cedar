@@ -67,25 +67,24 @@ fix_package_json_files() {
 process_types_file() {
     local types_file="$1"
     echo "processing types file: $1"
-    sed -i'.bak' "
-    s/[{]\s*!: /{ \"!\": /g;
-    s/[{]\s*==: /{ \"==\": /g;
-    s/[{]\s*!=: /{ \"!=\": /g;
-    s/[{]\s*<: /{ \"<\": /g;
-    s/[{]\s*<=: /{ \"<=\": /g;
-    s/[{]\s*>: /{ \">\": /g;
-    s/[{]\s*>=: /{ \">=\": /g;
-    s/[{]\s*&&: /{ \"\&\&\": /g;
-    s/[{]\s*||: /{ \"||\": /g;
-    s/[{]\s*[+]: /{ \"+\": /g;
-    s/[{]\s*-: /{ \"-\": /g;
-    s/[{]\s*[*]: /{ \"*\": /g;
-    s/[{]\s*\.: /{ \".\": /g;
-    s/ | __skip//g;
-    s/ { .\+: __skip } |//g;
-    " "$types_file"
 
-    rm -f "$types_file".bak
+    sed -e '
+    s/{[[:space:]]*!: /{ "!": /g
+    s/{[[:space:]]*==: /{ "==": /g
+    s/{[[:space:]]*!=: /{ "!=": /g
+    s/{[[:space:]]*<: /{ "<": /g
+    s/{[[:space:]]*<=: /{ "<=": /g
+    s/{[[:space:]]*>: /{ ">": /g
+    s/{[[:space:]]*>=: /{ ">=": /g
+    s/{[[:space:]]*&&: /{ "&&": /g
+    s/{[[:space:]]*||: /{ "||": /g
+    s/{[[:space:]]*+: /{ "+": /g
+    s/{[[:space:]]*-: /{ "-": /g
+    s/{[[:space:]]*\*: /{ "*": /g
+    s/{[[:space:]]*\.: /{ ".": /g
+    s/ | __skip//g
+    s/ { .*: __skip } |//g
+    ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
     echo "export type TypeOfAttribute<N> = SchemaType<N> & { required?: boolean };" >> "$types_file"
