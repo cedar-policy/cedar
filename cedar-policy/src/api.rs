@@ -36,7 +36,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{self, EntityUID};
+use cedar_policy_core::ast::{self};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -4294,7 +4294,7 @@ pub fn compute_entity_manifest(
 /// fields to be loaded.
 pub trait SimpleEntityLoader {
     /// Simple entity loaders must implement `load_entity`,
-    /// a function that loads an entities based on their EntityUIDs.
+    /// a function that loads an entities based on their [`EntityUID`]s.
     /// For each element of `entity_ids`, returns the corresponding
     /// [`Entity`] in the output vector.
     fn load_entity(&mut self, entity_ids: &[&EntityUid]) -> Vec<Entity>;
