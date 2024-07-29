@@ -28,7 +28,7 @@ use crate::{
     ValidationMode, ValidatorSchema,
 };
 
-type PerAction<T> = HashMap<RequestType, RequestEntityManifest<T>>;
+type PerAction<T> = HashMap<RequestType, RootAccessTrie<T>>;
 type FlatPerAction = HashMap<RequestType, FlatPrimarySlice>;
 
 /// Data structure that tells the user what data is needed
@@ -76,7 +76,7 @@ impl Display for EntityRoot {
 /// a [`PrimarySlice`] is a tree that tells you what data to load
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RequestEntityManifest<T = ()>
+pub struct RootAccessTrie<T = ()>
 where
     T: Clone,
 {
@@ -186,7 +186,7 @@ impl FlatEntitySlice {
     /// (the [`Fields`] data structure.
     /// Also, when we need to pull all the data for the final field
     /// do so.
-    fn to_primary_slice(&self) -> RequestEntityManifest {
+    fn to_primary_slice(&self) -> RootAccessTrie {
         self.to_primary_slice_with_leaf(AccessTrie {
             parents_required: true,
             children: Default::default(),
@@ -194,7 +194,7 @@ impl FlatEntitySlice {
         })
     }
 
-    fn to_primary_slice_with_leaf(&self, leaf_entity: AccessTrie) -> RequestEntityManifest {
+    fn to_primary_slice_with_leaf(&self, leaf_entity: AccessTrie) -> RootAccessTrie {
         let mut current = leaf_entity;
         // reverse the path, visiting the last access first
         for field in self.path.iter().rev() {
@@ -209,7 +209,7 @@ impl FlatEntitySlice {
 
         let mut primary_map = HashMap::new();
         primary_map.insert(self.root.clone(), current);
-        RequestEntityManifest { trie: primary_map }
+        RootAccessTrie { trie: primary_map }
     }
 }
 
@@ -224,7 +224,7 @@ impl EntityRoot {
     }
 }
 
-impl RequestEntityManifest {
+impl RootAccessTrie {
     /// Create an empty [`PrimarySlice`] that requires no data
     pub fn new() -> Self {
         Self {
@@ -233,7 +233,7 @@ impl RequestEntityManifest {
     }
 }
 
-impl<T: Clone> RequestEntityManifest<T> {
+impl<T: Clone> RootAccessTrie<T> {
     /// Union two [`PrimarySlice`]s together, requiring
     /// the data that both of them require
     fn union(&self, other: &Self) -> Self {
@@ -249,7 +249,7 @@ impl<T: Clone> RequestEntityManifest<T> {
     }
 }
 
-impl Default for RequestEntityManifest {
+impl Default for RootAccessTrie {
     fn default() -> Self {
         Self::new()
     }
@@ -282,7 +282,7 @@ pub fn compute_entity_slice_manifest(
     schema: &ValidatorSchema,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
-    let mut manifest: HashMap<RequestType, RequestEntityManifest> = HashMap::new();
+    let mut manifest: HashMap<RequestType, RootAccessTrie> = HashMap::new();
 
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
@@ -297,7 +297,7 @@ pub fn compute_entity_slice_manifest(
                     // always results in false,
                     // so we need no data
 
-                    Ok(RequestEntityManifest::new())
+                    Ok(RootAccessTrie::new())
                 }
                 // TODO is returning the first error correct?
                 // Also, should we run full validation instead of just
@@ -330,16 +330,14 @@ pub fn compute_entity_slice_manifest(
     })
 }
 
-fn compute_primary_slice(
-    expr: &Expr<Option<Type>>,
-) -> Result<RequestEntityManifest, EntitySliceError> {
-    let mut primary_slice = RequestEntityManifest::new();
+fn compute_primary_slice(expr: &Expr<Option<Type>>) -> Result<RootAccessTrie, EntitySliceError> {
+    let mut primary_slice = RootAccessTrie::new();
     add_to_primary_slice(&mut primary_slice, expr, false)?;
     Ok(primary_slice)
 }
 
 fn add_to_primary_slice(
-    primary_slice: &mut RequestEntityManifest,
+    primary_slice: &mut RootAccessTrie,
     expr: &Expr<Option<Type>>,
     should_load_all: bool,
 ) -> Result<(), EntitySliceError> {
