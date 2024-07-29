@@ -2,19 +2,12 @@
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::hash::RandomState;
 use std::sync::Arc;
 
-use cedar_policy_core::entities::err::EntitiesError;
-use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::{
-    ast::{
-        BinaryOp, Entity, EntityUID, Expr, ExprKind, Literal, PartialValue, PolicySet, Request,
-        RequestType, UnaryOp, Value, ValueKind, Var,
-    },
-    entities::Entities,
+use cedar_policy_core::ast::{
+    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
+use cedar_policy_core::entities::err::EntitiesError;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -149,24 +142,6 @@ pub enum EntitySliceError {
     /// TODO make a more specific error that includes the expression
     #[error("Failed to analyze policy: mixed getting attributes with other operators")]
     FailedAnalysis,
-
-    /// During entity loading, failed to find an entity.
-    #[error("Missing entity `{0}` during entity loading.")]
-    MissingEntity(EntityUID),
-
-    /// During entity loading, attempted to load from
-    /// a type without fields.
-    #[error("Expected entity or record during entity loading. Got value: {0}")]
-    IncompatibleEntityManifest(Value),
-
-    /// Found a partial entity during entity loading.
-    #[error("Found partial entity while doing entity slicing.")]
-    PartialEntity,
-
-    /// During entity loading using the simplified API,
-    /// the entity loader returned the wrong number of entities.
-    #[error("Wrong number of entities returned ({0}). Expected {1}.")]
-    WrongNumberOfEntities(usize, usize),
 }
 
 fn union_fields<T: Clone>(first: &Fields<T>, second: &Fields<T>) -> Fields<T> {
@@ -299,9 +274,10 @@ pub fn compute_entity_slice_manifest(
 
                     Ok(RootAccessTrie::new())
                 }
+
                 // TODO is returning the first error correct?
                 // Also, should we run full validation instead of just
-                // typechecking?
+                // typechecking? Validation does a little more right?
                 PolicyCheck::Fail(errors) => {
                     // PANIC SAFETY policy check fail
                     // should be a non-empty vector.
@@ -529,180 +505,9 @@ fn get_expr_path(expr: &Expr<Option<Type>>) -> Result<FlatEntitySlice, EntitySli
     })
 }
 
-/// Loads all the entities needed for a request given a function
-/// that loads an entire entity by id.
-/// Assumes that the entire context will be loaded separately.
-/// TODO make not public
-pub fn load_entities_simplified(
-    //schema: &ValidatorSchema,
-    manifest: &EntityManifest,
-    request: &Request,
-    loader: &mut impl FnMut(&[&EntityUID]) -> Vec<Entity>,
-) -> Result<Entities, EntitySliceError> {
-    let Some(primary_slice) = manifest.per_action.get(
-        &request
-            .to_request_type()
-            .ok_or(EntitySliceError::PartialRequestError)?,
-    ) else {
-        // if the request type isn't in the manifest, we need no data
-        return Entities::from_entities(
-            vec![],
-            None::<&NoEntitiesSchema>,
-            TCComputation::AssumeAlreadyComputed,
-            Extensions::all_available(),
-        )
-        .map_err(|err| err.into());
-    };
-
-    let mut entities: HashMap<EntityUID, Entity, RandomState> = Default::default();
-
-    for (key, value) in &primary_slice.trie {
-        match key {
-            EntityRoot::Var(Var::Principal) => {
-                load_entity_slice(
-                    loader,
-                    &mut entities,
-                    request
-                        .principal()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?,
-                    value,
-                )?;
-            }
-            EntityRoot::Var(Var::Action) => {
-                load_entity_slice(
-                    loader,
-                    &mut entities,
-                    request
-                        .action()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?,
-                    value,
-                )?;
-            }
-            EntityRoot::Var(Var::Resource) => {
-                load_entity_slice(
-                    loader,
-                    &mut entities,
-                    request
-                        .resource()
-                        .uid()
-                        .ok_or(EntitySliceError::PartialRequestError)?,
-                    value,
-                )?;
-            }
-            EntityRoot::Literal(lit) => {
-                load_entity_slice(loader, &mut entities, lit, value)?;
-            }
-            EntityRoot::Var(Var::Context) => {
-                // skip context, since the simplified loader assumes the entire context is loaded
-            }
-        }
-    }
-
-    Entities::from_entities(
-        entities.values().cloned(),
-        None::<&NoEntitiesSchema>,
-        TCComputation::AssumeAlreadyComputed,
-        Extensions::all_available(),
-    )
-    .map_err(|err| err.into())
-}
-
-fn load_entity_slice(
-    loader: &mut impl FnMut(&[&EntityUID]) -> Vec<Entity>,
-    entities: &mut HashMap<EntityUID, Entity, RandomState>,
-    entity: &EntityUID,
-    slice: &AccessTrie,
-) -> Result<(), EntitySliceError> {
-    // special case: no need to load anything for empty fields with no parents required
-    if slice.children.is_empty() && !slice.parents_required {
-        return Ok(());
-    }
-
-    let new_entities = loader(&[entity]);
-    if new_entities.len() != 1 {
-        return Err(EntitySliceError::WrongNumberOfEntities(
-            1,
-            new_entities.len(),
-        ));
-    }
-    #[allow(clippy::expect_used)]
-    let new_entity = new_entities
-        .into_iter()
-        .next()
-        .expect("Vector has length 1 as shown by if statement above.");
-
-    // now we need to load any entity references
-    let remaining_entities = find_remaining_entities(&new_entity, &slice.children);
-
-    for (id, slice) in remaining_entities? {
-        load_entity_slice(loader, entities, &id, &slice)?;
-    }
-
-    // TODO also need to load parents of some entities
-
-    entities.insert(new_entity.uid().clone(), new_entity);
-    Ok(())
-}
-
-/// This helper function finds all entity references that need to be
-/// loaded given an already-loaded [`Entity`] and corresponding [`Fields`].
-/// Returns pairs of entity and slices that need to be loaded.
-pub fn find_remaining_entities(
-    entity: &Entity,
-    fields: &Fields<()>,
-) -> Result<HashMap<EntityUID, AccessTrie>, EntitySliceError> {
-    let mut remaining = HashMap::new();
-    for (field, slice) in fields {
-        if let Some(pvalue) = entity.get(field) {
-            let PartialValue::Value(value) = pvalue else {
-                return Err(EntitySliceError::PartialEntity);
-            };
-            find_remaining_entities_value(&mut remaining, value, slice)?;
-        }
-    }
-
-    Ok(remaining)
-}
-
-fn find_remaining_entities_value(
-    remaining: &mut HashMap<EntityUID, AccessTrie>,
-    value: &Value,
-    slice: &AccessTrie,
-) -> Result<(), EntitySliceError> {
-    match value.value_kind() {
-        ValueKind::Lit(literal) => match literal {
-            Literal::EntityUID(entity_id) => {
-                if let Some(existing) = remaining.get_mut(entity_id) {
-                    *existing = existing.union(slice);
-                } else {
-                    remaining.insert((**entity_id).clone(), slice.clone());
-                }
-            }
-            _ => assert!(slice.children.is_empty()),
-        },
-        ValueKind::Set(_) => {
-            assert!(slice.children.is_empty());
-        }
-        ValueKind::ExtensionValue(_) => {
-            assert!(slice.children.is_empty());
-        }
-        ValueKind::Record(record) => {
-            for (field, child_slice) in &slice.children {
-                // only need to slice if field is present
-                if let Some(value) = record.get(field) {
-                    find_remaining_entities_value(remaining, value, child_slice)?;
-                }
-            }
-        }
-    };
-    Ok(())
-}
-
 #[cfg(test)]
 mod entity_slice_tests {
-    use cedar_policy_core::{ast::PolicyID, parser::parse_policy};
+    use cedar_policy_core::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
 
     use super::*;
 
