@@ -28,7 +28,7 @@ use crate::{
     ValidationMode, ValidatorSchema,
 };
 
-type PerAction<T> = HashMap<RequestType, PrimarySlice<T>>;
+type PerAction<T> = HashMap<RequestType, RequestEntityManifest<T>>;
 type FlatPerAction = HashMap<RequestType, FlatPrimarySlice>;
 
 /// Data structure that tells the user what data is needed
@@ -53,7 +53,7 @@ pub struct FlatEntityManifest {
 }
 
 /// A map of data fields to entity slices
-pub type Fields<T> = HashMap<SmolStr, Box<EntitySlice<T>>>;
+pub type Fields<T> = HashMap<SmolStr, Box<AccessTrie<T>>>;
 
 /// The root of an entity slice.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -76,14 +76,14 @@ impl Display for EntityRoot {
 /// a [`PrimarySlice`] is a tree that tells you what data to load
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PrimarySlice<T = ()>
+pub struct RequestEntityManifest<T = ()>
 where
     T: Clone,
 {
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
     /// The data that needs to be loaded, organized by root
-    pub trie: HashMap<EntityRoot, EntitySlice<T>>,
+    pub trie: HashMap<EntityRoot, AccessTrie<T>>,
 }
 
 /// A flattened version of a [`PrimarySlice`]
@@ -96,7 +96,7 @@ pub struct FlatPrimarySlice {
 /// An entity slice- tells users a tree of data to load
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EntitySlice<T = ()> {
+pub struct AccessTrie<T = ()> {
     /// Child data of this entity slice.
     #[serde_as(as = "Vec<(_, _)>")]
     pub children: Fields<T>,
@@ -186,21 +186,21 @@ impl FlatEntitySlice {
     /// (the [`Fields`] data structure.
     /// Also, when we need to pull all the data for the final field
     /// do so.
-    fn to_primary_slice(&self) -> PrimarySlice {
-        self.to_primary_slice_with_leaf(EntitySlice {
+    fn to_primary_slice(&self) -> RequestEntityManifest {
+        self.to_primary_slice_with_leaf(AccessTrie {
             parents_required: true,
             children: Default::default(),
             data: (),
         })
     }
 
-    fn to_primary_slice_with_leaf(&self, leaf_entity: EntitySlice) -> PrimarySlice {
+    fn to_primary_slice_with_leaf(&self, leaf_entity: AccessTrie) -> RequestEntityManifest {
         let mut current = leaf_entity;
         // reverse the path, visiting the last access first
         for field in self.path.iter().rev() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
-            current = EntitySlice {
+            current = AccessTrie {
                 parents_required: false,
                 children: fields,
                 data: (),
@@ -209,7 +209,7 @@ impl FlatEntitySlice {
 
         let mut primary_map = HashMap::new();
         primary_map.insert(self.root.clone(), current);
-        PrimarySlice { trie: primary_map }
+        RequestEntityManifest { trie: primary_map }
     }
 }
 
@@ -224,7 +224,7 @@ impl EntityRoot {
     }
 }
 
-impl PrimarySlice {
+impl RequestEntityManifest {
     /// Create an empty [`PrimarySlice`] that requires no data
     pub fn new() -> Self {
         Self {
@@ -233,7 +233,7 @@ impl PrimarySlice {
     }
 }
 
-impl<T: Clone> PrimarySlice<T> {
+impl<T: Clone> RequestEntityManifest<T> {
     /// Union two [`PrimarySlice`]s together, requiring
     /// the data that both of them require
     fn union(&self, other: &Self) -> Self {
@@ -249,13 +249,13 @@ impl<T: Clone> PrimarySlice<T> {
     }
 }
 
-impl Default for PrimarySlice {
+impl Default for RequestEntityManifest {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Clone> EntitySlice<T> {
+impl<T: Clone> AccessTrie<T> {
     /// Union two [`EntitySlice`]s together, requiring
     /// the data that both of them require
     fn union(&self, other: &Self) -> Self {
@@ -267,7 +267,7 @@ impl<T: Clone> EntitySlice<T> {
     }
 }
 
-impl EntitySlice {
+impl AccessTrie {
     fn new() -> Self {
         Self {
             children: Default::default(),
@@ -282,7 +282,7 @@ pub fn compute_entity_slice_manifest(
     schema: &ValidatorSchema,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
-    let mut manifest: HashMap<RequestType, PrimarySlice> = HashMap::new();
+    let mut manifest: HashMap<RequestType, RequestEntityManifest> = HashMap::new();
 
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
@@ -297,7 +297,7 @@ pub fn compute_entity_slice_manifest(
                     // always results in false,
                     // so we need no data
 
-                    Ok(PrimarySlice::new())
+                    Ok(RequestEntityManifest::new())
                 }
                 // TODO is returning the first error correct?
                 // Also, should we run full validation instead of just
@@ -330,14 +330,16 @@ pub fn compute_entity_slice_manifest(
     })
 }
 
-fn compute_primary_slice(expr: &Expr<Option<Type>>) -> Result<PrimarySlice, EntitySliceError> {
-    let mut primary_slice = PrimarySlice::new();
+fn compute_primary_slice(
+    expr: &Expr<Option<Type>>,
+) -> Result<RequestEntityManifest, EntitySliceError> {
+    let mut primary_slice = RequestEntityManifest::new();
     add_to_primary_slice(&mut primary_slice, expr, false)?;
     Ok(primary_slice)
 }
 
 fn add_to_primary_slice(
-    primary_slice: &mut PrimarySlice,
+    primary_slice: &mut RequestEntityManifest,
     expr: &Expr<Option<Type>>,
     should_load_all: bool,
 ) -> Result<(), EntitySliceError> {
@@ -438,7 +440,7 @@ fn add_to_primary_slice(
                         .expect("Typechecked expression missing type"),
                 )
             } else {
-                EntitySlice::new()
+                AccessTrie::new()
             };
 
             *primary_slice = flat_slice.to_primary_slice_with_leaf(leaf_field);
@@ -473,7 +475,7 @@ fn full_tree_for_entity_or_record(ty: &EntityRecordKind) -> Fields<()> {
     }
 }
 
-fn entity_slice_from_type(ty: &Type) -> EntitySlice {
+fn entity_slice_from_type(ty: &Type) -> AccessTrie {
     match ty {
         // if it's not an entity or record, slice ends here
         Type::ExtensionType { .. }
@@ -481,8 +483,8 @@ fn entity_slice_from_type(ty: &Type) -> EntitySlice {
         | Type::True
         | Type::False
         | Type::Primitive { .. }
-        | Type::Set { .. } => EntitySlice::new(),
-        Type::EntityOrRecord(record_type) => EntitySlice {
+        | Type::Set { .. } => AccessTrie::new(),
+        Type::EntityOrRecord(record_type) => AccessTrie {
             children: full_tree_for_entity_or_record(record_type),
             parents_required: false,
             data: (),
@@ -613,7 +615,7 @@ fn load_entity_slice(
     loader: &mut impl FnMut(&[&EntityUID]) -> Vec<Entity>,
     entities: &mut HashMap<EntityUID, Entity, RandomState>,
     entity: &EntityUID,
-    slice: &EntitySlice,
+    slice: &AccessTrie,
 ) -> Result<(), EntitySliceError> {
     // special case: no need to load anything for empty fields with no parents required
     if slice.children.is_empty() && !slice.parents_required {
@@ -652,7 +654,7 @@ fn load_entity_slice(
 pub fn find_remaining_entities(
     entity: &Entity,
     fields: &Fields<()>,
-) -> Result<HashMap<EntityUID, EntitySlice>, EntitySliceError> {
+) -> Result<HashMap<EntityUID, AccessTrie>, EntitySliceError> {
     let mut remaining = HashMap::new();
     for (field, slice) in fields {
         if let Some(pvalue) = entity.get(field) {
@@ -667,9 +669,9 @@ pub fn find_remaining_entities(
 }
 
 fn find_remaining_entities_value(
-    remaining: &mut HashMap<EntityUID, EntitySlice>,
+    remaining: &mut HashMap<EntityUID, AccessTrie>,
     value: &Value,
-    slice: &EntitySlice,
+    slice: &AccessTrie,
 ) -> Result<(), EntitySliceError> {
     match value.value_kind() {
         ValueKind::Lit(literal) => match literal {
