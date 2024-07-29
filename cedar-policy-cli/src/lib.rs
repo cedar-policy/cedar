@@ -158,9 +158,7 @@ pub enum SchemaFormat {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum ManifestFormat {
-    /// Human-readable format
-    Human,
-    /// JSON format
+    /// JSON format- only one for now
     Json,
 }
 
@@ -191,7 +189,7 @@ pub struct EntityManifestArgs {
     /// Schema format (Human-readable or JSON)
     #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
     pub schema_format: SchemaFormat,
-    #[arg(long, value_enum, default_value_t = ManifestFormat::Human)]
+    #[arg(long, value_enum, default_value_t = ManifestFormat::Json)]
     /// Manifest format (Human-readable or JSON)
     pub manifest_format: ManifestFormat,
 }
@@ -748,9 +746,6 @@ pub fn entity_manifest(args: &EntityManifestArgs) -> CedarExitCode {
         }
     };
     match args.manifest_format {
-        ManifestFormat::Human => {
-            println!("{}", manifest.to_str_natural());
-        }
         ManifestFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
         }

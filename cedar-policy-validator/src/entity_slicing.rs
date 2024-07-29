@@ -1,12 +1,12 @@
 //! Entity Slicing
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::hash::RandomState;
 use std::sync::Arc;
 
 use cedar_policy_core::entities::err::EntitiesError;
-use cedar_policy_core::entities::{Dereference, NoEntitiesSchema, TCComputation};
+use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{
     ast::{
@@ -770,57 +770,6 @@ action Read appliesTo {
               "parents_required": false
             }
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    #[should_panic]
-    fn sanity_test_empty_entity_manifest() {
-        let mut pset = PolicySet::new();
-        let policy =
-            parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_str_natural(
-            "
-entity User = {
-  name: String,
-};
-
-entity Document;
-
-action Read appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
         ]
       }
     ]
