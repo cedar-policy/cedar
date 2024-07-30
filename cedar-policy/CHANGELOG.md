@@ -13,7 +13,19 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: 4.0
 
 ### Added
-
+- A new experimental API (`compute_entity_manifest`)
+  that provides the Entity Manifest: a data
+  structure that describes what data is required to satisfy a 
+  Cedar request. Entity Manifests improve Cedar performance dramatically
+  in a safe way.
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+- Added methods for reading and writing individual `Entity`s as JSON
+  (resolving #807)
+- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
+  to combine `Context`s, returning an error on duplicate keys (#1027,
+  resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
 - (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a

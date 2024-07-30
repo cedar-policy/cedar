@@ -23,7 +23,7 @@
 )]
 
 mod id;
-use cedar_policy_validator::entity_slicing::compute_entity_slice_manifest;
+use cedar_policy_validator::entity_slicing;
 pub use cedar_policy_validator::entity_slicing::{
     AccessTrie, EntityManifest, EntityRoot, EntitySliceError, Fields, RootAccessTrie,
 };
@@ -4286,5 +4286,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
-    compute_entity_slice_manifest(&schema.0, &pset.ast)
+    entity_slicing::compute_entity_manifest(&schema.0, &pset.ast)
 }

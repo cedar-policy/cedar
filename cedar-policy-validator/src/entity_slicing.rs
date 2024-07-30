@@ -286,7 +286,7 @@ impl AccessTrie {
 /// Computes an [`EntitySliceManifest`] from the schema and policies.
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
-pub fn compute_entity_slice_manifest(
+pub fn compute_entity_manifest(
     schema: &ValidatorSchema,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
@@ -604,8 +604,7 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
@@ -671,8 +670,7 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
@@ -728,8 +726,7 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
@@ -806,8 +803,7 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
@@ -936,8 +932,7 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
@@ -1033,8 +1028,7 @@ action BeSad appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest =
-            compute_entity_slice_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = r#"
 {
   "per_action": [
