@@ -16,7 +16,7 @@
 
 use cedar_policy::*;
 
-use std::{collections::HashSet, error::Error, str::FromStr};
+use std::{collections::BTreeSet, error::Error, str::FromStr};
 
 #[test]
 fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
@@ -476,7 +476,7 @@ fn get_valid_request_pars_tests() {
     .0;
     assert_eq!(
         policy.get_valid_request_envs(&schema),
-        HashSet::from_iter([
+        BTreeSet::from_iter([
             RequestEnv::new(
                 "NS::E1".parse().unwrap(),
                 "NS::Action::\"a\"".parse().unwrap(),
@@ -503,5 +503,5 @@ fn get_valid_request_pars_tests() {
     "#,
     )
     .unwrap();
-    assert_eq!(policy.get_valid_request_envs(&schema), HashSet::new(),);
+    assert_eq!(policy.get_valid_request_envs(&schema), BTreeSet::new(),);
 }
