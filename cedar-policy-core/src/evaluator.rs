@@ -1030,7 +1030,7 @@ pub mod test {
         let second = EntityUID::with_eid("joseph");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(q, &entities, &exts);
+        let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::binary_app(
             BinaryOp::In,
@@ -1079,7 +1079,7 @@ pub mod test {
         let child = EntityUID::with_eid("child");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(q, &entities, &exts);
+        let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::binary_app(BinaryOp::In, Expr::val(child), Expr::val(parent.clone()));
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1111,7 +1111,7 @@ pub mod test {
         let entities = rich_entities().partial();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(q, &entities, &exts);
+        let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::has_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1138,7 +1138,7 @@ pub mod test {
         let entities = rich_entities().partial();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(q, &entities, &exts);
+        let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::get_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
