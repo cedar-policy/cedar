@@ -23,6 +23,7 @@
 )]
 
 mod id;
+#[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_slicing;
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_slicing::{
