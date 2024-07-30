@@ -45,6 +45,7 @@ lazy_static::lazy_static! {
         ipaddr::extension_schema(),
         #[cfg(feature = "decimal")]
         decimal::extension_schema(),
+        #[cfg(feature = "partial-eval")]
         partial_evaluation::extension_schema(),
     ];
 

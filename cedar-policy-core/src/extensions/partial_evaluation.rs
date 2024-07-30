@@ -31,6 +31,7 @@ fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
 /// Construct the extension
 // PANIC SAFETY: all uses of `unwrap` here on parsing extension names are correct names
 #[allow(clippy::unwrap_used)]
+#[cfg(feature = "partial-eval")]
 pub fn extension() -> Extension {
     Extension::new(
         "partial_evaluation".parse().unwrap(),
