@@ -52,7 +52,7 @@ pub enum RequestEnv<'a> {
 impl<'a> RequestEnv<'a> {
     /// Return the types of each of the elements of this request.
     /// Returns [`None`] when the request is not fully concrete.
-    pub fn to_request_types(&self) -> Option<RequestType> {
+    pub fn to_request_type(&self) -> Option<RequestType> {
         match self {
             RequestEnv::DeclaredAction {
                 principal,
