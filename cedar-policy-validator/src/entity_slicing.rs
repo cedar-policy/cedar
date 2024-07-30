@@ -23,28 +23,27 @@ use crate::{
     ValidationMode, ValidatorSchema,
 };
 
-type PerAction<T> = HashMap<RequestType, RootAccessTrie<T>>;
-type FlatPerAction = HashMap<RequestType, FlatPrimarySlice>;
-
-/// Data structure that tells the user what data is needed
-/// based on the action's ID
+/// Data structure storing what data is needed
+/// based on the the [`RequestType`].
+/// For each request type, the [`EntityManifest`] stores
+/// a [`RootAccessTrie`] of data to retrieve.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityManifest<T = ()>
 where
     T: Clone,
 {
-    /// A map from actions to primary slice
+    /// A map from request types to [`RootAccessTrie`]s.
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    pub per_action: PerAction<T>,
+    pub per_action: HashMap<RequestType, RootAccessTrie<T>>,
 }
 
 /// A flattened version of an [`EntityManifest`]
 #[derive(Debug)]
 pub struct FlatEntityManifest {
     /// For each action, all the data paths required
-    pub per_action: FlatPerAction,
+    pub per_action: HashMap<RequestType, FlatPrimarySlice>,
 }
 
 /// A map of data fields to entity slices
@@ -68,7 +67,12 @@ impl Display for EntityRoot {
     }
 }
 
-/// a [`PrimarySlice`] is a tree that tells you what data to load
+/// A [`RootAccessTrie`] is a trie describing
+/// data paths to retrieve. Each edge in the trie
+/// is either a record or entity dereference.
+///
+/// If an entity or record field does not exist in the backing store,
+/// it is safe to stop loading data at that point.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RootAccessTrie<T = ()>
@@ -77,7 +81,7 @@ where
 {
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    /// The data that needs to be loaded, organized by root
+    /// The data that needs to be loaded, organized by root.
     pub trie: HashMap<EntityRoot, AccessTrie<T>>,
 }
 
@@ -130,7 +134,7 @@ pub struct FlatEntitySlice {
 ///                   <datapath-expr> has <field>
 ///                   <variable>
 ///                   <entity literal>
-/// 
+///
 /// The `get_expr_path` function handles `datapath-expr` expressions.
 /// This error message tells the user not to use certain operators
 /// before accessing record or entity attributes, breaking this grammar.
@@ -293,7 +297,9 @@ impl AccessTrie {
     }
 }
 
-/// Computes an [`EntitySliceManifest`] from the schema and policies
+/// Computes an [`EntitySliceManifest`] from the schema and policies.
+/// The policies must validate against the schema in strict mode,
+/// otherwise an error is returned.
 pub fn compute_entity_slice_manifest(
     schema: &ValidatorSchema,
     policies: &PolicySet,

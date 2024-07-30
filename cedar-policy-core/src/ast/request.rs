@@ -200,8 +200,9 @@ impl Request {
     }
 
     /// Get the request types that correspond to this request.
-    /// This includes the types of the principal, action, resource,
-    /// and context.
+    /// This includes the types of the principal, action, and resource.
+    /// [`RequestType`] is used by the entity manifest.
+    /// The context type is implied by the action's type.
     /// Returns `None` if the request is not fully concrete.
     pub fn to_request_type(&self) -> Option<RequestType> {
         Some(RequestType {
