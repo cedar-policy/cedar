@@ -4441,13 +4441,13 @@ mod issue_994 {
     }
 }
 
+#[cfg(feature = "partial-eval")]
 #[cfg(test)]
 mod issue_1061 {
     use crate::{est, parser};
     use serde_json::json;
 
     #[test]
-    #[cfg(feature = "partial-eval")]
     fn function_with_name_unknown() {
         let src = json!(
             {
