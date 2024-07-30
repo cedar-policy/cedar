@@ -500,6 +500,25 @@ mod policy_set_tests {
     use cool_asserts::assert_matches;
 
     #[test]
+    fn no_unknown_feature() {
+        let src = r#"
+        permit(principal,action,resource) when {
+            unknown("foo")
+        };
+        "#;
+        let pset: Result<PolicySet, _> = src.parse();
+        #[cfg(not(feature = "partial-eval"))]
+        {
+            let err_string = pset.unwrap_err().to_string();
+            assert!(err_string.contains("`unknown` is not a valid function"));
+        }
+        #[cfg(feature = "partial-eval")]
+        {
+            assert!(pset.is_ok());
+        }
+    }
+
+    #[test]
     fn template_link_lookup() {
         let mut pset = PolicySet::new();
         let p = Policy::parse(Some("p".into()), "permit(principal,action,resource);")

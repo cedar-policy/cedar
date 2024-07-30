@@ -3,7 +3,7 @@ name = "cedar-policy"
 edition = "2021"
 rust-version = "1.76.0"  # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 
-version = "3.2.1"
+version = "3.2.2"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
@@ -12,8 +12,8 @@ homepage = "https://cedarpolicy.com"
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=3.2.1", path = "../cedar-policy-core" }
-cedar-policy-validator = { version = "=3.2.1", path = "../cedar-policy-validator" }
+cedar-policy-core = { version = "=3.2.2", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "=3.2.2", path = "../cedar-policy-validator" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -48,7 +48,7 @@ integration_testing = []
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
 experimental = ["partial-eval", "permissive-validate", "partial-validate"]
-partial-eval = ["cedar-policy-core/partial-eval"]
+partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]

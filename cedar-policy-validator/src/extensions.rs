@@ -33,6 +33,7 @@ pub fn all_available_extension_schemas() -> Vec<ExtensionSchema> {
         ipaddr::extension_schema(),
         #[cfg(feature = "decimal")]
         decimal::extension_schema(),
+        #[cfg(feature = "partial-eval")]
         partial_evaluation::extension_schema(),
     ]
 }
