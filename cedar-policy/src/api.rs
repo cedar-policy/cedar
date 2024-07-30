@@ -25,7 +25,7 @@
 mod id;
 use cedar_policy_validator::entity_slicing::compute_entity_slice_manifest;
 pub use cedar_policy_validator::entity_slicing::{
-    AccessTrie, EntityManifest, EntitySliceError, RootAccessTrie,
+    AccessTrie, EntityManifest, EntityRoot, EntitySliceError, Fields, RootAccessTrie,
 };
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
@@ -4281,6 +4281,7 @@ action CreateList in Create appliesTo {
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests
 /// for each action type.
+#[doc = include_str!("../experimental_warning.md")]
 pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,

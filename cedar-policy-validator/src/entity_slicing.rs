@@ -26,6 +26,7 @@ use crate::{
 /// based on the the [`RequestType`].
 /// For each request type, the [`EntityManifest`] stores
 /// a [`RootAccessTrie`] of data to retrieve.
+#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityManifest<T = ()>
@@ -41,9 +42,11 @@ where
 /// A map of data fields to [`AccessTrie`]s.
 /// The keys to this map form the edges in the access trie,
 /// pointing to sub-tries.
+#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 pub type Fields<T> = HashMap<SmolStr, Box<AccessTrie<T>>>;
 
 /// The root of an entity slice.
+#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum EntityRoot {
     /// Literal entity ids
@@ -67,6 +70,7 @@ impl Display for EntityRoot {
 ///
 /// If an entity or record field does not exist in the backing store,
 /// it is safe to stop loading data at that point.
+#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RootAccessTrie<T = ()>
@@ -80,6 +84,7 @@ where
 }
 
 /// An entity slice- tells users a tree of data to load
+#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessTrie<T = ()> {
