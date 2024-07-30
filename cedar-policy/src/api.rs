@@ -2071,7 +2071,7 @@ pub(crate) fn fold_partition<T, A, B, E>(
 
 /// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
 /// and resource, and the [`EntityUid`] of action
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestEnv {
     pub(crate) principal: EntityTypeName,
     pub(crate) action: EntityUid,
@@ -2307,7 +2307,7 @@ impl Template {
     /// Get valid [`RequestEnv`]s.
     /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
     /// that satisfy it.
-    pub fn get_valid_request_envs(&self, s: &Schema) -> HashSet<RequestEnv> {
+    pub fn get_valid_request_envs(&self, s: &Schema) -> BTreeSet<RequestEnv> {
         let tc = Typechecker::new(
             &s.0,
             cedar_policy_validator::ValidationMode::Strict,
