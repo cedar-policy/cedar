@@ -4447,6 +4447,7 @@ mod issue_1061 {
     use serde_json::json;
 
     #[test]
+    #[cfg(feature = "partial-eval")]
     fn function_with_name_unknown() {
         let src = json!(
             {
