@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#![cfg(feature = "partial-eval")]
 
 //! This module contains the extension for including unknown values
 use crate::{

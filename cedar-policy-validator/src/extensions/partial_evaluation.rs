@@ -18,6 +18,7 @@
 //! out-of-date with the decimal extension definition in Core.
 //! This is tested by the `extension_schema_correctness()` test
 
+#![cfg(feature = "partial-eval")]
 use crate::extension_schema::{ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
 use cedar_policy_core::extensions::partial_evaluation;
