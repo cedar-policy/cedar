@@ -314,8 +314,7 @@ pub fn compute_entity_manifest(
                 // Also, should we run full validation instead of just
                 // typechecking? Validation does a little more right?
                 PolicyCheck::Fail(errors) => {
-                    // PANIC SAFETY: policy check fail
-                    // should be a non-empty vector.
+                    // PANIC SAFETY: policy check fail should be a non-empty vector.
                     #[allow(clippy::expect_used)]
                     Err(errors
                         .first()
@@ -455,8 +454,7 @@ fn add_to_root_trie(
         ExprKind::GetAttr { .. } => {
             let flat_slice = get_expr_path(expr, policy_id)?;
 
-            // PANIC SAFETY: Successfuly typechecked expressions
-            // should always have annotated types.
+            // PANIC SAFETY: Successfuly typechecked expressions should always have annotated types.
             #[allow(clippy::expect_used)]
             let leaf_field = if should_load_all {
                 type_to_access_trie(
