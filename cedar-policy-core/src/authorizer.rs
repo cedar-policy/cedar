@@ -273,6 +273,7 @@ mod test {
         .expect("Policy Creation Failed")
     }
 
+    #[cfg(feature = "partial-eval")]
     fn context_pol(id: &str, effect: Effect) -> StaticPolicy {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
