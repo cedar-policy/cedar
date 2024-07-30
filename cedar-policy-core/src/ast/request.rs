@@ -50,7 +50,6 @@ pub struct Request {
 }
 
 /// Represents the principal, action, and resource types.
-/// Used to index the [`EntityManifest`]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct RequestType {
     /// Principal type
