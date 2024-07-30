@@ -117,6 +117,7 @@ struct AccessPath {
 /// Entity manifest computation does not handle the full
 /// cedar language. In particular, the policies must follow the
 /// following grammar:
+/// ```text
 /// <expr> = <datapath-expr>
 ///          <datapath-expr> in <expr>
 ///          <expr> + <expr>
@@ -127,7 +128,7 @@ struct AccessPath {
 ///                   <datapath-expr> has <field>
 ///                   <variable>
 ///                   <entity literal>
-///
+/// ```
 /// The `get_expr_path` function handles `datapath-expr` expressions.
 /// This error message tells the user not to use certain operators
 /// before accessing record or entity attributes, breaking this grammar.
@@ -230,7 +231,7 @@ impl AccessPath {
 }
 
 impl RootAccessTrie {
-    /// Create an empty [`PrimarySlice`] that requests nothing.
+    /// Create an empty [`RootAccessTrie`] that requests nothing.
     pub fn new() -> Self {
         Self {
             trie: Default::default(),
@@ -283,7 +284,7 @@ impl AccessTrie {
     }
 }
 
-/// Computes an [`EntitySliceManifest`] from the schema and policies.
+/// Computes an [`EntityManifest`] from the schema and policies.
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 pub fn compute_entity_manifest(
