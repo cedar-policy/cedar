@@ -31,7 +31,7 @@ pub fn get_valid_request_envs(t: Template, s: Schema) -> GetValidRequestEnvsResu
             actions: actions.into_iter().collect(),
             resources: resources.into_iter().collect(),
         },
-        Err(r) => GetValidRequestEnvsResult::Error {
+        Err(r) => GetValidRequestEnvsResult::Failure {
             error: r.to_string(),
         },
     }
