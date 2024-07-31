@@ -175,7 +175,7 @@ impl Diagnostic for FailedAnalysisError {
 /// of Cedar handled by entity slicing.
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
-pub enum EntitySliceError {
+pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -306,7 +306,7 @@ impl AccessTrie {
 pub fn compute_entity_manifest(
     schema: &ValidatorSchema,
     policies: &PolicySet,
-) -> Result<EntityManifest, EntitySliceError> {
+) -> Result<EntityManifest, EntityManifestError> {
     let mut manifest: HashMap<RequestType, RootAccessTrie> = HashMap::new();
 
     // now, for each policy we add the data it requires to the manifest
@@ -343,7 +343,7 @@ pub fn compute_entity_manifest(
 
             let request_type = request_env
                 .to_request_type()
-                .ok_or(EntitySliceError::PartialRequestError)?;
+                .ok_or(EntityManifestError::PartialRequestError)?;
             // Add to the manifest based on the request type.
             if let Some(existing) = manifest.get_mut(&request_type) {
                 *existing = existing.union(&new_primary_slice);
@@ -364,7 +364,7 @@ pub fn compute_entity_manifest(
 fn compute_root_trie(
     expr: &Expr<Option<Type>>,
     policy_id: &PolicyID,
-) -> Result<RootAccessTrie, EntitySliceError> {
+) -> Result<RootAccessTrie, EntityManifestError> {
     let mut primary_slice = RootAccessTrie::new();
     add_to_root_trie(&mut primary_slice, expr, policy_id, false)?;
     Ok(primary_slice)
@@ -378,14 +378,14 @@ fn add_to_root_trie(
     expr: &Expr<Option<Type>>,
     policy_id: &PolicyID,
     should_load_all: bool,
-) -> Result<(), EntitySliceError> {
+) -> Result<(), EntityManifestError> {
     match expr.expr_kind() {
         // Literals, variables, and unkonwns without any GetAttr operations
         // on them are okay, since no fields need to be loaded.
         ExprKind::Lit(_) => (),
         ExprKind::Var(_) => (),
         ExprKind::Slot(_) => (),
-        ExprKind::Unknown(_) => return Err(EntitySliceError::PartialExpressionError),
+        ExprKind::Unknown(_) => return Err(EntityManifestError::PartialExpressionError),
         ExprKind::If {
             test_expr,
             then_expr,
@@ -541,7 +541,7 @@ fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
 fn get_expr_path(
     expr: &Expr<Option<Type>>,
     policy_id: &PolicyID,
-) -> Result<AccessPath, EntitySliceError> {
+) -> Result<AccessPath, EntityManifestError> {
     Ok(match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
             if slot_id.is_principal() {
@@ -574,9 +574,9 @@ fn get_expr_path(
             path: vec![],
             parents_required: false,
         },
-        ExprKind::Unknown(_) => Err(EntitySliceError::PartialExpressionError)?,
+        ExprKind::Unknown(_) => Err(EntityManifestError::PartialExpressionError)?,
         // all other variants of expressions result in failure to analyze.
-        _ => Err(EntitySliceError::FailedAnalysis(FailedAnalysisError {
+        _ => Err(EntityManifestError::FailedAnalysis(FailedAnalysisError {
             source_loc: expr.source_loc().cloned(),
             policy_id: policy_id.clone(),
             expr_kind: expr.expr_kind().clone(),
