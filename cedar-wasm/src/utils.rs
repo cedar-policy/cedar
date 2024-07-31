@@ -16,7 +16,7 @@ pub enum GetValidRequestEnvsResult {
         resources: Vec<String>,
     },
     /// represents a failed call to [`get_valid_request_envs()`]
-    Error {
+    Failure {
         /// the encountered error
         error: String,
     },
