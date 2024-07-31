@@ -98,8 +98,11 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match typecheck_value_against_schematype(val, &expected_ty, self.extensions)
-                        {
+                        match typecheck_value_against_schematype(
+                            val,
+                            &expected_ty,
+                            self.extensions.clone(),
+                        ) {
                             Ok(()) => {} // typecheck passes
                             Err(TypecheckError::TypeMismatch(err)) => {
                                 return Err(EntitySchemaConformanceError::type_mistmatch(
@@ -188,7 +191,7 @@ pub fn typecheck_restricted_expr_against_schematype(
     // checking whether the schematypes are "consistent", wouldn't it be less
     // confusing, more efficient, and maybe even more precise to just typecheck
     // directly?
-    match schematype_of_restricted_expr(expr, extensions) {
+    match schematype_of_restricted_expr(expr, &extensions) {
         Ok(actual_ty) => {
             if actual_ty.is_consistent_with(expected_ty) {
                 // typecheck passes

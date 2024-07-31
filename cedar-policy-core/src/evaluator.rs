@@ -172,7 +172,7 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
-                        let efunc = self.extensions.func(fn_name).map_err(|err| err.with_maybe_source_loc(expr.source_loc().cloned()))?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&values)
                     },
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
@@ -219,11 +219,11 @@ impl<'e> Evaluator<'e> {
     /// 1) A boolean, if complete evaluation was possible
     /// 2) An error, if the policy is guaranteed to error
     /// 3) A residual, if complete evaluation was impossible
-    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
-    /// current `request`.
-    /// This is _different than_ "if the current `request` should be allowed" --
-    /// it doesn't consider whether we're processing a `Permit` policy or a
-    /// `Forbid` policy.
+    ///    The bool indicates whether the policy applies, ie, "is satisfied" for the
+    ///    current `request`.
+    ///    This is _different than_ "if the current `request` should be allowed" --
+    ///    it doesn't consider whether we're processing a `Permit` policy or a
+    ///    `Forbid` policy.
     pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
         match self.partial_interpret(&p.condition(), p.env())? {
             PartialValue::Value(v) => v.get_as_bool().map(Either::Left),
@@ -541,10 +541,7 @@ impl<'e> Evaluator<'e> {
                 match split(args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
-                        let efunc = self
-                            .extensions
-                            .func(fn_name)
-                            .map_err(|err| err.with_maybe_source_loc(loc.cloned()))?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&vals)
                     }
                     Either::Right(residuals) => Ok(PartialValue::Residual(

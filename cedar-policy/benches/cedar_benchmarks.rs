@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// PANIC SAFETY unit tests
+// PANIC SAFETY benchmarking
 #![allow(clippy::unwrap_used)]
-// PANIC SAFETY unit tests
+// PANIC SAFETY benchmarking
 #![allow(clippy::expect_used)]
 
 use std::str::FromStr;

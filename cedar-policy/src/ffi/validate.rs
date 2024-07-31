@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-//! This module contains the validator entry points that other language FFIs can
-//! call
+//! JSON FFI entry points for the Cedar validator. The Cedar Wasm validator is
+//! generated from the [`validate()`] function in this file.
+
 #![allow(clippy::module_name_repetitions)]
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -28,20 +31,13 @@ extern crate tsify;
 ///
 /// This is the basic validator interface, using [`ValidationCall`] and
 /// [`ValidationAnswer`] types
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "validate"))]
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
             t: Ok((policies, schema, settings)),
             warnings,
         } => {
-            // if validation is not enabled, stop here
-            if !settings.enabled {
-                return ValidationAnswer::Success {
-                    validation_errors: Vec::new(),
-                    validation_warnings: Vec::new(),
-                    other_warnings: warnings.into_iter().map(Into::into).collect(),
-                };
-            }
             // otherwise, call `Validator::validate`
             let validator = Validator::new(schema);
             let (validation_errors, validation_warnings) = validator
@@ -151,26 +147,14 @@ impl ValidationCall {
 }
 
 /// Configuration for the validation call
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ValidationSettings {
-    /// Whether validation is enabled. If this flag is set to `false`, then
-    /// only parsing is performed. The default value is `true`.
-    enabled: bool,
     /// Used to control how a policy is validated. See comments on [`ValidationMode`].
     mode: ValidationMode,
-}
-
-impl Default for ValidationSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            mode: ValidationMode::default(),
-        }
-    }
 }
 
 /// Error (or warning) for a specified policy after validation

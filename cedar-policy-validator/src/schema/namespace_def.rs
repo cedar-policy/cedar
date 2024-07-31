@@ -102,8 +102,11 @@ impl ValidatorNamespaceDef {
         // into the representation used by the validator.
         let common_types =
             CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
-        let actions =
-            ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
+        let actions = ActionsDef::from_raw_actions(
+            namespace_def.actions,
+            namespace.as_ref(),
+            extensions.clone(),
+        )?;
         let entity_types = EntityTypesDef::from_raw_entity_types(
             namespace_def.entity_types,
             namespace.as_ref(),
@@ -237,7 +240,7 @@ impl EntityTypesDef {
                     ventry.insert(EntityTypeFragment::from_raw_entity_type(
                         entity_type,
                         schema_namespace,
-                        extensions,
+                        extensions.clone(),
                     )?);
                 }
                 Entry::Occupied(entry) => {
@@ -334,7 +337,7 @@ impl ActionsDef {
                         ventry.key(),
                         action_type,
                         schema_namespace,
-                        extensions,
+                        extensions.clone(),
                     )?;
                     ventry.insert(frag);
                 }
@@ -410,7 +413,7 @@ impl ActionFragment {
             context
                 .into_inner()
                 .qualify_type_references(schema_namespace),
-            extensions,
+            extensions.clone(),
         )?;
 
         let parents = action_type
@@ -731,7 +734,7 @@ pub(crate) fn parse_record_attributes(
             Ok((
                 attr,
                 (
-                    try_schema_type_into_validator_type(ty.ty, extensions)?,
+                    try_schema_type_into_validator_type(ty.ty, extensions.clone())?,
                     ty.required,
                 ),
             ))

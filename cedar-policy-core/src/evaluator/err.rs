@@ -15,6 +15,7 @@
  */
 
 use crate::ast::*;
+use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::Loc;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
@@ -53,7 +54,7 @@ pub enum EvaluationError {
     /// An error occurred when looking up an extension function
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
@@ -153,8 +154,8 @@ impl EvaluationError {
             Self::NonValue(e) => {
                 Self::NonValue(evaluation_errors::NonValueError { source_loc, ..e })
             }
-            Self::RecursionLimit(e) => {
-                Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc, ..e })
+            Self::RecursionLimit(_) => {
+                Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc })
             }
         }
     }

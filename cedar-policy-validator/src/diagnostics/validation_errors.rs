@@ -21,43 +21,26 @@ use thiserror::Error;
 
 use std::fmt::Display;
 
-use cedar_policy_core::impl_diagnostic_from_source_loc_field;
 use cedar_policy_core::parser::Loc;
+use cedar_policy_core::{impl_diagnostic_from_expr_field, impl_diagnostic_from_source_loc_field};
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{
-    CallStyle, EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var,
-};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use itertools::Itertools;
 use smol_str::SmolStr;
 
-// This macro implements `cedar_policy_core::impl_diagnostic_from_source_loc_field`
-// for the validation error variants that have `on_expr` instead.  Some variants
-// use `on_expr` instead of `source_loc` because many tests were written to
-// check that an error was raised on a particular expression rather than at a
-// source location.  Storing the `Expr` should not be required because we only
+// Specialize `impl_diagnostics_from_expr_field` to `on_expr`.
+// Storing the `Expr` should not be required because we only
 // care about the source location emended in the expression.  To avoid cloning
 // expressions when constructing errors, we should remove `on_expr` and rewrite
 // the affected tests to only check for the correct `source_loc`.
 macro_rules! impl_diagnostic_from_on_expr_field {
     () => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.on_expr
-                .source_loc()
-                .as_ref()
-                .map(|loc| &loc.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.on_expr.source_loc().as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-        }
+        impl_diagnostic_from_expr_field!(on_expr);
     };
 }
 
@@ -436,35 +419,6 @@ impl Diagnostic for UndefinedFunction {
     impl_diagnostic_from_on_expr_field!();
 }
 
-/// Structure containing details about a multiply defined function error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, extension function defined multiple times: {name}")]
-pub struct MultiplyDefinedFunction {
-    /// [`Expr`] containing a call to a multiply defined function
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Name of the multiply defined function
-    pub name: String,
-}
-
-impl std::hash::Hash for MultiplyDefinedFunction {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.name.hash(state);
-    }
-}
-impl PartialEq for MultiplyDefinedFunction {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.name == other.name
-    }
-}
-
-impl Diagnostic for MultiplyDefinedFunction {
-    impl_diagnostic_from_on_expr_field!();
-}
-
 /// Structure containing details about a wrong number of arguments error.
 #[derive(Error, Debug, Clone, Eq)]
 #[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
@@ -496,40 +450,6 @@ impl PartialEq for WrongNumberArguments {
 }
 
 impl Diagnostic for WrongNumberArguments {
-    impl_diagnostic_from_on_expr_field!();
-}
-
-/// Structure containing details about a wrong call style error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, wrong call style in extension function application. Expected {expected}, got {actual}")]
-pub struct WrongCallStyle {
-    /// [`Expr`] containing a call in the wrong style
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Expected call style
-    pub expected: CallStyle,
-    /// Actual call style
-    pub actual: CallStyle,
-}
-
-impl std::hash::Hash for WrongCallStyle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.expected.hash(state);
-        self.actual.hash(state);
-    }
-}
-
-impl PartialEq for WrongCallStyle {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.expected == other.expected
-            && self.actual == other.actual
-    }
-}
-
-impl Diagnostic for WrongCallStyle {
     impl_diagnostic_from_on_expr_field!();
 }
 

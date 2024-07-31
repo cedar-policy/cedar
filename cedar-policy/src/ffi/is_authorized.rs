@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-//! This module contains the `is_authorized` entry points that other language
-//! FFIs can call
+//! JSON FFI entry points for the Cedar authorizer. The Cedar Wasm authorizer
+//! is generated from the [`is_authorized()`] function in this file.
+
 #![allow(clippy::module_name_repetitions)]
 #[cfg(feature = "partial-eval")]
 use super::utils::JsonValueWithNoDuplicateKeys;
@@ -29,6 +30,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 #[cfg(feature = "partial-eval")]
 use std::convert::Infallible;
+#[cfg(feature = "wasm")]
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -39,6 +42,7 @@ thread_local!(
 );
 
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "isAuthorized"))]
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.parse() {
         WithWarnings {
@@ -174,7 +178,6 @@ pub struct Response {
 pub struct Diagnostics {
     /// Ids of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
-    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
     reason: HashSet<PolicyId>,
     /// Set of errors that occurred
     errors: HashSet<AuthorizationError>,
@@ -1123,7 +1126,8 @@ pub mod test {
             },
             "entities": []
         });
-        assert_is_not_authorized_json(call);
+        let errs = assert_is_authorized_json_is_failure(call);
+        assert_exactly_one_error(&errs, "static policy set includes a template", None);
     }
 
     #[test]
