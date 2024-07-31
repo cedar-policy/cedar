@@ -24,9 +24,9 @@
 
 mod id;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_slicing;
+use cedar_policy_validator::entity_manifest;
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_slicing::{
+pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, EntitySliceError, Fields, RootAccessTrie,
 };
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
@@ -4289,5 +4289,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntitySliceError> {
-    entity_slicing::compute_entity_manifest(&schema.0, &pset.ast)
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast)
 }
