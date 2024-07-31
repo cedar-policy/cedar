@@ -24,7 +24,7 @@ use cedar_policy::Entity;
 use cedar_policy_core::ast::{self, PartialValue};
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
-use cedar_policy_core::entities::Entities;
+use cedar_policy_core::entities::{Entities, TCComputation};
 use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
@@ -409,11 +409,23 @@ impl CedarTestImplementation for RustEngine {
         TestResult::Success(response)
     }
     fn validate_entities(
-            &self,
-            schema: &ValidatorSchema,
-            entities: Entities,
-        ) -> TestResult<TestValidationResult> {
-        panic!("TODO");
+        &self,
+        schema: &ValidatorSchema,
+        entities: Entities,
+    ) -> TestResult<TestValidationResult> {
+        let (res, dur) = time_function(|| {
+            Entities::from_entities(
+                entities.iter().cloned(),
+                Some(&cedar_policy_validator::CoreSchema::new(schema)),
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::all_available(),
+            )
+        });
+        let response = TestValidationResult {
+            errors: res.map(|e| vec![e.to_string()]).unwrap_or_default(),
+            timing_info: HashMap::from([("validate_entities".into(), Micros(dur.as_micros()))]),
+        };
+        TestResult::Success(response)
     }
 
     fn validate_request(
@@ -421,7 +433,21 @@ impl CedarTestImplementation for RustEngine {
         schema: &ValidatorSchema,
         request: &ast::Request,
     ) -> TestResult<TestValidationResult> {
-        panic!("TODO");
+        let (res, dur) = time_function(|| {
+            ast::Request::new_with_unknowns(
+                request.principal().clone(),
+                request.action().clone(),
+                request.resource().clone(),
+                request.context().cloned(),
+                Some(schema),
+                Extensions::all_available(),
+            )
+        });
+        let response = TestValidationResult {
+            errors: res.map(|r| vec![r.to_string()]).unwrap_or_default(),
+            timing_info: HashMap::from([("validate_request".into(), Micros(dur.as_micros()))]),
+        };
+        TestResult::Success(response)
     }
 
     fn error_comparison_mode(&self) -> ErrorComparisonMode {
