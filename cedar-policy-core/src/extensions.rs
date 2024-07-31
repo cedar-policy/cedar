@@ -23,7 +23,6 @@ pub mod ipaddr;
 pub mod decimal;
 pub mod partial_evaluation;
 
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -44,6 +43,7 @@ lazy_static::lazy_static! {
         ipaddr::extension(),
         #[cfg(feature = "decimal")]
         decimal::extension(),
+        #[cfg(feature = "partial-eval")]
         partial_evaluation::extension(),
     ];
 
@@ -105,35 +105,12 @@ impl Extensions<'static> {
 }
 
 impl<'a> Extensions<'a> {
-    // Utility to build a `HashMap` of key value pairs from an iterator,
-    // returning an `Err` result if there are any duplicate keys in the
-    // iterator.
-    fn collect_no_duplicates<K, V>(
-        i: impl Iterator<Item = (K, V)>,
-    ) -> std::result::Result<HashMap<K, V>, K>
-    where
-        K: Clone + std::hash::Hash + Eq,
-    {
-        let mut map = HashMap::with_capacity(i.size_hint().0);
-        for (k, v) in i {
-            match map.entry(k) {
-                Entry::Occupied(occupied) => {
-                    return Err(occupied.key().clone());
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(v);
-                }
-            }
-        }
-        Ok(map)
-    }
-
     /// Get a new `Extensions` with these specific extensions enabled.
     pub fn specific_extensions(
         extensions: &'a [Extension],
     ) -> std::result::Result<Extensions<'a>, ExtensionInitializationError> {
         // Build functions map, ensuring that no functions share the same name.
-        let functions = Self::collect_no_duplicates(
+        let functions = util::collect_no_duplicates(
             extensions
                 .iter()
                 .flat_map(|e| e.funcs())
@@ -142,7 +119,7 @@ impl<'a> Extensions<'a> {
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
         // Build the constructor map, ensuring that no constructors share a type signature.
-        let single_arg_constructors = Self::collect_no_duplicates(
+        let single_arg_constructors = util::collect_no_duplicates(
             extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
                 if f.is_constructor() {
                     if let (Some(argument_type), Some(return_type)) =
@@ -326,6 +303,34 @@ pub mod extension_function_lookup_errors {
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
+
+/// Utilities shared with the `cedar-policy-validator` extensions module.
+pub mod util {
+    use std::collections::{hash_map::Entry, HashMap};
+
+    /// Utility to build a `HashMap` of key value pairs from an iterator,
+    /// returning an `Err` result if there are any duplicate keys in the
+    /// iterator.
+    pub fn collect_no_duplicates<K, V>(
+        i: impl Iterator<Item = (K, V)>,
+    ) -> std::result::Result<HashMap<K, V>, K>
+    where
+        K: Clone + std::hash::Hash + Eq,
+    {
+        let mut map = HashMap::with_capacity(i.size_hint().0);
+        for (k, v) in i {
+            match map.entry(k) {
+                Entry::Occupied(occupied) => {
+                    return Err(occupied.key().clone());
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(v);
+                }
+            }
+        }
+        Ok(map)
+    }
+}
 
 #[cfg(test)]
 pub mod test {

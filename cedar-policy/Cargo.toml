@@ -14,6 +14,7 @@ repository = "https://github.com/cedar-policy/cedar"
 [dependencies]
 cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
 cedar-policy-validator = { version = "=4.0.0", path = "../cedar-policy-validator" }
+cedar-policy-formatter = { version = "=4.0.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -46,7 +47,7 @@ corpus-timing = []
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
 experimental = ["partial-eval", "permissive-validate", "partial-validate"]
-partial-eval = ["cedar-policy-core/partial-eval"]
+partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
