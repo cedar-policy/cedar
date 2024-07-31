@@ -27,6 +27,8 @@ Cedar Language Version: 4.0
 
 ### Changed
 
+- `unknown()` is no longer a valid extension function if `partial-eval`
+  is not enabled as a feature.
 - The API around `Request::new` has changed to remove the `Option`s
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
