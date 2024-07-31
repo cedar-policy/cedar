@@ -299,9 +299,13 @@ impl<'e> Evaluator<'e> {
             ExprKind::And { left, right } => {
                 match self.partial_interpret(left, slots)? {
                     // PE Case
-                    PartialValue::Residual(e) => {
-                        Ok(PartialValue::Residual(Expr::and(e, right.as_ref().clone())))
-                    }
+                    PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::and(
+                        r,
+                        match self.partial_interpret(right, slots) {
+                            Ok(right) => Expr::from(right),
+                            Err(_) => right.as_ref().clone(),
+                        },
+                    ))),
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
@@ -325,9 +329,13 @@ impl<'e> Evaluator<'e> {
             ExprKind::Or { left, right } => {
                 match self.partial_interpret(left, slots)? {
                     // PE cases
-                    PartialValue::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::or(r, right.as_ref().clone())))
-                    }
+                    PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
+                        r,
+                        match self.partial_interpret(right, slots) {
+                            Ok(right) => Expr::from(right),
+                            Err(_) => right.as_ref().clone(),
+                        },
+                    ))),
                     // Full eval case
                     PartialValue::Value(lhs) => {
                         if lhs.get_as_bool()? {
@@ -5120,7 +5128,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Value(Value::from(false)));
     }
 
-    // res && true -> res && true
+    // res && (2 == 2) -> res && true
     #[test]
     fn partial_and_res_true() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
@@ -5131,7 +5139,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::and(lhs, rhs);
+        let expected = Expr::and(lhs, Value::new(true, None).into());
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
@@ -5145,7 +5153,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::and(lhs, rhs);
+        let expected = Expr::and(lhs, Value::new(false, None).into());
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
@@ -5230,7 +5238,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::or(lhs, rhs);
+        let expected = Expr::or(lhs, Value::new(true, None).into());
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
@@ -5244,7 +5252,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::or(lhs, rhs);
+        let expected = Expr::or(lhs, Value::new(false, None).into());
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
