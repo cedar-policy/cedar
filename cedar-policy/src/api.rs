@@ -2310,7 +2310,7 @@ impl Template {
     pub fn get_valid_request_envs(&self, s: &Schema) -> BTreeSet<RequestEnv> {
         let tc = Typechecker::new(
             &s.0,
-            cedar_policy_validator::ValidationMode::Strict,
+            cedar_policy_validator::ValidationMode::default(),
             self.ast.id().clone(),
         );
         tc.typecheck_by_request_env(&self.ast)
