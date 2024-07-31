@@ -27,7 +27,7 @@ mod id;
 use cedar_policy_validator::entity_manifest;
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_manifest::{
-    AccessTrie, EntityManifest, EntityRoot, EntitySliceError, Fields, RootAccessTrie,
+    AccessTrie, EntityManifest, EntityManifestError, EntityRoot, Fields, RootAccessTrie,
 };
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
@@ -4288,6 +4288,6 @@ action CreateList in Create appliesTo {
 pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
-) -> Result<EntityManifest, EntitySliceError> {
+) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&schema.0, &pset.ast)
 }
