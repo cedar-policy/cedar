@@ -421,6 +421,10 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Entity level violation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {
@@ -445,6 +449,7 @@ impl ValidationError {
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
             Self::InternalInvariantViolation(e) => e.policy_id(),
+            Self::EntityDerefLevelViolation(e) => e.policy_id(),
         }
     }
 }
@@ -502,6 +507,10 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
                 Self::InternalInvariantViolation(e.into())
+            }
+            #[cfg(feature = "level-validate")]
+            cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
+                Self::EntityDerefLevelViolation(e.into())
             }
         }
     }

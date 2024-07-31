@@ -20,6 +20,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use std::fmt::Display;
+use std::ops::{Add, Neg};
 
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
@@ -448,6 +449,114 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy)]
+/// Represents how many entity dereferences can be applied to a node
+/// `None` represents infinity.
+pub struct EntityDerefLevel {
+    /// `None` represents infinity.
+    pub level: Option<i64>,
+}
+
+impl Display for EntityDerefLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self.level {
+            Some(l) => write!(f, "{l}"),
+            None => write!(f, "INF"),
+        }
+    }
+}
+
+impl From<Option<u32>> for EntityDerefLevel {
+    fn from(value: Option<u32>) -> Self {
+        match value {
+            Some(u) => EntityDerefLevel {
+                level: Some(u as i64),
+            },
+            None => EntityDerefLevel { level: None },
+        }
+    }
+}
+
+impl Default for EntityDerefLevel {
+    fn default() -> Self {
+        Self { level: Some(0) }
+    }
+}
+
+// Ordering where `None` represents Inf
+impl Ord for EntityDerefLevel {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self.level, other.level) {
+            (Some(sl), Some(ol)) => sl.cmp(&ol),
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some(_), None) => std::cmp::Ordering::Less,
+        }
+    }
+}
+
+impl PartialOrd for EntityDerefLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Add for EntityDerefLevel {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self.level, rhs.level) {
+            (Some(l), Some(r)) => EntityDerefLevel { level: Some(l + r) },
+            (_, _) => EntityDerefLevel { level: None },
+        }
+    }
+}
+
+impl Neg for EntityDerefLevel {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self.level {
+            Some(l) => EntityDerefLevel { level: Some(-l) },
+            None => EntityDerefLevel { level: None },
+        }
+    }
+}
+
+impl EntityDerefLevel {
+    /// Decrement the entity deref level
+    pub fn decrement(&self) -> Self {
+        match self.level {
+            None => self.clone(),
+            Some(l) => EntityDerefLevel { level: Some(l - 1) },
+        }
+    }
+}
+
+/// Structure containing details about entity derefernce level violation
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
+pub struct EntityDerefLevelViolation {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// The maximum level allowed by the schema
+    pub allowed_level: EntityDerefLevel,
+    /// The actual level this policy uses
+    pub actual_level: EntityDerefLevel,
+}
+
+impl Diagnostic for EntityDerefLevelViolation {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!(
+            "Consider increasing the level in the schema"
+        )))
+    }
+}
+
 /// The policy uses an empty set literal in a way that is forbidden
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, empty set literals are forbidden in policies")]
@@ -728,5 +837,20 @@ mod test_attr_access {
         assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
         assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
+    }
+}
+
+#[cfg(test)]
+mod test_entity_deref_level {
+    use super::EntityDerefLevel;
+
+    #[test]
+    fn entity_deref_level() {
+        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: Some(1) });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(1) });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(0) });
+        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: None });
+        assert!(EntityDerefLevel { level: Some(1) } < EntityDerefLevel { level: None });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: None });
     }
 }

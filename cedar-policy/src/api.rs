@@ -1256,6 +1256,26 @@ impl Validator {
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
+
+    #[cfg(feature = "level-validate")]
+    /// Validate all policies in a policy set, collecting all validation errors
+    /// found into the returned `ValidationResult`. Include level validation (RFC 76).
+    /// Each error is returned together with the policy id of the policy where the error
+    /// was found. If a policy id included in the input policy set does not appear in the
+    /// output iterator, then that policy passed the validator. If the function
+    /// `validation_passed` returns true, then there were no validation errors found, so
+    /// all policies in the policy set have passed the validator.
+    pub fn validate_with_level(
+        &self,
+        pset: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        ValidationResult::from(
+            self.0
+                .validate_with_level(&pset.ast, mode.into(), max_deref_level),
+        )
+    }
 }
 
 /// Contains all the type information used to construct a `Schema` that can be

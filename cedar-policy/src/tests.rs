@@ -3923,6 +3923,84 @@ mod partial_schema {
     }
 }
 
+#[cfg(feature = "level-validate")]
+mod level_validation_tests {
+    use crate::{Policy, PolicySet, ValidationError, ValidationMode, Validator};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    use super::Schema;
+
+    fn get_schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "memberOfTypes": ["User"]
+                    },
+                    "Photo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": {
+                                    "type": "Entity",
+                                    "name": "User",
+                                    "required": true
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "resourceTypes": [ "Photo" ],
+                            "principalTypes": [ "User" ]
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("Schema parse error.")
+        .try_into()
+        .expect("Expected valid schema.")
+    }
+
+    #[test]
+    fn level_validation_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+}
+
 mod template_tests {
     use std::str::FromStr;
 
