@@ -510,7 +510,7 @@ mod policy_set_tests {
         #[cfg(not(feature = "partial-eval"))]
         {
             let err_string = pset.unwrap_err().to_string();
-            assert!(err_string.contains("`unknown` is not a valid function"));
+            assert!(err_string.contains("`unknown` is not a function"));
         }
         #[cfg(feature = "partial-eval")]
         {
