@@ -163,10 +163,11 @@ impl Validator {
         .flatten();
         let (type_errors, warnings) = self.typecheck_policy(p, mode);
         let levels_errors = match self.max_allowed_entity_deref_level.level {
-            Some(_) => self.check_entity_deref_level(p, &self.max_allowed_entity_deref_level, p.id()),
+            Some(_) => {
+                self.check_entity_deref_level(p, &self.max_allowed_entity_deref_level, p.id())
+            }
             None => vec![], //Don't run for inf level
         };
-
 
         (
             validation_errors.chain(type_errors).chain(levels_errors),
