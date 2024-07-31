@@ -23,6 +23,7 @@ Cedar Language Version: 4.0
   resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
+- Partial authorization to CLI (#1082)
 
 ### Changed
 
