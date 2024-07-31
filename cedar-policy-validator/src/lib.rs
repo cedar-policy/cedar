@@ -31,9 +31,10 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
-use cedar_policy_core::ast::{Policy, PolicySet, Template};
+use cedar_policy_core::ast::{Policy, PolicyID, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+use validation_errors::{EntityDerefLevel, EntityDerefLevelViolation};
 
 mod err;
 pub use err::*;
@@ -54,7 +55,7 @@ mod str_checks;
 pub use str_checks::confusable_string_checks;
 pub mod human_schema;
 pub mod typecheck;
-use typecheck::Typechecker;
+use typecheck::{PolicyCheck, Typechecker};
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -98,12 +99,16 @@ impl ValidationMode {
 #[derive(Debug)]
 pub struct Validator {
     schema: ValidatorSchema,
+    max_allowed_entity_deref_level: EntityDerefLevel,
 }
 
 impl Validator {
     /// Construct a new Validator from a schema file.
     pub fn new(schema: ValidatorSchema) -> Validator {
-        Self { schema }
+        Self {
+            schema,
+            max_allowed_entity_deref_level: EntityDerefLevel { level: None },
+        }
     }
 
     /// Validate all templates, links, and static policies in a policy set.
@@ -157,7 +162,16 @@ impl Validator {
         .into_iter()
         .flatten();
         let (type_errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(type_errors), warnings)
+        let levels_errors = match self.max_allowed_entity_deref_level.level {
+            Some(_) => self.check_entity_deref_level(p, &self.max_allowed_entity_deref_level, p.id()),
+            None => vec![], //Don't run for inf level
+        };
+
+
+        (
+            validation_errors.chain(type_errors).chain(levels_errors),
+            warnings,
+        )
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -204,6 +218,208 @@ impl Validator {
         let mut warnings = HashSet::new();
         typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
         (type_errors.into_iter(), warnings.into_iter())
+    }
+
+    /// Check that `t` respects `max_allowed_level`
+    fn check_entity_deref_level<'a>(
+        &'a self,
+        t: &'a Template,
+        max_allowed_level: &EntityDerefLevel,
+        policy_id: &PolicyID,
+    ) -> Vec<ValidationError> {
+        let typechecker = Typechecker::new(&self.schema, ValidationMode::Strict, t.id().clone());
+        let type_annotated_asts = typechecker.typecheck_by_request_env(t);
+        let mut errs = vec![];
+        for (_, policy_check) in type_annotated_asts {
+            match policy_check {
+                PolicyCheck::Success(e) => {
+                    let res = self.check_entity_deref_level_helper(
+                        &e,
+                        EntityDerefLevel::default(),
+                        max_allowed_level,
+                        policy_id,
+                    );
+                    match res.1 {
+                        Some(e) => errs.push(ValidationError::EntityDerefLevelViolation(e)),
+                        None => (),
+                    }
+                }
+                _ => (), //Don't report level violations if typechecking already failed
+            }
+        }
+        // TODO: maybe only give one err for all typecheck envs?
+        errs
+    }
+
+    fn max(
+        v: Vec<(EntityDerefLevel, Option<EntityDerefLevelViolation>)>,
+    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+        match v.first() {
+            Some(e) => {
+                let mut p = e.clone();
+                for e in v {
+                    if e.0 > p.0 {
+                        p = e.clone();
+                    }
+                }
+                p
+            }
+            None => panic!("Should have at least one element"),
+        }
+    }
+
+    ///Walk the type-annotated AST and compute the used level as well as the location where the `allowed_level` is violated by the largest amount
+    fn check_entity_deref_level_helper<'a>(
+        &'a self,
+        e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
+        curr_level: EntityDerefLevel,
+        max_allowed_level: &EntityDerefLevel,
+        policy_id: &PolicyID,
+    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+        use crate::types::{EntityRecordKind, Type};
+        use cedar_policy_core::ast::ExprKind;
+        match e.expr_kind() {
+            ExprKind::Lit(_) => (
+                EntityDerefLevel { level: None },
+                Some(EntityDerefLevelViolation {
+                    source_loc: e.source_loc().cloned(),
+                    policy_id: policy_id.clone(),
+                    allowed_level: max_allowed_level.clone(),
+                    actual_level: EntityDerefLevel { level: None },
+                }),
+            ),
+            ExprKind::Var(_) => (EntityDerefLevel::default(), None),
+            ExprKind::Slot(_) => (EntityDerefLevel::default(), None),
+            ExprKind::Unknown(_) => (
+                EntityDerefLevel { level: None },
+                Some(EntityDerefLevelViolation {
+                    source_loc: e.source_loc().cloned(),
+                    policy_id: policy_id.clone(),
+                    allowed_level: max_allowed_level.clone(),
+                    actual_level: EntityDerefLevel { level: None },
+                }),
+            ),
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                let es = [test_expr, then_expr, else_expr];
+                let v: Vec<(EntityDerefLevel, Option<_>)> = es
+                    .iter()
+                    .map(|l| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
+                let es = [left, right];
+                let v: Vec<(EntityDerefLevel, Option<_>)> = es
+                    .iter()
+                    .map(|l| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+            ExprKind::UnaryApp { arg, .. } => {
+                self.check_entity_deref_level_helper(arg, curr_level, max_allowed_level, policy_id)
+            }
+            ExprKind::BinaryApp { arg1, arg2, .. } => {
+                let es = [arg1, arg2];
+                let v: Vec<(EntityDerefLevel, Option<_>)> = es
+                    .iter()
+                    .map(|l| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+            ExprKind::ExtensionFunctionApp { args, .. } => {
+                let v: Vec<(EntityDerefLevel, Option<_>)> = args
+                    .iter()
+                    .map(|l| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+            ExprKind::GetAttr { expr, .. } => match expr.as_ref().data() {
+                Some(ty) => {
+                    let step = match ty {
+                        Type::EntityOrRecord(EntityRecordKind::Entity { .. })
+                        | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => {
+                            EntityDerefLevel { level: Some(1) }
+                        }
+                        Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
+                            panic!("AnyEntity not supported")
+                        }
+                        _ => EntityDerefLevel::default(),
+                    };
+                    self.check_entity_deref_level_helper(
+                        expr,
+                        curr_level + step,
+                        max_allowed_level,
+                        policy_id,
+                    )
+                }
+                None => panic!("Expected type-annotated AST"),
+            },
+            ExprKind::HasAttr { expr, .. }
+            | ExprKind::Like { expr, .. }
+            | ExprKind::Is { expr, .. } => {
+                self.check_entity_deref_level_helper(expr, curr_level, max_allowed_level, policy_id)
+            }
+            ExprKind::Set(elems) => {
+                let v: Vec<(EntityDerefLevel, Option<_>)> = elems
+                    .iter()
+                    .map(|l| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+            ExprKind::Record(fields) => {
+                let v: Vec<(EntityDerefLevel, Option<_>)> = fields
+                    .iter()
+                    .map(|(_, l)| {
+                        self.check_entity_deref_level_helper(
+                            l,
+                            curr_level,
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    })
+                    .collect();
+                Self::max(v)
+            }
+        }
     }
 }
 
@@ -506,5 +722,45 @@ mod test {
                 "һenry"
             )]
         );
+    }
+
+    #[test]
+    fn test_levels_computation() {
+        let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment<RawName>>(
+            r#"
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "resourceTypes": [ "User" ],
+                                "principalTypes": [ "User" ]
+                            }
+                        }
+                    }
+                }
+            }
+        "#,
+        )
+        .expect("Schema parse error.")
+        .try_into()
+        .expect("Expected valid schema.");
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > true};"#;
+        let p = parser::parse_policy(None, src).unwrap();
+        set.add_static(p).unwrap();
+
+        let template_name = PolicyID::from_string("policy0");
+        let result = validator.check_entity_deref_level(
+            set.get_template(&template_name).unwrap().as_ref(),
+            &EntityDerefLevel { level: Some(0) },
+            &template_name,
+        );
+        assert!(result.is_empty());
     }
 }

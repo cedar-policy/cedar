@@ -590,6 +590,71 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy)]
+/// `None` represents infinity.
+pub struct EntityDerefLevel {
+    /// `None` represents infinity.
+    pub level: Option<usize>,
+}
+
+impl Display for EntityDerefLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self.level {
+            Some(l) => write!(f, "{l}"),
+            None => write!(f, "INF"),
+        }
+    }
+}
+
+impl Default for EntityDerefLevel {
+    fn default() -> Self {
+        Self { level: Some(0) }
+    }
+}
+
+impl std::ops::Add for EntityDerefLevel {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        match (self.level, other.level) {
+            (Some(l1), Some(l2)) => Self {
+                level: Some(l1 + l2),
+            },
+            (_, _) => Self { level: None },
+        }
+    }
+}
+
+/// Reverse of default partial_cmp
+impl PartialOrd for EntityDerefLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        other.level.partial_cmp(&self.level)
+    }
+}
+
+/// Structure containing details about entity derefernce level violation
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {actual_level}")]
+pub struct EntityDerefLevelViolation {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// The maximum level allowed by the schema
+    pub allowed_level: EntityDerefLevel,
+    /// The actual level this policy uses
+    pub actual_level: EntityDerefLevel,
+}
+
+impl Diagnostic for EntityDerefLevelViolation {
+    impl_diagnostic_from_source_loc_field!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!(
+            "Consider increasing the level in the schema"
+        )))
+    }
+}
+
 /// The policy uses an empty set literal in a way that is forbidden
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, empty set literals are forbidden in policies")]
