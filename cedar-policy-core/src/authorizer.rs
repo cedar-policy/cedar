@@ -403,10 +403,14 @@ mod test {
         };
         "#;
 
-        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
-            .unwrap();
-        pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
-            .unwrap();
+        pset.add_static(
+            parser::parse_policy(Some(PolicyID::from_string("1").to_string()), src1).unwrap(),
+        )
+        .unwrap();
+        pset.add_static(
+            parser::parse_policy(Some(PolicyID::from_string("2").to_string()), src2).unwrap(),
+        )
+        .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
