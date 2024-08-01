@@ -31,9 +31,11 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use crate::entity_manifest_analysis::{EntityManifestAnalysisResult, WrappedAccessPaths};
+use crate::ValidationError;
 use crate::{
     typecheck::{PolicyCheck, Typechecker},
-    types::{EntityRecordKind, Type},
+    types::Type,
     ValidationMode, ValidatorSchema,
 };
 use crate::{ValidationResult, Validator};
@@ -150,8 +152,8 @@ pub struct AccessTrie<T = ()> {
 
 /// A data path that may end with requesting the parents of
 /// an entity.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AccessPath {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct AccessPath {
     /// The root variable that begins the data path
     pub root: EntityRoot,
     /// The path of fields of entities or structs
@@ -272,31 +274,41 @@ fn union_fields<T: Clone>(first: &Fields<T>, second: &Fields<T>) -> Fields<T> {
 
 impl AccessPath {
     /// Convert a [`AccessPath`] into corresponding [`RootAccessTrie`].
-    fn to_root_access_trie(&self) -> RootAccessTrie {
-        self.to_root_access_trie_with_leaf(AccessTrie {
-            ancestors_required: true,
-            children: Default::default(),
-            data: (),
-        })
+    pub fn to_root_access_trie(&self) -> RootAccessTrie {
+        self.to_root_access_trie_with_leaf(AccessTrie::default())
     }
 
     /// Convert an [`AccessPath`] to a [`RootAccessTrie`], and also
     /// add a full trie as the leaf at the end.
-    fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
+    pub(crate) fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
         let mut current = leaf_trie;
         // reverse the path, visiting the last access first
-        for field in self.path.iter().rev() {
+        for (index, field) in self.path.iter().rev().enumerate() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
+
+            // the first time we build an access trie is the leaf
+            // of the path, so set the `ancestors_required` flag
+            let ancestors_required = if index == 0 {
+                self.ancestors_required
+            } else {
+                false
+            };
+
             current = AccessTrie {
-                ancestors_required: false,
+                ancestors_required,
                 children: fields,
                 data: (),
             };
         }
 
         let mut primary_map = HashMap::new();
-        primary_map.insert(self.root.clone(), current);
+
+        // special case: if the path is empty and ancestors not required,
+        // no need to insert anything
+        if current != AccessTrie::new() {
+            primary_map.insert(self.root.clone(), current);
+        }
         RootAccessTrie { trie: primary_map }
     }
 }
@@ -321,7 +333,7 @@ impl RootAccessTrie {
 impl<T: Clone> RootAccessTrie<T> {
     /// Union two [`RootAccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    fn union(&self, other: &Self) -> Self {
+    pub fn union(&self, other: &Self) -> Self {
         let mut res = self.clone();
         for (key, value) in &other.trie {
             res.trie
@@ -379,6 +391,12 @@ impl AccessTrie {
     }
 }
 
+impl Default for AccessTrie {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Computes an [`EntityManifest`] from the schema and policies.
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
@@ -405,7 +423,8 @@ pub fn compute_entity_manifest(
                 PolicyCheck::Success(typechecked_expr) => {
                     // compute the trie from the typechecked expr
                     // using static analysis
-                    compute_root_trie(&typechecked_expr, policy.id())
+                    entity_manifest_from_expr(&typechecked_expr, policy.id())
+                        .map(|val| val.global_trie)
                 }
                 PolicyCheck::Irrelevant(_) => {
                     // this policy is irrelevant, so we need no data
@@ -440,186 +459,161 @@ pub fn compute_entity_manifest(
 /// A static analysis on type-annotated cedar expressions.
 /// Computes the [`RootAccessTrie`] representing all the data required
 /// to evaluate the expression.
-fn compute_root_trie(
+fn entity_manifest_from_expr(
     expr: &Expr<Option<Type>>,
     policy_id: &PolicyID,
-) -> Result<RootAccessTrie, EntityManifestError> {
-    let mut primary_slice = RootAccessTrie::new();
-    add_to_root_trie(&mut primary_slice, expr, policy_id, false)?;
-    Ok(primary_slice)
-}
-
-/// Add the expression's requested data to the [`RootAccessTrie`].
-/// This handles <expr>s from the grammar (see [`FailedAnalysisError`])
-/// while [`get_expr_path`] handles the <datapath-expr>s.
-fn add_to_root_trie(
-    root_trie: &mut RootAccessTrie,
-    expr: &Expr<Option<Type>>,
-    policy_id: &PolicyID,
-    should_load_all: bool,
-) -> Result<(), EntityManifestError> {
+) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
     match expr.expr_kind() {
-        // Literals, variables, and unkonwns without any GetAttr operations
-        // on them are okay, since no fields need to be loaded.
-        ExprKind::Lit(_) => Ok(()),
-        ExprKind::Var(_) => Ok(()),
-        ExprKind::Slot(_) => Ok(()),
+        ExprKind::Slot(slot_id) => {
+            if slot_id.is_principal() {
+                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
+                    Var::Principal,
+                )))
+            } else {
+                assert!(slot_id.is_resource());
+                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
+                    Var::Resource,
+                )))
+            }
+        }
+        ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
+            *var,
+        ))),
+        ExprKind::GetAttr { expr, attr } => {
+            Ok(entity_manifest_from_expr(expr, policy_id)?.get_attr(attr))
+        }
+        ExprKind::Lit(Literal::EntityUID(literal)) => Ok(EntityManifestAnalysisResult::from_root(
+            EntityRoot::Literal((**literal).clone()),
+        )),
+        ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
+
+        // Non-entity literals need no fields to be loaded.
+        ExprKind::Lit(_) => Ok(EntityManifestAnalysisResult::default()),
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
         ExprKind::If {
             test_expr,
             then_expr,
             else_expr,
-        } => {
-            add_to_root_trie(root_trie, test_expr, policy_id, should_load_all)?;
-            add_to_root_trie(root_trie, then_expr, policy_id, should_load_all)?;
-            add_to_root_trie(root_trie, else_expr, policy_id, should_load_all)?;
-            Ok(())
-        }
-        ExprKind::And { left, right } => {
-            add_to_root_trie(root_trie, left, policy_id, should_load_all)?;
-            add_to_root_trie(root_trie, right, policy_id, should_load_all)?;
-            Ok(())
-        }
-        ExprKind::Or { left, right } => {
-            add_to_root_trie(root_trie, left, policy_id, should_load_all)?;
-            add_to_root_trie(root_trie, right, policy_id, should_load_all)?;
-            Ok(())
-        }
+        } => Ok(entity_manifest_from_expr(test_expr, policy_id)?
+            .empty_paths()
+            .union(&entity_manifest_from_expr(then_expr, policy_id)?)
+            .union(&entity_manifest_from_expr(else_expr, policy_id)?)),
+        ExprKind::And { left, right }
+        | ExprKind::Or { left, right }
+        | ExprKind::BinaryApp {
+            op: BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul,
+            arg1: left,
+            arg2: right,
+        } => Ok(entity_manifest_from_expr(left, policy_id)?
+            .empty_paths()
+            .union(&entity_manifest_from_expr(right, policy_id)?)),
         ExprKind::UnaryApp { op, arg } => {
             match op {
-                UnaryOp::Not => add_to_root_trie(root_trie, arg, policy_id, should_load_all)?,
-                UnaryOp::Neg => add_to_root_trie(root_trie, arg, policy_id, should_load_all)?,
-            };
-            Ok(())
+                // both unary ops are on booleans, so they are simple
+                UnaryOp::Not | UnaryOp::Neg => {
+                    Ok(entity_manifest_from_expr(arg, policy_id)?.empty_paths())
+                }
+            }
         }
-        ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-            // Special case! Equality between records requires
-            // that we load all fields.
-            // This could be made more precise if we check the type.
-            BinaryOp::Eq => {
-                add_to_root_trie(root_trie, arg1, policy_id, true)?;
-                add_to_root_trie(root_trie, arg2, policy_id, true)?;
-                Ok(())
-            }
-            BinaryOp::In => {
-                // Recur normally on the rhs
-                add_to_root_trie(root_trie, arg2, policy_id, should_load_all)?;
+        ExprKind::BinaryApp {
+            op:
+                BinaryOp::Eq
+                | BinaryOp::In
+                | BinaryOp::Contains
+                | BinaryOp::ContainsAll
+                | BinaryOp::ContainsAny,
+            arg1,
+            arg2,
+        } => {
+            // TODO more elegant way to bind op?
+            let ExprKind::BinaryApp { op, .. } = expr.expr_kind() else {
+                panic!("Matched above");
+            };
 
-                // The lhs should be a datapath expression.
-                let mut flat_slice = get_expr_path(arg1, policy_id)?;
-                flat_slice.ancestors_required = true;
-                *root_trie = root_trie.union(&flat_slice.to_root_access_trie());
-                Ok(())
+            // First, find the data paths for each argument
+            let mut arg1_res = entity_manifest_from_expr(arg1, policy_id)?;
+            let mut arg2_res = entity_manifest_from_expr(arg2, policy_id)?;
+
+            let ty1 = arg1
+                .data()
+                .as_ref()
+                .expect("Expected annotated types after typechecking");
+            let ty2 = arg2
+                .data()
+                .as_ref()
+                .expect("Expected annotated types after typechecking");
+
+            // For containment operations, we need the ancestors
+            // of entities, since the semantics check them.
+            match op {
+                BinaryOp::ContainsAll | BinaryOp::ContainsAny | BinaryOp::Contains => {
+                    arg2_res = arg2_res.ancestors_required(ty2);
+                }
+                BinaryOp::In => {
+                    arg1_res = arg1_res.ancestors_required(ty1);
+                }
+                _ => (),
             }
-            BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
-                // Like equality, another special case for records.
-                add_to_root_trie(root_trie, arg1, policy_id, true)?;
-                add_to_root_trie(root_trie, arg2, policy_id, true)?;
-                Ok(())
-            }
-            BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                // These operators work on literals, so no special
-                // case is needed.
-                add_to_root_trie(root_trie, arg1, policy_id, should_load_all)?;
-                add_to_root_trie(root_trie, arg2, policy_id, should_load_all)?;
-                Ok(())
-            }
-        },
+
+            // Load all fields using `full_type_required`, since
+            // these operations do equality checks.
+            Ok(arg1_res
+                .full_type_required(ty1)
+                .union(&arg2_res.full_type_required(ty2)))
+        }
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions
             // don't take full structs as inputs.
             // If they did, we would need to use logic similar to the Eq binary operator.
+
+            let mut res = EntityManifestAnalysisResult::default();
+
             for arg in args.iter() {
-                add_to_root_trie(root_trie, arg, policy_id, should_load_all)?;
+                res = res.union(&entity_manifest_from_expr(arg, policy_id)?);
             }
-            Ok(())
+            Ok(res)
         }
-        ExprKind::Like { expr, pattern: _ } => {
-            add_to_root_trie(root_trie, expr, policy_id, should_load_all)?;
-            Ok(())
-        }
-        ExprKind::Is {
+        ExprKind::Like { expr, pattern: _ }
+        | ExprKind::Is {
             expr,
             entity_type: _,
         } => {
-            add_to_root_trie(root_trie, expr, policy_id, should_load_all)?;
-            Ok(())
+            // drop paths since boolean returned
+            Ok(entity_manifest_from_expr(expr, policy_id)?.empty_paths())
         }
         ExprKind::Set(contents) => {
+            let mut res = EntityManifestAnalysisResult::default();
+
+            // take union of all of the contents
             for expr in &**contents {
-                add_to_root_trie(root_trie, expr, policy_id, should_load_all)?;
+                let mut content = entity_manifest_from_expr(expr, policy_id)?;
+
+                res = res.union(&content);
             }
-            Ok(())
+
+            // now, wrap result in a set
+            res.resulting_paths = WrappedAccessPaths::SetLiteral(Box::new(res.resulting_paths));
+
+            Ok(res)
         }
         ExprKind::Record(content) => {
-            for expr in content.values() {
-                add_to_root_trie(root_trie, expr, policy_id, should_load_all)?;
+            let mut record_contents = HashMap::new();
+            let mut global_trie = RootAccessTrie::default();
+
+            for (key, child_expr) in content.iter() {
+                let res = entity_manifest_from_expr(child_expr, policy_id)?;
+                record_contents.insert(key.clone(), Box::new(res.resulting_paths));
+
+                global_trie = global_trie.union(&res.global_trie);
             }
-            Ok(())
+
+            Ok(EntityManifestAnalysisResult {
+                resulting_paths: WrappedAccessPaths::RecordLiteral(record_contents),
+                global_trie,
+            })
         }
-        ExprKind::HasAttr { expr, attr } => {
-            let mut flat_slice = get_expr_path(expr, policy_id)?;
-            flat_slice.path.push(attr.clone());
-            *root_trie = root_trie.union(&flat_slice.to_root_access_trie());
-            Ok(())
-        }
-        ExprKind::GetAttr { .. } => {
-            let flat_slice = get_expr_path(expr, policy_id)?;
-
-            // PANIC SAFETY: Successfuly typechecked expressions should always have annotated types.
-            #[allow(clippy::expect_used)]
-            let leaf_field = if should_load_all {
-                type_to_access_trie(
-                    expr.data()
-                        .as_ref()
-                        .expect("Typechecked expression missing type"),
-                )
-            } else {
-                AccessTrie::new()
-            };
-
-            *root_trie = root_trie.union(&flat_slice.to_root_access_trie_with_leaf(leaf_field));
-            Ok(())
-        }
-    }
-}
-
-/// Compute the full [`AccessTrie`] required for the type.
-fn type_to_access_trie(ty: &Type) -> AccessTrie {
-    match ty {
-        // if it's not an entity or record, slice ends here
-        Type::ExtensionType { .. }
-        | Type::Never
-        | Type::True
-        | Type::False
-        | Type::Primitive { .. }
-        | Type::Set { .. } => AccessTrie::new(),
-        Type::EntityOrRecord(record_type) => entity_or_record_to_access_trie(record_type),
-    }
-}
-
-/// Compute the full [`AccessTrie`] for the given entity or record type.
-fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
-    match ty {
-        EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
-            let mut fields = HashMap::new();
-            for (attr_name, attr_type) in attrs.iter() {
-                fields.insert(
-                    attr_name.clone(),
-                    Box::new(type_to_access_trie(&attr_type.attr_type)),
-                );
-            }
-            AccessTrie {
-                children: fields,
-                ancestors_required: false,
-                data: (),
-            }
-        }
-
-        EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
-            // no need to load data for entities, which are compared
-            // using ids
-            AccessTrie::new()
+        ExprKind::GetAttr { expr, attr } | ExprKind::HasAttr { expr, attr } => {
+            Ok(entity_manifest_from_expr(expr, policy_id)?.get_attr(attr))
         }
     }
 }
