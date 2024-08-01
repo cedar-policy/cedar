@@ -54,7 +54,7 @@ pub struct Request {
 pub struct RequestType {
     /// Principal type
     pub principal: EntityType,
-    /// Aciton type
+    /// Action type
     pub action: EntityUID,
     /// Resource type
     pub resource: EntityType,
