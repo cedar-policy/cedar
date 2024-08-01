@@ -17,6 +17,9 @@ miette = { version = "7.1.0", features = ["fancy"] }
 
 [features]
 integration-testing = []
+default = ["ipaddr", "decimal"]
+decimal = ["cedar-policy/decimal"]
+ipaddr = ["cedar-policy/ipaddr"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
