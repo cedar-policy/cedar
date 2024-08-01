@@ -49,7 +49,7 @@ pub struct Request {
     pub(crate) context: Option<Context>,
 }
 
-/// Represents the principal, action, and resource types.
+/// Represents the principal type, resource type, and action UID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct RequestType {
     /// Principal type
