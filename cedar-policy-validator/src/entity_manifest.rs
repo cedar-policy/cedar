@@ -164,7 +164,7 @@ impl Diagnostic for FailedAnalysisError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
-            "Entity slicing failed to analyze expression: {} operators are not allowed before accessing record or entity attributes.",
+            "failed to compute entity manifest: {} operators are not allowed before accessing record or entity attributes",
             self.expr_kind.operator_description()
         )))
     }
