@@ -52,7 +52,6 @@ pub struct JsonTest {
     pub schema: String,
     /// Whether the given policies are expected to pass the validator with this
     /// schema, or not
-    #[serde(rename = "ShouldValidate")]
     pub should_validate: bool,
     /// Requests to perform on that data, along with their expected results
     /// Alias for backwards compatibility
