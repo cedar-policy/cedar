@@ -13,11 +13,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: 4.0
 
 ### Added
-- A new experimental API (`compute_entity_manifest`)
+- Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a 
-  Cedar request. Entity Manifests improve Cedar performance dramatically
-  in a safe way.
+  Cedar request.
 - JSON representation for Policy Sets, along with methods like
   `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
   resolving #549)

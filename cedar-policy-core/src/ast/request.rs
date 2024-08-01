@@ -205,9 +205,9 @@ impl Request {
     /// Returns `None` if the request is not fully concrete.
     pub fn to_request_type(&self) -> Option<RequestType> {
         Some(RequestType {
-            principal: self.principal.uid()?.clone().components().0,
+            principal: self.principal.uid()?.entity_type().clone(),
             action: self.action.uid()?.clone(),
-            resource: self.resource().uid()?.clone().components().0,
+            resource: self.resource().uid()?.entity_type().clone(),
         })
     }
 }
