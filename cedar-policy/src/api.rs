@@ -4282,7 +4282,7 @@ action CreateList in Create appliesTo {
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests
-/// for each action type.
+/// for each action.
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "entity-manifest")]
 pub fn compute_entity_manifest(
