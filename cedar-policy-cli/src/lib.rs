@@ -104,6 +104,8 @@ pub enum Commands {
     Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
+    /// Partially evaluate an authorization request
+    PartiallyAuthorize(PartiallyAuthorizeArgs),
 }
 
 #[derive(Args, Debug)]
@@ -225,6 +227,31 @@ pub struct RequestArgs {
     pub request_validation: bool,
 }
 
+#[cfg(feature = "partial-eval")]
+/// This struct contains the arguments that together specify a request.
+#[derive(Args, Debug)]
+pub struct PartialRequestArgs {
+    /// Principal for the request, e.g., User::"alice"
+    #[arg(short = 'l', long)]
+    pub principal: Option<String>,
+    /// Action for the request, e.g., Action::"view"
+    #[arg(short, long)]
+    pub action: Option<String>,
+    /// Resource for the request, e.g., File::"myfile.txt"
+    #[arg(short, long)]
+    pub resource: Option<String>,
+    /// File containing a JSON object representing the context for the request.
+    /// Should be a (possibly empty) map from keys to values.
+    #[arg(short, long = "context", value_name = "FILE")]
+    pub context_json_file: Option<String>,
+    /// File containing a JSON object representing the entire request. Must have
+    /// fields "principal", "action", "resource", and "context", where "context"
+    /// is a (possibly empty) map from keys to values. This option replaces
+    /// --principal, --action, etc.
+    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context_json_file"])]
+    pub request_json_file: Option<String>,
+}
+
 impl RequestArgs {
     /// Turn this `RequestArgs` into the appropriate `Request` object
     ///
@@ -326,6 +353,90 @@ impl RequestArgs {
     }
 }
 
+#[cfg(feature = "partial-eval")]
+impl PartialRequestArgs {
+    fn get_request(&self) -> Result<Request> {
+        let mut builder = RequestBuilder::default();
+        let qjson: PartialRequestJSON = match self.request_json_file.as_ref() {
+            Some(jsonfile) => {
+                let jsonstring = std::fs::read_to_string(jsonfile)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("failed to open request-json file {jsonfile}"))?;
+                serde_json::from_str(&jsonstring)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?
+            }
+            None => PartialRequestJSON {
+                principal: self.principal.clone(),
+                action: self.action.clone(),
+                resource: self.resource.clone(),
+                context: self
+                    .context_json_file
+                    .as_ref()
+                    .map(|jsonfile| {
+                        let jsonstring = std::fs::read_to_string(jsonfile)
+                            .into_diagnostic()
+                            .wrap_err_with(|| {
+                                format!("failed to open context-json file {jsonfile}")
+                            })?;
+                        serde_json::from_str(&jsonstring)
+                            .into_diagnostic()
+                            .wrap_err_with(|| {
+                                format!("failed to parse context-json file {jsonfile}")
+                            })
+                    })
+                    .transpose()?,
+            },
+        };
+
+        if let Some(principal) = qjson
+            .principal
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse principal {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.principal(principal);
+        }
+
+        if let Some(action) = qjson
+            .action
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.action(action);
+        }
+
+        if let Some(resource) = qjson
+            .resource
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse resource {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.resource(resource);
+        }
+
+        if let Some(context) = qjson
+            .context
+            .map(|json| {
+                Context::from_json_value(json.clone(), None)
+                    .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
+            })
+            .transpose()?
+        {
+            builder = builder.context(context);
+        }
+
+        Ok(builder.build())
+    }
+}
+
 /// This struct contains the arguments that together specify an input policy or policy set.
 #[derive(Args, Debug)]
 pub struct PoliciesArgs {
@@ -381,6 +492,27 @@ pub struct AuthorizeArgs {
     #[arg(short, long)]
     pub timing: bool,
 }
+
+#[cfg(feature = "partial-eval")]
+#[derive(Args, Debug)]
+pub struct PartiallyAuthorizeArgs {
+    /// Request args (incorporated by reference)
+    #[command(flatten)]
+    pub request: PartialRequestArgs,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// File containing JSON representation of the Cedar entity hierarchy
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
+    /// Time authorization and report timing information
+    #[arg(short, long)]
+    pub timing: bool,
+}
+
+#[cfg(not(feature = "partial-eval"))]
+#[derive(Debug, Args)]
+pub struct PartiallyAuthorizeArgs;
 
 #[derive(Args, Debug)]
 pub struct VisualizeArgs {
@@ -487,6 +619,20 @@ struct RequestJSON {
     context: serde_json::Value,
 }
 
+#[cfg(feature = "partial-eval")]
+/// This struct is the serde structure expected for --request-json
+#[derive(Deserialize)]
+pub(self) struct PartialRequestJSON {
+    /// Principal for the request
+    pub(self) principal: Option<String>,
+    /// Action for the request
+    pub(self) action: Option<String>,
+    /// Resource for the request
+    pub(self) resource: Option<String>,
+    /// Context for the request
+    pub(self) context: Option<serde_json::Value>,
+}
+
 #[derive(Args, Debug)]
 pub struct EvaluateArgs {
     /// Request args (incorporated by reference)
@@ -522,6 +668,10 @@ pub enum CedarExitCode {
     // The command completed successfully, but it detected a validation failure
     // in the given schema and policies.
     ValidationFailure,
+    #[cfg(feature = "partial-eval")]
+    // The command completed successfully with an incomplete result, e.g.,
+    // partial authorization result is not determining.
+    Unknown,
 }
 
 impl Termination for CedarExitCode {
@@ -531,6 +681,8 @@ impl Termination for CedarExitCode {
             CedarExitCode::Failure => ExitCode::FAILURE,
             CedarExitCode::AuthorizeDeny => ExitCode::from(2),
             CedarExitCode::ValidationFailure => ExitCode::from(3),
+            #[cfg(feature = "partial-eval")]
+            CedarExitCode::Unknown => ExitCode::SUCCESS,
         }
     }
 }
@@ -1081,6 +1233,54 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     }
 }
 
+#[cfg(not(feature = "partial-eval"))]
+pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
+    {
+        eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
+        return CedarExitCode::Failure;
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
+    println!();
+    let ans = execute_partial_request(
+        &args.request,
+        &args.policies,
+        &args.entities_file,
+        args.timing,
+    );
+    match ans {
+        Ok(ans) => {
+            let status = match ans.decision() {
+                Some(Decision::Allow) => {
+                    println!("ALLOW");
+                    CedarExitCode::Success
+                }
+                Some(Decision::Deny) => {
+                    println!("DENY");
+                    CedarExitCode::AuthorizeDeny
+                }
+                None => {
+                    println!("UNKNOWN");
+                    println!("All policy residuals:");
+                    for p in ans.nontrivial_residuals() {
+                        println!("{p}");
+                    }
+                    CedarExitCode::Unknown
+                }
+            };
+            status
+        }
+        Err(errs) => {
+            for err in errs {
+                println!("{err:?}");
+            }
+            CedarExitCode::Failure
+        }
+    }
+}
+
 /// Load an `Entities` object from the given JSON filename and optional schema.
 fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<Entities> {
     match std::fs::OpenOptions::new()
@@ -1297,6 +1497,50 @@ fn execute_request(
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();
             let ans = authorizer.is_authorized(&request, &policies, &entities);
+            let auth_dur = auth_start.elapsed();
+            if compute_duration {
+                println!(
+                    "Authorization Time (micro seconds) : {}",
+                    auth_dur.as_micros()
+                );
+            }
+            Ok(ans)
+        }
+        Ok(_) => Err(errs),
+        Err(e) => {
+            errs.push(e.wrap_err("failed to parse request"));
+            Err(errs)
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+fn execute_partial_request(
+    request: &PartialRequestArgs,
+    policies: &PoliciesArgs,
+    entities_filename: impl AsRef<Path>,
+    compute_duration: bool,
+) -> Result<PartialResponse, Vec<Report>> {
+    let mut errs = vec![];
+    let policies = match policies.get_policy_set() {
+        Ok(pset) => pset,
+        Err(e) => {
+            errs.push(e);
+            PolicySet::new()
+        }
+    };
+    let entities = match load_entities(entities_filename, None) {
+        Ok(entities) => entities,
+        Err(e) => {
+            errs.push(e);
+            Entities::empty()
+        }
+    };
+    match request.get_request() {
+        Ok(request) if errs.is_empty() => {
+            let authorizer = Authorizer::new();
+            let auth_start = Instant::now();
+            let ans = authorizer.is_authorized_partial(&request, &policies, &entities);
             let auth_dur = auth_start.elapsed();
             if compute_duration {
                 println!(

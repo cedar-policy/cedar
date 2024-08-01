@@ -27,6 +27,7 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
+- Partial authorization to CLI (#1082)
 
 ### Changed
 
