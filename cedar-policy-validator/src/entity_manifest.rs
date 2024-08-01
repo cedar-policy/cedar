@@ -523,7 +523,7 @@ fn add_to_root_trie(
                 AccessTrie::new()
             };
 
-            *root_trie = flat_slice.to_root_access_trie_with_leaf(leaf_field);
+            *root_trie = root_trie.union(&flat_slice.to_root_access_trie_with_leaf(leaf_field));
             Ok(())
         }
     }
@@ -1082,6 +1082,131 @@ action BeSad appliesTo {
       },
       {
         "trie": [
+          [
+            {
+              "Var": "principal"
+            },
+            {
+              "children": [
+                [
+                  "metadata",
+                  {
+                    "children": [
+                      [
+                        "nickname",
+                        {
+                          "children": [],
+                          "ancestors_required": false
+                        }
+                      ],
+                      [
+                        "friends",
+                        {
+                          "children": [],
+                          "ancestors_required": false
+                        }
+                      ]
+                    ],
+                    "ancestors_required": false
+                  }
+                ]
+              ],
+              "ancestors_required": false
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}"#;
+        let expected_manifest = serde_json::from_str(expected).unwrap();
+        assert_eq!(entity_manifest, expected_manifest);
+    }
+
+    #[test]
+    fn test_entity_manifest_struct_equality_left_right_different() {
+        let mut pset = PolicySet::new();
+        // we need to load all of the metadata, not just nickname
+        // no need to load actual name
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    principal.metadata == resource.metadata
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let schema = ValidatorSchema::from_str_natural(
+            "
+entity User = {
+  name: String,
+  metadata: {
+    friends: Set<String>,
+    nickname: String,
+  },
+};
+
+entity Document;
+
+action Hello appliesTo {
+  principal: [User],
+  resource: [User]
+};
+        ",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let expected = r#"
+{
+  "per_action": [
+    [
+      {
+        "principal": "User",
+        "action": {
+          "ty": "Action",
+          "eid": "Hello"
+        },
+        "resource": "User"
+      },
+      {
+        "trie": [
+          [
+            {
+              "Var": "resource"
+            },
+            {
+              "children": [
+                [
+                  "metadata",
+                  {
+                    "children": [
+                      [
+                        "friends",
+                        {
+                          "children": [],
+                          "ancestors_required": false
+                        }
+                      ],
+                      [
+                        "nickname",
+                        {
+                          "children": [],
+                          "ancestors_required": false
+                        }
+                      ]
+                    ],
+                    "ancestors_required": false
+                  }
+                ]
+              ],
+              "ancestors_required": false
+            }
+          ],
           [
             {
               "Var": "principal"
