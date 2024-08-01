@@ -4441,6 +4441,7 @@ mod issue_994 {
     }
 }
 
+#[cfg(feature = "partial-eval")]
 #[cfg(test)]
 mod issue_1061 {
     use crate::{est, parser};
