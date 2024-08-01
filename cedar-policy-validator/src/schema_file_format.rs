@@ -1078,6 +1078,7 @@ pub(crate) mod static_names {
         pub(crate) static ref SET_NAME : RawName = RawName::parse_unqualified_name("Set").expect("valid identifier");
         pub(crate) static ref RECORD_NAME : RawName = RawName::parse_unqualified_name("Record").expect("valid identifier");
         pub(crate) static ref ENTITY_NAME : RawName = RawName::parse_unqualified_name("Entity").expect("valid identifier");
+        pub(crate) static ref ENTITY_OR_COMMON_NAME : RawName = RawName::parse_unqualified_name("EntityOrCommon").expect("valid identifier");
         pub(crate) static ref EXTENSION_NAME : RawName = RawName::parse_unqualified_name("Extension").expect("valid identifier");
     }
 }
@@ -1224,6 +1225,31 @@ impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
                                     .map_err(|err| {
                                         serde::de::Error::custom(format!(
                                             "invalid entity type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            }))
+                        }
+                    }
+                    "EntityOrCommon" => {
+                        if remaining_fields.is_empty() {
+                            // must be referring to a common type named `EntityOrCommon`
+                            Ok(SchemaType::CommonTypeRef {
+                                type_name: N::from(ENTITY_OR_COMMON_NAME.clone()),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            )?;
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
+                            #[allow(clippy::unwrap_used)]
+                            let name = name.unwrap()?;
+                            Ok(SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
+                                type_name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity or common type `{name}`: {err}"
                                         ))
                                     })?
                                     .into(),
