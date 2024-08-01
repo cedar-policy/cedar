@@ -19,10 +19,7 @@ use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeSet, HashMap},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
 // Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
 // `*_json_str` APIs will correctly error if the input JSON string contains
@@ -353,18 +350,29 @@ impl Template {
     pub fn get_valid_request_envs(
         self,
         s: Schema,
-    ) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), miette::Report> {
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
         let t = self.parse(None)?;
         let (s, _) = s.parse()?;
-        let mut principals = BTreeSet::new();
-        let mut actions = BTreeSet::new();
-        let mut resources = BTreeSet::new();
+        let mut principals = Vec::new();
+        let mut actions = Vec::new();
+        let mut resources = Vec::new();
         for env in t.get_valid_request_envs(&s) {
-            principals.insert(env.principal.to_string());
-            actions.insert(env.action.to_string());
-            resources.insert(env.resource.to_string());
+            principals.push(env.principal.to_string());
+            actions.push(env.action.to_string());
+            resources.push(env.resource.to_string());
         }
-        Ok((principals, actions, resources))
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
     }
 }
 

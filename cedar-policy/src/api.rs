@@ -2307,7 +2307,7 @@ impl Template {
     /// Get valid [`RequestEnv`]s.
     /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
     /// that satisfy it.
-    pub fn get_valid_request_envs(&self, s: &Schema) -> BTreeSet<RequestEnv> {
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         let tc = Typechecker::new(
             &s.0,
             cedar_policy_validator::ValidationMode::default(),
@@ -2317,12 +2317,13 @@ impl Template {
             .into_iter()
             .filter_map(|(env, pc)| {
                 if matches!(pc, PolicyCheck::Success(_)) {
-                    Some(env.into())
+                    Some(RequestEnv::from(env))
                 } else {
                     None
                 }
             })
-            .collect()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
     }
 }
 

@@ -475,7 +475,7 @@ fn get_valid_request_pars_tests() {
     .unwrap()
     .0;
     assert_eq!(
-        policy.get_valid_request_envs(&schema),
+        BTreeSet::from_iter(policy.get_valid_request_envs(&schema)),
         BTreeSet::from_iter([
             RequestEnv::new(
                 "NS::E1".parse().unwrap(),
@@ -503,5 +503,8 @@ fn get_valid_request_pars_tests() {
     "#,
     )
     .unwrap();
-    assert_eq!(policy.get_valid_request_envs(&schema), BTreeSet::new(),);
+    assert_eq!(
+        BTreeSet::from_iter(policy.get_valid_request_envs(&schema)),
+        BTreeSet::new(),
+    );
 }

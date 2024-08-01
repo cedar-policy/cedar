@@ -27,9 +27,9 @@ pub enum GetValidRequestEnvsResult {
 pub fn get_valid_request_envs(t: Template, s: Schema) -> GetValidRequestEnvsResult {
     match t.get_valid_request_envs(s) {
         Ok((principals, actions, resources)) => GetValidRequestEnvsResult::Success {
-            principals: principals.into_iter().collect(),
-            actions: actions.into_iter().collect(),
-            resources: resources.into_iter().collect(),
+            principals: principals.collect(),
+            actions: actions.collect(),
+            resources: resources.collect(),
         },
         Err(r) => GetValidRequestEnvsResult::Failure {
             error: r.to_string(),
