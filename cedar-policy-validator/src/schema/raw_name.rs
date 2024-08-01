@@ -199,7 +199,7 @@ pub struct ConditionalName {
     /// All of the contained `InternalName`s must be fully-qualified.
     ///
     /// Typical example: In
-    /// ```ignore
+    /// ```text
     /// namespace NS { ... some reference to Foo ... }
     /// ```
     /// `Foo` is a `ConditionalName` with `possibilities = [NS::Foo, Foo]`.
