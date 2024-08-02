@@ -356,7 +356,7 @@ mod test {
         .expect("Expected valid schema.");
         let validator = Validator::new(schema);
 
-        let t = parser::parse_policy_template(
+        let t = parser::parse_policy_or_template(
             Some(PolicyID::from_string("template")),
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )

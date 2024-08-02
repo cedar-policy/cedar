@@ -141,10 +141,14 @@ pub enum ToASTErrorKind {
     /// Returned when a template is encountered but a static policy is expected
     #[error("expected a static policy, got a template containing the slot {}", slot.id)]
     #[diagnostic(help("try removing the template slot(s) from this policy"))]
-    UnexpectedTemplate {
+    ExpectedStaticPolicy {
         /// Slot that was found (which is not valid in a static policy)
         slot: ast::Slot,
     },
+    /// Returned when a static policy is encountered but a template is expected
+    #[error("expected a template, got a static policy")]
+    #[diagnostic(help("a template should include slot(s) `?principal` or `?resource`"))]
+    ExpectedTemplate,
     /// Returned when we attempt to parse a policy or template with duplicate or
     /// conflicting annotations
     #[error("duplicate annotation: @{0}")]

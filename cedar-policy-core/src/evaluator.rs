@@ -910,7 +910,7 @@ pub mod test {
 
     use crate::{
         entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
-        parser::{self, parse_expr, parse_policy_template, parse_policyset},
+        parser::{self, parse_expr, parse_policy_or_template, parse_policyset},
     };
 
     use cool_asserts::assert_matches;
@@ -4222,7 +4222,7 @@ pub mod test {
 
     #[test]
     fn template_interp() {
-        let t = parse_policy_template(
+        let t = parse_policy_or_template(
             Some(PolicyID::from_string("template")),
             r#"permit(principal == ?principal, action, resource);"#,
         )

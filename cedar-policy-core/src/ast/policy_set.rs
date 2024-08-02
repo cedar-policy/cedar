@@ -517,7 +517,7 @@ mod test {
         )
         .expect("Failed to parse");
         pset.add_static(p1).expect("Failed to add!");
-        let template = parser::parse_policy_template(
+        let template = parser::parse_policy_or_template(
             Some(PolicyID::from_string("t")),
             "permit(principal == ?principal, action, resource);",
         )
@@ -557,7 +557,7 @@ mod test {
             .expect("Adding static policy in Policy form should succeed");
 
         let template = Arc::new(
-            parser::parse_policy_template(
+            parser::parse_policy_or_template(
                 Some(PolicyID::from_string("t")),
                 "permit(principal == ?principal, action, resource);",
             )
@@ -605,7 +605,7 @@ mod test {
         );
 
         let template2 = Arc::new(
-            parser::parse_policy_template(
+            parser::parse_policy_or_template(
                 Some(PolicyID::from_string("t")),
                 "forbid(principal, action, resource == ?resource);",
             )
@@ -654,7 +654,7 @@ mod test {
 
     #[test]
     fn template_filtering() {
-        let template = parser::parse_policy_template(
+        let template = parser::parse_policy_or_template(
             Some(PolicyID::from_string("template")),
             "permit(principal == ?principal, action, resource);",
         )

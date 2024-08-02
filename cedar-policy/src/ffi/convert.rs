@@ -19,7 +19,7 @@
 //! file.
 
 use super::utils::JsonValueWithNoDuplicateKeys;
-use super::{DetailedError, Schema, Template};
+use super::{DetailedError, Policy, Schema, Template};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -27,12 +27,22 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// Return the Cedar (textual) representation of a policy or template.
-///
-/// Note that the [`Template`] type can represent both static policies and
-/// policy templates.
+/// Return the Cedar (textual) representation of a policy.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToText"))]
-pub fn policy_to_text(template: Template) -> PolicyToTextAnswer {
+pub fn policy_to_text(policy: Policy) -> PolicyToTextAnswer {
+    match policy.parse(None) {
+        Ok(policy) => PolicyToTextAnswer::Success {
+            text: policy.to_string(),
+        },
+        Err(e) => PolicyToTextAnswer::Failure {
+            errors: vec![e.into()],
+        },
+    }
+}
+
+/// Return the Cedar (textual) representation of a template.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "templateToText"))]
+pub fn template_to_text(template: Template) -> PolicyToTextAnswer {
     match template.parse(None) {
         Ok(template) => PolicyToTextAnswer::Success {
             text: template.to_string(),
@@ -43,12 +53,25 @@ pub fn policy_to_text(template: Template) -> PolicyToTextAnswer {
     }
 }
 
-/// Return the JSON representation of a policy or template.
-///
-/// Note that the [`Template`] type can represent both static policies and
-/// policy templates.
+/// Return the JSON representation of a policy.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToJson"))]
-pub fn policy_to_json(template: Template) -> PolicyToJsonAnswer {
+pub fn policy_to_json(policy: Policy) -> PolicyToJsonAnswer {
+    match policy.parse(None) {
+        Ok(policy) => match policy.to_json() {
+            Ok(json) => PolicyToJsonAnswer::Success { json: json.into() },
+            Err(e) => PolicyToJsonAnswer::Failure {
+                errors: vec![miette::Report::new(e).into()],
+            },
+        },
+        Err(e) => PolicyToJsonAnswer::Failure {
+            errors: vec![e.into()],
+        },
+    }
+}
+
+/// Return the JSON representation of a template.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToJson"))]
+pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
     match template.parse(None) {
         Ok(template) => match template.to_json() {
             Ok(json) => PolicyToJsonAnswer::Success { json: json.into() },
@@ -120,7 +143,7 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
     }
 }
 
-/// Result of converting a policy to the Cedar format
+/// Result of converting a policy or template to the Cedar format
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
@@ -139,7 +162,7 @@ pub enum PolicyToTextAnswer {
     },
 }
 
-/// Result of converting a policy to JSON
+/// Result of converting a policy or template to JSON
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
@@ -216,7 +239,7 @@ mod test {
             permit(principal, action, resource) 
             when { principal has "Email" && principal.Email == "a@a.com" };
         "#;
-        let result = policy_to_json(Template::Human(text.into()));
+        let result = policy_to_json(Policy::Human(text.into()));
         let expected = json!({
             "effect": "permit",
             "principal": {
@@ -272,11 +295,11 @@ mod test {
             permit(principal, action, resource) 
             when { principal has "Email" && principal.Email == };
         "#;
-        let result = policy_to_json(Template::Human(text.into()));
+        let result = policy_to_json(Policy::Human(text.into()));
         assert_matches!(result, PolicyToJsonAnswer::Failure { errors } => {
             assert_exactly_one_error(
                 &errors,
-                "failed to parse template from string: unexpected token `}`",
+                "failed to parse policy from string: unexpected token `}`",
                 None,
             );
         });
@@ -305,11 +328,94 @@ mod test {
             },
             "conditions": []
         });
-        let result = policy_to_text(Template::Json(json.into()));
+        let result = policy_to_text(Policy::Json(json.into()));
         assert_matches!(result, PolicyToTextAnswer::Success { text } => {
             assert_eq!(
                 &text,
                 "permit(principal in UserGroup::\"DeathRowRecords\", action == Action::\"pop\", resource);"
+            );
+        });
+    }
+
+    #[test]
+    fn test_template_to_json() {
+        let text = r#"
+            permit(principal in ?principal, action, resource);
+        "#;
+        let result = template_to_json(Template::Human(text.into()));
+        let expected = json!({
+            "effect": "permit",
+            "principal": {
+                "op": "in",
+                "slot": "?principal"
+            },
+            "action": {
+                "op": "All"
+            },
+            "resource": {
+                "op": "All"
+            },
+            "conditions": []
+        });
+        assert_matches!(result, PolicyToJsonAnswer::Success { json } =>
+          assert_eq!(json, expected.into())
+        );
+    }
+
+    #[test]
+    fn test_template_to_text() {
+        let json = json!({
+            "effect": "permit",
+            "principal": {
+                "op": "All"
+            },
+            "action": {
+                "op": "All"
+            },
+            "resource": {
+                "op": "in",
+                "slot": "?resource"
+            },
+            "conditions": []
+        });
+        let result = template_to_text(Template::Json(json.into()));
+        assert_matches!(result, PolicyToTextAnswer::Success { text } => {
+            assert_eq!(
+                &text,
+                "permit(principal, action, resource in ?resource);"
+            );
+        });
+    }
+
+    #[test]
+    fn test_template_to_text_error() {
+        let json = json!({
+            "effect": "permit",
+            "action": {
+                "entity": {
+                    "id": "pop",
+                    "type": "Action"
+                },
+                "op": "=="
+            },
+            "principal": {
+                "entity": {
+                    "id": "DeathRowRecords",
+                    "type": "UserGroup"
+                },
+                "op": "in"
+            },
+            "resource": {
+                "op": "All"
+            },
+            "conditions": []
+        });
+        let result = template_to_text(Template::Json(json.into()));
+        assert_matches!(result, PolicyToTextAnswer::Failure { errors } => {
+            assert_exactly_one_error(
+                &errors,
+                "failed to parse template from JSON: error deserializing a policy/template from JSON: tried to convert JSON representing a static policy to a template",
+                None,
             );
         });
     }

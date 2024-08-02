@@ -338,25 +338,7 @@ mod scope_constraints_tests {
 
     #[test]
     fn principal_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Any);
         let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal == T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal in T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::In(euid.clone())
-        );
         let map: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), euid.clone())).collect();
         let p = link(
@@ -375,68 +357,11 @@ mod scope_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::Eq(euid.clone())
         );
-
-        let p = link(
-            "permit(principal is T in T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
-        );
-        let p = link("permit(principal is T,action,resource);", HashMap::new());
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap())
-        );
-        let p = link("permit(principal is T in ?principal,action,resource);", map);
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid)
-        );
-    }
-
-    #[test]
-    fn action_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.action_constraint(), ActionConstraint::Any);
-        let euid = EntityUid::from_strs("Action", "a");
-        let p = link(
-            "permit(principal,action == Action::\"a\",resource);",
-            HashMap::new(),
-        );
-        assert_eq!(p.action_constraint(), ActionConstraint::Eq(euid.clone()));
-        let p = link(
-            "permit(principal,action in [Action::\"a\",Action::\"b\"],resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.action_constraint(),
-            ActionConstraint::In(vec![euid, EntityUid::from_strs("Action", "b"),])
-        );
     }
 
     #[test]
     fn resource_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Any);
         let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal,action,resource == T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal,action,resource in T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::In(euid.clone())
-        );
         let map: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::resource(), euid.clone())).collect();
         let p = link(
@@ -455,20 +380,6 @@ mod scope_constraints_tests {
             p.resource_constraint(),
             ResourceConstraint::Eq(euid.clone())
         );
-
-        let p = link(
-            "permit(principal,action,resource is T in T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
-        );
-        let p = link("permit(principal,action,resource is T);", HashMap::new());
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Is(EntityTypeName::from_str("T").unwrap())
-        );
         let p = link("permit(principal,action,resource is T in ?resource);", map);
         assert_eq!(
             p.resource_constraint(),
@@ -476,6 +387,7 @@ mod scope_constraints_tests {
         );
     }
 
+    #[track_caller]
     fn link(src: &str, values: HashMap<SlotId, EntityUid>) -> Policy {
         let mut pset = PolicySet::new();
         let template = Template::parse(Some(PolicyId::new("Id")), src).unwrap();
@@ -2959,27 +2871,12 @@ mod schema_based_parsing_tests {
     #[test]
     fn template_principal_constraints() {
         let src = r"
-            permit(principal, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
-
-        let src = r"
             permit(principal == ?principal, action, resource);
         ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
             TemplatePrincipalConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal == A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
         let src = r"
@@ -2991,23 +2888,6 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::In(None)
         );
 
-        let src = r#"
-            permit(principal in A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r"
-            permit(principal is A, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Is(EntityTypeName::from_str("A").unwrap())
-        );
         let src = r"
             permit(principal is A in ?principal, action, resource);
         ";
@@ -3016,42 +2896,31 @@ mod schema_based_parsing_tests {
             t.principal_constraint(),
             TemplatePrincipalConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
         );
-        let src = r#"
-            permit(principal is A in A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::IsIn(
-                EntityTypeName::from_str("A").unwrap(),
-                Some(EntityUid::from_strs("A", "a"))
-            )
-        );
     }
 
     #[test]
-    fn template_action_constraints() {
+    fn static_action_constraints() {
         let src = r"
             permit(principal, action, resource);
         ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.action_constraint(), ActionConstraint::Any);
+        let p = Policy::parse(None, src).unwrap();
+        assert_eq!(p.action_constraint(), ActionConstraint::Any);
 
         let src = r#"
             permit(principal, action == Action::"A", resource);
         "#;
-        let t = Template::parse(None, src).unwrap();
+        let p = Policy::parse(None, src).unwrap();
         assert_eq!(
-            t.action_constraint(),
+            p.action_constraint(),
             ActionConstraint::Eq(EntityUid::from_strs("Action", "A"))
         );
 
         let src = r#"
             permit(principal, action in [Action::"A", Action::"B"], resource);
         "#;
-        let t = Template::parse(None, src).unwrap();
+        let p = Policy::parse(None, src).unwrap();
         assert_eq!(
-            t.action_constraint(),
+            p.action_constraint(),
             ActionConstraint::In(vec![
                 EntityUid::from_strs("Action", "A"),
                 EntityUid::from_strs("Action", "B")
@@ -3062,27 +2931,12 @@ mod schema_based_parsing_tests {
     #[test]
     fn template_resource_constraints() {
         let src = r"
-            permit(principal, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
-
-        let src = r"
             permit(principal, action, resource == ?resource);
         ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
             TemplateResourceConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal, action, resource == A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
         let src = r"
@@ -3094,23 +2948,6 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::In(None)
         );
 
-        let src = r#"
-            permit(principal, action, resource in A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r"
-            permit(principal, action, resource is A);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Is(EntityTypeName::from_str("A").unwrap())
-        );
         let src = r"
             permit(principal, action, resource is A in ?resource);
         ";
@@ -3118,17 +2955,6 @@ mod schema_based_parsing_tests {
         assert_eq!(
             t.resource_constraint(),
             TemplateResourceConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
-        );
-        let src = r#"
-            permit(principal, action, resource is A in A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::IsIn(
-                EntityTypeName::from_str("A").unwrap(),
-                Some(EntityUid::from_strs("A", "a"))
-            )
         );
     }
 
@@ -3647,7 +3473,10 @@ mod partial_schema {
 }
 
 mod template_tests {
+    use std::str::FromStr;
+
     use crate::Template;
+    use cedar_policy_core::test_utils::*;
 
     #[test]
     fn test_policy_template_to_json() {
@@ -3668,6 +3497,38 @@ mod template_tests {
             template.unwrap().to_string(),
             "permit(principal == ?principal, action, resource in ?resource);".to_string()
         );
+    }
+
+    #[track_caller]
+    fn assert_not_a_template(src: &str) {
+        let e = Template::from_str(src).unwrap_err();
+        expect_err(
+            src,
+            &miette::Report::new(e),
+            &ExpectedErrorMessageBuilder::error("expected a template, got a static policy")
+                .help("a template should include slot(s) `?principal` or `?resource`")
+                .exactly_one_underline(src)
+                .build(),
+        )
+    }
+
+    #[test]
+    fn test_static_policy_as_template() {
+        // Can't parse static policies as a `Template`s
+        assert_not_a_template("permit(principal == User::\"alice\", action, resource is Photo);");
+        assert_not_a_template("permit(principal,action,resource);");
+        assert_not_a_template("permit(principal == T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal in T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal is T in T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal is T,action,resource);");
+        assert_not_a_template("permit(principal,action == Action::\"a\",resource);");
+        assert_not_a_template(
+            "permit(principal,action in [Action::\"a\",Action::\"b\"],resource);",
+        );
+        assert_not_a_template("permit(principal,action,resource == T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource in T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource is T in T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource is T);");
     }
 }
 

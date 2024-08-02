@@ -81,6 +81,9 @@ Cedar Language Version: 4.0
   human-readable Cedar policies. (#943, resolving #925)
 - (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
+- `Template` parsing functions (e.g., `Template::parse()`) will now fail when
+  passed a static policy as input. Use the `Policy` parsing functions instead.
+  (#??, resolving #1095)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3

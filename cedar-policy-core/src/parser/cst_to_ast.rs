@@ -169,19 +169,19 @@ impl Node<Option<cst::Policy>> {
             Ok(Ok(p)) => Ok(p),
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
-                ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
+                ToASTErrorKind::ExpectedStaticPolicy { slot: slot.clone() },
                 slot.loc.unwrap_or_else(|| self.loc.clone()),
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
-            // `SlotsInConditionClause` also add an `UnexpectedTemplate` error.
+            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
             Err(mut errs) => {
                 let new_errs = errs
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
                             ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::UnexpectedTemplate {
+                                ToASTErrorKind::ExpectedStaticPolicy {
                                     slot: inner.slot.clone(),
                                 },
                                 err.source_loc().clone(),
@@ -2958,7 +2958,7 @@ mod tests {
     #[test]
     fn unescape_err_positions() {
         let assert_invalid_escape = |p_src, underline| {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the input `\\q` is not a valid escape").exactly_one_underline(underline).build());
             });
         };
@@ -3555,7 +3555,7 @@ mod tests {
                 ResourceConstraint::is_entity_type_in_slot(Arc::new("Folder".parse().unwrap())),
             ),
         ] {
-            let policy = parse_policy_template(None, src).unwrap();
+            let policy = parse_policy_or_template(None, src).unwrap();
             assert_eq!(policy.principal_constraint(), &p);
             assert_eq!(policy.action_constraint(), &a);
             assert_eq!(policy.resource_constraint(), &r);
@@ -3815,7 +3815,7 @@ mod tests {
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &expected);
             });
         }
@@ -4034,11 +4034,11 @@ mod tests {
         ];
 
         for (p_src, expected) in invalid_policies {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &expected);
             });
             let forbid_src = format!("forbid{}", &p_src[6..]);
-            assert_matches!(parse_policy_template(None, &forbid_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, &forbid_src), Err(e) => {
                 expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
             });
         }
@@ -4047,7 +4047,7 @@ mod tests {
     #[test]
     fn missing_scope_constraint() {
         let p_src = "permit();";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4058,7 +4058,7 @@ mod tests {
             );
         });
         let p_src = "permit(principal);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4069,7 +4069,7 @@ mod tests {
             );
         });
         let p_src = "permit(principal, action);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4084,7 +4084,7 @@ mod tests {
     #[test]
     fn invalid_scope_constraint() {
         let p_src = "permit(foo, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: foo",
                 ).help(
@@ -4092,7 +4092,7 @@ mod tests {
             ).exactly_one_underline("foo").build());
         });
         let p_src = "permit(foo::principal, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4102,7 +4102,7 @@ mod tests {
             );
         });
         let p_src = "permit(resource, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `resource` where the variable `principal` must be used",
                 ).help(
@@ -4111,7 +4111,7 @@ mod tests {
         });
 
         let p_src = "permit(principal, principal, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `action` must be used",
                 ).help(
@@ -4119,7 +4119,7 @@ mod tests {
             ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, if, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: if",
                 ).help(
@@ -4128,7 +4128,7 @@ mod tests {
         });
 
         let p_src = "permit(principal, action, like);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: like",
                 ).help(
@@ -4136,7 +4136,7 @@ mod tests {
             ).exactly_one_underline("like").build());
         });
         let p_src = "permit(principal, action, principal);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `resource` must be used",
                 ).help(
@@ -4144,7 +4144,7 @@ mod tests {
             ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, action, action);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `action` where the variable `resource` must be used",
                 ).help(
@@ -4156,7 +4156,7 @@ mod tests {
     #[test]
     fn invalid_scope_operator() {
         let p_src = r#"permit(principal > User::"alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the policy scope: >",
                 ).help(
@@ -4164,7 +4164,7 @@ mod tests {
             ).exactly_one_underline("principal > User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the action scope: !=",
                 ).help(
@@ -4172,7 +4172,7 @@ mod tests {
             ).exactly_one_underline("action != Action::\"view\"").build());
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the policy scope: <=",
                 ).help(
@@ -4180,7 +4180,7 @@ mod tests {
             ).exactly_one_underline("resource <= Folder::\"things\"").build());
         });
         let p_src = r#"permit(principal = User::"alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4188,7 +4188,7 @@ mod tests {
             ).exactly_one_underline("principal = User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action = Action::"act", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4196,7 +4196,7 @@ mod tests {
             ).exactly_one_underline("action = Action::\"act\"").build());
         });
         let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4208,7 +4208,7 @@ mod tests {
     #[test]
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
@@ -4216,7 +4216,7 @@ mod tests {
     #[test]
     fn scope_compare_to_string() {
         let p_src = r#"permit(principal == "alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"alice"`"#
             ).help(
@@ -4224,7 +4224,7 @@ mod tests {
             ).exactly_one_underline(r#""alice""#).build());
         });
         let p_src = r#"permit(principal in "bob_friends", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"bob_friends"`"#
             ).help(
@@ -4232,7 +4232,7 @@ mod tests {
             ).exactly_one_underline(r#""bob_friends""#).build());
         });
         let p_src = r#"permit(principal, action, resource in "jane_photos");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"jane_photos"`"#
             ).help(
@@ -4240,7 +4240,7 @@ mod tests {
             ).exactly_one_underline(r#""jane_photos""#).build());
         });
         let p_src = r#"permit(principal, action in ["view_actions"], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid, found literal `"view_actions"`"#
             ).help(
@@ -4252,7 +4252,7 @@ mod tests {
     #[test]
     fn scope_compare_to_name() {
         let p_src = r#"permit(principal == User, action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `User`"
             ).help(
@@ -4260,7 +4260,7 @@ mod tests {
             ).exactly_one_underline("User").build());
         });
         let p_src = r#"permit(principal in Group, action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Group`"
             ).help(
@@ -4268,7 +4268,7 @@ mod tests {
             ).exactly_one_underline("Group").build());
         });
         let p_src = r#"permit(principal, action, resource in Album);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Album`"
             ).help(
@@ -4276,7 +4276,7 @@ mod tests {
             ).exactly_one_underline("Album").build());
         });
         let p_src = r#"permit(principal, action == Action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid, found name `Action`"
             ).help(
@@ -4288,7 +4288,7 @@ mod tests {
     #[test]
     fn scope_and() {
         let p_src = r#"permit(principal == User::"alice" && principal in Group::"jane_friends", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `&&` expression"
             ).help(
@@ -4301,7 +4301,7 @@ mod tests {
     fn scope_or() {
         let p_src =
             r#"permit(principal == User::"alice" || principal == User::"bob", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `||` expression"
             ).help(
@@ -4313,7 +4313,7 @@ mod tests {
     #[test]
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
     }
@@ -4438,7 +4438,7 @@ mod tests {
     fn empty_clause() {
         #[track_caller]
         fn expect_empty_clause(policy: &str, clause: &str) {
-            assert_matches!(parse_policy_template(None, policy), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, policy), Err(e) => {
                 expect_err(policy, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     &format!("`{clause}` condition clause cannot be empty")
                 ).exactly_one_underline(&format!("{clause} {{}}")).build());
