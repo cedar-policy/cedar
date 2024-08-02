@@ -198,7 +198,9 @@ impl Policy {
     ) -> Result<ast::Template, FromJsonError> {
         let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
         if template.slots().count() == 0 {
-            Err(FromJsonError::PolicyToTemplate)
+            Err(FromJsonError::PolicyToTemplate(
+                parse_errors::ExpectedTemplate {},
+            ))
         } else {
             Ok(template)
         }
@@ -3215,8 +3217,8 @@ mod test {
                 expect_err(
                     "",
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"tried to convert JSON representing a template to a static policy"#)
-                        .source("found slot `?principal` where slots are not allowed")
+                    &ExpectedErrorMessageBuilder::error(r#"expected a static policy, got a template containing the slot ?principal"#)
+                        .help("try removing the template slot(s) from this policy")
                         .build()
                 );
             }

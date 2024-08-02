@@ -169,7 +169,7 @@ impl Node<Option<cst::Policy>> {
             Ok(Ok(p)) => Ok(p),
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
-                ToASTErrorKind::ExpectedStaticPolicy { slot: slot.clone() },
+                ToASTErrorKind::expected_static_policy(slot.clone()),
                 slot.loc.unwrap_or_else(|| self.loc.clone()),
             )
             .into()),
@@ -181,9 +181,7 @@ impl Node<Option<cst::Policy>> {
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
                             ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::ExpectedStaticPolicy {
-                                    slot: inner.slot.clone(),
-                                },
+                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
                                 err.source_loc().clone(),
                             )),
                             _ => None,

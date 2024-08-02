@@ -414,8 +414,8 @@ mod test {
         assert_matches!(result, PolicyToTextAnswer::Failure { errors } => {
             assert_exactly_one_error(
                 &errors,
-                "failed to parse template from JSON: error deserializing a policy/template from JSON: tried to convert JSON representing a static policy to a template",
-                None,
+                "failed to parse template from JSON: error deserializing a policy/template from JSON: expected a template, got a static policy",
+                Some("a template should include slot(s) `?principal` or `?resource`"),
             );
         });
     }
