@@ -69,7 +69,7 @@ fn assert_policy_typechecks_optional_schema(p: StaticPolicy) {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_optional_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails(schema_with_optionals(), p, expected_type_errors);
 }
@@ -321,7 +321,7 @@ fn assert_name_access_fails(policy: StaticPolicy) {
     let loc = get_loc(policy.loc().unwrap().src.clone(), "principal.name");
     assert_policy_typecheck_fails_optional_schema(
         policy,
-        vec![ValidationError::unsafe_optional_attribute_access(
+        [ValidationError::unsafe_optional_attribute_access(
             loc,
             id,
             AttributeAccess::EntityLUB(
@@ -585,7 +585,7 @@ fn record_optional_attrs() {
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![ValidationError::unsafe_optional_attribute_access(
+        [ValidationError::unsafe_optional_attribute_access(
             get_loc(src, "principal.record.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
@@ -601,7 +601,7 @@ fn record_optional_attrs() {
     assert_policy_typecheck_fails(
         schema,
         failing_policy2,
-        vec![ValidationError::unsafe_optional_attribute_access(
+        [ValidationError::unsafe_optional_attribute_access(
             get_loc(src, "principal.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
@@ -764,7 +764,7 @@ fn action_attrs_failing() {
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(src, "action.canUndo"),
             PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["canUndo".into()]),
@@ -783,7 +783,7 @@ fn action_attrs_failing() {
     assert_policy_typecheck_warns(
         schema.clone(),
         failing_policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             failing_policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -805,5 +805,5 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema, failing_policy, vec![]);
+    assert_policy_typecheck_fails(schema, failing_policy, []);
 }
