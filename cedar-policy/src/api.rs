@@ -2084,6 +2084,10 @@ pub(crate) fn fold_partition<T, A, B, E>(
 }
 
 /// Policy template datatype
+//
+// NOTE: Unlike the internal type [`ast::Template`], this type only supports
+// templates. The `Template` constructors will return an error if provided with
+// a static policy.
 #[derive(Debug, Clone)]
 pub struct Template {
     /// AST representation of the template, used for most operations.
@@ -2112,12 +2116,13 @@ impl PartialEq for Template {
 impl Eq for Template {}
 
 impl Template {
-    /// Attempt to parse a `Template` from source.
+    /// Attempt to parse a [`Template`] from source.
+    /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, then the resulting template will have that `id`.
     /// If the `id` is None, the parser will use the default "policy0".
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_policy_template(id.map(Into::into), src.as_ref())?;
+        let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
@@ -2236,7 +2241,8 @@ impl Template {
         }
     }
 
-    /// Create a `Template` from its JSON representation.
+    /// Create a [`Template`] from its JSON representation.
+    /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "JSON policy" will be used.
     /// The behavior around None may change in the future.

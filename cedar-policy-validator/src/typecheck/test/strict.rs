@@ -25,7 +25,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID},
     extensions::Extensions,
-    parser::{parse_policy_template, Loc},
+    parser::{parse_policy_or_template, Loc},
 };
 
 use crate::{
@@ -717,7 +717,7 @@ fn qualified_record_attr() {
     .unwrap();
 
     let src = "permit(principal, action, resource) when { context == {num_of_things: 1}};";
-    let p = parse_policy_template(None, src).unwrap();
+    let p = parse_policy_or_template(None, src).unwrap();
     assert_policy_typecheck_fails(
         schema,
         p.clone(),

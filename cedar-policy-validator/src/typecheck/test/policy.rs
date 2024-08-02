@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID, Template},
-    parser::{parse_policy, parse_policy_template},
+    parser::{parse_policy, parse_policy_or_template},
 };
 
 use super::test_utils::{
@@ -175,7 +175,7 @@ fn entity_literal_typechecks() {
 
 #[test]
 fn policy_checked_in_multiple_envs() {
-    let t = parse_policy_template(
+    let t = parse_policy_or_template(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
     ).expect("Policy should parse.");
@@ -203,7 +203,7 @@ fn policy_checked_in_multiple_envs() {
             == 1
     );
 
-    let t = parse_policy_template(
+    let t = parse_policy_or_template(
         Some(PolicyID::from_string("0")),
         r#"permit(principal, action == Action::"delete_group", resource) when { resource.file_type == "jpg" };"#
     ).expect("Policy should parse.");
@@ -1070,7 +1070,7 @@ mod templates {
     #[test]
     fn principal_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource);"#,
             )
@@ -1081,7 +1081,7 @@ mod templates {
     #[test]
     fn resource_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(None, r#"permit(principal, action, resource == ?resource);"#)
+            parse_policy_or_template(None, r#"permit(principal, action, resource == ?resource);"#)
                 .unwrap(),
         );
     }
@@ -1089,7 +1089,7 @@ mod templates {
     #[test]
     fn principal_resource_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource == ?resource);"#,
             )
@@ -1100,7 +1100,7 @@ mod templates {
     #[test]
     fn principal_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal in ?principal, action, resource);"#,
             )
@@ -1111,7 +1111,7 @@ mod templates {
     #[test]
     fn resource_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(None, r#"permit(principal, action, resource in ?resource);"#)
+            parse_policy_or_template(None, r#"permit(principal, action, resource in ?resource);"#)
                 .unwrap(),
         );
     }
@@ -1119,7 +1119,7 @@ mod templates {
     #[test]
     fn principal_resource_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal in ?principal, action, resource in ?resource);"#,
             )
@@ -1130,7 +1130,7 @@ mod templates {
     #[test]
     fn resource_slot_safe_body() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.name like "*" };"#,
             )
@@ -1142,7 +1142,7 @@ mod templates {
     fn resource_slot_error_body() {
         let src = r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.bogus };"#;
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(None, src).unwrap(),
+            parse_policy_or_template(None, src).unwrap(),
             [ValidationError::unsafe_attribute_access(
                 get_loc(src, "resource.bogus"),
                 PolicyID::from_string("policy0"),
@@ -1159,7 +1159,7 @@ mod templates {
     #[test]
     fn principal_slot_safe_body() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource in ?resource) when { principal has age && principal.age > 0};"#,
             )
@@ -1171,7 +1171,7 @@ mod templates {
     fn principal_slot_error_body() {
         let src = r#"permit(principal == ?principal, action, resource) when { principal has age && principal.bogus > 0 };"#;
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(None, src).unwrap(),
+            parse_policy_or_template(None, src).unwrap(),
             [ValidationError::unsafe_attribute_access(
                 get_loc(src, "principal.bogus"),
                 PolicyID::from_string("policy0"),
@@ -1187,7 +1187,7 @@ mod templates {
 
     #[test]
     fn template_all_false() {
-        let template = parse_policy_template(
+        let template = parse_policy_or_template(
             None,
             r#"permit(principal == ?principal, action, resource) when { false };"#,
         )
