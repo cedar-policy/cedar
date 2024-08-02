@@ -310,7 +310,7 @@ mod test {
     #[test]
     fn top_level_validate_with_links() -> Result<()> {
         let mut set = PolicySet::new();
-        let schema: ValidatorSchema = serde_json::from_str::<json_schema::SchemaFragment<RawName>>(
+        let schema: ValidatorSchema = serde_json::from_str::<json_schema::Fragment<RawName>>(
             r#"
             {
                 "some_namespace": {
@@ -457,7 +457,7 @@ mod test {
 
     #[test]
     fn validate_finds_warning_and_error() {
-        let schema: ValidatorSchema = json_schema::SchemaFragment::from_json_str(
+        let schema: ValidatorSchema = json_schema::Fragment::from_json_str(
             r#"
             {
                 "": {

@@ -47,7 +47,7 @@ impl From<human_schema::Path> for RawName {
 /// Convert a schema AST into the JSON representation.
 /// This will let you subsequently decode that into the Validator AST for Schemas ([`crate::ValidatorSchema`]).
 /// On success, this function returns a tuple containing:
-///     * The `json_schema::SchemaFragment`
+///     * The `json_schema::Fragment`
 ///     * An iterator of warnings that were generated
 ///
 /// TODO(#1085): These warnings should be generated later in the process, such
@@ -57,7 +57,7 @@ pub fn custom_schema_to_json_schema(
     extensions: &Extensions<'_>,
 ) -> Result<
     (
-        json_schema::SchemaFragment<RawName>,
+        json_schema::Fragment<RawName>,
         impl Iterator<Item = SchemaWarning>,
     ),
     ToJsonSchemaErrors,
@@ -81,7 +81,7 @@ pub fn custom_schema_to_json_schema(
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
-        json_schema::SchemaFragment(fragment),
+        json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
     ))
 }

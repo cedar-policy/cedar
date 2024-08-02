@@ -96,14 +96,14 @@ pub enum HumanSyntaxParseErrors {
     JsonError(#[from] ToJsonSchemaErrors),
 }
 
-/// Parse a schema fragment, in human syntax, into a [`crate::SchemaFragment`],
+/// Parse a schema fragment, in human syntax, into a [`json_schema::Fragment`],
 /// possibly generating warnings
 pub fn parse_natural_schema_fragment<'a>(
     src: &str,
     extensions: &Extensions<'a>,
 ) -> Result<
     (
-        json_schema::SchemaFragment<crate::RawName>,
+        json_schema::Fragment<crate::RawName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
     HumanSyntaxParseErrors,

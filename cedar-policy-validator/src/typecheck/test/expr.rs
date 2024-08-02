@@ -1181,7 +1181,7 @@ fn is_typecheck_fails() {
 
 #[test]
 fn is_typechecks() {
-    let schema = json_schema::SchemaFragment::from_json_value(json!({
+    let schema = json_schema::Fragment::from_json_value(json!({
             "": { "entityTypes": { "User": {}, "Photo": {} }, "actions": {} },
             "N::S": { "entityTypes": { "User": {} }, "actions": {} }
     }))

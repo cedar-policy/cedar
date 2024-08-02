@@ -26,7 +26,7 @@ use thiserror::Error;
 
 use crate::{json_schema, RawName};
 
-impl<N: Display> Display for json_schema::SchemaFragment<N> {
+impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
@@ -182,7 +182,7 @@ impl NameCollisionsError {
     }
 }
 
-/// Convert a [`SchemaFragment`] to a string containing human schema syntax
+/// Convert a [`json_schema::Fragment`] to a string containing human schema syntax
 ///
 /// As of this writing, this existing code throws an error if any
 /// fully-qualified name in a non-empty namespace is a valid common type and
@@ -198,7 +198,7 @@ impl NameCollisionsError {
 // less conservative in the future without breaking people.
 // 2) This code is also likely the cause of #1063; see that issue
 pub fn json_schema_to_custom_schema_str<N: Display>(
-    json_schema: &json_schema::SchemaFragment<N>,
+    json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {

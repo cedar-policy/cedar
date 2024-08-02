@@ -137,7 +137,7 @@ fn expr_typechecks_with_correct_annotation() {
         .unwrap(),
     );
 
-    let schema = json_schema::SchemaFragment::from_json_value(
+    let schema = json_schema::Fragment::from_json_value(
         json!({"": { "entityTypes": { "Foo": {} }, "actions": {} }}),
     )
     .unwrap()

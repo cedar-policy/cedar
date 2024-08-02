@@ -724,7 +724,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_action_id_in_schema() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors: Fragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -756,7 +756,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_action() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors: Fragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -787,7 +787,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors: Fragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {
@@ -822,7 +822,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_entity_type() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors: Fragment<RawName> = serde_json::from_str(
             r#"
                 {
                     "NS": {

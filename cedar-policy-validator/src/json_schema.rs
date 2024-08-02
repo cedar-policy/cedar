@@ -45,25 +45,24 @@ use crate::{
     ConditionalName, HumanSchemaError, HumanSyntaxParseError, RawName, ReferenceType,
 };
 
-/// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
-/// a map from namespace name to namespace definition (i.e., definitions of
-/// common types, entity types, and actions in that namespace).
+/// A [`Fragment`] is split into multiple namespace definitions, and is just a
+/// map from namespace name to namespace definition (i.e., definitions of common
+/// types, entity types, and actions in that namespace).
 /// The namespace name is implicitly applied to all definitions in the
 /// corresponding [`NamespaceDefinition`].
 /// See [`NamespaceDefinition`].
 ///
 /// The parameter `N` is the type of entity type names and common type names in
-/// attributes/parents fields in this [`SchemaFragment`], including
-/// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`UnreservedId`] and
-/// unambiguously refers to the [`InternalName`] with the appropriate implicit
-/// namespace prepended.
+/// attributes/parents fields in this [`Fragment`], including recursively. (It
+/// doesn't affect the type of common and entity type names _that are being
+/// declared here_, which is always an [`UnreservedId`] and unambiguously refers
+/// to the [`InternalName`] with the appropriate implicit namespace prepended.
 /// It only affects the type of common and entity type _references_.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
-/// - `N` = [`ConditionalName`]: a [`SchemaFragment`] which has been partially
+/// - `N` = [`ConditionalName`]: a [`Fragment`] which has been partially
 ///     processed, by converting [`RawName`]s into [`ConditionalName`]s
-/// - `N` = [`InternalName`]: a [`SchemaFragment`] in which all names have been
+/// - `N` = [`InternalName`]: a [`Fragment`] in which all names have been
 ///     resolved into fully-qualified [`InternalName`]s
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
@@ -71,7 +70,7 @@ use crate::{
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
-pub struct SchemaFragment<N>(
+pub struct Fragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
     #[cfg_attr(
         feature = "wasm",
@@ -106,7 +105,7 @@ where
     ))
 }
 
-impl<N: Serialize> Serialize for SchemaFragment<N> {
+impl<N: Serialize> Serialize for Fragment<N> {
     /// Custom serializer to ensure that `None` is mapped to the empty namespace
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -124,20 +123,20 @@ impl<N: Serialize> Serialize for SchemaFragment<N> {
     }
 }
 
-impl SchemaFragment<RawName> {
-    /// Create a [`SchemaFragment`] from a string containing JSON (which should
+impl Fragment<RawName> {
+    /// Create a [`Fragment`] from a string containing JSON (which should
     /// be an object of the appropriate shape).
     pub fn from_json_str(json: &str) -> Result<Self> {
         serde_json::from_str(json).map_err(|e| JsonDeserializationError::new(e, Some(json)).into())
     }
 
-    /// Create a [`SchemaFragment`] from a JSON value (which should be an object
+    /// Create a [`Fragment`] from a JSON value (which should be an object
     /// of the appropriate shape).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self> {
         serde_json::from_value(json).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
-    /// Create a [`SchemaFragment`] directly from a file containing a JSON object.
+    /// Create a [`Fragment`] directly from a file containing a JSON object.
     pub fn from_file(file: impl std::io::Read) -> Result<Self> {
         serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
@@ -164,15 +163,15 @@ impl SchemaFragment<RawName> {
     }
 }
 
-impl<N: Display> SchemaFragment<N> {
-    /// Pretty print this [`SchemaFragment`]
+impl<N: Display> Fragment<N> {
+    /// Pretty print this [`Fragment`]
     pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaSyntaxError> {
         let src = human_schema::fmt::json_schema_to_custom_schema_str(self)?;
         Ok(src)
     }
 }
 
-/// A single namespace definition from a SchemaFragment.
+/// A single namespace definition from a Fragment.
 /// This is composed of common types, entity types, and action definitions.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
@@ -180,7 +179,7 @@ impl<N: Display> SchemaFragment<N> {
 /// recursively. (It doesn't affect the type of common and entity type names
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
@@ -303,7 +302,7 @@ impl NamespaceDefinition<ConditionalName> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityType`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
@@ -370,7 +369,7 @@ impl EntityType<ConditionalName> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`AttributesOrContext`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
@@ -440,7 +439,7 @@ impl AttributesOrContext<ConditionalName> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
@@ -529,7 +528,7 @@ impl ActionType<ConditionalName> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ApplySpec`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
@@ -801,7 +800,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`SchemaType`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
@@ -1312,7 +1311,7 @@ impl<N> From<SchemaTypeVariant<N>> for SchemaType<N> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`SchemaTypeVariant`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
@@ -1560,7 +1559,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType<RawName> {
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`TypeOfAttribute`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 ///
 /// Note that we can't add `#[serde(deny_unknown_fields)]` here because we are
 /// using `#[serde(tag = "type")]` in [`SchemaType`] which is flattened here.
@@ -1779,7 +1778,7 @@ mod test {
                 "actions": {}
             }
         }"#;
-        let schema: SchemaFragment<RawName> = serde_json::from_str(src).expect("Parse Error");
+        let schema: Fragment<RawName> = serde_json::from_str(src).expect("Parse Error");
         let (namespace, _descriptor) = schema.0.into_iter().next().unwrap();
         assert_eq!(namespace, Some("foo::foo::bar::baz".parse().unwrap()));
     }
@@ -1982,8 +1981,7 @@ mod strengthened_types {
     use cool_asserts::assert_matches;
 
     use super::{
-        ActionEntityUID, ApplySpec, EntityType, NamespaceDefinition, RawName, SchemaFragment,
-        SchemaType,
+        ActionEntityUID, ApplySpec, EntityType, Fragment, NamespaceDefinition, RawName, SchemaType,
     };
 
     /// Assert that `result` is an `Err`, and the error message matches `msg`
@@ -2001,7 +1999,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `\n`: unexpected end of input");
 
         let src = serde_json::json!(
@@ -2011,7 +2009,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `1`: unexpected token `1`");
 
         let src = serde_json::json!(
@@ -2021,7 +2019,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `*1`: unexpected token `*`");
 
         let src = serde_json::json!(
@@ -2031,7 +2029,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `::`: unexpected token `::`");
 
         let src = serde_json::json!(
@@ -2041,7 +2039,7 @@ mod strengthened_types {
             "actions": {}
            }
         });
-        let schema: Result<SchemaFragment<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid namespace `A::`: unexpected end of input");
     }
 
@@ -2342,15 +2340,15 @@ mod test_json_roundtrip {
     use super::*;
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn roundtrip(schema: SchemaFragment<RawName>) {
+    fn roundtrip(schema: Fragment<RawName>) {
         let json = serde_json::to_value(schema.clone()).unwrap();
-        let new_schema: SchemaFragment<RawName> = serde_json::from_value(json).unwrap();
+        let new_schema: Fragment<RawName> = serde_json::from_value(json).unwrap();
         assert_eq!(schema, new_schema);
     }
 
     #[test]
     fn empty_namespace() {
-        let fragment = SchemaFragment(HashMap::from([(
+        let fragment = Fragment(HashMap::from([(
             None,
             NamespaceDefinition {
                 common_types: HashMap::new(),
@@ -2363,7 +2361,7 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_namespace() {
-        let fragment = SchemaFragment(HashMap::from([(
+        let fragment = Fragment(HashMap::from([(
             Some("a".parse().unwrap()),
             NamespaceDefinition {
                 common_types: HashMap::new(),
@@ -2376,7 +2374,7 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_entity_types() {
-        let fragment = SchemaFragment(HashMap::from([(
+        let fragment = Fragment(HashMap::from([(
             None,
             NamespaceDefinition {
                 common_types: HashMap::new(),
@@ -2414,7 +2412,7 @@ mod test_json_roundtrip {
 
     #[test]
     fn multiple_namespaces() {
-        let fragment = SchemaFragment(HashMap::from([
+        let fragment = Fragment(HashMap::from([
             (
                 Some("foo".parse().unwrap()),
                 NamespaceDefinition {
@@ -2484,7 +2482,7 @@ mod test_duplicates_error {
               "actions": {}
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2499,7 +2497,7 @@ mod test_duplicates_error {
               "actions": {}
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2514,7 +2512,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2530,7 +2528,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2552,7 +2550,7 @@ mod test_duplicates_error {
               "actions": { }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2570,7 +2568,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2588,7 +2586,7 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 
     #[test]
@@ -2605,6 +2603,6 @@ mod test_duplicates_error {
               }
             }
         }"#;
-        serde_json::from_str::<SchemaFragment<RawName>>(src).unwrap();
+        serde_json::from_str::<Fragment<RawName>>(src).unwrap();
     }
 }
