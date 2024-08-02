@@ -114,7 +114,7 @@ pub fn parse_policy_or_template(
 }
 
 /// Like `parse_policy_or_template()`, but also returns the (lossless) EST -- that
-/// is, the EST of the original template without any of the lossy transforms
+/// is, the EST of the original policy/template without any of the lossy transforms
 /// involved in converting to AST.
 pub fn parse_policy_or_template_to_est_and_ast(
     id: Option<ast::PolicyID>,
