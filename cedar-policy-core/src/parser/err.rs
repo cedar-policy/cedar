@@ -162,21 +162,23 @@ pub enum ToASTErrorKind {
     #[error("a policy with id `{0}` already exists in the policy set")]
     DuplicatePolicyId(PolicyID),
     /// Returned when a template is encountered but a static policy is expected
-    #[error("expected a static policy, got a template containing the slot {slot}")]
-    #[diagnostic(help("try removing the template slot(s) from this policy"))]
-    UnexpectedTemplate {
-        /// Slot that was found (which is not valid in a static policy)
-        slot: cst::Slot,
-    },
-    /// Returned when we attempt to parse a policy or template with duplicate or conflicting annotations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedStaticPolicy(#[from] parse_errors::ExpectedStaticPolicy),
+    /// Returned when a static policy is encountered but a template is expected
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedTemplate(#[from] parse_errors::ExpectedTemplate),
+    /// Returned when we attempt to parse a policy or template with duplicate or
+    /// conflicting annotations
     #[error("duplicate annotation: @{0}")]
     DuplicateAnnotation(ast::AnyId),
     /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
-    #[error("found template slot {slot} in a `{clausetype}` clause")]
+    #[error("found template slot {} in a `{clausetype}` clause", slot.id)]
     #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
     SlotsInConditionClause {
         /// Slot that was found in a when/unless clause
-        slot: cst::Slot,
+        slot: ast::Slot,
         /// Clause type, e.g. "when" or "unless"
         clausetype: &'static str,
     },
@@ -421,10 +423,57 @@ impl ToASTErrorKind {
             got,
         }
     }
+
+    /// Constructor for the [`ToASTErrorKind::ExpectedStaticPolicy`] error
+    pub fn expected_static_policy(slot: ast::Slot) -> Self {
+        parse_errors::ExpectedStaticPolicy { slot }.into()
+    }
+
+    /// Constructor for the [`ToASTErrorKind::ExpectedTemplate`] error
+    pub fn expected_template() -> Self {
+        parse_errors::ExpectedTemplate::new().into()
+    }
 }
 
-// Either::Left(r) => write!(f, "expected {r}, got {}", self.got),
-// Either::Right((r1, r2)) => write!(f, "expected {r1} or {r2}, got: {}", self.got),
+/// Error subtypes for [`ToASTErrorKind`]
+pub mod parse_errors {
+    use super::*;
+
+    /// Details about a `ExpectedStaticPolicy` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("expected a static policy, got a template containing the slot {}", slot.id)]
+    #[diagnostic(help("try removing the template slot(s) from this policy"))]
+    pub struct ExpectedStaticPolicy {
+        /// Slot that was found (which is not valid in a static policy)
+        pub(crate) slot: ast::Slot,
+    }
+
+    impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
+        fn from(err: ast::UnexpectedSlotError) -> Self {
+            match err {
+                ast::UnexpectedSlotError::FoundSlot(slot) => Self { slot },
+            }
+        }
+    }
+
+    /// Details about a `ExpectedTemplate` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("expected a template, got a static policy")]
+    #[diagnostic(help("a template should include slot(s) `?principal` or `?resource`"))]
+    pub struct ExpectedTemplate {
+        /// A private field, just so the public interface notes this as a
+        /// private-fields struct and not a empty-fields struct for semver
+        /// purposes (e.g., consumers cannot construct this type with
+        /// `ExpectedTemplate {}`)
+        _dummy: (),
+    }
+
+    impl ExpectedTemplate {
+        pub(crate) fn new() -> Self {
+            Self { _dummy: () }
+        }
+    }
+}
 
 /// Error surrounding EntityUIds/Template slots in policy scopes
 #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]

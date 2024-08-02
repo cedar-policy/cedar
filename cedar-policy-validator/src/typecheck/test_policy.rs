@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, Template, Var},
-    parser::{parse_policy, parse_policy_template},
+    parser::{parse_policy, parse_policy_or_template},
 };
 use smol_str::SmolStr;
 
@@ -992,7 +992,7 @@ mod templates {
     #[test]
     fn principal_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource);"#,
             )
@@ -1003,7 +1003,7 @@ mod templates {
     #[test]
     fn resource_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(None, r#"permit(principal, action, resource == ?resource);"#)
+            parse_policy_or_template(None, r#"permit(principal, action, resource == ?resource);"#)
                 .unwrap(),
         );
     }
@@ -1011,7 +1011,7 @@ mod templates {
     #[test]
     fn principal_resource_eq_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource == ?resource);"#,
             )
@@ -1022,7 +1022,7 @@ mod templates {
     #[test]
     fn principal_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal in ?principal, action, resource);"#,
             )
@@ -1033,7 +1033,7 @@ mod templates {
     #[test]
     fn resource_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(None, r#"permit(principal, action, resource in ?resource);"#)
+            parse_policy_or_template(None, r#"permit(principal, action, resource in ?resource);"#)
                 .unwrap(),
         );
     }
@@ -1041,7 +1041,7 @@ mod templates {
     #[test]
     fn principal_resource_in_slot() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal in ?principal, action, resource in ?resource);"#,
             )
@@ -1052,7 +1052,7 @@ mod templates {
     #[test]
     fn resource_slot_safe_body() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.name like "*" };"#,
             )
@@ -1063,7 +1063,7 @@ mod templates {
     #[test]
     fn resource_slot_error_body() {
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal, action, resource in ?resource) when { resource in Group::"Friends" && resource.bogus };"#,
             )
@@ -1080,7 +1080,7 @@ mod templates {
     #[test]
     fn principal_slot_safe_body() {
         assert_policy_typechecks_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource in ?resource) when { principal has age && principal.age > 0};"#,
             )
@@ -1091,7 +1091,7 @@ mod templates {
     #[test]
     fn principal_slot_error_body() {
         assert_policy_typecheck_fails_simple_schema(
-            parse_policy_template(
+            parse_policy_or_template(
                 None,
                 r#"permit(principal == ?principal, action, resource) when { principal has age && principal.bogus > 0 };"#,
             )
@@ -1107,7 +1107,7 @@ mod templates {
 
     #[test]
     fn template_all_false() {
-        let template = parse_policy_template(
+        let template = parse_policy_or_template(
             None,
             r#"permit(principal == ?principal, action, resource) when { false };"#,
         )

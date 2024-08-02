@@ -108,7 +108,7 @@ impl TryFrom<PolicySet> for ast::PolicySet {
         let mut ast_pset = ast::PolicySet::default();
 
         for (id, policy) in value.templates {
-            let ast = policy.try_into_ast_template(Some(id))?;
+            let ast = policy.try_into_ast_policy_or_template(Some(id))?;
             ast_pset.add_template(ast)?;
         }
 

@@ -399,9 +399,10 @@ fn policy_annotations() {
     assert_eq!(p.annotations().next(), Some(("anno", "good annotation")));
 
     // and on templates
-    let t: Template = r#"@tanno("good annotation")permit(principal, action, resource);"#
-        .parse()
-        .unwrap();
+    let t: Template =
+        r#"@tanno("good annotation")permit(principal == ?principal, action, resource);"#
+            .parse()
+            .unwrap();
     // need a new id to include in set
     let t = t.new_id(PolicyId::from_str("new_template_id").unwrap());
     assert_eq!(t.annotation("tanno"), Some("good annotation"));

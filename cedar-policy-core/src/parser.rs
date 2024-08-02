@@ -120,10 +120,11 @@ pub fn parse_policyset_to_ests_and_pset(
     }
 }
 
-/// Simple main function for parsing a policy template.
+/// Main function for parsing a policy _or_ template. In either case, the
+/// returned value will be a [`Template`].
 /// If `id` is Some, then the resulting template will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
-pub fn parse_policy_template(
+pub fn parse_policy_or_template(
     id: Option<String>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
@@ -143,11 +144,11 @@ pub fn parse_policy_template(
     }
 }
 
-/// Like `parse_policy_template()`, but also returns the (lossless) EST -- that
-/// is, the EST of the original template without any of the lossy transforms
+/// Like `parse_policy_or_template()`, but also returns the (lossless) EST -- that
+/// is, the EST of the original policy/template without any of the lossy transforms
 /// involved in converting to AST.
-pub fn parse_policy_template_to_est_and_ast(
-    id: Option<String>,
+pub fn parse_policy_or_template_to_est_and_ast(
+    id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
@@ -167,7 +168,29 @@ pub fn parse_policy_template_to_est_and_ast(
     }
 }
 
-/// simple main function for parsing a policy.
+/// Main function for parsing a template.
+/// Will return an error if provided with a static policy.
+/// If `id` is Some, then the resulting policy will have that `id`.
+/// If the `id` is None, the parser will use "policy0".
+pub fn parse_template(id: Option<String>, text: &str) -> Result<ast::Template, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let id = match id {
+        Some(id) => ast::PolicyID::from_string(id),
+        None => ast::PolicyID::from_string("policy0"),
+    };
+    let cst = text_to_cst::parse_policy(text)?;
+    let Some(template) = cst.to_policy_template(id, &mut errs) else {
+        return Err(errs);
+    };
+    if template.slots().count() == 0 {
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc.clone()).into())
+    } else {
+        Ok(template)
+    }
+}
+
+/// Main function for parsing a (static) policy.
+/// Will return an error if provided with a template.
 /// If `id` is Some, then the resulting policy will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
 pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy, err::ParseErrors> {
@@ -426,7 +449,7 @@ mod test {
         for template in all_templates().map(Template::from) {
             let id = template.id();
             let src = format!("{template}");
-            let parsed = parse_policy_template(Some(id.to_string()), &src).unwrap();
+            let parsed = parse_policy_or_template(Some(id.to_string()), &src).unwrap();
             assert_eq!(
                 parsed.slots().collect::<HashSet<_>>(),
                 template.slots().collect::<HashSet<_>>()
@@ -778,14 +801,14 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -815,14 +838,14 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -844,13 +867,13 @@ mod parse_tests {
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -881,14 +904,14 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -919,14 +942,14 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -948,13 +971,13 @@ mod parse_tests {
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
         assert_matches!(parse_policyset(src), Err(e) => {
@@ -993,7 +1016,7 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });
@@ -1002,7 +1025,7 @@ mod parse_tests {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
             expect_some_error_matches(src, &e, &unexpected_template);
         });
-        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
         });

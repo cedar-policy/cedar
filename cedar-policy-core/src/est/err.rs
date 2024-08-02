@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::ast;
 use crate::ast::PolicySetError;
 use crate::entities::JsonDeserializationError;
-use crate::parser::err::ParseErrors;
+use crate::parser::err::{parse_errors, ParseErrors};
 use crate::parser::{join_with_conjunction, unescape};
 use miette::Diagnostic;
 use nonempty::NonEmpty;
@@ -34,9 +34,13 @@ pub enum FromJsonError {
     #[diagnostic(transparent)]
     JsonDeserializationError(#[from] JsonDeserializationError),
     /// Tried to convert an EST representing a template to an AST representing a static policy
-    #[error("tried to convert JSON representing a template to a static policy: {0}")]
+    #[error(transparent)]
     #[diagnostic(transparent)]
-    TemplateToPolicy(#[from] ast::UnexpectedSlotError),
+    TemplateToPolicy(#[from] parse_errors::ExpectedStaticPolicy),
+    /// Tried to convert an EST representing a static policy to an AST representing a template
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyToTemplate(#[from] parse_errors::ExpectedTemplate),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
     #[error("invalid slot name or slot used in wrong position")]
@@ -126,4 +130,10 @@ pub enum InstantiationError {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,
     },
+}
+
+impl From<ast::UnexpectedSlotError> for FromJsonError {
+    fn from(err: ast::UnexpectedSlotError) -> Self {
+        Self::TemplateToPolicy(err.into())
+    }
 }
