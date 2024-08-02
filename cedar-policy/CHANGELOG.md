@@ -82,10 +82,13 @@ Cedar Language Version: 4.0
 - (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
 
-## [3.2.2] - TBA
+## [3.2.4] - TBA
 ### Changed
 - `unknown()` is no longer a valid extension function if `partial-eval`
   is not enabled as a feature.
+
+### Fixed
+- JSON format Cedar policies will now fail to parse if any annotations are not valid Cedar identifiers. (#1004, resolving #994) 
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
