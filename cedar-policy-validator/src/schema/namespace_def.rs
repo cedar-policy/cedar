@@ -947,13 +947,13 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
     }
 }
 
-/// Convert a type as represented in the schema file format (but with
-/// fully-qualified names) into the [`Type`] type used by the validator.
+/// Convert a [`json_schema::Type`] (with fully-qualified names) into the
+/// [`Type`] type used by the validator.
 ///
 /// Conversion can fail if an entity or record attribute name is invalid. It
 /// will also fail for some types that can be written in the schema, but are
 /// not yet implemented in the typechecking logic.
-pub(crate) fn try_schema_type_into_validator_type(
+pub(crate) fn try_jsonschema_type_into_validator_type(
     schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
@@ -968,7 +968,7 @@ pub(crate) fn try_schema_type_into_validator_type(
             Ok(Type::primitive_boolean().into())
         }
         json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-            Ok(try_schema_type_into_validator_type(*element, extensions)?.map(Type::set))
+            Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
         }
         json_schema::Type::Type(json_schema::TypeVariant::Record {
             attributes,
@@ -1067,7 +1067,7 @@ fn parse_record_attributes(
             Ok((
                 attr,
                 (
-                    try_schema_type_into_validator_type(ty.ty, extensions)?,
+                    try_jsonschema_type_into_validator_type(ty.ty, extensions)?,
                     ty.required,
                 ),
             ))

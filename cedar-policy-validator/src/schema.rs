@@ -49,7 +49,7 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-pub(crate) use namespace_def::try_schema_type_into_validator_type;
+pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
@@ -432,8 +432,10 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = {
-                    let unresolved =
-                        try_schema_type_into_validator_type(entity_type.attributes, extensions)?;
+                    let unresolved = try_jsonschema_type_into_validator_type(
+                        entity_type.attributes,
+                        extensions,
+                    )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
@@ -468,7 +470,7 @@ impl ValidatorSchema {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
                     let unresolved =
-                        try_schema_type_into_validator_type(action.context, extensions)?;
+                        try_jsonschema_type_into_validator_type(action.context, extensions)?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
@@ -1092,7 +1094,7 @@ impl<'a> CommonTypeResolver<'a> {
             resolve_table.insert(name, substituted_ty.clone());
             tys.insert(
                 name,
-                try_schema_type_into_validator_type(substituted_ty, extensions)?
+                try_jsonschema_type_into_validator_type(substituted_ty, extensions)?
                     .resolve_common_type_refs(&HashMap::new())?,
             );
         }
@@ -1652,10 +1654,11 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -1679,10 +1682,11 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -1711,10 +1715,11 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
 
