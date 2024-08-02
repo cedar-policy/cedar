@@ -36,7 +36,7 @@ use crate::{
     RawName, SchemaFragment, ValidationError, ValidationMode,
 };
 
-use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder};
+use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder, get_loc};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
@@ -96,19 +96,20 @@ fn assert_types_must_match(
     schema: SchemaFragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
-    on_expr: Expr,
+    snippet: impl AsRef<str>,
     expected_type: Type,
     unequal_types: impl IntoIterator<Item = Type>,
     hint: LubHelp,
     context: LubContext,
 ) {
+    let loc = get_loc(e.source_loc().unwrap().src.clone(), snippet);
     assert_strict_type_error(
         schema,
         env,
         e,
         expected_type,
         ValidationError::incompatible_types(
-            on_expr,
+            loc,
             expr_id_placeholder(),
             unequal_types,
             hint,
@@ -226,7 +227,7 @@ fn eq_strict_types_mismatch() {
             s,
             &q,
             Expr::from_str(r#"1 == "foo""#).unwrap(),
-            Expr::from_str(r#"1 == "foo""#).unwrap(),
+            r#"1 == "foo""#,
             Type::primitive_boolean(),
             [Type::primitive_string(), Type::primitive_long()],
             LubHelp::None,
@@ -242,7 +243,7 @@ fn contains_strict_types_mismatch() {
             s,
             &q,
             Expr::from_str(r#"[1].contains("test")"#).unwrap(),
-            Expr::from_str(r#"[1].contains("test")"#).unwrap(),
+            r#"[1].contains("test")"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
@@ -258,7 +259,7 @@ fn contains_any_strict_types_mismatch() {
             s,
             &q,
             Expr::from_str(r#"[principal].containsAny([1])"#).unwrap(),
-            Expr::from_str(r#"[principal].containsAny([1])"#).unwrap(),
+            r#"[principal].containsAny([1])"#,
             Type::primitive_boolean(),
             [
                 Type::set(Type::named_entity_reference_from_str("User")),
@@ -277,7 +278,7 @@ fn contains_all_strict_types_mismatch() {
             s,
             &q,
             Expr::from_str(r#"[principal].containsAll([1])"#).unwrap(),
-            Expr::from_str(r#"[principal].containsAll([1])"#).unwrap(),
+            r#"[principal].containsAll([1])"#,
             Type::primitive_boolean(),
             [
                 Type::set(Type::named_entity_reference_from_str("User")),
@@ -335,10 +336,7 @@ fn if_bool_strict_type_mismatch() {
                 r#"if principal == User::"alice" then User::"alice" else Photo::"pie.jpg""#,
             )
             .unwrap(),
-            Expr::from_str(
-                r#"if principal == User::"alice" then User::"alice" else Photo::"pie.jpg""#,
-            )
-            .unwrap(),
+            r#"if principal == User::"alice" then User::"alice" else Photo::"pie.jpg""#,
             Type::any_entity_reference(),
             [
                 Type::named_entity_reference_from_str("User"),
@@ -357,7 +355,7 @@ fn set_strict_types_mismatch() {
             s,
             &q,
             Expr::from_str(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
-            Expr::from_str(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
+            r#"[User::"alice", Photo::"foo.jpg"]"#,
             Type::set(Type::entity_lub(["User", "Photo"])),
             [
                 Type::named_entity_reference_from_str("User"),
@@ -432,7 +430,7 @@ fn entity_in_lub() {
                 r#"User::"alice" in (if 1 > 0 then User::"alice" else Photo::"pie.jpg")"#,
             )
             .unwrap(),
-            Expr::from_str(r#"if 1 > 0 then User::"alice" else Photo::"pie.jpg""#).unwrap(),
+            r#"if 1 > 0 then User::"alice" else Photo::"pie.jpg""#,
             Type::primitive_boolean(),
             [
                 Type::named_entity_reference_from_str("User"),
@@ -461,7 +459,7 @@ fn test_and() {
             s.clone(),
             &q,
             Expr::from_str(r#"(1 == (2 > 0)) && true"#).unwrap(),
-            Expr::from_str(r#"1 == (2 > 0)"#).unwrap(),
+            r#"1 == (2 > 0)"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
             LubHelp::None,
@@ -471,7 +469,7 @@ fn test_and() {
             s,
             &q,
             Expr::from_str(r#"true && (1 == (2 > 0))"#).unwrap(),
-            Expr::from_str(r#"1 == (2 > 0)"#).unwrap(),
+            r#"1 == (2 > 0)"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_boolean()],
             LubHelp::None,
@@ -493,7 +491,7 @@ fn test_or() {
             s.clone(),
             &q,
             Expr::from_str(r#"(1 == (2 > 0)) || false"#).unwrap(),
-            Expr::from_str(r#"1 == (2 > 0)"#).unwrap(),
+            r#"1 == (2 > 0)"#,
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
             LubHelp::None,
@@ -503,7 +501,7 @@ fn test_or() {
             s,
             &q,
             Expr::from_str(r#"false || (1 == (2 > 0))"#).unwrap(),
-            Expr::from_str(r#"1 == (2 > 0)"#).unwrap(),
+            r#"1 == (2 > 0)"#,
             Type::primitive_boolean(),
             [Type::primitive_boolean(), Type::primitive_long()],
             LubHelp::None,
@@ -525,7 +523,7 @@ fn test_unary() {
             s,
             &q,
             Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
-            Expr::from_str(r#"1 == "foo""#).unwrap(),
+            r#"1 == "foo""#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
@@ -547,7 +545,7 @@ fn test_mul() {
             s,
             &q,
             Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
-            Expr::from_str(r#"1 == false"#).unwrap(),
+            "1 == false",
             Type::primitive_long(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
@@ -569,7 +567,7 @@ fn test_like() {
             s,
             &q,
             Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
-            Expr::from_str(r#"1 == false"#).unwrap(),
+            r#"1 == false"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
@@ -591,7 +589,7 @@ fn test_get_attr() {
             s,
             &q,
             Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
-            Expr::from_str(r#"1 == "foo""#).unwrap(),
+            r#"1 == "foo""#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
@@ -619,7 +617,7 @@ fn test_has_attr() {
             s,
             &q,
             Expr::from_str(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
-            Expr::from_str("if 1 == 2 then {name: 1} else {bar: 2}").unwrap(),
+            "if 1 == 2 then {name: 1} else {bar: 2}",
             Type::primitive_boolean(),
             [
                 Type::closed_record_with_required_attributes([(
@@ -651,7 +649,7 @@ fn test_extension() {
             s,
             &q,
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
-            Expr::from_str(r#"1 == false"#).unwrap(),
+            r#"1 == false"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
@@ -717,16 +715,14 @@ fn qualified_record_attr() {
         Extensions::all_available(),
     )
     .unwrap();
-    let p = parse_policy_or_template(
-        None,
-        "permit(principal, action, resource) when { context == {num_of_things: 1}};",
-    )
-    .unwrap();
+
+    let src = "permit(principal, action, resource) when { context == {num_of_things: 1}};";
+    let p = parse_policy_or_template(None, src).unwrap();
     assert_policy_typecheck_fails(
         schema,
         p.clone(),
         vec![ValidationError::incompatible_types(
-            "context == {num_of_things: 1}".parse().unwrap(),
+            get_loc(src, "context == {num_of_things: 1}"),
             PolicyID::from_string("policy0"),
             [
                 Type::record_with_attributes(

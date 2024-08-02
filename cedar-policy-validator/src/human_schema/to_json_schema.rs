@@ -58,7 +58,7 @@ impl From<Path> for RawName {
 /// that we apply the same checks to JSON and human schemas
 pub fn custom_schema_to_json_schema(
     schema: Schema,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<(SchemaFragment<RawName>, impl Iterator<Item = SchemaWarning>), ToJsonSchemaErrors> {
     // combine all of the declarations in unqualified (empty) namespaces into a
     // single unqualified namespace
@@ -76,7 +76,7 @@ pub fn custom_schema_to_json_schema(
         .collect::<Vec<_>>();
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
-    let warnings = compute_namespace_warnings(&names, extensions.clone());
+    let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
         SchemaFragment(fragment),
@@ -85,7 +85,7 @@ pub fn custom_schema_to_json_schema(
 }
 
 /// Is the given [`Id`] the name of a valid extension type, given the currently active [`Extensions`]
-fn is_valid_ext_type(ty: &Id, extensions: Extensions<'_>) -> bool {
+fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
     extensions
         .ext_types()
         .filter(|ext_ty| ext_ty.as_ref().is_unqualified()) // if there are any qualified extension type names, we don't care, because we're looking for an unqualified name `ty`
@@ -510,16 +510,16 @@ where
 
 fn compute_namespace_warnings<'a>(
     fragment: &'a HashMap<Option<Name>, NamespaceRecord>,
-    extensions: Extensions<'a>,
+    extensions: &'a Extensions<'a>,
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     fragment
         .values()
-        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions.clone()))
+        .flat_map(move |nr| make_warning_for_shadowing(nr, extensions))
 }
 
 fn make_warning_for_shadowing<'a>(
     n: &'a NamespaceRecord,
-    extensions: Extensions<'a>,
+    extensions: &'a Extensions<'a>,
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     let mut warnings = vec![];
     for (common_name, common_src_node) in n.common_types.iter() {
@@ -534,14 +534,14 @@ fn make_warning_for_shadowing<'a>(
             warnings.push(warning);
         }
         // Check if it shadows a builtin
-        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions.clone()) {
+        if let Some(warning) = shadows_builtin(common_name, common_src_node, extensions) {
             warnings.push(warning);
         }
     }
     let entity_shadows = n
         .entities
         .iter()
-        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions.clone()));
+        .filter_map(move |(name, node)| shadows_builtin(name, node, extensions));
     warnings.into_iter().chain(entity_shadows)
 }
 
@@ -552,7 +552,7 @@ fn extract_name<N: Clone>(n: Node<N>) -> (N, Node<()>) {
 fn shadows_builtin(
     name: &Id,
     node: &Node<()>,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Option<SchemaWarning> {
     if is_valid_ext_type(name, extensions) || BUILTIN_TYPES.contains(&name.as_ref()) {
         Some(

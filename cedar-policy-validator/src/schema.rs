@@ -251,10 +251,10 @@ impl ValidatorSchema {
     /// "natural" schema syntax.
     pub fn from_file_natural<'a>(
         r: impl std::io::Read,
-        extensions: &'_ Extensions<'a>,
+        extensions: &'a Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions.clone())?;
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -268,7 +268,7 @@ impl ValidatorSchema {
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions.clone())?;
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -2317,7 +2317,7 @@ mod test {
                 action_uid,
                 HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
                 HashSet::new(),
-                &&Extensions::none(),
+                Extensions::none(),
             )
             .unwrap(),
         );

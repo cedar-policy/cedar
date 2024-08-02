@@ -42,7 +42,7 @@ pub use partial_response::PartialResponse;
 /// Authorizer
 pub struct Authorizer {
     /// Cedar `Extension`s which will be used during requests to this `Authorizer`
-    extensions: Extensions<'static>,
+    extensions: &'static Extensions<'static>,
     /// Error-handling behavior of this `Authorizer`
     error_handling: ErrorHandling,
 }
@@ -90,7 +90,7 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> PartialResponse {
-        let eval = Evaluator::new(q.clone(), entities, &self.extensions);
+        let eval = Evaluator::new(q.clone(), entities, self.extensions);
         let mut true_permits = vec![];
         let mut true_forbids = vec![];
         let mut false_permits = vec![];

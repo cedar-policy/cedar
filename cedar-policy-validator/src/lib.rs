@@ -217,7 +217,7 @@ mod test {
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, Expr, PolicyID},
+        ast::{self, PolicyID},
         parser::{self, Loc},
     };
 
@@ -491,7 +491,7 @@ mod test {
         assert_eq!(
             result.validation_errors().collect::<Vec<_>>(),
             vec![&ValidationError::expected_type(
-                Expr::val(true),
+                typecheck::test::test_utils::get_loc(src, "true"),
                 PolicyID::from_string("policy0"),
                 Type::primitive_long(),
                 Type::singleton_boolean(true),

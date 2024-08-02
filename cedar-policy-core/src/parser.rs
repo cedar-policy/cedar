@@ -441,7 +441,7 @@ mod tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        let evaluator = eval::Evaluator::new(request, &entities, exts);
         // The below tests check not only that we get the expected `Value`, but
         // that it has the expected source location.
         // We have to check that separately because the `PartialEq` and `Eq`
@@ -494,7 +494,7 @@ mod tests {
         let request = eval::test::basic_request();
         let entities = eval::test::rich_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        let evaluator = eval::Evaluator::new(request, &entities, exts);
         // The below tests check not only that we get the expected `Value`, but
         // that it has the expected source location.
         // See note on this in the above test.
@@ -578,7 +578,7 @@ mod tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        let evaluator = eval::Evaluator::new(request, &entities, exts);
         // The below tests check not only that we get the expected `Value`, but
         // that it has the expected source location.
         // See note on this in the above test.

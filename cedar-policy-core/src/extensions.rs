@@ -24,7 +24,6 @@ pub mod decimal;
 pub mod partial_evaluation;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
@@ -51,8 +50,8 @@ lazy_static::lazy_static! {
 
     static ref EXTENSIONS_NONE : Extensions<'static> = Extensions {
         extensions: &[],
-        functions: Arc::new(HashMap::new()),
-        single_arg_constructors: Arc::new(HashMap::new()),
+        functions: HashMap::new(),
+        single_arg_constructors: HashMap::new(),
     };
 }
 
@@ -68,8 +67,9 @@ pub(crate) struct ExtensionConstructorSignature<'a> {
 
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
-/// Clone is cheap for this type.
-#[derive(Debug, Clone)]
+/// This structure is intentionally not `Clone` because we can use it entirely
+/// by reference.
+#[derive(Debug)]
 pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
@@ -77,11 +77,11 @@ pub struct Extensions<'a> {
     /// construct this object.  Built ahead of time so that we know during
     /// extension function lookup that at most one extension function exists
     /// for a name. This should also make the lookup more efficient.
-    functions: Arc<HashMap<&'a Name, &'a ExtensionFunction>>,
+    functions: HashMap<&'a Name, &'a ExtensionFunction>,
     /// All single argument extension function constructors, indexed by their
     /// type signature. Built ahead of time so that we know each constructor has
     /// a unique type signature.
-    single_arg_constructors: Arc<HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>>,
+    single_arg_constructors: HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>,
 }
 
 impl Extensions<'static> {
@@ -94,13 +94,13 @@ impl Extensions<'static> {
     }
 
     /// An [`Extensions`] object with static lifetime contain all available extensions.
-    pub fn all_available() -> Extensions<'static> {
-        ALL_AVAILABLE_EXTENSIONS.clone()
+    pub fn all_available() -> &'static Extensions<'static> {
+        &ALL_AVAILABLE_EXTENSIONS
     }
 
     /// Get a new `Extensions` with no extensions enabled.
-    pub fn none() -> Extensions<'static> {
-        EXTENSIONS_NONE.clone()
+    pub fn none() -> &'static Extensions<'static> {
+        &EXTENSIONS_NONE
     }
 }
 
@@ -144,8 +144,8 @@ impl<'a> Extensions<'a> {
 
         Ok(Extensions {
             extensions,
-            functions: Arc::new(functions),
-            single_arg_constructors: Arc::new(single_arg_constructors),
+            functions,
+            single_arg_constructors,
         })
     }
 

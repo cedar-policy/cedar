@@ -30,24 +30,39 @@ use crate::{
     NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
     ValidatorSchema,
 };
+use cedar_policy_core::parser::Loc;
+
+use similar_asserts::assert_eq;
 
 // Placeholder policy id for use when typechecking an expression directly.
 pub fn expr_id_placeholder() -> PolicyID {
     PolicyID::from_string("expr")
 }
 
+/// Get `Loc` corresponding to `snippet` in `src`. Returns an option because we
+/// always want an `Option<Loc>` instead of a `Loc`. Panics if `snippet` is not
+/// in `src` to fail fast in tests.
+#[track_caller]
+pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Loc> {
+    let start = src
+        .as_ref()
+        .find(snippet.as_ref())
+        .expect("Snippet does not exist in source!");
+    let end = start + snippet.as_ref().len();
+    Some(Loc::new(start..end, src.as_ref().into()))
+}
+
 impl ValidationError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
-    #[cfg(test)]
     pub(crate) fn expected_type(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         expected: Type,
         actual: Type,
         help: Option<UnexpectedTypeHelp>,
     ) -> Self {
-        ValidationError::expected_one_of_types(on_expr, policy_id, vec![expected], actual, help)
+        ValidationError::expected_one_of_types(source_loc, policy_id, vec![expected], actual, help)
     }
 }
 
@@ -113,21 +128,10 @@ pub(crate) fn assert_expected_type_errors(
     expected: &Vec<ValidationError>,
     actual: &HashSet<ValidationError>,
 ) {
-    expected.iter().for_each(|expected| {
-            assert!(
-                actual.contains(expected),
-                "Expected generated type errors to contain {:#?}, but error was not found. The following errors were generated: {:#?}",
-                expected,
-                actual
-            );
-        });
     assert_eq!(
-        expected.len(),
-        actual.len(),
-        "Unexpected type errors generated. Expected {:#?}, saw {:#?}.",
-        expected,
-        actual,
-    );
+        expected.iter().collect::<HashSet<_>>(),
+        actual.iter().collect::<HashSet<_>>(),
+    )
 }
 
 /// Assert that every `ValidationWarning` in the expected list of warnings
@@ -231,7 +235,7 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
 ) {
     let policy = policy.into();
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
@@ -248,7 +252,7 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
 ) {
     let policy = policy.into();
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
