@@ -1011,7 +1011,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
     where
         M: MapAccess<'de>,
     {
-        use TypeFields::*;
+        use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
 
         // We keep field values wrapped in a `Result` initially so that we do
         // not report errors due the contents of a field when the field is not
@@ -1029,9 +1029,9 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
         // serde already.
         while let Some(key) = map.next_key()? {
             match key {
-                Type => {
+                TypeField => {
                     if type_name.is_some() {
-                        return Err(serde::de::Error::duplicate_field(Type.as_str()));
+                        return Err(serde::de::Error::duplicate_field(TypeField.as_str()));
                     }
                     type_name = Some(map.next_value());
                 }
@@ -1098,10 +1098,10 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
         M: MapAccess<'de>,
     {
         use static_names::*;
-        use TypeFields::*;
+        use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
         // Fields that remain to be parsed
         let mut remaining_fields = [
-            (Type, type_name.is_some()),
+            (TypeField, type_name.is_some()),
             (Element, element.is_some()),
             (Attributes, attributes.is_some()),
             (AdditionalAttributes, additional_attributes.is_some()),
@@ -1115,7 +1115,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
         match type_name.transpose()?.as_ref() {
             Some(s) => {
                 // We've concluded that type exists
-                remaining_fields.remove(&Type);
+                remaining_fields.remove(&TypeField);
                 // Used to generate the appropriate serde error if a field is present
                 // when it is not expected.
                 let error_if_fields = |fs: &[TypeFields],
@@ -1293,7 +1293,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                     }
                 }
             }
-            None => Err(serde::de::Error::missing_field(Type.as_str())),
+            None => Err(serde::de::Error::missing_field(TypeField.as_str())),
         }
     }
 }

@@ -42,7 +42,7 @@ use crate::{
 };
 
 fn namespaced_entity_type_schema() -> json_schema::Fragment<RawName> {
-    serde_json::from_str(
+    json_schema::Fragment::from_json_str(
         r#"
             { "N::S": {
                 "entityTypes": {
