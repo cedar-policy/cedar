@@ -891,7 +891,7 @@ impl Type<RawName> {
         ns: Option<&InternalName>,
     ) -> Type<ConditionalName> {
         match self {
-            Self::Type(stv) => Type::Type(stv.conditionally_qualify_type_references(ns)),
+            Self::Type(tv) => Type::Type(tv.conditionally_qualify_type_references(ns)),
             Self::CommonTypeRef { type_name } => Type::CommonTypeRef {
                 type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
             },
@@ -900,7 +900,7 @@ impl Type<RawName> {
 
     fn into_n<N: From<RawName>>(self) -> Type<N> {
         match self {
-            Self::Type(stv) => Type::Type(stv.into_n()),
+            Self::Type(tv) => Type::Type(tv.into_n()),
             Self::CommonTypeRef { type_name } => Type::CommonTypeRef {
                 type_name: type_name.into(),
             },
@@ -921,8 +921,8 @@ impl Type<ConditionalName> {
         all_entity_defs: &HashSet<InternalName>,
     ) -> std::result::Result<Type<InternalName>, TypeResolutionError> {
         match self {
-            Self::Type(stv) => Ok(Type::Type(
-                stv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            Self::Type(tv) => Ok(Type::Type(
+                tv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
             )),
             Self::CommonTypeRef { type_name } => Ok(Type::CommonTypeRef {
                 type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
