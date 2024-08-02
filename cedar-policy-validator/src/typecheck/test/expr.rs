@@ -249,7 +249,7 @@ fn or_left_true_ignores_right() {
 
 #[test]
 fn or_right_true_fails_left() {
-    let src = "1 || false";
+    let src = "1 || true";
     assert_typecheck_fails_empty_schema(
         src.parse().unwrap(),
         Type::primitive_boolean(),
