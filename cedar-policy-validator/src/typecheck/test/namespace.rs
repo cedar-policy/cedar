@@ -78,7 +78,7 @@ fn assert_expr_typechecks_namespace_schema(e: Expr, t: Type) {
 fn assert_expr_typecheck_fails_namespace_schema(
     e: Expr,
     t: Option<Type>,
-    errs: Vec<ValidationError>,
+    errs: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_typecheck_fails(namespaced_entity_type_schema(), e, t, errs)
 }
@@ -142,7 +142,7 @@ fn namespaced_entity_can_type_error() {
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(src).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
             Type::primitive_long(),
@@ -157,32 +157,32 @@ fn namespaced_entity_wrong_namespace() {
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
 }
 
@@ -367,7 +367,7 @@ fn multiple_namespaces_attributes() {
         schema,
         Expr::from_str(src).unwrap(),
         None,
-        vec![ValidationError::unsafe_attribute_access(
+        [ValidationError::unsafe_attribute_access(
             get_loc(src, src),
             PolicyID::from_string("expr"),
             AttributeAccess::EntityLUB(
@@ -490,7 +490,7 @@ fn multiple_namespaces_applies_to() {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_namespace_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails(namespaced_entity_type_schema(), p, expected_type_errors);
 }
@@ -506,7 +506,7 @@ fn namespaced_entity_is_wrong_type_and() {
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
@@ -527,7 +527,7 @@ fn namespaced_entity_is_wrong_type_when() {
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![ValidationError::expected_type(
+        [ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
@@ -581,7 +581,7 @@ fn multi_namespace_action_eq() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -647,7 +647,7 @@ fn multi_namespace_action_in() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],

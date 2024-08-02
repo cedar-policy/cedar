@@ -721,7 +721,7 @@ fn qualified_record_attr() {
     assert_policy_typecheck_fails(
         schema,
         p.clone(),
-        vec![ValidationError::incompatible_types(
+        [ValidationError::incompatible_types(
             get_loc(src, "context == {num_of_things: 1}"),
             PolicyID::from_string("policy0"),
             [

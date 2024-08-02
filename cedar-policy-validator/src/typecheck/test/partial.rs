@@ -55,7 +55,7 @@ pub(crate) fn assert_partial_typecheck(
 pub(crate) fn assert_partial_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
@@ -66,7 +66,7 @@ pub(crate) fn assert_partial_typecheck_fails(
         &mut type_errors,
         &mut warnings,
     );
-    assert_expected_type_errors(&expected_type_errors, &type_errors);
+    assert_expected_type_errors(expected_type_errors, &type_errors);
     assert!(!typechecked, "Expected that policy would not typecheck.");
 }
 
@@ -74,7 +74,7 @@ pub(crate) fn assert_partial_typecheck_fails(
 pub(crate) fn assert_partial_typecheck_warns(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
-    expected_warnings: Vec<ValidationWarning>,
+    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
@@ -85,7 +85,7 @@ pub(crate) fn assert_partial_typecheck_warns(
         &mut type_errors,
         &mut warnings,
     );
-    assert_expected_warnings(&expected_warnings, &warnings);
+    assert_expected_warnings(expected_warnings, &warnings);
     assert!(
         typechecked,
         "Expected that policy would typecheck (with warnings)."
@@ -100,7 +100,7 @@ pub(crate) fn assert_typechecks_empty_schema(policy: StaticPolicy) {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema(
     policy: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_partial_typecheck_fails(empty_schema_file(), policy, expected_type_errors)
 }
@@ -108,7 +108,7 @@ pub(crate) fn assert_typecheck_fails_empty_schema(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_warns_empty_schema(
     policy: StaticPolicy,
-    expected_warnings: Vec<ValidationWarning>,
+    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     assert_partial_typecheck_warns(empty_schema_file(), policy, expected_warnings)
 }
@@ -406,7 +406,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { principal.foo > "a" };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::expected_type(
+            [ValidationError::expected_type(
                 get_loc(src, r#""a""#),
                 PolicyID::from_string("policy0"),
                 Type::primitive_long(),
@@ -418,7 +418,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { 1.contains(principal.foo) };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::expected_type(
+            [ValidationError::expected_type(
                 get_loc(src, "1"),
                 PolicyID::from_string("policy0"),
                 Type::any_set(),
@@ -430,7 +430,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { principal.foo.containsAll(1) };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::expected_type(
+            [ValidationError::expected_type(
                 get_loc(src, "1"),
                 PolicyID::from_string("policy0"),
                 Type::any_set(),
@@ -445,7 +445,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { principal.foo + 1 };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::expected_type(
+            [ValidationError::expected_type(
                 get_loc(src, "principal.foo + 1"),
                 PolicyID::from_string("policy0"),
                 Type::primitive_boolean(),
@@ -461,7 +461,7 @@ mod fails_empty_schema {
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_warns_empty_schema(
             p.clone(),
-            vec![ValidationWarning::impossible_policy(
+            [ValidationWarning::impossible_policy(
                 get_loc(src, src),
                 PolicyID::from_string("policy0"),
             )],
@@ -474,7 +474,7 @@ mod fails_empty_schema {
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_fails_empty_schema(
             p.clone(),
-            vec![ValidationError::unsafe_attribute_access(
+            [ValidationError::unsafe_attribute_access(
                 get_loc(src, "{foo: 1}.bar"),
                 PolicyID::from_string("policy0"),
                 AttributeAccess::Other(vec!["bar".into()]),
@@ -542,7 +542,7 @@ pub(crate) fn assert_typechecks_partial_schema(policy: StaticPolicy) {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_partial_schema(
     policy: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_partial_typecheck_fails(partial_schema_file(), policy, expected_type_errors)
 }
@@ -650,7 +650,7 @@ mod fail_partial_schema {
         let src = r#"permit(principal == User::"alice", action, resource) when { principal.name > principal.unknown };"#;
         assert_typecheck_fails_partial_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::expected_type(
+            [ValidationError::expected_type(
                 get_loc(src, "principal.name"),
                 PolicyID::from_string("policy0"),
                 Type::primitive_long(),
@@ -675,7 +675,7 @@ mod fail_partial_schema {
                 src,
             )
             .unwrap(),
-            vec![ValidationError::incompatible_types(
+            [ValidationError::incompatible_types(
                 get_loc(src, "if resource.foo then principal.age else (if resource.bar then principal.name else principal.unknown)"),
                 PolicyID::from_string("policy0"),
                 vec![Type::primitive_long(), Type::primitive_string()],
@@ -690,7 +690,7 @@ mod fail_partial_schema {
         let src = r#"permit(principal, action, resource) when { principal.is_foo };"#;
         assert_typecheck_fails_partial_schema(
             parse_policy(None, src).unwrap(),
-            vec![ValidationError::unsafe_attribute_access(
+            [ValidationError::unsafe_attribute_access(
                 get_loc(src, "principal.is_foo"),
                 PolicyID::from_string("policy0"),
                 AttributeAccess::EntityLUB(
