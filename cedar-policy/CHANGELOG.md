@@ -89,7 +89,7 @@ Cedar Language Version: 4.0
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
   passed a static policy as input. Use the `Policy` parsing functions instead.
-  (#??, resolving #1095)
+  (#1108, resolving #1095)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
