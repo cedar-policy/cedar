@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::{Id, UncheckedName},
+    ast::{Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -92,9 +92,9 @@ impl Path {
     }
 }
 
-impl From<Path> for UncheckedName {
+impl From<Path> for InternalName {
     fn from(value: Path) -> Self {
-        UncheckedName::new(
+        InternalName::new(
             value.0.node.basename,
             value.0.node.namespace,
             Some(value.0.loc),

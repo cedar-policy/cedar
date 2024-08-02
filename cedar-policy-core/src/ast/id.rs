@@ -19,7 +19,7 @@ use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
-use super::{ReservedNameError, UncheckedName};
+use super::{InternalName, ReservedNameError};
 
 const RESERVED_ID: &str = "__cedar";
 
@@ -106,10 +106,16 @@ impl TryFrom<Id> for UnreservedId {
     type Error = ReservedNameError;
     fn try_from(value: Id) -> Result<Self, Self::Error> {
         if value.is_reserved() {
-            Err(ReservedNameError(UncheckedName::unqualified_name(value)))
+            Err(ReservedNameError(InternalName::unqualified_name(value)))
         } else {
             Ok(Self(value))
         }
+    }
+}
+
+impl AsRef<Id> for UnreservedId {
+    fn as_ref(&self) -> &Id {
+        &self.0
     }
 }
 

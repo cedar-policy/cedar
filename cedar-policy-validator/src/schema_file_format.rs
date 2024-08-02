@@ -15,11 +15,12 @@
  */
 
 use cedar_policy_core::{
-    ast::{Name, UnreservedId},
+    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
 };
+use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -31,6 +32,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     marker::PhantomData,
+    str::FromStr,
 };
 
 use crate::{
@@ -38,7 +40,7 @@ use crate::{
     human_schema::{
         self, fmt::ToHumanSchemaSyntaxError, parser::parse_natural_schema_fragment, SchemaWarning,
     },
-    HumanSchemaError, HumanSyntaxParseError, RawName,
+    ConditionalName, HumanSchemaError, HumanSyntaxParseError, RawName, ReferenceType,
 };
 
 /// A [`SchemaFragment`] is split into multiple namespace definitions, and is just
@@ -51,12 +53,16 @@ use crate::{
 /// The parameter `N` is the type of entity type names and common type names in
 /// attributes/parents fields in this [`SchemaFragment`], including
 /// recursively. (It doesn't affect the type of common and entity type names
-/// _that are being declared here_, which is always an [`UnreservedId`] and unambiguously
-/// refers to the [`Name`] with the appropriate implicit namespace prepended.)
+/// _that are being declared here_, which is always an [`UnreservedId`] and
+/// unambiguously refers to the [`InternalName`] with the appropriate implicit
+/// namespace prepended.
+/// It only affects the type of common and entity type _references_.)
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
-/// - `N` = [`Name`]: a [`SchemaFragment`] in which all names have been
-///     resolved into fully-qualified [`Name`]s
+/// - `N` = [`ConditionalName`]: a [`SchemaFragment`] which has been partially
+///     processed, by converting [`RawName`]s into [`ConditionalName`]s
+/// - `N` = [`InternalName`]: a [`SchemaFragment`] in which all names have been
+///     resolved into fully-qualified [`InternalName`]s
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
@@ -171,7 +177,7 @@ impl<N: Display> SchemaFragment<N> {
 /// attributes/parents fields in this [`NamespaceDefinition`], including
 /// recursively. (It doesn't affect the type of common and entity type names
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
-/// refers to the `Name` with the implicit current/active namespace prepended.)
+/// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
 /// See notes on [`SchemaFragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
@@ -207,25 +213,84 @@ impl<N> NamespaceDefinition<N> {
 }
 
 impl NamespaceDefinition<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> NamespaceDefinition<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> NamespaceDefinition<ConditionalName> {
         NamespaceDefinition {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| (k, v.qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
         }
+    }
+}
+
+impl NamespaceDefinition<ConditionalName> {
+    /// Convert this [`NamespaceDefinition<ConditionalName>`] into a
+    /// [`NamespaceDefinition<InternalName>`] by fully-qualifying all typenames
+    /// that appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    ///
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<NamespaceDefinition<InternalName>> {
+        Ok(NamespaceDefinition {
+            common_types: self
+                .common_types
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                    ))
+                })
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+            entity_types: self
+                .entity_types
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                    ))
+                })
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+            actions: self
+                .actions
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        v.fully_qualify_type_references(
+                            all_common_defs,
+                            all_entity_defs,
+                            all_action_defs,
+                        )?,
+                    ))
+                })
+                .collect::<Result<_>>()?,
+        })
     }
 }
 
@@ -256,16 +321,45 @@ pub struct EntityType<N> {
 }
 
 impl EntityType<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> EntityType<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> EntityType<ConditionalName> {
         EntityType {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
-            shape: self.shape.qualify_type_references(ns),
+            shape: self.shape.conditionally_qualify_type_references(ns),
         }
+    }
+}
+
+impl EntityType<ConditionalName> {
+    /// Convert this [`EntityType<ConditionalName>`] into an
+    /// [`EntityType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<EntityType<InternalName>, TypeResolutionError> {
+        Ok(EntityType {
+            member_of_types: self
+                .member_of_types
+                .into_iter()
+                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .collect::<std::result::Result<_, _>>()?,
+            shape: self
+                .shape
+                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+        })
     }
 }
 
@@ -282,7 +376,8 @@ impl EntityType<RawName> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AttributesOrContext<N>(
     // We use the usual `SchemaType` deserialization, but it will ultimately
-    // need to be a `Record` or type def which resolves to a `Record`.
+    // need to be a `Record` or common-type reference which resolves to a
+    // `Record`.
     pub SchemaType<N>,
 );
 
@@ -308,9 +403,32 @@ impl<N> Default for AttributesOrContext<N> {
 }
 
 impl AttributesOrContext<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> AttributesOrContext<Name> {
-        AttributesOrContext(self.0.qualify_type_references(ns))
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> AttributesOrContext<ConditionalName> {
+        AttributesOrContext(self.0.conditionally_qualify_type_references(ns))
+    }
+}
+
+impl AttributesOrContext<ConditionalName> {
+    /// Convert this [`AttributesOrContext<ConditionalName>`] into an
+    /// [`AttributesOrContext<InternalName>`] by fully-qualifying all typenames
+    /// that appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<AttributesOrContext<InternalName>, TypeResolutionError> {
+        Ok(AttributesOrContext(self.0.fully_qualify_type_references(
+            all_common_defs,
+            all_entity_defs,
+        )?))
     }
 }
 
@@ -345,19 +463,59 @@ pub struct ActionType<N> {
 }
 
 impl ActionType<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionType<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> ActionType<ConditionalName> {
         ActionType {
             attributes: self.attributes,
             applies_to: self
                 .applies_to
-                .map(|applyspec| applyspec.qualify_type_references(ns)),
+                .map(|applyspec| applyspec.conditionally_qualify_type_references(ns)),
             member_of: self.member_of.map(|v| {
                 v.into_iter()
-                    .map(|aeuid| aeuid.qualify_type_references(ns))
+                    .map(|aeuid| aeuid.conditionally_qualify_type_references(ns))
                     .collect()
             }),
         }
+    }
+}
+
+impl ActionType<ConditionalName> {
+    /// Convert this [`ActionType<ConditionalName>`] into an
+    /// [`ActionType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    ///
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> Result<ActionType<InternalName>> {
+        Ok(ActionType {
+            attributes: self.attributes,
+            applies_to: self
+                .applies_to
+                .map(|applyspec| {
+                    applyspec.fully_qualify_type_references(all_common_defs, all_entity_defs)
+                })
+                .transpose()?,
+            member_of: self
+                .member_of
+                .map(|v| {
+                    v.into_iter()
+                        .map(|aeuid| aeuid.fully_qualify_type_references(all_action_defs))
+                        .collect::<std::result::Result<_, ActionResolutionError>>()
+                })
+                .transpose()?,
+        })
     }
 }
 
@@ -388,26 +546,60 @@ pub struct ApplySpec<N> {
 }
 
 impl ApplySpec<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ApplySpec<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> ApplySpec<ConditionalName> {
         ApplySpec {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|rname| rname.qualify_with(ns))
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
-            context: self.context.qualify_type_references(ns),
+            context: self.context.conditionally_qualify_type_references(ns),
         }
     }
 }
 
+impl ApplySpec<ConditionalName> {
+    /// Convert this [`ApplySpec<ConditionalName>`] into an
+    /// [`ApplySpec<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<ApplySpec<InternalName>, TypeResolutionError> {
+        Ok(ApplySpec {
+            resource_types: self
+                .resource_types
+                .into_iter()
+                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+            principal_types: self
+                .principal_types
+                .into_iter()
+                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+            context: self
+                .context
+                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+        })
+    }
+}
+
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -419,15 +611,31 @@ pub struct ActionEntityUID<N> {
 
     /// Represents the type of the action.
     /// `None` is shorthand for `Action`.
-    /// If this is `Some`, the last component of the [`Name`] should be `Action`.
+    /// If this is `Some`, the last component of the `N` should be `Action`.
+    ///
+    /// INVARIANT: This can only be `None` in the `N` = `RawName` case.
+    /// This invariant is upheld by all the code below that constructs
+    /// `ActionEntityUID`.
+    /// We also rely on `ActionEntityUID<N>` only being `Deserialize` for
+    /// `N` = `RawName`, so that you can't create an `ActionEntityUID` that
+    /// violates this invariant via deserialization.
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ty: Option<N>,
+    ty: Option<N>,
 }
 
-impl<N> ActionEntityUID<N> {
+impl ActionEntityUID<RawName> {
+    /// Create a new `ActionEntityUID<RawName>`.
+    /// `ty` = `None` is shorthand for `Action`.
+    pub fn new(ty: Option<RawName>, id: SmolStr) -> Self {
+        Self { id, ty }
+    }
+
     /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
+    //
+    // This function is only available for `RawName` and not other values of `N`,
+    // in order to uphold the INVARIANT on self.ty.
     pub fn default_type(id: SmolStr) -> Self {
         Self { id, ty: None }
     }
@@ -445,11 +653,143 @@ impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
 }
 
 impl ActionEntityUID<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> ActionEntityUID<Name> {
+    /// (Conditionally) prefix this action entity UID's typename with the given namespace
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> ActionEntityUID<ConditionalName> {
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<ConditionalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
         ActionEntityUID {
             id: self.id,
-            ty: self.ty.map(|rname| rname.qualify_with(ns)),
+            ty: {
+                // PANIC SAFETY: this is a valid raw name
+                #[allow(clippy::expect_used)]
+                let raw_name = self
+                    .ty
+                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
+            },
+        }
+    }
+
+    /// Unconditionally prefix this action entity UID's typename with the given namespace
+    pub fn qualify_with(self, ns: Option<&InternalName>) -> ActionEntityUID<InternalName> {
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<InternalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
+        ActionEntityUID {
+            id: self.id,
+            ty: {
+                // PANIC SAFETY: this is a valid raw name
+                #[allow(clippy::expect_used)]
+                let raw_name = self
+                    .ty
+                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                Some(raw_name.qualify_with(ns))
+            },
+        }
+    }
+}
+
+impl ActionEntityUID<ConditionalName> {
+    /// Get the action type, as a [`ConditionalName`].
+    pub fn ty(&self) -> &ConditionalName {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+
+    /// Convert this [`ActionEntityUID<ConditionalName>`] into an
+    /// [`ActionEntityUID<InternalName>`] by fully-qualifying its typename.
+    ///
+    /// `all_action_defs` needs to be the full set of all fully-qualified action
+    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// This `ActionEntityUID<ConditionalName>` must resolve to one of the
+    /// `all_action_defs` or else it throws `UndeclaredActionsError`.
+    pub fn fully_qualify_type_references(
+        self,
+        all_action_defs: &HashSet<EntityUID>,
+    ) -> std::result::Result<ActionEntityUID<InternalName>, ActionResolutionError> {
+        for possibility in self.possibilities() {
+            // This ignores any possibilities that aren't valid `EntityUID`,
+            // because we know that all defined actions are valid `EntityUID`s
+            // (because `all_action_defs` has type `&HashSet<EntityUID>`).
+            if let Ok(euid) = EntityUID::try_from(possibility.clone()) {
+                if all_action_defs.contains(&euid) {
+                    return Ok(possibility);
+                }
+            }
+        }
+        return Err(ActionResolutionError(nonempty!(self)));
+    }
+
+    /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
+    /// which this [`ActionEntityUID<ConditionalName>`] might resolve to, in
+    /// priority order (highest-priority first).
+    pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<InternalName>> + '_ {
+        // Upholding the INVARIANT on ActionEntityUID.ty: constructing `ActionEntityUID<InternalName>`,
+        // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
+        self.ty()
+            .possibilities()
+            .map(|possibility| ActionEntityUID {
+                id: self.id.clone(),
+                ty: Some(possibility.clone()),
+            })
+    }
+
+    /// Convert this [`ActionEntityUID<ConditionalName>`] back into a [`ActionEntityUID<RawName>`].
+    /// As of this writing, [`ActionEntityUID<RawName>`] has a `Display` impl while
+    /// [`ActionEntityUID<ConditionalName>`] does not.
+    pub(crate) fn as_raw(&self) -> ActionEntityUID<RawName> {
+        ActionEntityUID {
+            id: self.id.clone(),
+            ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
+        }
+    }
+}
+
+impl ActionEntityUID<Name> {
+    /// Get the action type, as a [`Name`].
+    pub fn ty(&self) -> &Name {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+}
+
+impl ActionEntityUID<InternalName> {
+    /// Get the action type, as an [`InternalName`].
+    pub fn ty(&self) -> &InternalName {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+}
+
+impl From<ActionEntityUID<Name>> for EntityUID {
+    fn from(aeuid: ActionEntityUID<Name>) -> Self {
+        EntityUID::from_components(aeuid.ty().clone().into(), Eid::new(aeuid.id), None)
+    }
+}
+
+impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
+    type Error = <InternalName as TryInto<Name>>::Error;
+    fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
+        let ty = Name::try_from(aeuid.ty().clone())?;
+        Ok(EntityUID::from_components(
+            ty.into(),
+            Eid::new(aeuid.id),
+            None,
+        ))
+    }
+}
+
+impl From<EntityUID> for ActionEntityUID<Name> {
+    fn from(euid: EntityUID) -> Self {
+        let (ty, id) = euid.components();
+        ActionEntityUID {
+            ty: Some(ty.into()),
+            id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
         }
     }
 }
@@ -469,9 +809,15 @@ impl ActionEntityUID<RawName> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaType<N> {
-    /// One of the standard types exposed to users
+    /// One of the standard types exposed to users.
+    ///
+    /// This branch also includes the "entity-or-common-type-reference" possibility.
     Type(SchemaTypeVariant<N>),
     /// Reference to a common type
+    ///
+    /// This is only used for references that _must_ resolve to common types.
+    /// References that may resolve to either common or entity types can use
+    /// `SchemaType::Type(SchemaTypeVariant::EntityOrCommon)`.
     CommonTypeRef {
         /// Name of the common type.
         /// For the important case of `N` = [`RawName`], this is the schema JSON
@@ -483,7 +829,8 @@ pub enum SchemaType<N> {
 }
 
 impl<N> SchemaType<N> {
-    /// Iterate over all common type references which occur in the type
+    /// Iterate over all references which occur in the type and (must or may)
+    /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
             SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
@@ -495,15 +842,19 @@ impl<N> SchemaType<N> {
             SchemaType::Type(SchemaTypeVariant::Set { element }) => {
                 element.common_type_references()
             }
+            SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
+                Box::new(std::iter::once(type_name))
+            }
             SchemaType::CommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
         }
     }
 
     /// Is this [`SchemaType`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a `CommonTypeRef` because we
-    /// can't easily check the type of a common type reference, accounting for
-    /// namespaces, without first converting to a [`crate::types::Type`].
+    /// (recursively)? Returns `None` if this is a `CommonTypeRef` or
+    /// `EntityOrCommon` because we can't easily check the type of a common type
+    /// reference, accounting for namespaces, without first converting to a
+    /// [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
@@ -534,12 +885,15 @@ impl<N> SchemaType<N> {
 }
 
 impl SchemaType<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaType<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> SchemaType<ConditionalName> {
         match self {
-            Self::Type(stv) => SchemaType::Type(stv.qualify_type_references(ns)),
+            Self::Type(stv) => SchemaType::Type(stv.conditionally_qualify_type_references(ns)),
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
-                type_name: type_name.qualify_with(ns),
+                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
             },
         }
     }
@@ -550,6 +904,30 @@ impl SchemaType<RawName> {
             Self::CommonTypeRef { type_name } => SchemaType::CommonTypeRef {
                 type_name: type_name.into(),
             },
+        }
+    }
+}
+
+impl SchemaType<ConditionalName> {
+    /// Convert this [`SchemaType<ConditionalName>`] into a
+    /// [`SchemaType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<SchemaType<InternalName>, TypeResolutionError> {
+        match self {
+            Self::Type(stv) => Ok(SchemaType::Type(
+                stv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            )),
+            Self::CommonTypeRef { type_name } => Ok(SchemaType::CommonTypeRef {
+                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
+            }),
         }
     }
 }
@@ -700,6 +1078,7 @@ pub(crate) mod static_names {
         pub(crate) static ref SET_NAME : RawName = RawName::parse_unqualified_name("Set").expect("valid identifier");
         pub(crate) static ref RECORD_NAME : RawName = RawName::parse_unqualified_name("Record").expect("valid identifier");
         pub(crate) static ref ENTITY_NAME : RawName = RawName::parse_unqualified_name("Entity").expect("valid identifier");
+        pub(crate) static ref ENTITY_OR_COMMON_NAME : RawName = RawName::parse_unqualified_name("EntityOrCommon").expect("valid identifier");
         pub(crate) static ref EXTENSION_NAME : RawName = RawName::parse_unqualified_name("Extension").expect("valid identifier");
     }
 }
@@ -852,8 +1231,34 @@ impl<'de, N: Deserialize<'de> + From<RawName>> SchemaTypeVisitor<N> {
                             }))
                         }
                     }
+                    "EntityOrCommon" => {
+                        if remaining_fields.is_empty() {
+                            // must be referring to a common type named `EntityOrCommon`
+                            Ok(SchemaType::CommonTypeRef {
+                                type_name: N::from(ENTITY_OR_COMMON_NAME.clone()),
+                            })
+                        } else {
+                            error_if_fields(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            )?;
+                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
+                            #[allow(clippy::unwrap_used)]
+                            let name = name.unwrap()?;
+                            Ok(SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
+                                type_name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity or common type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            }))
+                        }
+                    }
                     "Extension" => {
                         if remaining_fields.is_empty() {
+                            // must be referring to a common type named `Extension`
                             Ok(SchemaType::CommonTypeRef {
                                 type_name: N::from(EXTENSION_NAME.clone()),
                             })
@@ -940,6 +1345,31 @@ pub enum SchemaTypeVariant<N> {
         /// may not yet be fully qualified
         name: N,
     },
+    /// Reference that may resolve to either an entity or common type
+    EntityOrCommon {
+        /// Name of the entity or common type.
+        /// For the important case of `N` = `RawName`, this is the schema JSON
+        /// format, and the `RawName` is exactly how it appears in the schema;
+        /// may not yet be fully qualified.
+        ///
+        /// There is no possible ambiguity in the JSON syntax between this and
+        /// `Entity`, nor between this and `SchemaType::Common`.
+        /// - To represent a must-be-entity-type reference in the JSON syntax,
+        ///     use `{ "type": "Entity", "name": "foo" }`. This ser/de as
+        ///     `SchemaType::Type(SchemaTypeVariant::Entity)`.
+        /// - To represent a must-be-common-type reference in the JSON syntax,
+        ///     use `{ "type": "foo" }`. This ser/de as
+        ///     `SchemaType::CommonTypeRef`.
+        /// - To represent an either-entity-or-common-type reference in the
+        ///     JSON syntax, use `{ "type": "EntityOrCommon", "name": "foo" }`.
+        ///     This ser/de as `SchemaType::Type(SchemaTypeVariant::EntityOrCommon`.
+        ///
+        /// You can still use `{ "type": "Entity" }` alone (no `"name"` key) to
+        /// indicate a common type named `Entity`, and likewise for
+        /// `EntityOrCommon`.
+        #[serde(rename = "name")]
+        type_name: N,
+    },
     /// Extension types
     Extension {
         /// Name of the extension type
@@ -948,14 +1378,24 @@ pub enum SchemaTypeVariant<N> {
 }
 
 impl SchemaTypeVariant<RawName> {
-    /// Prefix unqualified entity and common type references with the namespace they are in
-    pub fn qualify_type_references(self, ns: Option<&Name>) -> SchemaTypeVariant<Name> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> SchemaTypeVariant<ConditionalName> {
         match self {
             Self::Boolean => SchemaTypeVariant::Boolean,
             Self::Long => SchemaTypeVariant::Long,
             Self::String => SchemaTypeVariant::String,
+            Self::Extension { name } => SchemaTypeVariant::Extension { name },
             Self::Entity { name } => SchemaTypeVariant::Entity {
-                name: name.qualify_with(ns),
+                name: name.conditionally_qualify_with(ns, ReferenceType::Entity), // `Self::Entity` must resolve to an entity type, not a common type
+            },
+            Self::EntityOrCommon { type_name } => SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.conditionally_qualify_with(ns, ReferenceType::CommonOrEntity),
+            },
+            Self::Set { element } => SchemaTypeVariant::Set {
+                element: Box::new(element.conditionally_qualify_type_references(ns)),
             },
             Self::Record {
                 attributes,
@@ -966,7 +1406,7 @@ impl SchemaTypeVariant<RawName> {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: ty.qualify_type_references(ns),
+                                ty: ty.conditionally_qualify_type_references(ns),
                                 required,
                             },
                         )
@@ -974,10 +1414,6 @@ impl SchemaTypeVariant<RawName> {
                 )),
                 additional_attributes,
             },
-            Self::Set { element } => SchemaTypeVariant::Set {
-                element: Box::new(element.qualify_type_references(ns)),
-            },
-            Self::Extension { name } => SchemaTypeVariant::Extension { name },
         }
     }
 
@@ -987,6 +1423,9 @@ impl SchemaTypeVariant<RawName> {
             Self::Long => SchemaTypeVariant::Long,
             Self::String => SchemaTypeVariant::String,
             Self::Entity { name } => SchemaTypeVariant::Entity { name: name.into() },
+            Self::EntityOrCommon { type_name } => SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.into(),
+            },
             Self::Record {
                 attributes,
                 additional_attributes,
@@ -1005,13 +1444,64 @@ impl SchemaTypeVariant<RawName> {
     }
 }
 
+impl SchemaTypeVariant<ConditionalName> {
+    /// Convert this [`SchemaTypeVariant<ConditionalName>`] into a
+    /// [`SchemaTypeVariant<InternalName>`] by fully-qualifying all typenames
+    /// that appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<SchemaTypeVariant<InternalName>, TypeResolutionError> {
+        match self {
+            Self::Boolean => Ok(SchemaTypeVariant::Boolean),
+            Self::Long => Ok(SchemaTypeVariant::Long),
+            Self::String => Ok(SchemaTypeVariant::String),
+            Self::Extension { name } => Ok(SchemaTypeVariant::Extension { name }),
+            Self::Entity { name } => Ok(SchemaTypeVariant::Entity {
+                name: name.resolve(all_common_defs, all_entity_defs)?.clone(),
+            }),
+            Self::EntityOrCommon { type_name } => Ok(SchemaTypeVariant::EntityOrCommon {
+                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
+            }),
+            Self::Set { element } => Ok(SchemaTypeVariant::Set {
+                element: Box::new(
+                    element.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                ),
+            }),
+            Self::Record {
+                attributes,
+                additional_attributes,
+            } => Ok(SchemaTypeVariant::Record {
+                attributes: attributes
+                    .into_iter()
+                    .map(|(attr, TypeOfAttribute { ty, required })| {
+                        Ok((
+                            attr,
+                            TypeOfAttribute {
+                                ty: ty.fully_qualify_type_references(
+                                    all_common_defs,
+                                    all_entity_defs,
+                                )?,
+                                required,
+                            },
+                        ))
+                    })
+                    .collect::<std::result::Result<BTreeMap<_, _>, _>>()?,
+                additional_attributes,
+            }),
+        }
+    }
+}
+
 // Only used for serialization
 fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
-
-// We forbid declaring a custom typedef with the same name as a builtin type.
-pub(crate) static PRIMITIVE_TYPES: &[&str] = &["String", "Long", "Boolean"];
 
 #[cfg(feature = "arbitrary")]
 // PANIC SAFETY property testing code
@@ -1411,13 +1901,14 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"undeclared common type: Entity"#)
-                    .help("any common types used in entity or context attributes need to be declared in `commonTypes`")
+                &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Entity"#)
+                    // TODO(#1094): this help message could suggest that the user needs to add a `name` field
+                    .help("`Entity` has not been declared as a common type")
                     .build());
         });
     }

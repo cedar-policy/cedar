@@ -1463,6 +1463,16 @@ impl From<Var> for Id {
     }
 }
 
+// PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.
+#[allow(clippy::fallible_impl_from)]
+impl From<Var> for UnreservedId {
+    fn from(var: Var) -> Self {
+        // PANIC SAFETY: `Var` is a simple enum and all vars are formatted as valid `UnreservedId`. Tested by `test::all_vars_are_ids`
+        #[allow(clippy::unwrap_used)]
+        Id::from(var).try_into().unwrap()
+    }
+}
+
 impl std::fmt::Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1487,6 +1497,7 @@ mod test {
     fn all_vars_are_ids() {
         for var in all_vars() {
             let _id: Id = var.into();
+            let _id: UnreservedId = var.into();
         }
     }
 

@@ -20,6 +20,7 @@ lalrpop-util = { version = "0.20.0", features = ["lexer"] }
 lazy_static = "1.4"
 either = "1.8"
 itertools = "0.13"
+ref-cast = "1.0"
 rustc_lexer = "0.1"
 thiserror = "1.0"
 smol_str = { version = "0.2", features = ["serde"] }

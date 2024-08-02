@@ -238,22 +238,18 @@ impl<'a> Typechecker<'a> {
         // resource applies_to sets.
         all_actions
             .flat_map(|action| {
-                action
-                    .applies_to
-                    .applicable_principal_types()
-                    .flat_map(|principal| {
-                        action
-                            .applies_to
-                            .applicable_resource_types()
-                            .map(|resource| RequestEnv::DeclaredAction {
-                                principal,
-                                action: &action.name,
-                                resource,
-                                context: &action.context,
-                                principal_slot: None,
-                                resource_slot: None,
-                            })
-                    })
+                action.applies_to_principals().flat_map(|principal| {
+                    action
+                        .applies_to_resources()
+                        .map(|resource| RequestEnv::DeclaredAction {
+                            principal,
+                            action: &action.name,
+                            resource,
+                            context: &action.context,
+                            principal_slot: None,
+                            resource_slot: None,
+                        })
+                })
             })
             .chain(if self.mode.is_partial() {
                 // A partial schema might not list all actions, and may not
