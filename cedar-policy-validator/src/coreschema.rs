@@ -197,10 +197,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     euid: principal, ..
                 } = request.principal()
                 {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_principal_type(principal.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
                         return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
@@ -209,10 +206,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
                 if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_resource_type(resource.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
                         return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
@@ -501,7 +495,7 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src, Extensions::all_available())
+        ValidatorSchema::from_json_value(src, &Extensions::all_available())
             .expect("failed to create ValidatorSchema")
     }
 

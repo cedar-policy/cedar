@@ -210,13 +210,13 @@ pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors>
     cst.to_ref()
 }
 
-/// parse a Name
+/// parse an [`ast::InternalName`]
 ///
-/// Private to this crate. Users outside Core should use [`ast::UncheckedName`]'s `FromStr` impl
-/// or its constructors
-pub(crate) fn parse_unchecked_name(name: &str) -> Result<ast::UncheckedName, err::ParseErrors> {
+/// Private to this crate. Users outside Core should use [`ast::InternalName`]'s
+/// `FromStr` impl or its constructors
+pub(crate) fn parse_internal_name(name: &str) -> Result<ast::InternalName, err::ParseErrors> {
     let cst = text_to_cst::parse_name(name)?;
-    cst.to_unchecked_name()
+    cst.to_internal_name()
 }
 
 /// parse a string into an ast::Literal (does not support expressions)
@@ -392,7 +392,7 @@ mod tests {
         "#;
         let errs = parse_policyset(src).expect_err("expected parsing to fail");
         let unrecognized_tokens = vec![
-            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"), 
+            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
             ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
         ];
         for (token, label) in unrecognized_tokens {
@@ -1088,7 +1088,7 @@ mod tests {
         assert_labeled_span(
             "permit(principal, action, resource) when {",
             "unexpected end of input",
-            "", 
+            "",
             "expected `!`, `(`, `-`, `[`, `{`, `}`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
         );
         // The right operand of an `is` gets parsed as any `Expr`, so we will
@@ -1098,7 +1098,7 @@ mod tests {
         assert_labeled_span(
             "permit(principal, action, resource) when { principal is",
             "unexpected end of input",
-            "", 
+            "",
             "expected `!`, `(`, `-`, `[`, `{`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
         );
 
@@ -1108,7 +1108,7 @@ mod tests {
         assert_labeled_span(
             "permit(principal, action, resource) when { if true",
             "unexpected end of input",
-            "", 
+            "",
             "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, `like`, or `then`",
         )
     }

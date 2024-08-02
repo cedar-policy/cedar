@@ -23,6 +23,10 @@ Cedar Language Version: 4.0
   resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
+- (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a
+  typename that can resolve to either an entity or common type, matching the
+  behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
+  part of resolving #579)
 - Partial authorization to CLI (#1082)
 
 ### Changed
@@ -81,6 +85,8 @@ Cedar Language Version: 4.0
   human-readable Cedar policies. (#943, resolving #925)
 - (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
+- (*) Schemas can now reference entity and common types defined in the empty namespace,
+  even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
   passed a static policy as input. Use the `Policy` parsing functions instead.
   (#??, resolving #1095)

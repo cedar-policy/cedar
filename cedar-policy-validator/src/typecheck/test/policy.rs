@@ -1040,7 +1040,7 @@ fn record_entity_lub_non_term() {
 }
 
 #[test]
-fn validate_policy_with_typedef_schema() {
+fn validate_policy_with_common_type_schema() {
     let namespace_def: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
     {
         "commonTypes": {

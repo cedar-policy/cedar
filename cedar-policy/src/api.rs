@@ -1190,18 +1190,33 @@ impl Validator {
 /// used to validate a policy.
 #[derive(Debug)]
 pub struct SchemaFragment {
-    value: cedar_policy_validator::ValidatorSchemaFragment,
+    value: cedar_policy_validator::ValidatorSchemaFragment<
+        cedar_policy_validator::ConditionalName,
+        cedar_policy_validator::ConditionalName,
+    >,
     lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
 }
 
 impl SchemaFragment {
-    /// Extract namespaces defined in this `SchemaFragment`. Each namespace
-    /// entry defines the name of the namespace and the entity types and actions
-    /// that exist in the namespace.
+    /// Extract namespaces defined in this `SchemaFragment`.
+    ///
+    /// `None` indicates the empty namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
-        self.value
-            .namespaces()
-            .map(|ns| ns.map(|ns| EntityNamespace(ns.clone())))
+        self.value.namespaces().filter_map(|ns| {
+            match ns.map(|ns| ast::Name::try_from(ns.clone())) {
+                Some(Ok(n)) => Some(Some(EntityNamespace(n))),
+                None => Some(None), // empty namespace, which we want to surface to the user
+                Some(Err(_)) => {
+                    // if the `SchemaFragment` contains namespaces with
+                    // reserved `__cedar` components, that's an internal
+                    // implementation detail; hide that from the user.
+                    // Also note that `EntityNamespace` is backed by `Name`
+                    // which can't even contain names with reserved
+                    // `__cedar` components.
+                    None
+                }
+            }
+        })
     }
 
     /// Create an `SchemaFragment` from a JSON value (which should be an
@@ -1284,7 +1299,7 @@ impl TryInto<Schema> for SchemaFragment {
         Ok(Schema(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1337,7 +1352,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1348,7 +1363,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
                 json,
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1359,7 +1374,7 @@ impl Schema {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_str(
                 json,
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
@@ -1369,17 +1384,17 @@ impl Schema {
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?))
     }
 
     /// Parse the schema from a reader
     pub fn from_file_natural(
         file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
             file,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
@@ -1390,7 +1405,7 @@ impl Schema {
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
             src,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
@@ -2982,17 +2997,13 @@ impl RestrictedExpression {
 fn decimal_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::UncheckedName::unqualified_name("decimal".parse().unwrap())
-        .try_into()
-        .unwrap()
+    ast::Name::unqualified_name("decimal".parse().unwrap())
 }
 
 fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
-    ast::UncheckedName::unqualified_name("ip".parse().unwrap())
-        .try_into()
-        .unwrap()
+    ast::Name::unqualified_name("ip".parse().unwrap())
 }
 
 impl FromStr for RestrictedExpression {

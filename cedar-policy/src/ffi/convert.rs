@@ -236,7 +236,7 @@ mod test {
     #[test]
     fn test_policy_to_json() {
         let text = r#"
-            permit(principal, action, resource) 
+            permit(principal, action, resource)
             when { principal has "Email" && principal.Email == "a@a.com" };
         "#;
         let result = policy_to_json(Policy::Human(text.into()));
@@ -292,7 +292,7 @@ mod test {
     #[test]
     fn test_policy_to_json_error() {
         let text = r#"
-            permit(principal, action, resource) 
+            permit(principal, action, resource)
             when { principal has "Email" && principal.Email == };
         "#;
         let result = policy_to_json(Policy::Human(text.into()));
@@ -434,7 +434,7 @@ mod test {
                     "shape": {
                         "type": "Record",
                         "attributes": {
-                            "name": {"type": "String"}
+                            "name": {"type": "EntityOrCommon", "name": "String"} // this will resolve to the builtin type `String` unless the user defines their own common or entity type `String` in the empty namespace, in another fragment
                         }
                     }
                 }
@@ -462,8 +462,8 @@ mod test {
         assert_matches!(result, SchemaToJsonAnswer::Failure { errors } => {
             assert_exactly_one_error(
                 &errors,
-                "undeclared entity type: User",
-                Some("any entity types appearing anywhere in a schema need to be declared in `entityTypes`"),
+                "failed to resolve types: User, User",
+                Some("`User` has not been declared as an entity type"),
             );
         });
     }

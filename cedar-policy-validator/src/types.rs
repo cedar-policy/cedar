@@ -770,6 +770,15 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
 /// is exactly that entity type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct EntityLUB {
+    /// We store `EntityType` here because these are entity types.
+    /// As of this writing, `EntityType` is backed by `Name` (rather than
+    /// `InternalName`), so this excludes entity types containing `__cedar`.
+    /// As of this writing, there are no valid entity types that contain
+    /// `__cedar`.
+    /// If that changes in the future, we will have to change this here to
+    /// `InternalName`, or change `EntityType` to be backed by `InternalName`
+    /// instead of `Name`.
+    //
     // INVARIANT: Non-empty set.
     lub_elements: BTreeSet<EntityType>,
 }
@@ -1397,12 +1406,8 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        human_schema::parser::parse_type, schema::try_schema_type_into_validator_type,
-        ActionBehavior,
-    };
+    use crate::ActionBehavior;
     use cool_asserts::assert_matches;
-    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
@@ -1793,7 +1798,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -1904,7 +1909,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2030,7 +2035,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2072,7 +2077,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2113,18 +2118,20 @@ mod test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_type_display_roundtrip(ty: Type) {
-        let type_str = ty.to_string();
+        // test that a common type declaration using this type roundtrips properly
+        let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
-        let parsed_schema_type = parse_type(&type_str, Extensions::all_available())
-            .expect("String representation should have parsed into a schema type");
-        let type_from_schema_type = try_schema_type_into_validator_type(
-            parsed_schema_type.qualify_type_references(None),
-            Extensions::all_available(),
-        )
-        .expect("Schema type should have converted to type.")
-        .resolve_common_type_refs(&HashMap::new())
-        .unwrap();
-        assert_eq!(ty, type_from_schema_type);
+        let (schema, _) =
+            ValidatorSchema::from_str_natural(&type_str, &Extensions::all_available()).unwrap();
+        assert_eq!(
+            &schema
+                .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
+                .unwrap()
+                .attr("foo")
+                .unwrap()
+                .attr_type,
+            &ty
+        );
     }
 
     #[test]
@@ -2199,7 +2206,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "ipaddr")]
-    fn text_extension_type_dislay() {
+    fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(Type::extension(ipaddr));
     }

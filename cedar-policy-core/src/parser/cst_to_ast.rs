@@ -46,7 +46,7 @@ use crate::ast::{
 use crate::est::extract_single_argument;
 use itertools::Either;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
@@ -806,14 +806,8 @@ impl ExprOrSpecial<'_> {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
-            Self::Var { var, .. } => {
-                // PANIC SAFETY: vars are valid unreserved names
-                #[allow(clippy::unwrap_used)]
-                Ok(ast::UncheckedName::unqualified_name(var.into())
-                    .try_into()
-                    .unwrap())
-            }
-            Self::Name { ref name, .. } => Ok(name.clone()),
+            Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
+            Self::Name { name, .. } => Ok(name),
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
@@ -1246,7 +1240,7 @@ impl Node<Option<cst::Member>> {
                     head = Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.as_ref().into(),
+                            id.to_smolstr(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1258,7 +1252,7 @@ impl Node<Option<cst::Member>> {
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
-                        expr: construct_expr_attr(expr, id.as_ref().into(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     };
                     tail = rest;
@@ -1275,7 +1269,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.as_ref().into(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     })?;
                     tail = rest;
@@ -1373,14 +1367,13 @@ impl Node<Option<cst::Primary>> {
                         loc: self.loc.clone(),
                     })
                 } else {
-                    n.to_unchecked_name()
-                        .and_then(|name| match name.try_into() {
-                            Ok(name) => Ok(ExprOrSpecial::Name {
-                                name,
-                                loc: self.loc.clone(),
-                            }),
-                            Err(err) => Err(ParseErrors::singleton(err)),
-                        })
+                    n.to_internal_name().and_then(|name| match name.try_into() {
+                        Ok(name) => Ok(ExprOrSpecial::Name {
+                            name,
+                            loc: self.loc.clone(),
+                        }),
+                        Err(err) => Err(ParseErrors::singleton(err)),
+                    })
                 }
             }
             cst::Primary::Expr(e) => e.to_expr().map(|expr| ExprOrSpecial::Expr {
@@ -1460,11 +1453,11 @@ impl Node<Option<cst::Name>> {
     }
 
     pub(crate) fn to_name(&self) -> Result<ast::Name> {
-        self.to_unchecked_name()
+        self.to_internal_name()
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    pub(crate) fn to_unchecked_name(&self) -> Result<ast::UncheckedName> {
+    pub(crate) fn to_internal_name(&self) -> Result<ast::InternalName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1661,8 +1654,8 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::UncheckedName {
-    ast::UncheckedName {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::InternalName {
+    ast::InternalName {
         id,
         path: Arc::new(path),
         loc: Some(loc),
@@ -1836,7 +1829,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
-    use ast::{ReservedNameError, UncheckedName};
+    use ast::{InternalName, ReservedNameError};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -4513,39 +4506,39 @@ mod tests {
         assert_matches!(parse_expr(r#"__cedar::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::A::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"principal is __cedar::A"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"ip("").__cedar()"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"{__cedar: 0}"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         // We allow `__cedar` as an annotation identifier
         assert_matches!(
             parse_policy(

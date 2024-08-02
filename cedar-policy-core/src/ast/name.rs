@@ -17,6 +17,7 @@
 use super::id::Id;
 use itertools::Itertools;
 use miette::Diagnostic;
+use ref_cast::RefCast;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
 use std::fmt::Display;
@@ -30,12 +31,14 @@ use crate::FromNormalizedStr;
 use super::{PrincipalOrResource, UnreservedId};
 use thiserror::Error;
 
-/// This is the `UncheckedName` type used to name types, functions, etc.
-/// The name can include namespaces.
+/// Represents the name of an entity type, function, etc.
+/// The name may include namespaces.
 /// Clone is O(1).
-/// Note that objects of this type can contain reserved `__cedar` components.
+///
+/// This type may contain any name valid for use internally, including names
+/// with reserved `__cedar` components (and also names without `__cedar`).
 #[derive(Debug, Clone)]
-pub struct UncheckedName {
+pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
@@ -45,46 +48,46 @@ pub struct UncheckedName {
 }
 
 /// `PartialEq` implementation ignores the `loc`.
-impl PartialEq for UncheckedName {
+impl PartialEq for InternalName {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id && self.path == other.path
     }
 }
-impl Eq for UncheckedName {}
+impl Eq for InternalName {}
 
-impl std::hash::Hash for UncheckedName {
+impl std::hash::Hash for InternalName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash the ty and eid, in line with the `PartialEq` impl which compares
-        // the ty and eid.
+        // hash the id and path, in line with the `PartialEq` impl which
+        // compares the id and path.
         self.id.hash(state);
         self.path.hash(state);
     }
 }
 
-impl PartialOrd for UncheckedName {
+impl PartialOrd for InternalName {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for UncheckedName {
+impl Ord for InternalName {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id).then(self.path.cmp(&other.path))
     }
 }
 
-/// A shortcut for [`UncheckedName::unqualified_name`]
-impl From<Id> for UncheckedName {
+/// A shortcut for [`InternalName::unqualified_name`]
+impl From<Id> for InternalName {
     fn from(value: Id) -> Self {
         Self::unqualified_name(value)
     }
 }
 
-/// Convert a [`UncheckedName`] to an [`Id`]
+/// Convert a [`InternalName`] to an [`Id`]
 /// The error type is the unit type because the reason the conversion fails
 /// is obvious
-impl TryFrom<UncheckedName> for Id {
+impl TryFrom<InternalName> for Id {
     type Error = ();
-    fn try_from(value: UncheckedName) -> Result<Self, Self::Error> {
+    fn try_from(value: InternalName) -> Result<Self, Self::Error> {
         if value.is_unqualified() {
             Ok(value.id)
         } else {
@@ -93,8 +96,8 @@ impl TryFrom<UncheckedName> for Id {
     }
 }
 
-impl UncheckedName {
-    /// A full constructor for [`UncheckedName`]
+impl InternalName {
+    /// A full constructor for [`InternalName`]
     pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         Self {
             id: basename,
@@ -103,7 +106,7 @@ impl UncheckedName {
         }
     }
 
-    /// Create a [`UncheckedName`] with no path (no namespaces).
+    /// Create an [`InternalName`] with no path (no namespaces).
     pub fn unqualified_name(id: Id) -> Self {
         Self {
             id,
@@ -112,7 +115,13 @@ impl UncheckedName {
         }
     }
 
-    /// Create a [`UncheckedName`] with no path (no namespaces).
+    /// Get the [`InternalName`] representing the reserved `__cedar` namespace
+    pub fn __cedar() -> Self {
+        // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
+        Self::unqualified_name(Id::new_unchecked("__cedar"))
+    }
+
+    /// Create an [`InternalName`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
@@ -122,16 +131,16 @@ impl UncheckedName {
         })
     }
 
-    /// Given a type basename and a namespace (as a [`UncheckedName`] itself),
-    /// return a [`UncheckedName`] representing the type's fully qualified name
+    /// Given a type basename and a namespace (as an [`InternalName`] itself),
+    /// return an [`InternalName`] representing the type's fully qualified name
     pub fn type_in_namespace(
         basename: Id,
-        namespace: UncheckedName,
+        namespace: InternalName,
         loc: Option<Loc>,
-    ) -> UncheckedName {
+    ) -> InternalName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
-        UncheckedName::new(basename, path, loc)
+        InternalName::new(basename, path, loc)
     }
 
     /// Get the source location
@@ -139,17 +148,17 @@ impl UncheckedName {
         self.loc.as_ref()
     }
 
-    /// Get the basename of the [`UncheckedName`] (ie, with namespaces stripped).
+    /// Get the basename of the [`InternalName`] (ie, with namespaces stripped).
     pub fn basename(&self) -> &Id {
         &self.id
     }
 
-    /// Get the namespace of the [`UncheckedName`], as components
+    /// Get the namespace of the [`InternalName`], as components
     pub fn namespace_components(&self) -> impl Iterator<Item = &Id> {
         self.path.iter()
     }
 
-    /// Get the full namespace of the [`UncheckedName`], as a single string.
+    /// Get the full namespace of the [`InternalName`], as a single string.
     ///
     /// Examples:
     /// - `foo::bar` --> the namespace is `"foo"`
@@ -161,23 +170,24 @@ impl UncheckedName {
 
     /// Qualify the name with a namespace
     ///
-    /// When the name already has an explicit namespace, it doesn't make sense
-    /// to prefix any namespace, and hence this method returns a copy of `self`.
+    /// If the name already has a non-empty namespace, this method does not
+    /// apply any prefix and instead returns a copy of `self`.
     ///
     /// If `namespace` is `None`, that represents the empty namespace, so no
     /// prefixing will be done.
     ///
-    /// When the name does not already have an explicit namespace, and
-    /// `namespace` is `Some`, prefix it with the namespace.
+    /// If the name does not already have an explicit namespace (i.e., it's
+    /// just a single `Id`), this applies `namespace` as a prefix (if it is
+    /// present).
     ///
     /// Examples:
-    /// `A::B`.qualify_with(Some(C)) is just A::B
-    /// `A`.qualify_with(Some(C)) is C::A
-    /// `A`.qualify_with(Some(B::C)) is B::C::A
-    /// `A`.qualify_with(None) is A
-    pub fn qualify_with(&self, namespace: Option<&UncheckedName>) -> UncheckedName {
+    /// - `A::B`.qualify_with(None) is `A::B`
+    /// - `A::B`.qualify_with(Some(C)) is also `A::B`
+    /// - `A`.qualify_with(None) is `A`
+    /// - `A`.qualify_with(Some(C)) is `C::A`
+    /// - `A`.qualify_with(Some(B::C)) is `B::C::A`
+    pub fn qualify_with(&self, namespace: Option<&InternalName>) -> InternalName {
         if self.is_unqualified() {
-            // Ideally, we want to implement `IntoIterator` for `Name`
             match namespace {
                 Some(namespace) => Self::new(
                     self.basename().clone(),
@@ -194,12 +204,18 @@ impl UncheckedName {
         }
     }
 
-    /// Test if a [`UncheckedName`] is an [`Id`]
+    /// Like `qualify_with()`, but accepts a [`Name`] as the namespace to qualify with
+    pub fn qualify_with_name(&self, namespace: Option<&Name>) -> InternalName {
+        let ns = namespace.map(AsRef::as_ref);
+        self.qualify_with(ns)
+    }
+
+    /// Test if an [`InternalName`] is an [`Id`]
     pub fn is_unqualified(&self) -> bool {
         self.path.is_empty()
     }
 
-    /// Test if a [`UncheckedName`] is reserved
+    /// Test if an [`InternalName`] is reserved
     /// i.e., any of its components matches `__cedar`
     pub fn is_reserved(&self) -> bool {
         self.path
@@ -209,7 +225,7 @@ impl UncheckedName {
     }
 }
 
-impl std::fmt::Display for UncheckedName {
+impl std::fmt::Display for InternalName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.path.as_ref() {
             write!(f, "{}::", elem)?;
@@ -219,9 +235,9 @@ impl std::fmt::Display for UncheckedName {
     }
 }
 
-/// Serialize a [`UncheckedName`] using its `Display` implementation
+/// Serialize an [`InternalName`] using its `Display` implementation
 /// This serialization implementation is used in the JSON schema format.
-impl Serialize for UncheckedName {
+impl Serialize for InternalName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -230,23 +246,23 @@ impl Serialize for UncheckedName {
     }
 }
 
-// allow `.parse()` on a string to make a [`UncheckedName`]
-impl std::str::FromStr for UncheckedName {
+// allow `.parse()` on a string to make an [`InternalName`]
+impl std::str::FromStr for InternalName {
     type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        crate::parser::parse_unchecked_name(s)
+        crate::parser::parse_internal_name(s)
     }
 }
 
-impl FromNormalizedStr for UncheckedName {
+impl FromNormalizedStr for InternalName {
     fn describe_self() -> &'static str {
-        "Reserved name"
+        "internal name"
     }
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for UncheckedName {
+impl<'a> arbitrary::Arbitrary<'a> for InternalName {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             id: u.arbitrary()?,
@@ -259,7 +275,7 @@ impl<'a> arbitrary::Arbitrary<'a> for UncheckedName {
 struct NameVisitor;
 
 impl<'de> serde::de::Visitor<'de> for NameVisitor {
-    type Value = UncheckedName;
+    type Value = InternalName;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("a name consisting of an optional namespace and id")
@@ -269,14 +285,14 @@ impl<'de> serde::de::Visitor<'de> for NameVisitor {
     where
         E: serde::de::Error,
     {
-        UncheckedName::from_normalized_str(value)
+        InternalName::from_normalized_str(value)
             .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
     }
 }
 
-/// Deserialize a [`UncheckedName`] using `from_normalized_str`
+/// Deserialize an [`InternalName`] using `from_normalized_str`.
 /// This deserialization implementation is used in the JSON schema format.
-impl<'de> Deserialize<'de> for UncheckedName {
+impl<'de> Deserialize<'de> for InternalName {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -391,11 +407,15 @@ mod vars_test {
     }
 }
 
-/// A new type which indicates that the contained [`UncheckedName`] does not contain
-/// reserved `__cedar`, as specified by RFC 52
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize)]
+/// A new type which indicates that the contained [`InternalName`] does not
+/// contain reserved `__cedar`, as specified by RFC 52.
+/// This represents names which are legal for end-users to _define_, while
+/// [`InternalName`] represents names which are legal for end-users to
+/// _reference_.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, RefCast)]
+#[repr(transparent)]
 #[serde(transparent)]
-pub struct Name(pub(crate) UncheckedName);
+pub struct Name(pub(crate) InternalName);
 
 impl From<UnreservedId> for Name {
     fn from(value: UnreservedId) -> Self {
@@ -423,7 +443,7 @@ impl Display for Name {
 impl FromStr for Name {
     type Err = ParseErrors;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let n: UncheckedName = s.parse()?;
+        let n: InternalName = s.parse()?;
         n.try_into().map_err(ParseErrors::singleton)
     }
 }
@@ -448,23 +468,17 @@ impl<'de> Deserialize<'de> for Name {
 }
 
 impl Name {
-    /// Qualify the name with an optional namespace
-    /// This method has the same behavior as [`UncheckedName::qualify_with`] except that
-    /// the `namespace` argument is a `Option<&Name>`
-    pub fn qualify_with(&self, namespace: Option<&Self>) -> Self {
-        Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
-    }
-
     /// Create a [`Name`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
-        UncheckedName::parse_unqualified_name(s)
+        InternalName::parse_unqualified_name(s)
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
     /// Create a [`Name`] with no path (no namespaces).
     pub fn unqualified_name(id: UnreservedId) -> Self {
-        Self(UncheckedName::unqualified_name(id.0))
+        // This is safe (upholds the `Name` invariant) because `id` must be an `UnreservedId`
+        Self(InternalName::unqualified_name(id.0))
     }
 
     /// Get the basename of the [`Name`] (ie, with namespaces stripped).
@@ -481,16 +495,45 @@ impl Name {
         self.0.basename().clone().try_into().unwrap()
     }
 
+    /// Test if a [`Name`] is an [`Id`]
+    pub fn is_unqualified(&self) -> bool {
+        self.0.is_unqualified()
+    }
+
+    /// Qualify the name with an optional namespace
+    ///
+    /// This method has the same behavior as [`InternalName::qualify_with()`]
+    pub fn qualify_with(&self, namespace: Option<&InternalName>) -> InternalName {
+        self.0.qualify_with(namespace)
+    }
+
+    /// Qualify the name with an optional namespace
+    ///
+    /// This method has the same behavior as [`InternalName::qualify_with_name()`] except that
+    /// it's guaranteed to return [`Name`], not [`InternalName`]
+    pub fn qualify_with_name(&self, namespace: Option<&Self>) -> Self {
+        // This is safe (upholds the `Name` invariant) because both `self` and `namespace`
+        // cannot contain `__cedar` -- they were already `Name`s
+        Self(self.as_ref().qualify_with(namespace.map(|n| n.as_ref())))
+    }
+
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
         self.0.loc()
     }
 }
 
-/// Error occurred when a reserved name is used
+/// Error when a reserved name is used where it is not allowed
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic, Hash)]
 #[error("The name `{0}` contains `__cedar`, which is reserved")]
-pub struct ReservedNameError(pub(crate) UncheckedName);
+pub struct ReservedNameError(pub(crate) InternalName);
+
+impl ReservedNameError {
+    /// The [`InternalName`] which contained a reserved component
+    pub fn name(&self) -> &InternalName {
+        &self.0
+    }
+}
 
 impl From<ReservedNameError> for ParseError {
     fn from(value: ReservedNameError) -> Self {
@@ -507,9 +550,9 @@ impl From<ReservedNameError> for ParseError {
     }
 }
 
-impl TryFrom<UncheckedName> for Name {
+impl TryFrom<InternalName> for Name {
     type Error = ReservedNameError;
-    fn try_from(value: UncheckedName) -> Result<Self, Self::Error> {
+    fn try_from(value: InternalName) -> Result<Self, Self::Error> {
         if value.is_reserved() {
             Err(ReservedNameError(value))
         } else {
@@ -518,14 +561,25 @@ impl TryFrom<UncheckedName> for Name {
     }
 }
 
-impl From<Name> for UncheckedName {
+impl<'a> TryFrom<&'a InternalName> for &'a Name {
+    type Error = ReservedNameError;
+    fn try_from(value: &'a InternalName) -> Result<&'a Name, ReservedNameError> {
+        if value.is_reserved() {
+            Err(ReservedNameError(value.clone()))
+        } else {
+            Ok(<Name as RefCast>::ref_cast(value))
+        }
+    }
+}
+
+impl From<Name> for InternalName {
     fn from(value: Name) -> Self {
         value.0
     }
 }
 
-impl AsRef<UncheckedName> for Name {
-    fn as_ref(&self) -> &UncheckedName {
+impl AsRef<InternalName> for Name {
+    fn as_ref(&self) -> &InternalName {
         &self.0
     }
 }
@@ -535,14 +589,14 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let basename: UnreservedId = u.arbitrary()?;
         let path: Vec<UnreservedId> = u.arbitrary()?;
-        let name = UncheckedName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
+        let name = InternalName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
         // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
         #[allow(clippy::unwrap_used)]
         Ok(name.try_into().unwrap())
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
-        <UncheckedName as arbitrary::Arbitrary>::size_hint(depth)
+        <InternalName as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 
@@ -552,48 +606,48 @@ mod test {
 
     #[test]
     fn normalized_name() {
-        UncheckedName::from_normalized_str("foo").expect("should be OK");
-        UncheckedName::from_normalized_str("foo::bar").expect("should be OK");
-        UncheckedName::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
-        UncheckedName::from_normalized_str(" foo").expect_err("shouldn't be OK");
-        UncheckedName::from_normalized_str("foo ").expect_err("shouldn't be OK");
-        UncheckedName::from_normalized_str("foo\n").expect_err("shouldn't be OK");
-        UncheckedName::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("foo").expect("should be OK");
+        InternalName::from_normalized_str("foo::bar").expect("should be OK");
+        InternalName::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        InternalName::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("foo\n").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
     }
 
     #[test]
     fn qualify_with() {
         assert_eq!(
             "foo::bar::baz",
-            UncheckedName::from_normalized_str("baz")
+            InternalName::from_normalized_str("baz")
                 .unwrap()
                 .qualify_with(Some(&"foo::bar".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "C::D",
-            UncheckedName::from_normalized_str("C::D")
+            InternalName::from_normalized_str("C::D")
                 .unwrap()
                 .qualify_with(Some(&"A::B".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A::B::C::D",
-            UncheckedName::from_normalized_str("D")
+            InternalName::from_normalized_str("D")
                 .unwrap()
                 .qualify_with(Some(&"A::B::C".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "B::C::D",
-            UncheckedName::from_normalized_str("B::C::D")
+            InternalName::from_normalized_str("B::C::D")
                 .unwrap()
                 .qualify_with(Some(&"A".parse().unwrap()))
                 .to_smolstr()
         );
         assert_eq!(
             "A",
-            UncheckedName::from_normalized_str("A")
+            InternalName::from_normalized_str("A")
                 .unwrap()
                 .qualify_with(None)
                 .to_smolstr()
@@ -609,11 +663,11 @@ mod test {
             "A::__cedar",
             "A::__cedar::B",
         ] {
-            assert!(UncheckedName::from_normalized_str(n).unwrap().is_reserved());
+            assert!(InternalName::from_normalized_str(n).unwrap().is_reserved());
         }
 
         for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
-            assert!(!UncheckedName::from_normalized_str(n).unwrap().is_reserved());
+            assert!(!InternalName::from_normalized_str(n).unwrap().is_reserved());
         }
     }
 }
