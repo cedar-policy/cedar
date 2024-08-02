@@ -240,12 +240,12 @@ pub enum PrimitiveType {
     Bool,
 }
 
-impl<N> From<PrimitiveType> for json_schema::SchemaTypeVariant<N> {
+impl<N> From<PrimitiveType> for json_schema::TypeVariant<N> {
     fn from(value: PrimitiveType) -> Self {
         match value {
-            PrimitiveType::Long => json_schema::SchemaTypeVariant::Long,
-            PrimitiveType::String => json_schema::SchemaTypeVariant::String,
-            PrimitiveType::Bool => json_schema::SchemaTypeVariant::Boolean,
+            PrimitiveType::Long => json_schema::TypeVariant::Long,
+            PrimitiveType::String => json_schema::TypeVariant::String,
+            PrimitiveType::Bool => json_schema::TypeVariant::Boolean,
         }
     }
 }

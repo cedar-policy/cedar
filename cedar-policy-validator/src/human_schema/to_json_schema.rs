@@ -95,25 +95,21 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn human_type_to_json_type(ty: Node<Type>) -> json_schema::SchemaType<RawName> {
+pub fn human_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
     match ty.node {
-        Type::Set(t) => json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Set {
+        Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
             element: Box::new(human_type_to_json_type(*t)),
         }),
-        Type::Ident(p) => {
-            json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::EntityOrCommon {
-                type_name: RawName::from(p),
-            })
-        }
-        Type::Record(fields) => {
-            json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Record {
-                attributes: fields
-                    .into_iter()
-                    .map(|field| convert_attr_decl(field.node))
-                    .collect(),
-                additional_attributes: false,
-            })
-        }
+        Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+            type_name: RawName::from(p),
+        }),
+        Type::Record(fields) => json_schema::Type::Type(json_schema::TypeVariant::Record {
+            attributes: fields
+                .into_iter()
+                .map(|field| convert_attr_decl(field.node))
+                .collect(),
+            additional_attributes: false,
+        }),
     }
 }
 
@@ -376,15 +372,13 @@ fn convert_entity_decl(
 
 /// Create a Record Type from a vector of `AttrDecl`s
 fn convert_attr_decls(attrs: Vec<Node<AttrDecl>>) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::AttributesOrContext(json_schema::SchemaType::Type(
-        json_schema::SchemaTypeVariant::Record {
-            attributes: attrs
-                .into_iter()
-                .map(|attr| convert_attr_decl(attr.node))
-                .collect(),
-            additional_attributes: false,
-        },
-    ))
+    json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record {
+        attributes: attrs
+            .into_iter()
+            .map(|attr| convert_attr_decl(attr.node))
+            .collect(),
+        additional_attributes: false,
+    }))
 }
 
 /// Create a context decl
@@ -392,18 +386,16 @@ fn convert_context_decl(
     decl: Either<Path, Vec<Node<AttrDecl>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::AttributesOrContext(match decl {
-        Either::Left(p) => json_schema::SchemaType::CommonTypeRef {
+        Either::Left(p) => json_schema::Type::CommonTypeRef {
             type_name: p.into(),
         },
-        Either::Right(attrs) => {
-            json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Record {
-                attributes: attrs
-                    .into_iter()
-                    .map(|attr| convert_attr_decl(attr.node))
-                    .collect(),
-                additional_attributes: false,
-            })
-        }
+        Either::Right(attrs) => json_schema::Type::Type(json_schema::TypeVariant::Record {
+            attributes: attrs
+                .into_iter()
+                .map(|attr| convert_attr_decl(attr.node))
+                .collect(),
+            additional_attributes: false,
+        }),
     })
 }
 

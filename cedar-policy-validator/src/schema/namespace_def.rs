@@ -152,7 +152,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// terms of [`ConditionalName`]s.
     pub fn from_common_type_defs(
         namespace: Option<InternalName>,
-        defs: HashMap<UnreservedId, json_schema::SchemaType<ConditionalName>>,
+        defs: HashMap<UnreservedId, json_schema::Type<ConditionalName>>,
     ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
         let common_types = CommonTypeDefs::from_conditionalname_typedefs(defs, namespace.as_ref())?;
         Ok(ValidatorNamespaceDef {
@@ -171,7 +171,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// there is only one def so it cannot have a name collision with itself
     pub fn from_common_type_def(
         namespace: Option<InternalName>,
-        def: (UnreservedId, json_schema::SchemaType<ConditionalName>),
+        def: (UnreservedId, json_schema::Type<ConditionalName>),
     ) -> ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         let common_types = CommonTypeDefs::from_conditionalname_typedef(def, namespace.as_ref());
         ValidatorNamespaceDef {
@@ -272,14 +272,14 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 }
 
 /// Holds a map from (fully qualified) [`InternalName`]s of common type
-/// definitions to their corresponding [`SchemaType`]. The common type
+/// definitions to their corresponding [`json_schema::Type`]. The common type
 /// [`InternalName`]s (keys in the map) are fully qualified, but inside the
-/// [`SchemaType`]s (values in the map), entity/common type references may or
+/// [`json_schema::Type`]s (values in the map), entity/common type references may or
 /// may not be fully qualified yet, depending on `N`; see notes on
-/// [`SchemaType`].
+/// [`json_schema::Type`].
 #[derive(Debug)]
 pub struct CommonTypeDefs<N> {
-    pub(super) defs: HashMap<InternalName, json_schema::SchemaType<N>>,
+    pub(super) defs: HashMap<InternalName, json_schema::Type<N>>,
 }
 
 impl CommonTypeDefs<ConditionalName> {
@@ -287,7 +287,7 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: HashMap<UnreservedId, json_schema::SchemaType<RawName>>,
+        schema_file_type_def: HashMap<UnreservedId, json_schema::Type<RawName>>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(schema_file_type_def.len());
@@ -313,7 +313,7 @@ impl CommonTypeDefs<ConditionalName> {
     /// validator; but unlike `from_raw_common_types()`, this function allows you to
     /// directly supply [`ConditionalName`]s in the typedefs
     pub(crate) fn from_conditionalname_typedefs(
-        input_type_defs: HashMap<UnreservedId, json_schema::SchemaType<ConditionalName>>,
+        input_type_defs: HashMap<UnreservedId, json_schema::Type<ConditionalName>>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(input_type_defs.len());
@@ -340,7 +340,7 @@ impl CommonTypeDefs<ConditionalName> {
     /// because there is only one typedef so it cannot have a name collision
     /// with itself
     pub(crate) fn from_conditionalname_typedef(
-        (id, schema_ty): (UnreservedId, json_schema::SchemaType<ConditionalName>),
+        (id, schema_ty): (UnreservedId, json_schema::Type<ConditionalName>),
         schema_namespace: Option<&InternalName>,
     ) -> Self {
         Self {
@@ -469,7 +469,7 @@ pub struct EntityTypeFragment<N> {
     /// The attributes record type for this entity type. This may contain
     /// references to common types which have not yet been resolved/inlined
     /// (e.g., because they are not defined in this schema fragment).
-    pub(super) attributes: json_schema::SchemaType<N>,
+    pub(super) attributes: json_schema::Type<N>,
     /// Direct parent entity types for this entity type.
     /// These entity types may be declared in a different namespace or schema
     /// fragment.
@@ -655,7 +655,7 @@ pub struct ActionFragment<N, A> {
     /// The type of the context record for this action. This may contain
     /// references to common types which have not yet been resolved/inlined
     /// (e.g., because they are not defined in this schema fragment).
-    pub(super) context: json_schema::SchemaType<N>,
+    pub(super) context: json_schema::Type<N>,
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec<A>,
     /// The direct parent action entities for this action.
@@ -954,23 +954,23 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
 /// will also fail for some types that can be written in the schema, but are
 /// not yet implemented in the typechecking logic.
 pub(crate) fn try_schema_type_into_validator_type(
-    schema_ty: json_schema::SchemaType<InternalName>,
+    schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::String) => {
+        json_schema::Type::Type(json_schema::TypeVariant::String) => {
             Ok(Type::primitive_string().into())
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Long) => {
+        json_schema::Type::Type(json_schema::TypeVariant::Long) => {
             Ok(Type::primitive_long().into())
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Boolean) => {
+        json_schema::Type::Type(json_schema::TypeVariant::Boolean) => {
             Ok(Type::primitive_boolean().into())
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Set { element }) => {
+        json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
             Ok(try_schema_type_into_validator_type(*element, extensions)?.map(Type::set))
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Record {
+        json_schema::Type::Type(json_schema::TypeVariant::Record {
             attributes,
             additional_attributes,
         }) => {
@@ -991,10 +991,10 @@ pub(crate) fn try_schema_type_into_validator_type(
                 )
             }
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Entity { name }) => {
+        json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
             Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::Extension { name }) => {
+        json_schema::Type::Type(json_schema::TypeVariant::Extension { name }) => {
             let extension_type_name = Name::unqualified_name(name);
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
@@ -1014,24 +1014,23 @@ pub(crate) fn try_schema_type_into_validator_type(
                 ))
             }
         }
-        json_schema::SchemaType::CommonTypeRef { type_name } => {
+        json_schema::Type::CommonTypeRef { type_name } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 common_type_defs
                     .get(&type_name)
                     .cloned()
                     // We should always have `Some` here, because if the common type
                     // wasn't defined, that error should have been caught earlier,
-                    // when the `SchemaType<InternalName>` was created by resolving a
-                    // `ConditionalName` into a fully-qualified `InternalName`.
+                    // when the `json_schema::Type<InternalName>` was created by
+                    // resolving a `ConditionalName` into a fully-qualified
+                    // `InternalName`.
                     // Nonetheless, instead of panicking if that internal
                     // invariant is violated, it's easy to return this dynamic
                     // error instead.
                     .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
-        json_schema::SchemaType::Type(json_schema::SchemaTypeVariant::EntityOrCommon {
-            type_name,
-        }) => {
+        json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 // First check if it's a common type, because in the edge case where
                 // the name is both a valid common type name and a valid entity type
@@ -1041,8 +1040,9 @@ pub(crate) fn try_schema_type_into_validator_type(
                     None => {
                         // It wasn't a common type, so we assume it must be a valid
                         // entity type. Otherwise, we would have had an error earlier,
-                        // when the `SchemaType<InternalName>` was created by resolving a
-                        // `ConditionalName` into a fully-qualified `InternalName`.
+                        // when the `json_schema::Type<InternalName>` was created by
+                        // resolving a `ConditionalName` into a fully-qualified
+                        // `InternalName`.
                         Ok(Type::named_entity_reference(internal_name_to_entity_type(
                             type_name,
                         )?))
