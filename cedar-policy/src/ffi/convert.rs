@@ -70,7 +70,7 @@ pub fn policy_to_json(policy: Policy) -> PolicyToJsonAnswer {
 }
 
 /// Return the JSON representation of a template.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToJson"))]
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "templateToJson"))]
 pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
     match template.parse(None) {
         Ok(template) => match template.to_json() {
