@@ -143,7 +143,7 @@ impl SchemaFragment<RawName> {
     /// Parse the schema (in natural schema syntax) from a string
     pub fn from_str_natural<'a>(
         src: &str,
-        extensions: Extensions<'a>,
+        extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
         parse_natural_schema_fragment(src, extensions)
@@ -151,10 +151,10 @@ impl SchemaFragment<RawName> {
     }
 
     /// Parse the schema (in natural schema syntax) from a reader
-    pub fn from_file_natural(
+    pub fn from_file_natural<'a>(
         mut file: impl std::io::Read,
-        extensions: Extensions<'_>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + '_), HumanSchemaError>
+        extensions: &'a Extensions<'_>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
         let mut src = String::new();
         file.read_to_string(&mut src)?;

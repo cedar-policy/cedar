@@ -501,7 +501,7 @@ impl Type {
     pub(crate) fn typecheck_partial_value(
         &self,
         value: &PartialValue,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         match value {
             PartialValue::Value(value) => self.typecheck_value(value, extensions),
@@ -516,7 +516,7 @@ impl Type {
     pub(crate) fn typecheck_value(
         &self,
         value: &Value,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         // we accept the overhead of cloning the `Value` and converting to
         // `RestrictedExpr` in order to improve code reuse and maintainability
@@ -531,7 +531,7 @@ impl Type {
     pub(crate) fn typecheck_restricted_expr(
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
@@ -552,7 +552,7 @@ impl Type {
             } => match restricted_expr.as_set_elements() {
                 Some(elts) => {
                     for elt in elts {
-                        if !el_type.typecheck_restricted_expr(elt, extensions.clone())? {
+                        if !el_type.typecheck_restricted_expr(elt, extensions)? {
                             return Ok(false);
                         }
                     }
@@ -584,10 +584,10 @@ impl Type {
                     for (k, attr_val) in &record {
                         match attrs.get_attr(k) {
                             Some(attr_ty) => {
-                                if !attr_ty.attr_type.typecheck_restricted_expr(
-                                    attr_val.to_owned(),
-                                    extensions.clone(),
-                                )? {
+                                if !attr_ty
+                                    .attr_type
+                                    .typecheck_restricted_expr(attr_val.to_owned(), extensions)?
+                                {
                                     return Ok(false);
                                 }
                             }
@@ -629,7 +629,7 @@ impl Type {
                         if typecheck_restricted_expr_against_schematype(
                             actual_arg,
                             expected_arg_ty,
-                            extensions.clone(),
+                            extensions,
                         )
                         .is_err()
                         {

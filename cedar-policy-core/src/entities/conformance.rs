@@ -35,12 +35,12 @@ pub struct EntitySchemaConformanceChecker<'a, S: Schema> {
     /// Schema to check conformance with
     schema: &'a S,
     /// Extensions which are active for the conformance checks
-    extensions: Extensions<'a>,
+    extensions: &'a Extensions<'a>,
 }
 
 impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
     /// Create a new checker
-    pub fn new(schema: &'a S, extensions: Extensions<'a>) -> Self {
+    pub fn new(schema: &'a S, extensions: &'a Extensions<'a>) -> Self {
         Self { schema, extensions }
     }
 
@@ -98,11 +98,8 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match typecheck_value_against_schematype(
-                            val,
-                            &expected_ty,
-                            self.extensions.clone(),
-                        ) {
+                        match typecheck_value_against_schematype(val, &expected_ty, self.extensions)
+                        {
                             Ok(()) => {} // typecheck passes
                             Err(TypecheckError::TypeMismatch(err)) => {
                                 return Err(EntitySchemaConformanceError::type_mistmatch(
@@ -158,7 +155,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
 pub fn typecheck_value_against_schematype(
     value: &PartialValue,
     expected_ty: &SchemaType,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
     match RestrictedExpr::try_from(value.clone()) {
         Ok(expr) => typecheck_restricted_expr_against_schematype(
@@ -185,13 +182,13 @@ pub fn typecheck_value_against_schematype(
 pub fn typecheck_restricted_expr_against_schematype(
     expr: BorrowedRestrictedExpr<'_>,
     expected_ty: &SchemaType,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
     // TODO(#440): instead of computing the `SchemaType` of `expr` and then
     // checking whether the schematypes are "consistent", wouldn't it be less
     // confusing, more efficient, and maybe even more precise to just typecheck
     // directly?
-    match schematype_of_restricted_expr(expr, &extensions) {
+    match schematype_of_restricted_expr(expr, extensions) {
         Ok(actual_ty) => {
             if actual_ty.is_consistent_with(expected_ty) {
                 // typecheck passes

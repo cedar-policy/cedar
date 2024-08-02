@@ -92,7 +92,7 @@ impl Entity {
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
             parents.into_iter().map(EntityUid::into).collect(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )?))
     }
 
@@ -3622,7 +3622,7 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(request.0.clone(), &entities.0, &all_ext);
+    let eval = Evaluator::new(request.0.clone(), &entities.0, all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,

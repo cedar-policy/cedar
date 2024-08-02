@@ -129,7 +129,7 @@ impl Entities {
         collection: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
         for entity in collection.into_iter() {
@@ -166,7 +166,7 @@ impl Entities {
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let mut entity_map = create_entity_map(entities.into_iter())?;
         if let Some(schema) = schema {
@@ -174,7 +174,7 @@ impl Entities {
             // We do this before adding the actions, because we trust the
             // actions were already validated as part of constructing the
             // `Schema`
-            let checker = EntitySchemaConformanceChecker::new(schema, extensions.clone());
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
                 if !entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
@@ -196,7 +196,7 @@ impl Entities {
         // schema already satisfies TC, and action and non-action entities
         // can never be in the same hierarchy when using schema-based parsing.
         if let Some(schema) = schema {
-            let checker = EntitySchemaConformanceChecker::new(schema, extensions.clone());
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
                 if entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
@@ -1695,7 +1695,7 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let entities = Entities::from_entities(
@@ -1729,7 +1729,7 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let entities = Entities::from_entities(

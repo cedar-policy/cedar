@@ -160,7 +160,7 @@ impl ast::RequestSchema for ValidatorSchema {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
@@ -246,7 +246,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         self.schema.validate_request(request, extensions)
     }
