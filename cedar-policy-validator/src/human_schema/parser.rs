@@ -27,6 +27,7 @@ use super::{
     err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
     to_json_schema::custom_schema_to_json_schema,
 };
+use crate::json_schema;
 use cedar_policy_core::extensions::Extensions;
 
 lalrpop_mod!(
@@ -102,7 +103,7 @@ pub fn parse_natural_schema_fragment<'a>(
     extensions: &Extensions<'a>,
 ) -> Result<
     (
-        crate::SchemaFragment<crate::RawName>,
+        json_schema::SchemaFragment<crate::RawName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
     HumanSyntaxParseErrors,

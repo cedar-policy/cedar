@@ -1194,7 +1194,7 @@ pub struct SchemaFragment {
         cedar_policy_validator::ConditionalName,
         cedar_policy_validator::ConditionalName,
     >,
-    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
+    lossless: cedar_policy_validator::json_schema::SchemaFragment<cedar_policy_validator::RawName>,
 }
 
 impl SchemaFragment {
@@ -1222,7 +1222,7 @@ impl SchemaFragment {
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
+        let lossless = cedar_policy_validator::json_schema::SchemaFragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1233,10 +1233,11 @@ impl SchemaFragment {
     pub fn from_file_natural(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(
-            r,
-            Extensions::all_available(),
-        )?;
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::SchemaFragment::from_file_natural(
+                r,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1250,10 +1251,11 @@ impl SchemaFragment {
     pub fn from_str_natural(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(
-            src,
-            Extensions::all_available(),
-        )?;
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::SchemaFragment::from_str_natural(
+                src,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1265,7 +1267,7 @@ impl SchemaFragment {
 
     /// Create a [`SchemaFragment`] directly from a file.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
+        let lossless = cedar_policy_validator::json_schema::SchemaFragment::from_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1314,7 +1316,7 @@ impl FromStr for SchemaFragment {
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_json_str(src)?;
+        let lossless = cedar_policy_validator::json_schema::SchemaFragment::from_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,

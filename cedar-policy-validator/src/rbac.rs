@@ -409,7 +409,7 @@ mod test {
 
     use super::*;
     use crate::{
-        schema_file_format::{NamespaceDefinition, *},
+        json_schema::{NamespaceDefinition, *},
         validation_errors::UnrecognizedEntityType,
         RawName, ValidationMode, ValidationWarning, Validator,
     };
@@ -1480,11 +1480,11 @@ mod partial_schema {
         parser::parse_policy,
     };
 
-    use crate::{NamespaceDefinition, RawName, Validator};
+    use crate::{json_schema, RawName, Validator};
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
-        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
+        let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
             r#"
         {
             "entityTypes": { },
@@ -1492,9 +1492,8 @@ mod partial_schema {
         }
         "#,
         )
-        .unwrap()
-        .try_into()
         .unwrap();
+        let schema = schema.try_into().unwrap();
 
         let (template, _) = Template::link_static_policy(policy);
         let validate = Validator::new(schema);

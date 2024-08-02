@@ -24,16 +24,17 @@ use cedar_policy_core::{
 };
 
 use crate::{
-    diagnostics::ValidationError, types::EntityLUB, validation_errors::AttributeAccess,
-    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, RawName, ValidationWarning,
+    diagnostics::ValidationError, json_schema, types::EntityLUB,
+    validation_errors::AttributeAccess, NamespaceDefinitionWithActionAttributes, RawName,
+    ValidationWarning,
 };
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks, get_loc,
 };
 
-fn schema_with_optionals() -> NamespaceDefinition<RawName> {
-    serde_json::from_str::<NamespaceDefinition<RawName>>(
+fn schema_with_optionals() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {
@@ -539,7 +540,7 @@ fn in_list_no_capability() {
 
 #[test]
 fn record_optional_attrs() {
-    let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
+    let schema = serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {

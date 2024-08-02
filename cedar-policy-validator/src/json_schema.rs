@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Structures defining the JSON syntax for Cedar schemas
+
 use cedar_policy_core::{
     ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
@@ -1979,7 +1981,7 @@ mod test {
 mod strengthened_types {
     use cool_asserts::assert_matches;
 
-    use crate::{
+    use super::{
         ActionEntityUID, ApplySpec, EntityType, NamespaceDefinition, RawName, SchemaFragment,
         SchemaType,
     };
