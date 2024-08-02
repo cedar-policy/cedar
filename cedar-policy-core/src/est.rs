@@ -199,7 +199,7 @@ impl Policy {
         let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
         if template.slots().count() == 0 {
             Err(FromJsonError::PolicyToTemplate(
-                parse_errors::ExpectedTemplate {},
+                parse_errors::ExpectedTemplate::new(),
             ))
         } else {
             Ok(template)

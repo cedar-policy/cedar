@@ -414,7 +414,7 @@ impl ToASTErrorKind {
 
     /// Constructor for the [`ToASTErrorKind::ExpectedTemplate`] error
     pub fn expected_template() -> Self {
-        parse_errors::ExpectedTemplate {}.into()
+        parse_errors::ExpectedTemplate::new().into()
     }
 
     /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
@@ -470,7 +470,19 @@ pub mod parse_errors {
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
     #[error("expected a template, got a static policy")]
     #[diagnostic(help("a template should include slot(s) `?principal` or `?resource`"))]
-    pub struct ExpectedTemplate {}
+    pub struct ExpectedTemplate {
+        /// A private field, just so the public interface notes this as a
+        /// private-fields struct and not a empty-fields struct for semver
+        /// purposes (e.g., consumers cannot construct this type with
+        /// `ExpectedTemplate {}`)
+        _dummy: (),
+    }
+
+    impl ExpectedTemplate {
+        pub(crate) fn new() -> Self {
+            Self { _dummy: () }
+        }
+    }
 
     /// Details about a `SlotsInConditionClause` error.
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
