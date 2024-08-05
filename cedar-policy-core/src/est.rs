@@ -3679,3 +3679,92 @@ mod test {
         }
     }
 }
+
+#[cfg(test)]
+mod issue_994 {
+    use crate::{
+        entities::JsonDeserializationError,
+        est,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn empty_annotation() {
+        let src = json!(
+            {
+                "annotations": {"": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id ``: unexpected end of input"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn annotation_with_space() {
+        let src = json!(
+            {
+                "annotations": {"has a space": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `has a space`: unexpected token `a`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn special_char() {
+        let src = json!(
+            {
+                "annotations": {"@": ""},
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": []
+            }
+        );
+        assert_matches!(
+            serde_json::from_value::<est::Policy>(src.clone())
+                .map_err(|e| JsonDeserializationError::Serde(e.into())),
+            Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"invalid id `@`: unexpected token `@`"#)
+                        .build()
+                );
+            }
+        );
+    }
+}
