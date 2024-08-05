@@ -294,6 +294,35 @@ impl Policy {
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
         }
     }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
+    }
 }
 
 /// Represents a policy template in either the Cedar or JSON policy format.

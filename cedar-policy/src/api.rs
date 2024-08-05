@@ -2119,6 +2119,42 @@ impl RequestEnv {
     }
 }
 
+// Get valid request envs
+// This function is called by [`Template::get_valid_request_envs`] and
+// [`Policy::get_valid_request_envs`]
+fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_validator::ValidationMode::default(),
+        ast.id().clone(),
+    );
+    tc.typecheck_by_request_env(ast)
+        .into_iter()
+        .filter_map(|(env, pc)| {
+            if matches!(pc, PolicyCheck::Success(_)) {
+                Some(match env {
+                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                        principal,
+                        action,
+                        resource,
+                        ..
+                    } => RequestEnv {
+                        principal: principal.clone().into(),
+                        resource: resource.clone().into(),
+                        action: action.clone().into(),
+                    },
+                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+                    #[allow(clippy::unreachable)]
+                    _ => unreachable!("used unsupported feature"),
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+}
+
 /// Policy template datatype
 //
 // NOTE: Unlike the internal type [`ast::Template`], this type only supports
@@ -2309,36 +2345,7 @@ impl Template {
     /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
     /// that satisfy it.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
-        let tc = Typechecker::new(
-            &s.0,
-            cedar_policy_validator::ValidationMode::default(),
-            self.ast.id().clone(),
-        );
-        tc.typecheck_by_request_env(&self.ast)
-            .into_iter()
-            .filter_map(|(env, pc)| {
-                if matches!(pc, PolicyCheck::Success(_)) {
-                    Some(match env {
-                        cedar_policy_validator::types::RequestEnv::DeclaredAction {
-                            principal,
-                            action,
-                            resource,
-                            ..
-                        } => RequestEnv {
-                            principal: principal.clone().into(),
-                            resource: resource.clone().into(),
-                            action: action.clone().into(),
-                        },
-                        //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
-                        #[allow(clippy::unreachable)]
-                        _ => unreachable!("used unsupported feature"),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeSet<_>>()
-            .into_iter()
+        get_valid_request_envs(&self.ast, s)
     }
 }
 
@@ -2713,6 +2720,13 @@ impl Policy {
             .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the policy type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+        get_valid_request_envs(self.ast.template(), s)
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {

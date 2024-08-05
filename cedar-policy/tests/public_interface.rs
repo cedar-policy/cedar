@@ -438,7 +438,7 @@ fn change_ids() {
 
 #[test]
 fn get_valid_request_pars_tests() {
-    let policy = Template::from_str(
+    let policy = Policy::from_str(
         r#"
     @id("E1,E2 a,a2 R2")
     permit (principal, action, resource is NS::R2);
@@ -497,7 +497,7 @@ fn get_valid_request_pars_tests() {
     );
 
     // refer to undeclared entity type, the result should be all empty sets
-    let policy = Template::from_str(
+    let policy = Policy::from_str(
         r#"
     @id("E1,E2 a,a2 R2")
     permit (principal, action, resource is NS::R3);

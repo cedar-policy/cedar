@@ -1,4 +1,4 @@
-use cedar_policy::ffi::{Schema, Template};
+use cedar_policy::ffi::{Policy, Schema, Template};
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
@@ -23,8 +23,23 @@ pub enum GetValidRequestEnvsResult {
 }
 
 /// Get valid request environment
-#[wasm_bindgen(js_name = "getValidRequestEnvs")]
-pub fn get_valid_request_envs(t: Template, s: Schema) -> GetValidRequestEnvsResult {
+#[wasm_bindgen(js_name = "getValidRequestEnvsTemplate")]
+pub fn get_valid_request_envs_template(t: Template, s: Schema) -> GetValidRequestEnvsResult {
+    match t.get_valid_request_envs(s) {
+        Ok((principals, actions, resources)) => GetValidRequestEnvsResult::Success {
+            principals: principals.collect(),
+            actions: actions.collect(),
+            resources: resources.collect(),
+        },
+        Err(r) => GetValidRequestEnvsResult::Failure {
+            error: r.to_string(),
+        },
+    }
+}
+
+/// Get valid request environment
+#[wasm_bindgen(js_name = "getValidRequestEnvsPolicy")]
+pub fn get_valid_request_envs_policy(t: Policy, s: Schema) -> GetValidRequestEnvsResult {
     match t.get_valid_request_envs(s) {
         Ok((principals, actions, resources)) => GetValidRequestEnvsResult::Success {
             principals: principals.collect(),
