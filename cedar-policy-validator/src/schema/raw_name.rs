@@ -46,7 +46,7 @@ impl RawName {
     ///
     /// Note that if `name` includes explicit namespaces, the result will be a
     /// [`RawName`] that also includes those explicit namespaces, as if that
-    /// fully-qualified name appeared directly in the (JSON or human) schema
+    /// fully-qualified name appeared directly in the (JSON or Cedar) schema
     /// format.
     /// If `name` does not include explicit namespaces, the result will be a
     /// [`RawName`] that also does not include explicit namespaces, which may or

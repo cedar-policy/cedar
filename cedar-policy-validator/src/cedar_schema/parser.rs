@@ -25,7 +25,7 @@ use thiserror::Error;
 use super::{
     ast::Schema,
     err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
-    to_json_schema::custom_schema_to_json_schema,
+    to_json_schema::cedar_schema_to_json_schema,
 };
 use crate::json_schema;
 use cedar_policy_core::extensions::Extensions;
@@ -109,7 +109,7 @@ pub fn parse_cedar_schema_fragment<'a>(
     CedarSyntaxParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
-    let tuple = custom_schema_to_json_schema(ast, extensions)?;
+    let tuple = cedar_schema_to_json_schema(ast, extensions)?;
     Ok(tuple)
 }
 

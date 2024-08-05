@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//! `Display` implementations for formatting a schema in human syntax
+//! `Display` implementations for formatting a schema in the Cedar schema syntax
 
 use std::{collections::HashSet, fmt::Display};
 

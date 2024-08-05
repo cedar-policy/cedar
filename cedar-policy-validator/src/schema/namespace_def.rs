@@ -41,7 +41,7 @@ use crate::{
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
 
-/// A single namespace definition from the schema json or human syntax,
+/// A single namespace definition from the schema JSON or Cedar syntax,
 /// processed into a form which is closer to that used by the validator.
 /// The processing includes detection of some errors, for example, parse errors
 /// in entity/common type names or entity/common types which are declared

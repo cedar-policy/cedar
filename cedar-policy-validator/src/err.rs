@@ -48,7 +48,7 @@ pub struct CedarSyntaxParseError {
     /// Underlying parse error(s)
     errs: cedar_schema::parser::CedarSyntaxParseErrors,
     /// Did the schema look like it was intended to be JSON format instead of
-    /// human?
+    /// Cedar?
     suspect_json_format: bool,
 }
 
@@ -93,13 +93,13 @@ impl Diagnostic for CedarSyntaxParseError {
 }
 
 impl CedarSyntaxParseError {
-    /// `errs`: the `human_schema::parser::HumanSyntaxParseErrors` that were thrown
+    /// `errs`: the `cedar_schema::parser::CedarSyntaxParseErrors` that were thrown
     ///
-    /// `src`: the human-syntax text that we were trying to parse
+    /// `src`: the Cedar-syntax text that we were trying to parse
     pub(crate) fn new(errs: cedar_schema::parser::CedarSyntaxParseErrors, src: &str) -> Self {
         // let's see what the first non-whitespace character is
         let suspect_json_format = match src.trim_start().chars().next() {
-            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
             Some('{') => true, // yes, this looks like it was intended to be a JSON schema
             Some(_) => false, // any character other than '{', not likely it was intended to be a JSON schema
         };
@@ -584,7 +584,7 @@ pub mod schema_errors {
     #[derive(Debug, Error)]
     enum JsonDeserializationAdvice {
         #[error("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?")]
-        HumanFormat,
+        CedarFormat,
         #[error("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{{ \"\": {{..}} }}`")]
         MissingNamespace,
     }
@@ -599,7 +599,7 @@ pub mod schema_errors {
                 Some(src) => {
                     // let's see what the first non-whitespace character is
                     let advice = match src.trim_start().chars().next() {
-                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
                         Some('{') => {
                             // This looks like it was intended to be a JSON schema. Check fields of top level JSON object to see
                             // if it looks like it's missing a namespace.
@@ -622,7 +622,7 @@ pub mod schema_errors {
                                 None
                             }
                         }
-                        Some(_) => Some(JsonDeserializationAdvice::HumanFormat), // any character other than '{', we suspect it might be a human-format schema
+                        Some(_) => Some(JsonDeserializationAdvice::CedarFormat), // any character other than '{', we suspect it might be a Cedar-format schema
                     };
                     Self { err, advice }
                 }

@@ -1161,7 +1161,7 @@ mod translator_tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        cedar_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
+        cedar_schema::{parser::parse_schema, to_json_schema::cedar_schema_to_json_schema},
         json_schema,
         schema::test::collect_warnings,
         types::{EntityLUB, Type},
@@ -1823,7 +1823,7 @@ mod translator_tests {
 
     #[test]
     fn reserved_namespace() {
-        let schema = custom_schema_to_json_schema(
+        let schema = cedar_schema_to_json_schema(
             parse_schema(
                 r#"namespace __cedar {
                 entity foo;
@@ -1836,7 +1836,7 @@ mod translator_tests {
         .map(|_| ());
         assert_matches!(schema, Err(_));
 
-        let schema = custom_schema_to_json_schema(
+        let schema = cedar_schema_to_json_schema(
             parse_schema(
                 r#"namespace __cedar::A {
                 entity foo;
@@ -1849,7 +1849,7 @@ mod translator_tests {
         .map(|_| ());
         assert_matches!(schema, Err(_));
 
-        let schema = custom_schema_to_json_schema(
+        let schema = cedar_schema_to_json_schema(
             parse_schema(
                 r#"
                 entity __cedar;
