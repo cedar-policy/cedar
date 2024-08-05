@@ -23,6 +23,7 @@
 )]
 
 mod id;
+use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
 mod err;
@@ -2083,6 +2084,76 @@ pub(crate) fn fold_partition<T, A, B, E>(
     Ok((lefts, rights))
 }
 
+/// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
+/// and resource, and the [`EntityUid`] of action
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct RequestEnv {
+    pub(crate) principal: EntityTypeName,
+    pub(crate) action: EntityUid,
+    pub(crate) resource: EntityTypeName,
+}
+
+impl RequestEnv {
+    /// Construct a [`RequestEnv`]
+    pub fn new(principal: EntityTypeName, action: EntityUid, resource: EntityTypeName) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+        }
+    }
+    /// Get the principal type name
+    pub fn principal(&self) -> &EntityTypeName {
+        &self.principal
+    }
+
+    /// Get the action [`EntityUid`]
+    pub fn action(&self) -> &EntityUid {
+        &self.action
+    }
+
+    /// Get the resource type name
+    pub fn resource(&self) -> &EntityTypeName {
+        &self.resource
+    }
+}
+
+// Get valid request envs
+// This function is called by [`Template::get_valid_request_envs`] and
+// [`Policy::get_valid_request_envs`]
+fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_validator::ValidationMode::default(),
+        ast.id().clone(),
+    );
+    tc.typecheck_by_request_env(ast)
+        .into_iter()
+        .filter_map(|(env, pc)| {
+            if matches!(pc, PolicyCheck::Success(_)) {
+                Some(match env {
+                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                        principal,
+                        action,
+                        resource,
+                        ..
+                    } => RequestEnv {
+                        principal: principal.clone().into(),
+                        resource: resource.clone().into(),
+                        action: action.clone().into(),
+                    },
+                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+                    #[allow(clippy::unreachable)]
+                    _ => unreachable!("used unsupported feature"),
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+}
+
 /// Policy template datatype
 //
 // NOTE: Unlike the internal type [`ast::Template`], this type only supports
@@ -2267,6 +2338,13 @@ impl Template {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+        get_valid_request_envs(&self.ast, s)
     }
 }
 
@@ -2641,6 +2719,13 @@ impl Policy {
             .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the policy type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+        get_valid_request_envs(self.ast.template(), s)
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
