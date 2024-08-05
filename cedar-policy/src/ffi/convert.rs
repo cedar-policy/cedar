@@ -426,7 +426,7 @@ mod test {
             entity User = { "name": String };
             action sendMessage appliesTo {principal: User, resource: User};
         "#;
-        let result = schema_to_json(Schema::Human(text.into()));
+        let result = schema_to_json(Schema::Cedar(text.into()));
         let expected = json!({
         "": {
             "entityTypes": {
@@ -458,7 +458,7 @@ mod test {
         let text = r#"
             action sendMessage appliesTo {principal: User, resource: User};
         "#;
-        let result = schema_to_json(Schema::Human(text.into()));
+        let result = schema_to_json(Schema::Cedar(text.into()));
         assert_matches!(result, SchemaToJsonAnswer::Failure { errors } => {
             assert_exactly_one_error(
                 &errors,

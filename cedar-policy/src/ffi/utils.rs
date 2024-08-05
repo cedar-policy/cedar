@@ -516,7 +516,7 @@ impl PolicySet {
 )]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
-    Human(String),
+    Cedar(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
     Json(
         #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
@@ -544,7 +544,7 @@ impl Schema {
         miette::Report,
     > {
         match self {
-            Self::Human(str) => crate::SchemaFragment::from_str_cedar(&str)
+            Self::Cedar(str) => crate::SchemaFragment::from_str_cedar(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,
