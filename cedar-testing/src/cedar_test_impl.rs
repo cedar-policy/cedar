@@ -342,7 +342,7 @@ impl CedarTestImplementation for RustEngine {
         } else {
             Extensions::none()
         };
-        let e = Evaluator::new(request.clone(), entities, &exts);
+        let e = Evaluator::new(request.clone(), entities, exts);
         let result = e.partial_interpret(expr, &HashMap::default());
         match (result, expected) {
             (Ok(PartialValue::Residual(r)), Some(ExprOrValue::Expr(e))) => {
@@ -371,7 +371,7 @@ impl CedarTestImplementation for RustEngine {
         } else {
             Extensions::none()
         };
-        let evaluator = Evaluator::new(request.clone(), entities, &exts);
+        let evaluator = Evaluator::new(request.clone(), entities, exts);
         let result = evaluator.interpret(expr, &HashMap::default());
         let response = result.ok() == expected;
         TestResult::Success(response)

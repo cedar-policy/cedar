@@ -431,12 +431,12 @@ impl FnAndArg {
 #[derive(Debug, Clone)]
 pub struct ValueParser<'e> {
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 }
 
 impl<'e> ValueParser<'e> {
     /// Create a new `ValueParser`.
-    pub fn new(extensions: Extensions<'e>) -> Self {
+    pub fn new(extensions: &'e Extensions<'e>) -> Self {
         Self { extensions }
     }
 
@@ -506,7 +506,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            &self.extensions,
+                            self.extensions,
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -581,7 +581,7 @@ impl<'e> ValueParser<'e> {
                         expected: Box::new(expected_ty.clone()),
                         actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
-                            &self.extensions,
+                            self.extensions,
                         ) {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
@@ -638,7 +638,7 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty = schematype_of_restricted_expr(arg.as_borrowed(), &self.extensions)
+                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
                     .map_err(|e| match e {
                         GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {

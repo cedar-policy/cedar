@@ -24,12 +24,9 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
-use crate::{
-    ActionType, EntityType, NamespaceDefinition, RawName, SchemaFragment, SchemaType,
-    SchemaTypeVariant,
-};
+use crate::{json_schema, RawName};
 
-impl<N: Display> Display for SchemaFragment<N> {
+impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
@@ -41,7 +38,7 @@ impl<N: Display> Display for SchemaFragment<N> {
     }
 }
 
-impl<N: Display> Display for NamespaceDefinition<N> {
+impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
             writeln!(f, "type {n} = {ty};")?
@@ -56,15 +53,18 @@ impl<N: Display> Display for NamespaceDefinition<N> {
     }
 }
 
-impl<N: Display> Display for SchemaType<N> {
+impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SchemaType::Type(ty) => match ty {
-                SchemaTypeVariant::Boolean => write!(f, "__cedar::Bool"),
-                SchemaTypeVariant::Entity { name } => write!(f, "{name}"),
-                SchemaTypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
-                SchemaTypeVariant::Long => write!(f, "__cedar::Long"),
-                SchemaTypeVariant::Record {
+            json_schema::Type::Type(ty) => match ty {
+                json_schema::TypeVariant::Boolean => write!(f, "__cedar::Bool"),
+                json_schema::TypeVariant::Entity { name } => write!(f, "{name}"),
+                json_schema::TypeVariant::EntityOrCommon { type_name } => {
+                    write!(f, "{type_name}")
+                }
+                json_schema::TypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
+                json_schema::TypeVariant::Long => write!(f, "__cedar::Long"),
+                json_schema::TypeVariant::Record {
                     attributes,
                     additional_attributes: _,
                 } => {
@@ -84,10 +84,10 @@ impl<N: Display> Display for SchemaType<N> {
                     write!(f, "}}")?;
                     Ok(())
                 }
-                SchemaTypeVariant::Set { element } => write!(f, "Set < {element} >"),
-                SchemaTypeVariant::String => write!(f, "__cedar::String"),
+                json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
+                json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
-            SchemaType::CommonTypeRef { type_name } => write!(f, "{type_name}"),
+            json_schema::Type::CommonTypeRef { type_name } => write!(f, "{type_name}"),
         }
     }
 }
@@ -103,7 +103,7 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std
     write!(f, "[{contents}]")
 }
 
-impl<N: Display> Display for EntityType<N> {
+impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
             write!(f, " in ")?;
@@ -120,7 +120,7 @@ impl<N: Display> Display for EntityType<N> {
     }
 }
 
-impl<N: Display> Display for ActionType<N> {
+impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(parents) = self
             .member_of
@@ -182,9 +182,23 @@ impl NameCollisionsError {
     }
 }
 
-/// Convert a [`SchemaFragment`] to a string containing human schema syntax
+/// Convert a [`json_schema::Fragment`] to a string containing human schema syntax
+///
+/// As of this writing, this existing code throws an error if any
+/// fully-qualified name in a non-empty namespace is a valid common type and
+/// also a valid entity type.
+//
+// Two notes:
+// 1) This check is more conservative than necessary. Schemas are allowed to
+// shadow an entity type with a common type declaration in the same namespace;
+// see RFCs 24 and 70. What the human syntax can't express is if, in that
+// situation, we then specifically refer to the shadowed entity type name.  But
+// it's harder to walk all type references than it is to walk all type
+// declarations, so the conservative code here is fine; we can always make it
+// less conservative in the future without breaking people.
+// 2) This code is also likely the cause of #1063; see that issue
 pub fn json_schema_to_custom_schema_str<N: Display>(
-    json_schema: &SchemaFragment<N>,
+    json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToHumanSchemaSyntaxError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
@@ -192,8 +206,8 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new(ty_name.clone())
-                    .qualify_with(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone())
+                    .qualify_with_name(name.as_ref())
                     .to_smolstr()
             })
             .collect();
@@ -201,8 +215,8 @@ pub fn json_schema_to_custom_schema_str<N: Display>(
             .common_types
             .keys()
             .map(|ty_name| {
-                RawName::new(ty_name.clone())
-                    .qualify_with(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone())
+                    .qualify_with_name(name.as_ref())
                     .to_smolstr()
             })
             .collect();

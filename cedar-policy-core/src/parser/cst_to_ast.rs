@@ -46,7 +46,7 @@ use crate::ast::{
 use crate::est::extract_single_argument;
 use itertools::Either;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
@@ -169,21 +169,19 @@ impl Node<Option<cst::Policy>> {
             Ok(Ok(p)) => Ok(p),
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
-                ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
+                ToASTErrorKind::expected_static_policy(slot.clone()),
                 slot.loc.unwrap_or_else(|| self.loc.clone()),
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
-            // `SlotsInConditionClause` also add an `UnexpectedTemplate` error.
+            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
             Err(mut errs) => {
                 let new_errs = errs
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
                             ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::UnexpectedTemplate {
-                                    slot: inner.slot.clone(),
-                                },
+                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
                                 err.source_loc().clone(),
                             )),
                             _ => None,
@@ -806,14 +804,8 @@ impl ExprOrSpecial<'_> {
             Self::StrLit { lit, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
                 .into()),
-            Self::Var { var, .. } => {
-                // PANIC SAFETY: vars are valid unreserved names
-                #[allow(clippy::unwrap_used)]
-                Ok(ast::UncheckedName::unqualified_name(var.into())
-                    .try_into()
-                    .unwrap())
-            }
-            Self::Name { ref name, .. } => Ok(name.clone()),
+            Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
+            Self::Name { name, .. } => Ok(name),
             Self::Expr { ref expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
                 .into()),
@@ -1246,7 +1238,7 @@ impl Node<Option<cst::Member>> {
                     head = Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.as_ref().into(),
+                            id.to_smolstr(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1258,7 +1250,7 @@ impl Node<Option<cst::Member>> {
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     let id = mem::replace(i, ast::UnreservedId::empty());
                     head = Expr {
-                        expr: construct_expr_attr(expr, id.as_ref().into(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     };
                     tail = rest;
@@ -1275,7 +1267,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.as_ref().into(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     })?;
                     tail = rest;
@@ -1373,14 +1365,13 @@ impl Node<Option<cst::Primary>> {
                         loc: self.loc.clone(),
                     })
                 } else {
-                    n.to_unchecked_name()
-                        .and_then(|name| match name.try_into() {
-                            Ok(name) => Ok(ExprOrSpecial::Name {
-                                name,
-                                loc: self.loc.clone(),
-                            }),
-                            Err(err) => Err(ParseErrors::singleton(err)),
-                        })
+                    n.to_internal_name().and_then(|name| match name.try_into() {
+                        Ok(name) => Ok(ExprOrSpecial::Name {
+                            name,
+                            loc: self.loc.clone(),
+                        }),
+                        Err(err) => Err(ParseErrors::singleton(err)),
+                    })
                 }
             }
             cst::Primary::Expr(e) => e.to_expr().map(|expr| ExprOrSpecial::Expr {
@@ -1460,11 +1451,11 @@ impl Node<Option<cst::Name>> {
     }
 
     pub(crate) fn to_name(&self) -> Result<ast::Name> {
-        self.to_unchecked_name()
+        self.to_internal_name()
             .and_then(|n| n.try_into().map_err(ParseErrors::singleton))
     }
 
-    pub(crate) fn to_unchecked_name(&self) -> Result<ast::UncheckedName> {
+    pub(crate) fn to_internal_name(&self) -> Result<ast::InternalName> {
         let name = self.try_as_inner()?;
 
         let maybe_path = ParseErrors::transpose(name.path.iter().map(|i| i.to_valid_ident()));
@@ -1661,8 +1652,8 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
         ast::Var::Context => "context".into(),
     }
 }
-fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::UncheckedName {
-    ast::UncheckedName {
+fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::InternalName {
+    ast::InternalName {
         id,
         path: Arc::new(path),
         loc: Some(loc),
@@ -1836,7 +1827,7 @@ mod tests {
         parser::{err::ParseErrors, test_utils::*, *},
         test_utils::*,
     };
-    use ast::{ReservedNameError, UncheckedName};
+    use ast::{InternalName, ReservedNameError};
     use cool_asserts::assert_matches;
 
     #[track_caller]
@@ -2958,7 +2949,7 @@ mod tests {
     #[test]
     fn unescape_err_positions() {
         let assert_invalid_escape = |p_src, underline| {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("the input `\\q` is not a valid escape").exactly_one_underline(underline).build());
             });
         };
@@ -3555,7 +3546,7 @@ mod tests {
                 ResourceConstraint::is_entity_type_in_slot(Arc::new("Folder".parse().unwrap())),
             ),
         ] {
-            let policy = parse_policy_template(None, src).unwrap();
+            let policy = parse_policy_or_template(None, src).unwrap();
             assert_eq!(policy.principal_constraint(), &p);
             assert_eq!(policy.action_constraint(), &a);
             assert_eq!(policy.resource_constraint(), &r);
@@ -3815,7 +3806,7 @@ mod tests {
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &expected);
             });
         }
@@ -4034,11 +4025,11 @@ mod tests {
         ];
 
         for (p_src, expected) in invalid_policies {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
                 expect_err(p_src, &miette::Report::new(e), &expected);
             });
             let forbid_src = format!("forbid{}", &p_src[6..]);
-            assert_matches!(parse_policy_template(None, &forbid_src), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, &forbid_src), Err(e) => {
                 expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
             });
         }
@@ -4047,7 +4038,7 @@ mod tests {
     #[test]
     fn missing_scope_constraint() {
         let p_src = "permit();";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4058,7 +4049,7 @@ mod tests {
             );
         });
         let p_src = "permit(principal);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4069,7 +4060,7 @@ mod tests {
             );
         });
         let p_src = "permit(principal, action);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4084,7 +4075,7 @@ mod tests {
     #[test]
     fn invalid_scope_constraint() {
         let p_src = "permit(foo, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: foo",
                 ).help(
@@ -4092,7 +4083,7 @@ mod tests {
             ).exactly_one_underline("foo").build());
         });
         let p_src = "permit(foo::principal, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(
                 p_src,
                 &miette::Report::new(e),
@@ -4102,7 +4093,7 @@ mod tests {
             );
         });
         let p_src = "permit(resource, action, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `resource` where the variable `principal` must be used",
                 ).help(
@@ -4111,7 +4102,7 @@ mod tests {
         });
 
         let p_src = "permit(principal, principal, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `action` must be used",
                 ).help(
@@ -4119,7 +4110,7 @@ mod tests {
             ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, if, resource);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: if",
                 ).help(
@@ -4128,7 +4119,7 @@ mod tests {
         });
 
         let p_src = "permit(principal, action, like);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found an invalid variable in the policy scope: like",
                 ).help(
@@ -4136,7 +4127,7 @@ mod tests {
             ).exactly_one_underline("like").build());
         });
         let p_src = "permit(principal, action, principal);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `principal` where the variable `resource` must be used",
                 ).help(
@@ -4144,7 +4135,7 @@ mod tests {
             ).exactly_one_underline("principal").build());
         });
         let p_src = "permit(principal, action, action);";
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "found the variable `action` where the variable `resource` must be used",
                 ).help(
@@ -4156,7 +4147,7 @@ mod tests {
     #[test]
     fn invalid_scope_operator() {
         let p_src = r#"permit(principal > User::"alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the policy scope: >",
                 ).help(
@@ -4164,7 +4155,7 @@ mod tests {
             ).exactly_one_underline("principal > User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the action scope: !=",
                 ).help(
@@ -4172,7 +4163,7 @@ mod tests {
             ).exactly_one_underline("action != Action::\"view\"").build());
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid operator in the policy scope: <=",
                 ).help(
@@ -4180,7 +4171,7 @@ mod tests {
             ).exactly_one_underline("resource <= Folder::\"things\"").build());
         });
         let p_src = r#"permit(principal = User::"alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4188,7 +4179,7 @@ mod tests {
             ).exactly_one_underline("principal = User::\"alice\"").build());
         });
         let p_src = r#"permit(principal, action = Action::"act", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4196,7 +4187,7 @@ mod tests {
             ).exactly_one_underline("action = Action::\"act\"").build());
         });
         let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "'=' is not a valid operator in Cedar",
                 ).help(
@@ -4208,7 +4199,7 @@ mod tests {
     #[test]
     fn scope_action_eq_set() {
         let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
         });
     }
@@ -4216,7 +4207,7 @@ mod tests {
     #[test]
     fn scope_compare_to_string() {
         let p_src = r#"permit(principal == "alice", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"alice"`"#
             ).help(
@@ -4224,7 +4215,7 @@ mod tests {
             ).exactly_one_underline(r#""alice""#).build());
         });
         let p_src = r#"permit(principal in "bob_friends", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"bob_friends"`"#
             ).help(
@@ -4232,7 +4223,7 @@ mod tests {
             ).exactly_one_underline(r#""bob_friends""#).build());
         });
         let p_src = r#"permit(principal, action, resource in "jane_photos");"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid or matching template slot, found literal `"jane_photos"`"#
             ).help(
@@ -4240,7 +4231,7 @@ mod tests {
             ).exactly_one_underline(r#""jane_photos""#).build());
         });
         let p_src = r#"permit(principal, action in ["view_actions"], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"expected an entity uid, found literal `"view_actions"`"#
             ).help(
@@ -4252,7 +4243,7 @@ mod tests {
     #[test]
     fn scope_compare_to_name() {
         let p_src = r#"permit(principal == User, action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `User`"
             ).help(
@@ -4260,7 +4251,7 @@ mod tests {
             ).exactly_one_underline("User").build());
         });
         let p_src = r#"permit(principal in Group, action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Group`"
             ).help(
@@ -4268,7 +4259,7 @@ mod tests {
             ).exactly_one_underline("Group").build());
         });
         let p_src = r#"permit(principal, action, resource in Album);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found name `Album`"
             ).help(
@@ -4276,7 +4267,7 @@ mod tests {
             ).exactly_one_underline("Album").build());
         });
         let p_src = r#"permit(principal, action == Action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid, found name `Action`"
             ).help(
@@ -4288,7 +4279,7 @@ mod tests {
     #[test]
     fn scope_and() {
         let p_src = r#"permit(principal == User::"alice" && principal in Group::"jane_friends", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `&&` expression"
             ).help(
@@ -4301,7 +4292,7 @@ mod tests {
     fn scope_or() {
         let p_src =
             r#"permit(principal == User::"alice" || principal == User::"bob", action, resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "expected an entity uid or matching template slot, found a `||` expression"
             ).help(
@@ -4313,7 +4304,7 @@ mod tests {
     #[test]
     fn scope_action_in_set_set() {
         let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+        assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
             expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
         });
     }
@@ -4438,7 +4429,7 @@ mod tests {
     fn empty_clause() {
         #[track_caller]
         fn expect_empty_clause(policy: &str, clause: &str) {
-            assert_matches!(parse_policy_template(None, policy), Err(e) => {
+            assert_matches!(parse_policy_or_template(None, policy), Err(e) => {
                 expect_err(policy, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                     &format!("`{clause}` condition clause cannot be empty")
                 ).exactly_one_underline(&format!("{clause} {{}}")).build());
@@ -4513,39 +4504,39 @@ mod tests {
         assert_matches!(parse_expr(r#"__cedar::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::A::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"A::__cedar::B::"""#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "A::__cedar::B".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"[A::"", __cedar::Action::"action"]"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::Action".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"principal is __cedar::A"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::A".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"__cedar::decimal("0.0")"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar::decimal".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"ip("").__cedar()"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"{__cedar: 0}"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         assert_matches!(parse_expr(r#"{a: 0}.__cedar"#),
             Err(errs) if matches!(errs.as_ref().first(),
                 ParseError::ToAST(to_ast_err) if matches!(to_ast_err.kind(),
-                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<UncheckedName>().unwrap())));
+                    ToASTErrorKind::ReservedNamespace(ReservedNameError(n)) if *n == "__cedar".parse::<InternalName>().unwrap())));
         // We allow `__cedar` as an annotation identifier
         assert_matches!(
             parse_policy(

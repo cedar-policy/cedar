@@ -18,7 +18,7 @@
 //! the `Typechecker` struct by calling the `typecheck_policy` method given a
 //! policy.
 
-mod test;
+pub(crate) mod test;
 
 mod typecheck_answer;
 pub(crate) use typecheck_answer::TypecheckAnswer;
@@ -238,22 +238,18 @@ impl<'a> Typechecker<'a> {
         // resource applies_to sets.
         all_actions
             .flat_map(|action| {
-                action
-                    .applies_to
-                    .applicable_principal_types()
-                    .flat_map(|principal| {
-                        action
-                            .applies_to
-                            .applicable_resource_types()
-                            .map(|resource| RequestEnv::DeclaredAction {
-                                principal,
-                                action: &action.name,
-                                resource,
-                                context: &action.context,
-                                principal_slot: None,
-                                resource_slot: None,
-                            })
-                    })
+                action.applies_to_principals().flat_map(|principal| {
+                    action
+                        .applies_to_resources()
+                        .map(|resource| RequestEnv::DeclaredAction {
+                            principal,
+                            action: &action.name,
+                            resource,
+                            context: &action.context,
+                            principal_slot: None,
+                            resource_slot: None,
+                        })
+                })
             })
             .chain(if self.mode.is_partial() {
                 // A partial schema might not list all actions, and may not
@@ -822,7 +818,7 @@ impl<'a> Typechecker<'a> {
                                 } else {
                                     type_errors.push(
                                         ValidationError::unsafe_optional_attribute_access(
-                                            e.clone(),
+                                            e.source_loc().cloned(),
                                             self.policy_id.clone(),
                                             AttributeAccess::from_expr(
                                                 request_env,
@@ -852,7 +848,7 @@ impl<'a> Typechecker<'a> {
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(ValidationError::unsafe_attribute_access(
-                                    e.clone(),
+                                    e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     AttributeAccess::from_expr(
                                         request_env,
@@ -1448,7 +1444,7 @@ impl<'a> Typechecker<'a> {
                         Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                     {
                         type_errors.push(ValidationError::incompatible_types(
-                            unannotated_expr.clone(),
+                            unannotated_expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             [lhs_ty.clone(), rhs_ty.clone()],
                             lub_hint,
@@ -2082,7 +2078,7 @@ impl<'a> Typechecker<'a> {
                     )
                 }) {
                     type_errors.push(ValidationError::expected_one_of_types(
-                        expr.clone(),
+                        expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
@@ -2159,7 +2155,7 @@ impl<'a> Typechecker<'a> {
                         // will be None, so this function will correctly report this
                         // as a failure.
                         type_errors.push(ValidationError::incompatible_types(
-                            expr.clone(),
+                            expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             typechecked_types,
                             lub_hint,
@@ -2195,7 +2191,11 @@ impl<'a> Typechecker<'a> {
         e: &Expr,
     ) -> Result<&ExtensionFunctionType, ValidationError> {
         self.extensions.func_type(f).ok_or_else(|| {
-            ValidationError::undefined_extension(e.clone(), self.policy_id.clone(), f.to_string())
+            ValidationError::undefined_extension(
+                e.source_loc().cloned(),
+                self.policy_id.clone(),
+                f.to_string(),
+            )
         })
     }
 
@@ -2231,7 +2231,7 @@ impl<'a> Typechecker<'a> {
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(
-                        ext_expr.clone(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         arg_tys.len(),
                         args.len(),
@@ -2240,7 +2240,7 @@ impl<'a> Typechecker<'a> {
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
                     type_errors.push(ValidationError::function_argument_validation(
-                        ext_expr.clone(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         msg,
                     ));

@@ -297,8 +297,6 @@ impl Policy {
 }
 
 /// Represents a policy template in either the Cedar or JSON policy format.
-/// This format can also be used to represent static policies (which can be
-/// thought of as templates with zero slots).
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -785,11 +783,22 @@ mod test {
                 .build(),
         );
 
-        // Static policies can also be parsed as templates
-        let template_json = json!("permit(principal == User::\"alice\", action, resource);");
+        // Static policies cannot be parsed as templates
+        let src = "permit(principal == User::\"alice\", action, resource);";
         let template: Template =
-            serde_json::from_value(template_json).expect("failed to parse from JSON");
-        template.parse(None).expect("failed to convert to template");
+            serde_json::from_value(json!(src)).expect("failed to parse from JSON");
+        let err = template
+            .parse(None)
+            .expect_err("should have failed to convert to template");
+        expect_err(
+            src,
+            &err,
+            &ExpectedErrorMessageBuilder::error("failed to parse template from string")
+                .source("expected a template, got a static policy")
+                .help("a template should include slot(s) `?principal` or `?resource`")
+                .exactly_one_underline(src)
+                .build(),
+        );
     }
 
     #[test]

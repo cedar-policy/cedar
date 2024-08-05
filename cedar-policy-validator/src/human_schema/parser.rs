@@ -25,8 +25,9 @@ use thiserror::Error;
 use super::{
     ast::Schema,
     err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
-    to_json_schema::{custom_schema_to_json_schema, custom_type_to_json_type},
+    to_json_schema::custom_schema_to_json_schema,
 };
+use crate::json_schema;
 use cedar_policy_core::extensions::Extensions;
 
 lalrpop_mod!(
@@ -95,29 +96,20 @@ pub enum HumanSyntaxParseErrors {
     JsonError(#[from] ToJsonSchemaErrors),
 }
 
-/// Parse a type, in human syntax, into a [`crate::SchemaType`]
-pub fn parse_type(
-    src: &str,
-    extensions: Extensions<'_>,
-) -> Result<crate::SchemaType<crate::RawName>, HumanSyntaxParseErrors> {
-    let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
-    Ok(custom_type_to_json_type(ty, extensions.clone())?)
-}
-
-/// Parse a schema fragment, in human syntax, into a [`crate::SchemaFragment`],
+/// Parse a schema fragment, in human syntax, into a [`json_schema::Fragment`],
 /// possibly generating warnings
 pub fn parse_natural_schema_fragment<'a>(
     src: &str,
-    extensions: Extensions<'a>,
+    extensions: &Extensions<'a>,
 ) -> Result<
     (
-        crate::SchemaFragment<crate::RawName>,
+        json_schema::Fragment<crate::RawName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
     HumanSyntaxParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
-    let tuple = custom_schema_to_json_schema(ast, extensions.clone())?;
+    let tuple = custom_schema_to_json_schema(ast, extensions)?;
     Ok(tuple)
 }
 

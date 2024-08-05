@@ -34,7 +34,7 @@ main () {
     wasm-pack build --scope cedar-policy --target web  --out-dir pkg/web
     cp pkg/esm/README.md pkg/README.md
 
-    fix_package_json_files 
+    fix_package_json_files
 
     # Post-process TS types
     process_types_file "pkg/esm/cedar_wasm.d.ts"
@@ -87,7 +87,7 @@ process_types_file() {
     ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
-    echo "export type TypeOfAttribute<N> = SchemaType<N> & { required?: boolean };" >> "$types_file"
+    echo "export type TypeOfAttribute<N> = Type<N> & { required?: boolean };" >> "$types_file"
 }
 
 check_types_file() {

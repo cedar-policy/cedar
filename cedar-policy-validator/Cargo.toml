@@ -19,6 +19,7 @@ serde_with = "3.0"
 miette = "7.1.0"
 thiserror = "1.0"
 itertools = "0.13"
+ref-cast = "1.0"
 unicode-security = "0.1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
@@ -48,6 +49,7 @@ partial-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [dev-dependencies]
+similar-asserts = "1.5.0"
 cool_asserts = "2.0"
 cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["test-util"] }
 

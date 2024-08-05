@@ -19,22 +19,22 @@
 // GRCOV_STOP_COVERAGE
 
 use cedar_policy_core::{
-    ast::{Expr, PolicyID, StaticPolicy, Var},
+    ast::{PolicyID, StaticPolicy},
     parser::parse_policy,
 };
-use smol_str::SmolStr;
 
 use crate::{
-    diagnostics::ValidationError, types::EntityLUB, validation_errors::AttributeAccess,
-    NamespaceDefinition, NamespaceDefinitionWithActionAttributes, RawName, ValidationWarning,
+    diagnostics::ValidationError, json_schema, types::EntityLUB,
+    validation_errors::AttributeAccess, NamespaceDefinitionWithActionAttributes, RawName,
+    ValidationWarning,
 };
 
 use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
+    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks, get_loc,
 };
 
-fn schema_with_optionals() -> NamespaceDefinition<RawName> {
-    serde_json::from_str::<NamespaceDefinition<RawName>>(
+fn schema_with_optionals() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {
@@ -70,7 +70,7 @@ fn assert_policy_typechecks_optional_schema(p: StaticPolicy) {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_optional_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails(schema_with_optionals(), p, expected_type_errors);
 }
@@ -317,16 +317,17 @@ fn guarded_has_true_short_circuits() {
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_name_access_fails(policy: StaticPolicy) {
-    let optional_attr: SmolStr = "name".into();
     let id = policy.id().clone();
+
+    let loc = get_loc(policy.loc().unwrap().src.clone(), "principal.name");
     assert_policy_typecheck_fails_optional_schema(
         policy,
-        vec![ValidationError::unsafe_optional_attribute_access(
-            Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone()),
+        [ValidationError::unsafe_optional_attribute_access(
+            loc,
             id,
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
-                vec![optional_attr],
+                vec!["name".into()],
             ),
         )],
     );
@@ -400,7 +401,7 @@ fn if_then_else_else_access_fails() {
         permit(principal, action, resource)
         when {
             if principal has name
-            then principal.name == "foo"
+            then principal["name"] == "foo"
             else principal.name == "bar"
         };"#,
     )
@@ -539,7 +540,7 @@ fn in_list_no_capability() {
 
 #[test]
 fn record_optional_attrs() {
-    let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
+    let schema = serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
         r#"
 {
     "entityTypes": {
@@ -579,19 +580,14 @@ fn record_optional_attrs() {
     .expect("Policy should parse.");
     assert_policy_typechecks(schema.clone(), passing_policy);
 
-    let failing_policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action, resource) when { principal.record has other && principal.record.name == "foo" };"#,
-    )
-    .expect("Policy should parse.");
+    let src = r#"permit(principal, action, resource) when { principal.record has other && principal.record.name == "foo" };"#;
+    let failing_policy =
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![ValidationError::unsafe_optional_attribute_access(
-            Expr::get_attr(
-                Expr::get_attr(Expr::var(Var::Principal), "record".into()),
-                "name".into(),
-            ),
+        [ValidationError::unsafe_optional_attribute_access(
+            get_loc(src, "principal.record.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
@@ -600,16 +596,14 @@ fn record_optional_attrs() {
         )],
     );
 
-    let failing_policy2 = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action, resource) when { principal.record has name && principal.name == "foo" };"#,
-    )
-    .expect("Policy should parse.");
+    let src = r#"permit(principal, action, resource) when { principal.record has name && principal.name == "foo" };"#;
+    let failing_policy2 =
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema,
         failing_policy2,
-        vec![ValidationError::unsafe_optional_attribute_access(
-            Expr::get_attr(Expr::var(Var::Principal), "name".into()),
+        [ValidationError::unsafe_optional_attribute_access(
+            get_loc(src, "principal.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
@@ -765,16 +759,14 @@ fn action_attrs_failing() {
     )
     .expect("Expected valid schema.");
 
-    let failing_policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"permit(principal, action == Action::"view", resource) when { action.canUndo };"#,
-    )
-    .expect("Policy should parse.");
+    let src = r#"permit(principal, action == Action::"view", resource) when { action.canUndo };"#;
+    let failing_policy =
+        parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![ValidationError::unsafe_attribute_access(
-            Expr::get_attr(Expr::var(Var::Action), "canUndo".into()),
+        [ValidationError::unsafe_attribute_access(
+            get_loc(src, "action.canUndo"),
             PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["canUndo".into()]),
             Some("isReadOnly".to_string()),
@@ -792,7 +784,7 @@ fn action_attrs_failing() {
     assert_policy_typecheck_warns(
         schema.clone(),
         failing_policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             failing_policy.loc().cloned(),
             PolicyID::from_string("0"),
         )],
@@ -814,5 +806,5 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema, failing_policy, vec![]);
+    assert_policy_typecheck_fails(schema, failing_policy, []);
 }

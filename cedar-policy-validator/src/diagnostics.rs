@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
+use cedar_policy_core::ast::{EntityType, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::Type;
@@ -201,14 +201,14 @@ impl ValidationError {
 
     /// Construct a type error for when an unexpected type occurs in an expression.
     pub(crate) fn expected_one_of_types(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         expected: impl IntoIterator<Item = Type>,
         actual: Type,
         help: Option<validation_errors::UnexpectedTypeHelp>,
     ) -> Self {
         validation_errors::UnexpectedType {
-            on_expr,
+            source_loc,
             policy_id,
             expected: expected.into_iter().collect::<BTreeSet<_>>(),
             actual,
@@ -220,14 +220,14 @@ impl ValidationError {
     /// Construct a type error for when a least upper bound cannot be found for
     /// a collection of types.
     pub(crate) fn incompatible_types(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         types: impl IntoIterator<Item = Type>,
         hint: validation_errors::LubHelp,
         context: validation_errors::LubContext,
     ) -> Self {
         validation_errors::IncompatibleTypes {
-            on_expr,
+            source_loc,
             policy_id,
             types: types.into_iter().collect::<BTreeSet<_>>(),
             hint,
@@ -237,14 +237,14 @@ impl ValidationError {
     }
 
     pub(crate) fn unsafe_attribute_access(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         attribute_access: validation_errors::AttributeAccess,
         suggestion: Option<String>,
         may_exist: bool,
     ) -> Self {
         validation_errors::UnsafeAttributeAccess {
-            on_expr,
+            source_loc,
             policy_id,
             attribute_access,
             suggestion,
@@ -254,21 +254,25 @@ impl ValidationError {
     }
 
     pub(crate) fn unsafe_optional_attribute_access(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         attribute_access: validation_errors::AttributeAccess,
     ) -> Self {
         validation_errors::UnsafeOptionalAttributeAccess {
-            on_expr,
+            source_loc,
             policy_id,
             attribute_access,
         }
         .into()
     }
 
-    pub(crate) fn undefined_extension(on_expr: Expr, policy_id: PolicyID, name: String) -> Self {
+    pub(crate) fn undefined_extension(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        name: String,
+    ) -> Self {
         validation_errors::UndefinedFunction {
-            on_expr,
+            source_loc,
             policy_id,
             name,
         }
@@ -276,14 +280,14 @@ impl ValidationError {
     }
 
     pub(crate) fn wrong_number_args(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
 
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
     ) -> Self {
         validation_errors::WrongNumberArguments {
-            on_expr,
+            source_loc,
             policy_id,
             expected,
             actual,
@@ -292,12 +296,12 @@ impl ValidationError {
     }
 
     pub(crate) fn function_argument_validation(
-        on_expr: Expr,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         msg: String,
     ) -> Self {
         validation_errors::FunctionArgumentValidation {
-            on_expr,
+            source_loc,
             policy_id,
             msg,
         }
