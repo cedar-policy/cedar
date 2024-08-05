@@ -19,6 +19,7 @@ use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::{collections::HashMap, str::FromStr};
 
 // Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
@@ -293,6 +294,35 @@ impl Policy {
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
         }
     }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
+    }
 }
 
 /// Represents a policy template in either the Cedar or JSON policy format.
@@ -342,6 +372,35 @@ impl Template {
         policies
             .add_template(template)
             .wrap_err(format!("failed to add template{msg} to policy set"))
+    }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
     }
 }
 
@@ -525,6 +584,7 @@ pub enum Schema {
 }
 
 impl Schema {
+    /// Parse a [`Schema`] into a [`crate::Schema`]
     pub(super) fn parse(
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
