@@ -91,6 +91,34 @@ impl Entities {
         }
     }
 
+    /// The implementation of [`Eq`] and [`PartialEq`] on [`Entities`]
+    /// only checks equality by id for entities in the store.
+    /// This method checks that the entities are equal deeply,
+    /// using `[Entity::deep_eq]` to check equality.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        if self.mode != other.mode {
+            false
+        } else {
+            for (key, value) in &self.entities {
+                if let Some(other_value) = other.entities.get(key) {
+                    if !value.deep_eq(other_value) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            for key in other.entities.keys() {
+                if !self.entities.contains_key(key) {
+                    return false;
+                }
+            }
+
+            true
+        }
+    }
+
     /// Get the `Entity` with the given UID, if any
     pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
         match self.entities.get(uid) {

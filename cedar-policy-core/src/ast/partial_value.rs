@@ -36,6 +36,24 @@ impl PartialValue {
         Self::Residual(Expr::unknown(u))
     }
 
+    /// Union two partial values, combining fields of records.
+    /// When two partial values are incompatible, returns `None`.
+    /// When two partial values are both partial, returns `None`.
+    pub fn union(&self, other: &Self) -> Option<PartialValue> {
+        match (self, other) {
+            (PartialValue::Value(v1), PartialValue::Value(v2)) => {
+                Some(PartialValue::Value(v1.union(v2)?))
+            }
+            (PartialValue::Value(v1), PartialValue::Residual(_)) => {
+                Some(PartialValue::Value(v1.clone()))
+            }
+            (PartialValue::Residual(_), PartialValue::Value(v1)) => {
+                Some(PartialValue::Value(v1.clone()))
+            }
+            (PartialValue::Residual(_r1), PartialValue::Residual(_r2)) => None,
+        }
+    }
+
     /// Return the `PartialValue`, but with the given `Loc` (or `None`)
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         match self {

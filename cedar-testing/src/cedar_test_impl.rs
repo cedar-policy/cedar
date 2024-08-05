@@ -26,6 +26,8 @@ use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
+use cedar_policy_validator::entity_manifest::compute_entity_manifest;
+use cedar_policy_validator::entity_manifest::EntityManifestError;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
 use miette::miette;
 use serde::{Deserialize, Serialize};
@@ -160,6 +162,7 @@ pub trait CedarTestImplementation {
         request: &Request,
         policies: &PolicySet,
         entities: &Entities,
+        schema: &ValidatorSchema,
     ) -> TestResult<TestResponse>;
 
     /// Custom evaluator entry point. The bool return value indicates the whether
@@ -272,6 +275,7 @@ impl CedarTestImplementation for RustEngine {
         request: &Request,
         policies: &PolicySet,
         entities: &Entities,
+        schema: &ValidatorSchema,
     ) -> TestResult<TestResponse> {
         let authorizer = Authorizer::new();
         let (response, duration) =
@@ -300,6 +304,34 @@ impl CedarTestImplementation for RustEngine {
             response,
             timing_info: HashMap::from([("authorize".into(), Micros(duration.as_micros()))]),
         };
+
+        // now check that we get the same response with entity manifest, as long as the schema is valid
+        let validator = Validator::new(schema.clone());
+        let validation_result = validator.validate(policies, ValidationMode::Strict);
+        if validation_result.validation_passed() {
+            let entity_manifest_res = compute_entity_manifest(schema, policies);
+
+            match entity_manifest_res {
+                Ok(entity_manifest) => {
+                    // PANIC SAFETY: slicing should succeed for tests
+                    #[allow(clippy::expect_used)]
+                    let entity_slice = entity_manifest
+                        .slice(entities, request)
+                        .expect("Slicing should succeed");
+
+                    let slice_response =
+                        authorizer.is_authorized(request.clone(), policies, &entity_slice);
+                    assert_eq!(response.response.decision(), slice_response.decision);
+                }
+                Err(EntityManifestError::FailedAnalysis(_)) => (),
+                Err(_) => {
+                    // PANIC SAFETY: besides failure to analyze, testing should compute entity manifest successfuly
+                    #[allow(clippy::expect_used)]
+                    entity_manifest_res.expect("Unexpected error in testing manifest computation");
+                }
+            }
+        }
+
         TestResult::Success(response)
     }
 

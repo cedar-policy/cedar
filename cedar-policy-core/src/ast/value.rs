@@ -93,6 +93,35 @@ impl Value {
         }
     }
 
+    /// Unions two compatible [`Value`]s, combining fields
+    /// for records.
+    /// When two values are incompatible, returns `None`.
+    pub fn union(&self, other: &Self) -> Option<Self> {
+        match (self.value_kind(), other.value_kind()) {
+            (ValueKind::Record(r1), ValueKind::Record(r2)) => {
+                let mut new_map = (**r1).clone();
+                for (field, val) in r2.iter() {
+                    if let Some(v) = new_map.get_mut(field) {
+                        *v = v.union(val)?;
+                    } else {
+                        new_map.insert(field.clone(), val.clone());
+                    }
+                }
+                Some(Value::new(
+                    ValueKind::Record(Arc::new(new_map)),
+                    self.source_loc().cloned().or(other.source_loc().cloned()),
+                ))
+            }
+            _ => {
+                if self == other {
+                    Some(self.clone())
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {

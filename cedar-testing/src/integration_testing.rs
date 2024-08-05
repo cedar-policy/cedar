@@ -292,7 +292,7 @@ pub fn perform_integration_test(
     for json_request in requests {
         let request = parse_request_from_test(&json_request, &schema, test_name);
         let response = test_impl
-            .is_authorized(&request, &policies, &entities)
+            .is_authorized(&request, &policies, &entities, &schema)
             .expect("Authorization failed");
         // check decision
         assert_eq!(
