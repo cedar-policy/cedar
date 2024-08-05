@@ -32,13 +32,14 @@ use super::test_utils::{
 };
 use crate::{
     diagnostics::ValidationError,
+    json_schema,
     typecheck::{PolicyCheck, Typechecker},
     types::{EntityLUB, Type},
     validation_errors::{AttributeAccess, LubContext, LubHelp},
-    NamespaceDefinition, RawName, ValidationMode, ValidationWarning,
+    RawName, ValidationMode, ValidationWarning,
 };
 
-fn simple_schema_file() -> NamespaceDefinition<RawName> {
+fn simple_schema_file() -> json_schema::NamespaceDefinition<RawName> {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {
@@ -784,7 +785,7 @@ fn entity_record_lub_is_none() {
 
 #[test]
 fn optional_attr_fail() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": {
@@ -834,7 +835,7 @@ fn optional_attr_fail() {
 
 #[test]
 fn type_error_is_not_reported_for_every_cross_product_element() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": {
@@ -871,7 +872,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
 
 #[test]
 fn action_groups() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
         {
             "entityTypes": { "Entity": {} },
@@ -968,40 +969,41 @@ fn action_groups() {
 // Example demonstrating Non-terminating LUB computation
 #[test]
 fn record_entity_lub_non_term() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
-    {
-        "entityTypes": {
-            "E" : {
-                "shape" : {
-                    "type" : "Record",
-                    "attributes" : {}
+    let schema: json_schema::NamespaceDefinition<RawName> =
+        serde_json::from_value(serde_json::json!(
+        {
+            "entityTypes": {
+                "E" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {}
+                    },
                 },
-            },
-          "U": {
-            "shape": {
-              "type": "Record",
-              "attributes": {
-                "foo": {
+              "U": {
+                "shape": {
                   "type": "Record",
-                  "attributes" : {
-                    "foo" : { "type" : "Entity", "name" : "U" }
+                  "attributes": {
+                    "foo": {
+                      "type": "Record",
+                      "attributes" : {
+                        "foo" : { "type" : "Entity", "name" : "U" }
+                      }
+                    },
+                    "bar": { "type": "Boolean" }
                   }
-                },
-                "bar": { "type": "Boolean" }
+                }
+              }
+            },
+            "actions": {
+              "view": {
+                "appliesTo": {
+                  "principalTypes": ["U"],
+                  "resourceTypes": ["E"]
+                }
               }
             }
-          }
-        },
-        "actions": {
-          "view": {
-            "appliesTo": {
-              "principalTypes": ["U"],
-              "resourceTypes": ["E"]
-            }
-          }
-        }
-      }))
-    .unwrap();
+          }))
+        .unwrap();
 
     let src = r#"permit(principal, action, resource) when {if principal.bar then principal.foo else U::"b"};"#;
     let policy = parse_policy(None, src).expect("Policy should parse.");
@@ -1026,33 +1028,34 @@ fn record_entity_lub_non_term() {
 
 #[test]
 fn validate_policy_with_common_type_schema() {
-    let namespace_def: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
-    {
-        "commonTypes": {
-            "SharedAttrs": {
-                "type": "Record",
-                "attributes": {
-                    "flag": {"type": "Boolean"}
+    let namespace_def: json_schema::NamespaceDefinition<RawName> =
+        serde_json::from_value(serde_json::json!(
+        {
+            "commonTypes": {
+                "SharedAttrs": {
+                    "type": "Record",
+                    "attributes": {
+                        "flag": {"type": "Boolean"}
+                    }
                 }
-            }
-        },
-        "entityTypes": {
-            "Entity": {
-                "shape": {
-                    "type": "SharedAttrs",
+            },
+            "entityTypes": {
+                "Entity": {
+                    "shape": {
+                        "type": "SharedAttrs",
+                    }
                 }
+            },
+            "actions": {
+              "act": {
+                "appliesTo": {
+                  "principalTypes": ["Entity"],
+                  "resourceTypes": ["Entity"]
+                }
+              }
             }
-        },
-        "actions": {
-          "act": {
-            "appliesTo": {
-              "principalTypes": ["Entity"],
-              "resourceTypes": ["Entity"]
-            }
-          }
-        }
-    }))
-    .unwrap();
+        }))
+        .unwrap();
 
     assert_policy_typechecks(
         namespace_def,

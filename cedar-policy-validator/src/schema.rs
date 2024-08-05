@@ -35,13 +35,12 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::ToSmolStr;
 
-use super::NamespaceDefinition;
 use crate::{
     err::schema_errors::*,
     err::*,
     human_schema::SchemaWarning,
+    json_schema,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
-    SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
 mod action;
@@ -50,7 +49,7 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-pub(crate) use namespace_def::try_schema_type_into_validator_type;
+pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
@@ -75,7 +74,7 @@ pub enum ActionBehavior {
 pub struct ValidatorSchemaFragment<N, A>(Vec<ValidatorNamespaceDef<N, A>>);
 
 impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
-    for SchemaFragment<RawName>
+    for json_schema::Fragment<RawName>
 {
     type Error = SchemaError;
 
@@ -105,9 +104,9 @@ impl<N, A> ValidatorSchemaFragment<N, A> {
 }
 
 impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
-    /// Construct a [`ValidatorSchemaFragment`] from a [`SchemaFragment`]
+    /// Construct a [`ValidatorSchemaFragment`] from a [`json_schema::Fragment`]
     pub fn from_schema_fragment(
-        fragment: SchemaFragment<RawName>,
+        fragment: json_schema::Fragment<RawName>,
         action_behavior: ActionBehavior,
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
@@ -182,16 +181,14 @@ impl std::str::FromStr for ValidatorSchema {
     type Err = SchemaError;
 
     fn from_str(s: &str) -> Result<Self> {
-        serde_json::from_str::<SchemaFragment<RawName>>(s)
-            .map_err(|e| JsonDeserializationError::new(e, Some(s)))?
-            .try_into()
+        ValidatorSchema::try_from(json_schema::Fragment::from_json_str(s)?)
     }
 }
 
-impl TryFrom<NamespaceDefinition<RawName>> for ValidatorSchema {
+impl TryFrom<json_schema::NamespaceDefinition<RawName>> for ValidatorSchema {
     type Error = SchemaError;
 
-    fn try_from(nsd: NamespaceDefinition<RawName>) -> Result<ValidatorSchema> {
+    fn try_from(nsd: json_schema::NamespaceDefinition<RawName>) -> Result<ValidatorSchema> {
         ValidatorSchema::from_schema_fragments(
             [ValidatorSchemaFragment::from_namespaces([nsd.try_into()?])],
             &Extensions::all_available(),
@@ -199,10 +196,10 @@ impl TryFrom<NamespaceDefinition<RawName>> for ValidatorSchema {
     }
 }
 
-impl TryFrom<SchemaFragment<RawName>> for ValidatorSchema {
+impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
     type Error = SchemaError;
 
-    fn try_from(frag: SchemaFragment<RawName>) -> Result<ValidatorSchema> {
+    fn try_from(frag: json_schema::Fragment<RawName>) -> Result<ValidatorSchema> {
         ValidatorSchema::from_schema_fragments([frag.try_into()?], &Extensions::all_available())
     }
 }
@@ -221,7 +218,7 @@ impl ValidatorSchema {
     /// shape.
     pub fn from_json_value(json: serde_json::Value, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
-            SchemaFragment::<RawName>::from_json_value(json)?,
+            json_schema::Fragment::<RawName>::from_json_value(json)?,
             ActionBehavior::default(),
             extensions,
         )
@@ -231,7 +228,7 @@ impl ValidatorSchema {
     /// appropriate shape.
     pub fn from_json_str(json: &str, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
-            SchemaFragment::<RawName>::from_json_str(json)?,
+            json_schema::Fragment::<RawName>::from_json_str(json)?,
             ActionBehavior::default(),
             extensions,
         )
@@ -241,7 +238,7 @@ impl ValidatorSchema {
     /// in the appropriate shape.
     pub fn from_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
-            SchemaFragment::<RawName>::from_file(file)?,
+            json_schema::Fragment::<RawName>::from_file(file)?,
             ActionBehavior::default(),
             extensions,
         )
@@ -254,7 +251,7 @@ impl ValidatorSchema {
         extensions: &'a Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_file_natural(r, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_file_natural(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -268,16 +265,16 @@ impl ValidatorSchema {
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
     {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(src, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_str_natural(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
-    /// Helper function to construct a [`ValidatorSchema`] from a single [`SchemaFragment`].
+    /// Helper function to construct a [`ValidatorSchema`] from a single [`json_schema::Fragment`].
     pub(crate) fn from_schema_frag(
-        schema_file: SchemaFragment<RawName>,
+        schema_file: json_schema::Fragment<RawName>,
         action_behavior: ActionBehavior,
         extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
@@ -435,8 +432,10 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = {
-                    let unresolved =
-                        try_schema_type_into_validator_type(entity_type.attributes, extensions)?;
+                    let unresolved = try_jsonschema_type_into_validator_type(
+                        entity_type.attributes,
+                        extensions,
+                    )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
@@ -471,7 +470,7 @@ impl ValidatorSchema {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
                     let unresolved =
-                        try_schema_type_into_validator_type(action.context, extensions)?;
+                        try_jsonschema_type_into_validator_type(action.context, extensions)?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
@@ -525,9 +524,9 @@ impl ValidatorSchema {
     }
 
     /// Check that all entity types and actions referenced in the schema are in
-    /// the set of declared entity type or action names. Point of caution: this
-    /// function assumes that all entity types are fully qualified. This is
-    /// handled by the `SchemaFragment` constructor.
+    /// the set of declared entity type or action names.
+    /// This function assumes that all entity types are fully qualified, which
+    /// is indicated by the use of the [`EntityType`] and [`EntityUID`] types.
     fn check_for_undeclared(
         entity_types: &HashMap<EntityType, ValidatorEntityType>,
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
@@ -784,7 +783,9 @@ impl ValidatorSchema {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
-pub(crate) struct NamespaceDefinitionWithActionAttributes<N>(pub(crate) NamespaceDefinition<N>);
+pub(crate) struct NamespaceDefinitionWithActionAttributes<N>(
+    pub(crate) json_schema::NamespaceDefinition<N>,
+);
 
 impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawName> {
     type Error = SchemaError;
@@ -804,7 +805,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
     }
 }
 
-/// Get a `ValidatorSchemaFragment` describing the items that implicitly exist
+/// Get a [`ValidatorSchemaFragment`] describing the items that implicitly exist
 /// in the `__cedar` namespace.
 fn cedar_fragment(
     extensions: &Extensions<'_>,
@@ -820,7 +821,7 @@ fn cedar_fragment(
         let ext_type = ext_type.basename().clone();
         common_types.insert(
             ext_type.clone(),
-            SchemaType::Type(SchemaTypeVariant::Extension { name: ext_type }),
+            json_schema::Type::Type(json_schema::TypeVariant::Extension { name: ext_type }),
         );
     }
 
@@ -833,12 +834,12 @@ fn cedar_fragment(
     .unwrap()])
 }
 
-/// Get a `ValidatorSchemaFragment` containing just one common-type definition,
+/// Get a [`ValidatorSchemaFragment`] containing just one common-type definition,
 /// defining the unqualified name `id` in the empty namespace as an alias for
 /// the fully-qualified name `def`. (This will eventually cause an error if
 /// `def` is not defined somewhere.)
 ///
-/// `def` is allowed to be `InternalName` because it's totally valid to define
+/// `def` is allowed to be [`InternalName`] because it's totally valid to define
 /// `type Foo = __cedar::String` etc.
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
@@ -848,7 +849,7 @@ fn single_alias_in_empty_namespace(
         None,
         (
             id,
-            SchemaType::Type(SchemaTypeVariant::EntityOrCommon {
+            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                 type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
             }),
         ),
@@ -856,22 +857,22 @@ fn single_alias_in_empty_namespace(
 }
 
 /// Get the names of all primitive types, as unqualified `UnreservedId`s,
-/// paired with the primitive [`SchemaType`]s they represent
-fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, SchemaType<N>)> {
+/// paired with the primitive [`json_schema::Type`]s they represent
+fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, json_schema::Type<N>)> {
     // PANIC SAFETY: these are valid `UnreservedId`s
     #[allow(clippy::unwrap_used)]
     [
         (
             UnreservedId::from_str("Bool").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::Boolean),
+            json_schema::Type::Type(json_schema::TypeVariant::Boolean),
         ),
         (
             UnreservedId::from_str("Long").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::Long),
+            json_schema::Type::Type(json_schema::TypeVariant::Long),
         ),
         (
             UnreservedId::from_str("String").unwrap(),
-            SchemaType::Type(SchemaTypeVariant::String),
+            json_schema::Type::Type(json_schema::TypeVariant::String),
         ),
     ]
     .into_iter()
@@ -892,8 +893,8 @@ fn internal_name_to_entity_type(
 /// It facilitates inlining the definitions of common types.
 ///
 /// INVARIANT: There should be no dangling references. That is, all common-type
-/// references that occur in the [`SchemaType`]s in `defs`, should be to common
-/// types that appear as keys in `defs`.
+/// references that occur in the [`json_schema::Type`]s in `defs`, should be to
+/// common types that appear as keys in `defs`.
 /// This invariant is upheld by callers because the process of converting
 /// references to fully-qualified ensures that the targets exist (else, it
 /// throws `TypeResolutionError`).
@@ -906,8 +907,8 @@ struct CommonTypeResolver<'a> {
     ///
     /// In this map, names are already fully-qualified, both in common-type
     /// definitions (keys in the map) and in common-type references appearing in
-    /// [`SchemaType`]s (values in the map).
-    defs: &'a HashMap<InternalName, SchemaType<InternalName>>,
+    /// [`json_schema::Type`]s (values in the map).
+    defs: &'a HashMap<InternalName, json_schema::Type<InternalName>>,
     /// The dependency graph among common type names.
     /// The graph contains a vertex for each [`InternalName`], and
     /// `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a
@@ -924,12 +925,12 @@ impl<'a> CommonTypeResolver<'a> {
     /// fully qualified, because it uses [`InternalName`] and not [`RawName`].
     ///
     /// INVARIANT: There should be no dangling references. That is, all common-type
-    /// references that occur in the [`SchemaType`]s in `defs`, should be to
-    /// common types that appear as keys in `defs`.
+    /// references that occur in the [`json_schema::Type`]s in `defs`, should be
+    /// to common types that appear as keys in `defs`.
     /// This invariant is upheld by callers because the process of converting
     /// references to fully-qualified ensures that the targets exist (else, it
     /// throws `TypeResolutionError`).
-    fn new(defs: &'a HashMap<InternalName, SchemaType<InternalName>>) -> Self {
+    fn new(defs: &'a HashMap<InternalName, json_schema::Type<InternalName>>) -> Self {
         let mut graph = HashMap::new();
         for (name, ty) in defs {
             graph.insert(name, HashSet::from_iter(ty.common_type_references()));
@@ -1029,38 +1030,38 @@ impl<'a> CommonTypeResolver<'a> {
 
     // Substitute common type references in `ty` according to `resolve_table`
     fn resolve_type(
-        resolve_table: &HashMap<&InternalName, SchemaType<InternalName>>,
-        ty: SchemaType<InternalName>,
-    ) -> Result<SchemaType<InternalName>> {
+        resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
+        ty: json_schema::Type<InternalName>,
+    ) -> Result<json_schema::Type<InternalName>> {
         match ty {
-            SchemaType::CommonTypeRef { type_name } => resolve_table
+            json_schema::Type::CommonTypeRef { type_name } => resolve_table
                 .get(&type_name)
                 .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
                 .cloned(),
-            SchemaType::Type(SchemaTypeVariant::EntityOrCommon { type_name }) => {
+            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                 match resolve_table.get(&type_name) {
                     Some(def) => Ok(def.clone()),
-                    None => Ok(SchemaType::Type(SchemaTypeVariant::Entity {
+                    None => Ok(json_schema::Type::Type(json_schema::TypeVariant::Entity {
                         name: type_name,
                     })),
                 }
             }
-            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
-                Ok(SchemaType::Type(SchemaTypeVariant::Set {
+            json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
+                Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
                     element: Box::new(Self::resolve_type(resolve_table, *element)?),
                 }))
             }
-            SchemaType::Type(SchemaTypeVariant::Record {
+            json_schema::Type::Type(json_schema::TypeVariant::Record {
                 attributes,
                 additional_attributes,
-            }) => Ok(SchemaType::Type(SchemaTypeVariant::Record {
+            }) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record {
                 attributes: BTreeMap::from_iter(
                     attributes
                         .into_iter()
                         .map(|(attr, attr_ty)| {
                             Ok((
                                 attr,
-                                TypeOfAttribute {
+                                json_schema::TypeOfAttribute {
                                     required: attr_ty.required,
                                     ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
                                 },
@@ -1081,7 +1082,8 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
         })?;
 
-        let mut resolve_table: HashMap<&InternalName, SchemaType<InternalName>> = HashMap::new();
+        let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
+            HashMap::new();
         let mut tys: HashMap<&'a InternalName, Type> = HashMap::new();
 
         for &name in sorted_names.iter() {
@@ -1092,7 +1094,7 @@ impl<'a> CommonTypeResolver<'a> {
             resolve_table.insert(name, substituted_ty.clone());
             tys.insert(
                 name,
-                try_schema_type_into_validator_type(substituted_ty, extensions)?
+                try_jsonschema_type_into_validator_type(substituted_ty, extensions)?
                     .resolve_common_type_refs(&HashMap::new())?,
             );
         }
@@ -1112,8 +1114,8 @@ mod test {
         str::FromStr,
     };
 
+    use crate::json_schema;
     use crate::types::Type;
-    use crate::{SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
@@ -1151,8 +1153,8 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert!(schema.is_ok());
     }
@@ -1255,8 +1257,8 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src.clone()).expect("Parse Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src.clone()).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -1280,8 +1282,7 @@ mod test {
             },
             "actions": {}
         }});
-        let schema_file: SchemaFragment<RawName> =
-            serde_json::from_value(src.clone()).expect("Parse Error");
+        let schema_file = json_schema::Fragment::from_json_value(src.clone()).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -1307,8 +1308,7 @@ mod test {
                 }
             }
         }});
-        let schema_file: SchemaFragment<RawName> =
-            serde_json::from_value(src.clone()).expect("Parse Error");
+        let schema_file = json_schema::Fragment::from_json_value(src.clone()).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -1346,8 +1346,8 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src.clone()).expect("Parse Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src.clone()).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -1372,8 +1372,8 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(
             schema,
@@ -1405,8 +1405,8 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src).unwrap();
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(
             schema,
@@ -1433,7 +1433,7 @@ mod test {
             }
         } }
         "#;
-        let schema_file: SchemaFragment<RawName> = serde_json::from_str(src).expect("Parse Error");
+        let schema_file = json_schema::Fragment::from_json_str(src).unwrap();
         let schema: ValidatorSchema = schema_file
             .try_into()
             .expect("Namespaced schema failed to convert.");
@@ -1487,7 +1487,7 @@ mod test {
         }
         "#;
         assert_matches!(
-            serde_json::from_str::<NamespaceDefinition<RawName>>(src),
+            serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(src),
             Err(_)
         );
     }
@@ -1508,9 +1508,7 @@ mod test {
             },
             "actions": {}
           }});
-        let schema_json: SchemaFragment<RawName> =
-            serde_json::from_value(src.clone()).expect("Expected valid schema");
-
+        let schema_json = json_schema::Fragment::from_json_value(src.clone()).unwrap();
         let schema: Result<ValidatorSchema> = schema_json.try_into();
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -1524,7 +1522,7 @@ mod test {
 
     #[test]
     fn entity_attribute_entity_type_with_declared_namespace() {
-        let schema_json: SchemaFragment<RawName> = serde_json::from_str(
+        let schema_json = json_schema::Fragment::from_json_str(
             r#"
             {"A::B": {
                 "entityTypes": {
@@ -1541,7 +1539,7 @@ mod test {
               }}
             "#,
         )
-        .expect("Expected valid schema");
+        .unwrap();
 
         let schema: ValidatorSchema = schema_json
             .try_into()
@@ -1563,7 +1561,7 @@ mod test {
 
     #[test]
     fn cannot_declare_action_type_when_prohibited() {
-        let schema_json: NamespaceDefinition<RawName> = serde_json::from_str(
+        let schema_json: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
             r#"
             {
                 "entityTypes": { "Action": {} },
@@ -1571,8 +1569,7 @@ mod test {
               }
             "#,
         )
-        .expect("Expected valid schema");
-
+        .unwrap();
         let schema: Result<ValidatorSchema> = schema_json.try_into();
         assert!(matches!(
             schema,
@@ -1582,7 +1579,7 @@ mod test {
 
     #[test]
     fn can_declare_other_type_when_action_type_prohibited() {
-        let schema_json: NamespaceDefinition<RawName> = serde_json::from_str(
+        let schema_json: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
             r#"
             {
                 "entityTypes": { "Foo": { } },
@@ -1590,14 +1587,14 @@ mod test {
               }
             "#,
         )
-        .expect("Expected valid schema");
+        .unwrap();
 
         TryInto::<ValidatorSchema>::try_into(schema_json).expect("Did not expect any errors.");
     }
 
     #[test]
     fn cannot_declare_action_in_group_when_prohibited() {
-        let schema_json: SchemaFragment<RawName> = serde_json::from_str(
+        let schema_json = json_schema::Fragment::from_json_str(
             r#"
             {"": {
                 "entityTypes": {},
@@ -1616,7 +1613,7 @@ mod test {
               }}
             "#,
         )
-        .expect("Expected valid schema");
+        .unwrap();
 
         let schema = ValidatorSchemaFragment::from_schema_fragment(
             schema_json,
@@ -1640,10 +1637,10 @@ mod test {
     #[test]
     fn test_entity_type_no_namespace() {
         let src = json!({"type": "Entity", "name": "Foo"});
-        let schema_ty: SchemaType<RawName> = serde_json::from_value(src).expect("Parse Error");
+        let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity {
+            json_schema::Type::Type(json_schema::TypeVariant::Entity {
                 name: "Foo".parse().unwrap()
             })
         );
@@ -1657,20 +1654,21 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
     fn test_entity_type_namespace() {
         let src = json!({"type": "Entity", "name": "NS::Foo"});
-        let schema_ty: SchemaType<RawName> = serde_json::from_value(src).expect("Parse Error");
+        let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity {
+            json_schema::Type::Type(json_schema::TypeVariant::Entity {
                 name: "NS::Foo".parse().unwrap()
             })
         );
@@ -1684,26 +1682,30 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
     fn test_entity_type_namespace_parse_error() {
         let src = json!({"type": "Entity", "name": "::Foo"});
-        assert_matches!(serde_json::from_value::<SchemaType<RawName>>(src), Err(_));
+        assert_matches!(
+            serde_json::from_value::<json_schema::Type<RawName>>(src),
+            Err(_)
+        );
     }
 
     #[test]
     fn schema_type_record_is_validator_type_record() {
         let src = json!({"type": "Record", "attributes": {}});
-        let schema_ty: SchemaType<RawName> = serde_json::from_value(src).expect("Parse Error");
+        let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Record {
+            json_schema::Type::Type(json_schema::TypeVariant::Record {
                 attributes: BTreeMap::new(),
                 additional_attributes: false,
             }),
@@ -1713,16 +1715,17 @@ mod test {
         let schema_ty = schema_ty
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
-        let ty: Type = try_schema_type_into_validator_type(schema_ty, &Extensions::all_available())
-            .expect("Error converting schema type to type.")
-            .resolve_common_type_refs(&HashMap::new())
-            .unwrap();
+        let ty: Type =
+            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
 
     #[test]
     fn get_namespaces() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Foo::Bar::Baz": {
                 "entityTypes": {},
                 "actions": {}
@@ -1764,7 +1767,7 @@ mod test {
 
     #[test]
     fn same_action_different_namespace() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Foo::Bar": {
                 "entityTypes": {},
                 "actions": {
@@ -1800,7 +1803,7 @@ mod test {
 
     #[test]
     fn same_type_different_namespace() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Foo::Bar": {
                 "entityTypes": {"Baz" : {}},
                 "actions": { }
@@ -1830,7 +1833,7 @@ mod test {
 
     #[test]
     fn member_of_different_namespace() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Bar": {
                 "entityTypes": {
                     "Baz": {
@@ -1858,7 +1861,7 @@ mod test {
 
     #[test]
     fn attribute_different_namespace() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Bar": {
                 "entityTypes": {
                     "Baz": {
@@ -1894,7 +1897,7 @@ mod test {
 
     #[test]
     fn applies_to_different_namespace() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "Foo::Bar": {
                 "entityTypes": { },
                 "actions": {
@@ -1936,7 +1939,7 @@ mod test {
 
     #[test]
     fn simple_defined_type() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "": {
                 "commonTypes": {
                     "MyLong": {"type": "Long"}
@@ -1964,7 +1967,7 @@ mod test {
 
     #[test]
     fn defined_record_as_attrs() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "": {
                 "commonTypes": {
                     "MyRecord": {
@@ -1990,7 +1993,7 @@ mod test {
 
     #[test]
     fn cross_namespace_type() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "A": {
                 "commonTypes": {
                     "MyLong": {"type": "Long"}
@@ -2023,7 +2026,7 @@ mod test {
     #[test]
     fn cross_fragment_type() {
         let fragment1: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
-            serde_json::from_value::<SchemaFragment<RawName>>(json!({
+            json_schema::Fragment::from_json_value(json!({
                 "A": {
                     "commonTypes": {
                         "MyLong": {"type": "Long"}
@@ -2036,7 +2039,7 @@ mod test {
             .try_into()
             .unwrap();
         let fragment2: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
-            serde_json::from_value::<SchemaFragment<RawName>>(json!({
+            json_schema::Fragment::from_json_value(json!({
                 "A": {
                     "entityTypes": {
                         "User": {
@@ -2069,7 +2072,7 @@ mod test {
     #[test]
     fn cross_fragment_duplicate_type() {
         let fragment1: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
-            serde_json::from_value::<SchemaFragment<RawName>>(json!({
+            json_schema::Fragment::from_json_value(json!({
                 "A": {
                     "commonTypes": {
                         "MyLong": {"type": "Long"}
@@ -2082,7 +2085,7 @@ mod test {
             .try_into()
             .unwrap();
         let fragment2: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
-            serde_json::from_value::<SchemaFragment<RawName>>(json!({
+            json_schema::Fragment::from_json_value(json!({
                 "A": {
                     "commonTypes": {
                         "MyLong": {"type": "Long"}
@@ -2108,7 +2111,7 @@ mod test {
 
     #[test]
     fn undeclared_type_in_attr() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "": {
                 "commonTypes": { },
                 "entityTypes": {
@@ -2133,7 +2136,7 @@ mod test {
 
     #[test]
     fn undeclared_type_in_common_types() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "": {
                 "commonTypes": {
                     "a": { "type": "b" }
@@ -2151,7 +2154,7 @@ mod test {
 
     #[test]
     fn shape_not_record() {
-        let fragment: SchemaFragment<RawName> = serde_json::from_value(json!({
+        let fragment = json_schema::Fragment::from_json_value(json!({
             "": {
                 "commonTypes": {
                     "MyLong": { "type": "Long" }
@@ -2195,10 +2198,7 @@ mod test {
                 "actions": {}
             }
         });
-        assert_matches!(
-            serde_json::from_value::<SchemaFragment<RawName>>(bad1),
-            Err(_)
-        );
+        assert_matches!(json_schema::Fragment::from_json_value(bad1), Err(_));
 
         // non-normalized schema namespace
         let bad2 = json!({
@@ -2211,10 +2211,7 @@ mod test {
                 "actions": {}
             }
         });
-        assert_matches!(
-            serde_json::from_value::<SchemaFragment<RawName>>(bad2),
-            Err(_)
-        );
+        assert_matches!(json_schema::Fragment::from_json_value(bad2), Err(_));
     }
 
     #[test]
@@ -2227,9 +2224,9 @@ mod test {
             }
         });
 
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
-        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src).unwrap();
+        let schema: ValidatorSchema = schema_file.try_into().unwrap();
         let actions = schema.action_entities().expect("Entity Construct Error");
 
         let action_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
@@ -2256,9 +2253,9 @@ mod test {
             }
         });
 
-        let schema_file: NamespaceDefinition<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
-        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(src).unwrap();
+        let schema: ValidatorSchema = schema_file.try_into().unwrap();
         let actions = schema.action_entities().expect("Entity Construct Error");
 
         let view_photo_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
@@ -2305,8 +2302,8 @@ mod test {
         });
 
         let schema_file: NamespaceDefinitionWithActionAttributes<RawName> =
-            serde_json::from_value(src).expect("Parse Error");
-        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+            serde_json::from_value(src).unwrap();
+        let schema: ValidatorSchema = schema_file.try_into().unwrap();
         let actions = schema.action_entities().expect("Entity Construct Error");
 
         let action_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
@@ -2347,7 +2344,7 @@ mod test {
             },
         });
         let schema_fragment =
-            serde_json::from_value::<SchemaFragment<RawName>>(src).expect("Failed to parse schema");
+            json_schema::Fragment::from_json_value(src).expect("Failed to parse schema");
         let schema: ValidatorSchema = schema_fragment.try_into().expect("Schema should construct");
         let view_photo = schema
             .action_entities_iter()
@@ -2384,7 +2381,7 @@ mod test {
             },
         });
         let schema_fragment =
-            serde_json::from_value::<SchemaFragment<RawName>>(src).expect("Failed to parse schema");
+            json_schema::Fragment::from_json_value(src).expect("Failed to parse schema");
         let schema: std::result::Result<ValidatorSchema, _> = schema_fragment.try_into();
         schema.expect_err("Schema should fail to construct as the normalization rules treat any qualification as starting from the root");
     }
@@ -2408,7 +2405,7 @@ mod test {
             }
         });
         let schema_fragment =
-            serde_json::from_value::<SchemaFragment<RawName>>(src).expect("Failed to parse schema");
+            json_schema::Fragment::from_json_value(src).expect("Failed to parse schema");
         let schema: ValidatorSchema = schema_fragment.try_into().unwrap();
         let view_photo = schema
             .action_entities_iter()
@@ -3015,12 +3012,11 @@ mod test_resolver {
 
     use super::CommonTypeResolver;
     use crate::{
-        err::SchemaError, types::Type, ConditionalName, RawName, SchemaFragment,
-        ValidatorSchemaFragment,
+        err::SchemaError, json_schema, types::Type, ConditionalName, ValidatorSchemaFragment,
     };
 
     fn resolve(schema_json: serde_json::Value) -> Result<HashMap<InternalName, Type>, SchemaError> {
-        let sfrag: SchemaFragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let sfrag = json_schema::Fragment::from_json_value(schema_json).unwrap();
         let schema: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
             sfrag.try_into().unwrap();
         let all_common_defs = schema

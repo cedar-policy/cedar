@@ -22,15 +22,15 @@ use cool_asserts::assert_matches;
 use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
+use cedar_policy_core::parser::Loc;
 
-use crate::typecheck::{TypecheckAnswer, Typechecker};
 use crate::{
+    json_schema,
+    typecheck::{TypecheckAnswer, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
-    ValidatorSchema,
+    RawName, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
-use cedar_policy_core::parser::Loc;
 
 use similar_asserts::assert_eq;
 
@@ -323,8 +323,8 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     });
 }
 
-pub(crate) fn empty_schema_file() -> NamespaceDefinition<RawName> {
-    NamespaceDefinition::new([], [])
+pub(crate) fn empty_schema_file() -> json_schema::NamespaceDefinition<RawName> {
+    json_schema::NamespaceDefinition::new([], [])
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function

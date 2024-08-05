@@ -29,18 +29,19 @@ use cedar_policy_core::{
 };
 
 use crate::{
+    json_schema,
     typecheck::Typechecker,
     types::{AttributeType, CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::LubContext,
     validation_errors::LubHelp,
-    RawName, SchemaFragment, ValidationError, ValidationMode,
+    RawName, ValidationError, ValidationMode,
 };
 
 use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder, get_loc};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
-    schema: SchemaFragment<RawName>,
+    schema: json_schema::Fragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
@@ -66,7 +67,7 @@ fn assert_typechecks_strict(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
-    schema: SchemaFragment<RawName>,
+    schema: json_schema::Fragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
@@ -93,7 +94,7 @@ fn assert_strict_type_error(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_types_must_match(
-    schema: SchemaFragment<RawName>,
+    schema: json_schema::Fragment<RawName>,
     env: &RequestEnv<'_>,
     e: Expr,
     snippet: impl AsRef<str>,
@@ -118,8 +119,8 @@ fn assert_types_must_match(
     )
 }
 
-fn simple_schema_file() -> SchemaFragment<RawName> {
-    serde_json::from_value(json!(
+fn simple_schema_file() -> json_schema::Fragment<RawName> {
+    json_schema::Fragment::from_json_value(json!(
     { "": {
       "entityTypes": {
         "User": {},
@@ -146,7 +147,7 @@ fn simple_schema_file() -> SchemaFragment<RawName> {
 
 fn with_simple_schema_and_request<F>(f: F)
 where
-    F: FnOnce(SchemaFragment<RawName>, RequestEnv<'_>),
+    F: FnOnce(json_schema::Fragment<RawName>, RequestEnv<'_>),
 {
     f(
         simple_schema_file(),
@@ -708,7 +709,7 @@ fn true_false_set() {
 
 #[test]
 fn qualified_record_attr() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_natural(
         r#"
         entity Foo;
         action A appliesTo { context: {num_of_things?: Long }, principal : [Foo], resource : [Foo] };"#,

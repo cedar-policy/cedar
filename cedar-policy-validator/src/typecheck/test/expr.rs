@@ -26,9 +26,10 @@ use smol_str::SmolStr;
 
 use crate::{
     diagnostics::ValidationError,
+    json_schema,
     types::Type,
     validation_errors::{AttributeAccess, LubContext, LubHelp, UnexpectedTypeHelp},
-    AttributesOrContext, EntityType, NamespaceDefinition, RawName, SchemaFragment, ValidationMode,
+    RawName, ValidationMode,
 };
 
 use super::test_utils::{
@@ -57,11 +58,11 @@ fn slot_typechecks() {
 
 #[test]
 fn slot_in_typechecks() {
-    let etype = EntityType {
+    let etype = json_schema::EntityType {
         member_of_types: vec![],
-        shape: AttributesOrContext::default(),
+        shape: json_schema::AttributesOrContext::default(),
     };
-    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
+    let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
@@ -86,15 +87,15 @@ fn slot_in_typechecks() {
 
 #[test]
 fn slot_equals_typechecks() {
-    let etype = EntityType {
+    let etype = json_schema::EntityType {
         member_of_types: vec![],
-        shape: AttributesOrContext::default(),
+        shape: json_schema::AttributesOrContext::default(),
     };
     // These don't typecheck in strict mode because the test_util expression
     // typechecker doesn't have access to a schema, so it can't link
     // the template slots with appropriate types. Similar policies that pass
     // strict typechecking are in the test_policy file.
-    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
+    let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
@@ -376,7 +377,7 @@ fn eq_typechecks() {
 
 #[test]
 fn entity_eq_is_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -424,7 +425,7 @@ fn entity_eq_is_false() {
 
 #[test]
 fn set_eq_is_not_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -477,7 +478,7 @@ fn set_eq_is_not_false() {
 
 #[test]
 fn eq_typecheck_action_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {},
@@ -506,7 +507,7 @@ fn eq_typecheck_action_literals_false() {
 
 #[test]
 fn eq_typecheck_entity_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_str(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
         r#"
     {
         "entityTypes": {
@@ -840,7 +841,7 @@ fn contains_typecheck_fails() {
 
 #[test]
 fn contains_typecheck_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_value(json!(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_value(json!(
     {
         "entityTypes": {},
         "actions": {
@@ -902,7 +903,7 @@ fn contains_all_typecheck_fails() {
 
 #[test]
 fn contains_all_typecheck_literals_false() {
-    let schema: NamespaceDefinition<RawName> = serde_json::from_value(json!(
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_value(json!(
     {
         "entityTypes": {},
         "actions": {
@@ -1161,7 +1162,7 @@ fn add_sub_typecheck_fails() {
 
 #[test]
 fn is_typecheck_fails() {
-    let schema: NamespaceDefinition<RawName> =
+    let schema: json_schema::NamespaceDefinition<RawName> =
         serde_json::from_value(json!({ "entityTypes": { "User": {}, }, "actions": {} })).unwrap();
     let src = r#"1 is User"#;
     assert_typecheck_fails(
@@ -1180,7 +1181,7 @@ fn is_typecheck_fails() {
 
 #[test]
 fn is_typechecks() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(json!({
+    let schema = json_schema::Fragment::from_json_value(json!({
             "": { "entityTypes": { "User": {}, "Photo": {} }, "actions": {} },
             "N::S": { "entityTypes": { "User": {} }, "actions": {} }
     }))

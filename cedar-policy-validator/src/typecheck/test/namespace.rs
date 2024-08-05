@@ -35,13 +35,14 @@ use super::test_utils::{
 };
 use crate::{
     diagnostics::ValidationError,
+    json_schema,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    RawName, SchemaError, SchemaFragment, ValidationWarning, ValidatorSchema,
+    RawName, SchemaError, ValidationWarning, ValidatorSchema,
 };
 
-fn namespaced_entity_type_schema() -> SchemaFragment<RawName> {
-    serde_json::from_str(
+fn namespaced_entity_type_schema() -> json_schema::Fragment<RawName> {
+    json_schema::Fragment::from_json_str(
         r#"
             { "N::S": {
                 "entityTypes": {
@@ -188,7 +189,7 @@ fn namespaced_entity_wrong_namespace() {
 
 #[test]
 fn namespaced_entity_type_in_attribute() {
-    let schema: SchemaFragment<RawName> = serde_json::from_str(
+    let schema = json_schema::Fragment::from_json_str(
         r#"{ "N::S":
             {
                 "entityTypes": {
@@ -236,7 +237,7 @@ fn namespaced_entity_type_in_attribute() {
 
 #[test]
 fn namespaced_entity_type_member_of() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
+    let schema = json_schema::Fragment::from_json_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": {
@@ -269,7 +270,7 @@ fn namespaced_entity_type_member_of() {
 
 #[test]
 fn namespaced_entity_type_applies_to() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
+    let schema = json_schema::Fragment::from_json_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": { },
@@ -295,7 +296,7 @@ fn namespaced_entity_type_applies_to() {
 
 #[test]
 fn multiple_namespaces_literals() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {"Foo": {}},
@@ -333,7 +334,7 @@ fn multiple_namespaces_literals() {
 
 #[test]
 fn multiple_namespaces_attributes() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -382,7 +383,7 @@ fn multiple_namespaces_attributes() {
 
 #[test]
 fn multiple_namespaces_member_of() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -421,7 +422,7 @@ fn multiple_namespaces_member_of() {
 
 #[test]
 fn multiple_namespaces_applies_to() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -539,7 +540,7 @@ fn namespaced_entity_is_wrong_type_when() {
 
 #[test]
 fn multi_namespace_action_eq() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_natural(
         r#"
             entity E;
             action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
@@ -590,7 +591,7 @@ fn multi_namespace_action_eq() {
 
 #[test]
 fn multi_namespace_action_in() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_natural(
         r#"
             entity E;
             namespace NS1 { action "Group"; }
@@ -656,7 +657,7 @@ fn multi_namespace_action_in() {
 
 #[test]
 fn test_cedar_policy_642() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_natural(
         r#"
         namespace NS1 {
             entity SystemEntity2 in SystemEntity1;
@@ -693,7 +694,7 @@ fn test_cedar_policy_642() {
 
 #[test]
 fn multi_namespace_action_group_cycle() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_natural(
         r#"
             namespace A { action "Act" in C::Action::"Act"; }
             namespace B { action "Act" in A::Action::"Act"; }

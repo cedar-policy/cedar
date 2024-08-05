@@ -409,9 +409,8 @@ mod test {
 
     use super::*;
     use crate::{
-        schema_file_format::{NamespaceDefinition, *},
-        validation_errors::UnrecognizedEntityType,
-        RawName, ValidationMode, ValidationWarning, Validator,
+        json_schema, validation_errors::UnrecognizedEntityType, RawName, ValidationMode,
+        ValidationWarning, Validator,
     };
 
     #[test]
@@ -434,29 +433,30 @@ mod test {
 
     #[test]
     fn validate_equals_instead_of_in() {
-        let schema_file: NamespaceDefinition<RawName> = serde_json::from_value(serde_json::json!(
-            {
-                "entityTypes": {
-                    "user": {
-                        "memberOfTypes": ["admins"]
+        let schema_file: json_schema::NamespaceDefinition<RawName> =
+            serde_json::from_value(serde_json::json!(
+                {
+                    "entityTypes": {
+                        "user": {
+                            "memberOfTypes": ["admins"]
+                        },
+                        "admins": {},
+                        "widget": {
+                            "memberOfTypes": ["bin"]
+                        },
+                        "bin": {}
                     },
-                    "admins": {},
-                    "widget": {
-                        "memberOfTypes": ["bin"]
-                    },
-                    "bin": {}
-                },
-                "actions": {
-                    "act": {
-                        "appliesTo": {
-                            "principalTypes": ["user"],
-                            "resourceTypes": ["widget"]
+                    "actions": {
+                        "act": {
+                            "appliesTo": {
+                                "principalTypes": ["user"],
+                                "resourceTypes": ["widget"]
+                            }
                         }
                     }
                 }
-            }
-        ))
-        .unwrap();
+            ))
+            .unwrap();
         let schema = schema_file.try_into().unwrap();
 
         let src = r#"permit(principal == admins::"admin1", action == Action::"act", resource == bin::"bin");"#;
@@ -482,12 +482,12 @@ mod test {
     #[test]
     fn validate_entity_type_in_singleton_schema() {
         let foo_type = "foo_type";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -516,12 +516,12 @@ mod test {
 
     #[test]
     fn validate_entity_type_not_in_singleton_schema() {
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 "foo_type".parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -566,11 +566,11 @@ mod test {
     #[test]
     fn validate_action_id_in_singleton_schema() {
         let foo_name = "foo_name";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [],
             [(
                 foo_name.into(),
-                ActionType {
+                json_schema::ActionType {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -601,12 +601,12 @@ mod test {
     #[test]
     fn validate_principal_slot_in_singleton_schema() {
         let p_name = "User";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -625,12 +625,12 @@ mod test {
     #[test]
     fn validate_resource_slot_in_singleton_schema() {
         let p_name = "Package";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -649,12 +649,12 @@ mod test {
     #[test]
     fn undefined_entity_type_in_principal_slot() {
         let p_name = "User";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -692,11 +692,11 @@ mod test {
 
     #[test]
     fn validate_action_id_not_in_singleton_schema() {
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [],
             [(
                 "foo_name".into(),
-                ActionType {
+                json_schema::ActionType {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -724,7 +724,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_action_id_in_schema() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors = json_schema::Fragment::from_json_str(
             r#"
                 {
                     "NS": {
@@ -756,7 +756,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_action() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors = json_schema::Fragment::from_json_str(
             r#"
                 {
                     "NS": {
@@ -787,7 +787,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors = json_schema::Fragment::from_json_str(
             r#"
                 {
                     "NS": {
@@ -822,7 +822,7 @@ mod test {
 
     #[test]
     fn validate_namespaced_invalid_entity_type() {
-        let descriptors: SchemaFragment<RawName> = serde_json::from_str(
+        let descriptors = json_schema::Fragment::from_json_str(
             r#"
                 {
                     "NS": {
@@ -858,11 +858,11 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let action_constraint = ActionConstraint::is_eq(euid_foo.clone());
 
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [],
             [(
                 foo_name.into(),
-                ActionType {
+                json_schema::ActionType {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -885,11 +885,11 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let action_constraint = ActionConstraint::is_in(vec![euid_foo.clone()]);
 
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [],
             [(
                 foo_name.into(),
-                ActionType {
+                json_schema::ActionType {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -912,11 +912,11 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let action_constraint = ActionConstraint::is_in(vec![euid_foo.clone()]);
 
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [],
             [(
                 foo_name.into(),
-                ActionType {
+                json_schema::ActionType {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -939,12 +939,12 @@ mod test {
             .expect("should be a valid identifier");
         let principal_constraint = PrincipalConstraint::is_eq(Arc::new(euid_foo.clone()));
 
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                EntityType {
+                json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: AttributesOrContext::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -971,30 +971,30 @@ mod test {
         let resource_euid = EntityUID::with_eid_and_type(resource_type, "resource")
             .expect("should be a valid identifier");
 
-        let schema = NamespaceDefinition::new(
+        let schema = json_schema::NamespaceDefinition::new(
             [
                 (
                     principal_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
             ],
             [(
                 action_name.into(),
-                ActionType {
-                    applies_to: Some(ApplySpec {
+                json_schema::ActionType {
+                    applies_to: Some(json_schema::ApplySpec {
                         resource_types: vec![resource_type.parse().unwrap()],
                         principal_types: vec![principal_type.parse().unwrap()],
-                        context: AttributesOrContext::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
                     attributes: None,
@@ -1360,47 +1360,47 @@ mod test {
             EntityUID::with_eid_and_type(resource_parent_type, "resource")
                 .expect("should be a valid identifier");
 
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [
                 (
                     principal_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_parent_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_grandparent_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
             ],
             [
                 (
                     action_name.into(),
-                    ActionType {
-                        applies_to: Some(ApplySpec {
+                    json_schema::ActionType {
+                        applies_to: Some(json_schema::ApplySpec {
                             resource_types: vec![resource_type.parse().unwrap()],
                             principal_types: vec![principal_type.parse().unwrap()],
-                            context: AttributesOrContext::default(),
+                            context: json_schema::AttributesOrContext::default(),
                         }),
-                        member_of: Some(vec![ActionEntityUID::new(
+                        member_of: Some(vec![json_schema::ActionEntityUID::new(
                             None,
                             action_parent_name.into(),
                         )]),
@@ -1409,9 +1409,9 @@ mod test {
                 ),
                 (
                     action_parent_name.into(),
-                    ActionType {
+                    json_schema::ActionType {
                         applies_to: None,
-                        member_of: Some(vec![ActionEntityUID::new(
+                        member_of: Some(vec![json_schema::ActionEntityUID::new(
                             None,
                             action_grandparent_name.into(),
                         )]),
@@ -1420,7 +1420,7 @@ mod test {
                 ),
                 (
                     action_grandparent_name.into(),
-                    ActionType {
+                    json_schema::ActionType {
                         applies_to: None,
                         member_of: Some(vec![]),
                         attributes: None,
@@ -1447,7 +1447,7 @@ mod test {
 
     #[test]
     fn unspecified_principal_resource_with_scope_conditions() {
-        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
+        let schema = serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
             r#"
         {
             "entityTypes": {"a": {}},
@@ -1480,11 +1480,11 @@ mod partial_schema {
         parser::parse_policy,
     };
 
-    use crate::{NamespaceDefinition, RawName, Validator};
+    use crate::{json_schema, RawName, Validator};
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
-        let schema = serde_json::from_str::<NamespaceDefinition<RawName>>(
+        let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_str(
             r#"
         {
             "entityTypes": { },
@@ -1492,9 +1492,8 @@ mod partial_schema {
         }
         "#,
         )
-        .unwrap()
-        .try_into()
         .unwrap();
+        let schema = schema.try_into().unwrap();
 
         let (template, _) = Template::link_static_policy(policy);
         let validate = Validator::new(schema);

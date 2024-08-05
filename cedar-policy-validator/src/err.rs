@@ -386,7 +386,7 @@ pub mod schema_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
     pub struct ActionResolutionError(
-        pub(crate) NonEmpty<crate::schema_file_format::ActionEntityUID<crate::ConditionalName>>,
+        pub(crate) NonEmpty<crate::json_schema::ActionEntityUID<crate::ConditionalName>>,
     );
 
     impl ActionResolutionError {

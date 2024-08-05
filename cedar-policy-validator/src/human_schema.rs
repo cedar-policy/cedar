@@ -17,6 +17,7 @@
 //! The Cedar human/natural syntax for schemas
 
 mod ast;
+pub use ast::Path;
 mod err;
 pub mod fmt;
 pub mod parser;

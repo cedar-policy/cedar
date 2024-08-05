@@ -25,13 +25,11 @@ use cedar_policy_core::parser::parse_policy;
 use super::test_utils::{
     assert_expected_type_errors, assert_expected_warnings, empty_schema_file, get_loc,
 };
+use crate::json_schema;
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
 use crate::validation_errors::{AttributeAccess, UnexpectedTypeHelp};
-use crate::{
-    NamespaceDefinition, RawName, ValidationError, ValidationMode, ValidationWarning,
-    ValidatorSchema,
-};
+use crate::{RawName, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_partial_typecheck(
@@ -485,7 +483,7 @@ mod fails_empty_schema {
     }
 }
 
-fn partial_schema_file() -> NamespaceDefinition<RawName> {
+fn partial_schema_file() -> json_schema::NamespaceDefinition<RawName> {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {

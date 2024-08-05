@@ -1406,7 +1406,7 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ActionBehavior;
+    use crate::{json_schema, ActionBehavior};
     use cool_asserts::assert_matches;
 
     impl Type {
@@ -1788,7 +1788,7 @@ mod test {
 
     fn simple_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!({ "":
+            json_schema::Fragment::from_json_value(serde_json::json!({ "":
             {
                 "entityTypes": {
                     "foo": {},
@@ -1879,7 +1879,7 @@ mod test {
 
     fn attr_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
             {"": {
                 "entityTypes": {
                     "foo": {},
@@ -2011,7 +2011,7 @@ mod test {
     #[test]
     fn record_entity_lub_non_term() {
         let schema = ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
             {"": {
                 "entityTypes": {
                     "U": {
@@ -2052,7 +2052,7 @@ mod test {
 
     fn rec_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
                 {"": {
                     "entityTypes": {
                         "biz": {
