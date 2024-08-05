@@ -23,6 +23,12 @@
 )]
 
 mod id;
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_validator::entity_manifest;
+#[cfg(feature = "entity-manifest")]
+pub use cedar_policy_validator::entity_manifest::{
+    AccessTrie, EntityManifest, EntityManifestError, EntityRoot, Fields, RootAccessTrie,
+};
 pub use id::*;
 
 mod err;
@@ -3634,4 +3640,18 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
+}
+
+/// Given a schema and policy set, compute an entity manifest.
+/// The policies must validate against the schema in strict mode,
+/// otherwise an error is returned.
+/// The manifest describes the data required to answer requests
+/// for each action.
+#[doc = include_str!("../experimental_warning.md")]
+#[cfg(feature = "entity-manifest")]
+pub fn compute_entity_manifest(
+    schema: &Schema,
+    pset: &PolicySet,
+) -> Result<EntityManifest, EntityManifestError> {
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast)
 }
