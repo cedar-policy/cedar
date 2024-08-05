@@ -60,21 +60,13 @@
 //! we only do the test for the more sensible one. (For instance, for 1a1, we
 //! only test an entity type reference, not a common type reference.)
 
-use super::{SchemaWarning, ValidatorSchema};
+use super::{test::collect_warnings, SchemaWarning, ValidatorSchema};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::test_utils::{
     expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder,
 };
 use cool_asserts::assert_matches;
 use serde_json::json;
-
-/// Transform the output of functions like
-/// `ValidatorSchema::from_str_natural()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
-/// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
-/// `assert_matches`, `.unwrap_err()`, etc
-fn collect_warnings<A, B, E>(r: Result<(A, impl Iterator<Item = B>), E>) -> Result<(A, Vec<B>), E> {
-    r.map(|(a, iter)| (a, iter.collect()))
-}
 
 #[track_caller]
 fn assert_parses_successfully_human(s: &str) -> (ValidatorSchema, Vec<SchemaWarning>) {
