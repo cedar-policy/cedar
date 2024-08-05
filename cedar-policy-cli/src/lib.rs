@@ -140,23 +140,23 @@ pub struct TranslateSchemaArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaTranslationDirection {
-    /// JSON -> Human schema syntax
-    JsonToHuman,
-    /// Human schema syntax -> JSON
-    HumanToJson,
+    /// JSON -> Cedar schema syntax
+    JsonToCedar,
+    /// Cedar schema syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaFormat {
-    /// Human-readable format
-    Human,
+    /// the Cedar format
+    Cedar,
     /// JSON format
     Json,
 }
 
 impl Default for SchemaFormat {
     fn default() -> Self {
-        Self::Human
+        Self::Cedar
     }
 }
 
@@ -181,8 +181,8 @@ pub struct ValidateArgs {
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
-    /// Schema format (Human-readable or json)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// Validate the policy using this mode.
     /// The options `permissive` and `partial` are experimental
@@ -479,8 +479,8 @@ pub struct AuthorizeArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -643,8 +643,8 @@ pub struct EvaluateArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
@@ -899,14 +899,14 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
     }
 }
 
-fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
-    let output = fragment.as_natural()?;
+    let output = fragment.as_cedar()?;
     Ok(output)
 }
 
 fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    let (fragment, warnings) = SchemaFragment::from_str_cedar(natural_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
@@ -917,8 +917,8 @@ fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        SchemaTranslationDirection::JsonToHuman => translate_schema_to_human,
-        SchemaTranslationDirection::HumanToJson => translate_schema_to_json,
+        SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
+        SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
@@ -1449,8 +1449,8 @@ fn read_schema_file(
                 filename.as_ref().display()
             )
         }),
-        SchemaFormat::Human => {
-            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+        SchemaFormat::Cedar => {
+            let (schema, warnings) = Schema::from_str_cedar(&schema_src)?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
                 eprintln!("{:?}", report);

@@ -544,7 +544,7 @@ impl Schema {
         miette::Report,
     > {
         match self {
-            Self::Human(str) => crate::SchemaFragment::from_str_natural(&str)
+            Self::Human(str) => crate::SchemaFragment::from_str_cedar(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,

@@ -29,10 +29,10 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        human_schema::{self, ast::PR, err::ToJsonSchemaError},
+        cedar_schema::{self, ast::PR, err::ToJsonSchemaError},
         json_schema,
         schema::test::collect_warnings,
-        HumanSchemaError, RawName,
+        CedarSchemaError, RawName,
     };
 
     use itertools::Itertools;
@@ -43,7 +43,7 @@ mod demo_tests {
         let src = r#"
             action "Foo";
         "#;
-        let (schema, _) = json_schema::Fragment::from_str_natural(src, Extensions::none()).unwrap();
+        let (schema, _) = json_schema::Fragment::from_str_cedar(src, Extensions::none()).unwrap();
         let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             json_schema::ActionType {
@@ -61,7 +61,7 @@ mod demo_tests {
         let src = r#"
         action "Foo" appliesTo { context: {} };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::none())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::none())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -79,7 +79,7 @@ mod demo_tests {
         action "Foo" appliesTo { principal: a, context: {}  };
         "#;
 
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::none())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::none())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -96,7 +96,7 @@ mod demo_tests {
         entity a;
         action "Foo" appliesTo { resource: a, context: {}  };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::none())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::none())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -115,7 +115,7 @@ mod demo_tests {
                 resource : [a]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -135,7 +135,7 @@ mod demo_tests {
                 resource : [a, b]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -154,7 +154,7 @@ mod demo_tests {
                 principal: [a]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -174,7 +174,7 @@ mod demo_tests {
                 principal: [a, b]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -198,7 +198,7 @@ mod demo_tests {
             };
         "#;
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
@@ -238,7 +238,7 @@ mod demo_tests {
             };
         "#;
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
@@ -277,8 +277,8 @@ mod demo_tests {
                 principal : [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(crate::HumanSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
+            assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
@@ -307,8 +307,8 @@ mod demo_tests {
                 resource: [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(src, Extensions::all_available())), Err(crate::HumanSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
+            assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
@@ -335,7 +335,7 @@ mod demo_tests {
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment =
             json_schema::Fragment(HashMap::from([(Some("bar".parse().unwrap()), namespace)]));
-        let as_src = fragment.as_natural_schema().unwrap();
+        let as_src = fragment.as_cedar_schema().unwrap();
         let expected = r#"action "foo";"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
     }
@@ -343,7 +343,7 @@ mod demo_tests {
     #[test]
     fn context_is_common_type() {
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
         type empty = {};
         entity E;
@@ -358,7 +358,7 @@ mod demo_tests {
             Ok(_)
         );
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
     type flag = { value: __cedar::Bool };
     action "Foo" appliesTo {
@@ -372,7 +372,7 @@ mod demo_tests {
             Ok(_)
         );
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
 namespace Bar { type empty = {}; }
 action "Foo" appliesTo {
@@ -386,7 +386,7 @@ action "Foo" appliesTo {
             Ok(_)
         );
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
 namespace Bar { type flag = { value: Bool }; }
 namespace Baz {action "Foo" appliesTo {
@@ -400,7 +400,7 @@ namespace Baz {action "Foo" appliesTo {
             Ok(_)
         );
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
         type authcontext = {
             ip: ipaddr,
@@ -446,13 +446,13 @@ namespace Baz {action "Foo" appliesTo {
             )]),
         };
         let fragment = json_schema::Fragment(HashMap::from([(None, namespace)]));
-        let src = fragment.as_natural_schema().unwrap();
+        let src = fragment.as_cedar_schema().unwrap();
         assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 
     #[test]
     fn fully_qualified_actions() {
-        let (_, _) = json_schema::Fragment::from_str_natural(
+        let (_, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace NS1 {entity PrincipalEntity  = {  };
         entity SystemEntity1  = {  };
         entity SystemEntity2 in [SystemEntity1] = {  };
@@ -472,7 +472,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[test]
     fn action_eid_invalid_escape() {
-        assert_matches!(collect_warnings(json_schema::Fragment::from_str_natural(
+        assert_matches!(collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"namespace NS1 {entity PrincipalEntity  = {  };
         entity SystemEntity1  = {  };
         entity SystemEntity2 in [SystemEntity1] = {  };
@@ -487,8 +487,8 @@ namespace Baz {action "Foo" appliesTo {
         "#,
             Extensions::all_available(),
         )), Err(err) => {
-            assert_matches!(err, HumanSchemaError::Parsing(err) => {
-                assert_matches!(err.inner(), human_schema::parser::HumanSyntaxParseErrors::NaturalSyntaxError(errs) => {
+            assert_matches!(err, CedarSchemaError::Parsing(err) => {
+                assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::SyntaxError(errs) => {
                     assert!(errs.to_smolstr().contains("Invalid escape codes"));
                 });
             });
@@ -497,7 +497,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[test]
     fn test_github() {
-        let (fragment, warnings) = json_schema::Fragment::from_str_natural(
+        let (fragment, warnings) = json_schema::Fragment::from_str_cedar(
             r#"namespace GitHub {
             entity User in [UserGroup,Team];
             entity UserGroup in [UserGroup];
@@ -632,7 +632,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[test]
     fn test_doc_cloud() {
-        let (fragment, warnings) = json_schema::Fragment::from_str_natural(
+        let (fragment, warnings) = json_schema::Fragment::from_str_cedar(
             r#"namespace DocCloud {
             entity User in [Group] {
                 personalGroup: Group,
@@ -783,7 +783,7 @@ namespace Baz {action "Foo" appliesTo {
         action Foo appliesTo { principal : A, resource : B  };
         "#;
         let (_, warnings) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 
@@ -853,7 +853,7 @@ namespace Baz {action "Foo" appliesTo {
         "#;
 
         let (_, warnings) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 
@@ -874,7 +874,7 @@ namespace Baz {action "Foo" appliesTo {
         }
         "#;
         let (fragment, warnings) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
         let resource = service
@@ -897,7 +897,7 @@ namespace Baz {action "Foo" appliesTo {
     fn expected_tokens() {
         #[track_caller]
         fn assert_labeled_span(src: &str, label: impl Into<String>) {
-            assert_matches!(json_schema::Fragment::from_str_natural(src, Extensions::all_available()).map(|(s, _)| s), Err(e) => {
+            assert_matches!(json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).map(|(s, _)| s), Err(e) => {
                 let actual_label = e.labels().and_then(|l| {
                     l.exactly_one()
                         .ok()
@@ -924,7 +924,7 @@ namespace Baz {action "Foo" appliesTo {
 
 #[cfg(test)]
 mod parser_tests {
-    use crate::human_schema::parser::parse_schema;
+    use crate::cedar_schema::parser::parse_schema;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -1161,7 +1161,7 @@ mod translator_tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        human_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
+        cedar_schema::{parser::parse_schema, to_json_schema::custom_schema_to_json_schema},
         json_schema,
         schema::test::collect_warnings,
         types::{EntityLUB, Type},
@@ -1172,7 +1172,7 @@ mod translator_tests {
     // The violations are reported during further translation to `ValidatorSchema`
     #[test]
     fn use_reserved_namespace() {
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           namespace __cedar {}
         "#,
@@ -1180,7 +1180,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
 
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           namespace __cedar::Foo {}
         "#,
@@ -1192,7 +1192,7 @@ mod translator_tests {
     /// Test that duplicate namespaces are not allowed
     #[test]
     fn duplicate_namespace() {
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           namespace A {}
           namespace A {}
@@ -1205,7 +1205,7 @@ mod translator_tests {
     /// Test that duplicate action names are not allowed
     #[test]
     fn duplicate_actions() {
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           action A;
           action A appliesTo { context: {}};
@@ -1214,7 +1214,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
 
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           action A;
           action "A";
@@ -1223,7 +1223,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
 
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
             namespace Foo {
           action A;
@@ -1234,7 +1234,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
 
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           namespace X { action A; }
           action A;
@@ -1247,7 +1247,7 @@ mod translator_tests {
     /// Test that duplicate entity type names are not allowed
     #[test]
     fn duplicate_entity_types() {
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           entity A;
           entity A {};
@@ -1256,7 +1256,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
           entity A,A {};
         "#,
@@ -1265,7 +1265,7 @@ mod translator_tests {
             Err(_)
         );
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
           namespace X { entity A; }
           entity A {};
@@ -1279,7 +1279,7 @@ mod translator_tests {
     /// Test that duplicate common type names are not allowed
     #[test]
     fn duplicate_common_types() {
-        let schema = collect_warnings(json_schema::Fragment::from_str_natural(
+        let schema = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
           type A = Bool;
           type A = Long;
@@ -1288,7 +1288,7 @@ mod translator_tests {
         ));
         assert_matches!(schema, Err(_));
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 r#"
           namespace X { type A = Bool; }
           type A = Long;
@@ -1301,7 +1301,7 @@ mod translator_tests {
 
     #[test]
     fn type_name_resolution_basic() {
-        let (schema, _) = collect_warnings(json_schema::Fragment::from_str_natural(
+        let (schema, _) = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"
         namespace Demo {
             entity Host {
@@ -1362,7 +1362,7 @@ mod translator_tests {
 
     #[test]
     fn type_name_cross_namespace() {
-        let (schema, _) = collect_warnings(json_schema::Fragment::from_str_natural(
+        let (schema, _) = collect_warnings(json_schema::Fragment::from_str_cedar(
             r#"namespace A {
                 entity B in [X::Y, A::C];
                 entity C;
@@ -1389,7 +1389,7 @@ mod translator_tests {
 
     #[test]
     fn type_name_resolution_empty_namespace() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
           type id = {
             group: String,
@@ -1439,7 +1439,7 @@ mod translator_tests {
     #[allow(clippy::indexing_slicing)]
     #[test]
     fn type_name_resolution_cross_namespace() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
                 entity B in [A::C] = {
                     foo?: X::Y,
@@ -1469,7 +1469,7 @@ mod translator_tests {
             }
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
                 entity B in [A::C] = {
                     foo?: X::Y,
@@ -1506,7 +1506,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["namespace".parse().unwrap()]);
@@ -1521,7 +1521,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1537,7 +1537,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Set".parse().unwrap()]);
@@ -1551,7 +1551,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["appliesTo".parse().unwrap()]);
@@ -1565,7 +1565,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["principal".parse().unwrap()]);
@@ -1579,7 +1579,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["resource".parse().unwrap()]);
@@ -1593,7 +1593,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["action".parse().unwrap()]);
@@ -1607,7 +1607,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["context".parse().unwrap()]);
@@ -1621,7 +1621,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["attributes".parse().unwrap()]);
@@ -1635,7 +1635,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Bool".parse().unwrap()]);
@@ -1649,7 +1649,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Long".parse().unwrap()]);
@@ -1663,7 +1663,7 @@ mod translator_tests {
         "#;
 
         let (schema, _) =
-            json_schema::Fragment::from_str_natural(src, Extensions::all_available()).unwrap();
+            json_schema::Fragment::from_str_cedar(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         let foo = ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["String".parse().unwrap()]);
@@ -1677,7 +1677,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1693,7 +1693,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1709,7 +1709,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1725,7 +1725,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1741,7 +1741,7 @@ mod translator_tests {
         "#;
 
         assert_matches!(
-            collect_warnings(json_schema::Fragment::from_str_natural(
+            collect_warnings(json_schema::Fragment::from_str_cedar(
                 src,
                 Extensions::all_available()
             )),
@@ -1751,7 +1751,7 @@ mod translator_tests {
 
     #[test]
     fn multiple_principal_decls() {
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { principal: A, principal: A };
@@ -1760,7 +1760,7 @@ mod translator_tests {
         );
         assert_matches!(collect_warnings(schema), Err(_));
 
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { principal: A, resource: B, principal: A };
@@ -1772,7 +1772,7 @@ mod translator_tests {
 
     #[test]
     fn multiple_resource_decls() {
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { resource: A, resource: A };
@@ -1781,7 +1781,7 @@ mod translator_tests {
         );
         assert_matches!(collect_warnings(schema), Err(_));
 
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { resource: A, principal: B, resource: A };
@@ -1793,7 +1793,7 @@ mod translator_tests {
 
     #[test]
     fn multiple_context_decls() {
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { context: A, context: A };
@@ -1802,7 +1802,7 @@ mod translator_tests {
         );
         assert_matches!(collect_warnings(schema), Err(_));
 
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { principal: C, context: A, context: A };
@@ -1811,7 +1811,7 @@ mod translator_tests {
         );
         assert_matches!(collect_warnings(schema), Err(_));
 
-        let schema = json_schema::Fragment::from_str_natural(
+        let schema = json_schema::Fragment::from_str_cedar(
             r#"
         entity foo;
         action a appliesTo { resource: C, context: A, context: A };
@@ -1876,7 +1876,7 @@ mod common_type_references {
 
     #[test]
     fn basic() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = b;
         type b = Long;
@@ -1897,7 +1897,7 @@ mod common_type_references {
             &AttributeType::new(Type::primitive_long(), true)
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = b;
         type b = c;
@@ -1919,7 +1919,7 @@ mod common_type_references {
             &AttributeType::new(Type::primitive_long(), true)
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = b;
             type b = c;
@@ -1948,7 +1948,7 @@ mod common_type_references {
 
     #[test]
     fn set() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = Set<b>;
         type b = Long;
@@ -1968,7 +1968,7 @@ mod common_type_references {
                 .unwrap(),
             &AttributeType::new(Type::set(Type::primitive_long()), true)
         );
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = Set<b>;
         type b = c;
@@ -1990,7 +1990,7 @@ mod common_type_references {
             &AttributeType::new(Type::set(Type::primitive_long()), true)
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = Set<b>;
             type b = c;
@@ -2019,7 +2019,7 @@ mod common_type_references {
 
     #[test]
     fn record() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = {a: b};
         type b = Long;
@@ -2040,7 +2040,7 @@ mod common_type_references {
             AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"
         type a = {a: b};
         type b = c;
@@ -2062,7 +2062,7 @@ mod common_type_references {
             AttributeType { attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }), is_required: true } if attrs.attrs.get("a").unwrap().attr_type == Type::primitive_long()
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = {a: b};
             type b = c;
@@ -2091,7 +2091,7 @@ mod common_type_references {
 
     #[test]
     fn cycles() {
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = {a: b};
             type b = c;
@@ -2113,7 +2113,7 @@ mod common_type_references {
             Err(SchemaError::CycleInCommonTypeReferences(_))
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = {a: b};
             type b = c;
@@ -2135,7 +2135,7 @@ mod common_type_references {
             Err(SchemaError::CycleInCommonTypeReferences(_))
         );
 
-        let (schema, _) = json_schema::Fragment::from_str_natural(
+        let (schema, _) = json_schema::Fragment::from_str_cedar(
             r#"namespace A {
             type a = B::a;
             entity foo {

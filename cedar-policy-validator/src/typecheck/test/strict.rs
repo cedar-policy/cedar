@@ -709,7 +709,7 @@ fn true_false_set() {
 
 #[test]
 fn qualified_record_attr() {
-    let (schema, _) = json_schema::Fragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_cedar(
         r#"
         entity Foo;
         action A appliesTo { context: {num_of_things?: Long }, principal : [Foo], resource : [Foo] };"#,

@@ -3670,14 +3670,14 @@ mod issue_779 {
         assert_matches!(Schema::from_json_str("    "), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant non-JSON format
         });
-        assert_matches!(Schema::from_str_natural(json).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_str_cedar(json).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"));
         });
-        assert_matches!(Schema::from_str_natural(human).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_str_cedar(human).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant JSON format, because this doesn't look like JSON
         });
         assert_matches!(
-            Schema::from_str_natural("    ").map(|(s, _warnings)| s),
+            Schema::from_str_cedar("    ").map(|(s, _warnings)| s),
             Ok(_)
         );
     }

@@ -1229,15 +1229,14 @@ impl SchemaFragment {
         })
     }
 
-    /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
-    pub fn from_file_natural(
+    /// Parse a [`SchemaFragment`] from a reader containing the Cedar schema syntax
+    pub fn from_file_cedar(
         r: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) =
-            cedar_policy_validator::json_schema::Fragment::from_file_natural(
-                r,
-                Extensions::all_available(),
-            )?;
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::json_schema::Fragment::from_file_cedar(
+            r,
+            Extensions::all_available(),
+        )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1247,11 +1246,11 @@ impl SchemaFragment {
         ))
     }
 
-    /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
-    pub fn from_str_natural(
+    /// Parse a [`SchemaFragment`] from a string containing the Cedar schema syntax
+    pub fn from_str_cedar(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::json_schema::Fragment::from_str_natural(
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::json_schema::Fragment::from_str_cedar(
             src,
             Extensions::all_available(),
         )?;
@@ -1283,9 +1282,9 @@ impl SchemaFragment {
         serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
-    /// Serialize this [`SchemaFragment`] into the natural syntax
-    pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
-        let str = self.lossless.as_natural_schema()?;
+    /// Serialize this [`SchemaFragment`] into the Cedar syntax
+    pub fn as_cedar(&self) -> Result<String, ToCedarSyntaxError> {
+        let str = self.lossless.as_cedar_schema()?;
         Ok(str)
     }
 }
@@ -1390,10 +1389,10 @@ impl Schema {
     }
 
     /// Parse the schema from a reader
-    pub fn from_file_natural(
+    pub fn from_file_cedar(
         file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), HumanSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), CedarSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_cedar(
             file,
             &Extensions::all_available(),
         )?;
@@ -1401,10 +1400,10 @@ impl Schema {
     }
 
     /// Parse the schema from a string
-    pub fn from_str_natural(
+    pub fn from_str_cedar(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_cedar(
             src,
             &Extensions::all_available(),
         )?;

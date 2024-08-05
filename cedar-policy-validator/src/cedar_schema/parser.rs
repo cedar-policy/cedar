@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//! Parser for schemas in human syntax
+//! Parser for schemas in the Cedar syntax
 
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ lalrpop_mod!(
     //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
     #[allow(clippy::panic)]
     pub grammar,
-    "/src/human_schema/grammar.rs"
+    "/src/cedar_schema/grammar.rs"
 );
 
 /// This helper function calls a generated parser, collects errors that could be
@@ -83,22 +83,22 @@ lazy_static::lazy_static! {
     static ref TYPE_PARSER: grammar::TypeParser = grammar::TypeParser::new();
 }
 
-/// Parse errors for parsing a human-syntax schema
+/// Parse errors for parsing a schema in the Cedar syntax
 #[derive(Debug, Diagnostic, Error)]
-pub enum HumanSyntaxParseErrors {
-    /// Parse error for the human syntax
+pub enum CedarSyntaxParseErrors {
+    /// Parse error for the Cedar syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
-    NaturalSyntaxError(#[from] err::ParseErrors),
+    SyntaxError(#[from] err::ParseErrors),
     /// Error converting the parsed representation into the internal JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
     JsonError(#[from] ToJsonSchemaErrors),
 }
 
-/// Parse a schema fragment, in human syntax, into a [`json_schema::Fragment`],
+/// Parse a schema fragment, in the Cedar syntax, into a [`json_schema::Fragment`],
 /// possibly generating warnings
-pub fn parse_natural_schema_fragment<'a>(
+pub fn parse_cedar_schema_fragment<'a>(
     src: &str,
     extensions: &Extensions<'a>,
 ) -> Result<
@@ -106,7 +106,7 @@ pub fn parse_natural_schema_fragment<'a>(
         json_schema::Fragment<crate::RawName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
-    HumanSyntaxParseErrors,
+    CedarSyntaxParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = custom_schema_to_json_schema(ast, extensions)?;

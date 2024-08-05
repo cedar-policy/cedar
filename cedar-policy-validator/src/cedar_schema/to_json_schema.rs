@@ -28,7 +28,7 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
 
-use crate::{human_schema, json_schema, RawName};
+use crate::{cedar_schema, json_schema, RawName};
 
 use super::{
     ast::{
@@ -38,8 +38,8 @@ use super::{
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
-impl From<human_schema::Path> for RawName {
-    fn from(p: human_schema::Path) -> Self {
+impl From<cedar_schema::Path> for RawName {
+    fn from(p: cedar_schema::Path) -> Self {
         RawName::from_name(p.into())
     }
 }

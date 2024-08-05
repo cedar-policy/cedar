@@ -36,9 +36,9 @@ use serde_with::serde_as;
 use smol_str::ToSmolStr;
 
 use crate::{
+    cedar_schema::SchemaWarning,
     err::schema_errors::*,
     err::*,
-    human_schema::SchemaWarning,
     json_schema,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
@@ -244,28 +244,28 @@ impl ValidatorSchema {
         )
     }
 
-    /// Construct a [`ValidatorSchema`] directly from a file containing Cedar
-    /// "natural" schema syntax.
-    pub fn from_file_natural<'a>(
+    /// Construct a [`ValidatorSchema`] directly from a file containing the
+    /// Cedar schema syntax.
+    pub fn from_file_cedar<'a>(
         r: impl std::io::Read,
         extensions: &'a Extensions<'a>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
-        let (fragment, warnings) = json_schema::Fragment::from_file_natural(r, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_file_cedar(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
-    /// Construct a [`ValidatorSchema`] from a string containing Cedar "natural"
+    /// Construct a [`ValidatorSchema`] from a string containing the Cedar
     /// schema syntax.
-    pub fn from_str_natural<'a>(
+    pub fn from_str_cedar<'a>(
         src: &str,
         extensions: &Extensions<'a>,
-    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), HumanSchemaError>
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
-        let (fragment, warnings) = json_schema::Fragment::from_str_natural(src, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_str_cedar(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;

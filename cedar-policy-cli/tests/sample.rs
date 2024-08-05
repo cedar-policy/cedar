@@ -588,7 +588,7 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
-        schema_format: SchemaFormat::Human,
+        schema_format: SchemaFormat::Cedar,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)

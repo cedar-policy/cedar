@@ -540,7 +540,7 @@ fn namespaced_entity_is_wrong_type_when() {
 
 #[test]
 fn multi_namespace_action_eq() {
-    let (schema, _) = json_schema::Fragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_cedar(
         r#"
             entity E;
             action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
@@ -591,7 +591,7 @@ fn multi_namespace_action_eq() {
 
 #[test]
 fn multi_namespace_action_in() {
-    let (schema, _) = json_schema::Fragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_cedar(
         r#"
             entity E;
             namespace NS1 { action "Group"; }
@@ -657,7 +657,7 @@ fn multi_namespace_action_in() {
 
 #[test]
 fn test_cedar_policy_642() {
-    let (schema, _) = json_schema::Fragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_cedar(
         r#"
         namespace NS1 {
             entity SystemEntity2 in SystemEntity1;
@@ -694,7 +694,7 @@ fn test_cedar_policy_642() {
 
 #[test]
 fn multi_namespace_action_group_cycle() {
-    let (schema, _) = json_schema::Fragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_str_cedar(
         r#"
             namespace A { action "Act" in C::Action::"Act"; }
             namespace B { action "Act" in A::Action::"Act"; }
