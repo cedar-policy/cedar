@@ -1108,7 +1108,7 @@ impl<'a> CommonTypeResolver<'a> {
 // PANIC SAFETY unit tests
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use std::{
         collections::{BTreeMap, HashSet},
         str::FromStr,
@@ -1124,6 +1124,16 @@ mod test {
     use serde_json::json;
 
     use super::*;
+
+    /// Transform the output of functions like
+    /// `ValidatorSchema::from_str_natural()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
+    /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
+    /// `assert_matches`, `.unwrap_err()`, etc
+    pub fn collect_warnings<A, B, E>(
+        r: std::result::Result<(A, impl Iterator<Item = B>), E>,
+    ) -> std::result::Result<(A, Vec<B>), E> {
+        r.map(|(a, iter)| (a, iter.collect()))
+    }
 
     // Well-formed schema
     #[test]
