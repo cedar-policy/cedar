@@ -231,6 +231,12 @@ pub enum LubHelp {
     /// Entity and record types are never compatible
     #[error("Entity and record types are never compatible even when their attributes would be compatible")]
     EntityRecord,
+    /// Help for LUB between Record and EAMap types
+    #[error("Record types and embedded attribute maps are only compatible if all attributes of the record have the appropriate type")]
+    RecordEAMap,
+    /// Help for LUB between EAMap types
+    #[error("Entire embedded attribute maps cannot be compared with `==`, `.contains()`, etc in strict mode; see RFC 68. Try comparing individual attributes of the embedded attribute map instead.")]
+    EAMaps,
     /// Catchall
     #[error("Types must be exactly equal to be compatible")]
     None,
@@ -398,6 +404,34 @@ pub struct EmptySetForbidden {
 
 impl Diagnostic for EmptySetForbidden {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
+}
+
+/// `EAMap`s cannot be used in certain positions, like inside record
+/// literals in policies.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("for policy `{policy_id}`, embedded attribute maps cannot be {}", .specific)]
+pub struct InvalidEAMapUse {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// Specific error case
+    pub specific: InvalidEAMapUseKind,
+}
+
+impl Diagnostic for InvalidEAMapUse {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+}
+
+/// Places where `EAMap`s cannot be used in policies
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+pub enum InvalidEAMapUseKind {
+    /// Cannot be used inside a record literal
+    #[error("nested inside a record literal")]
+    InsideRecordLiteral,
+    /// Cannot be used inside an if-then-else
+    #[error("used inside an if-then-else")]
+    InsideIfThenElse,
 }
 
 /// The policy passes a non-literal to an extension constructor, which is

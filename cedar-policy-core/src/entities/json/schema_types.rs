@@ -24,7 +24,7 @@ use crate::impl_diagnostic_from_expr_field;
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
@@ -49,6 +49,11 @@ pub enum SchemaType {
         attrs: BTreeMap<SmolStr, AttributeType>,
         /// Can a record with this type have attributes other than those specified in `attrs`
         open_attrs: bool,
+    },
+    /// Embedded attribute map (RFC 68) with the given value type
+    EAMap {
+        /// Value type. (The `EAMap` is a map from String to this type.)
+        value_ty: Box<SchemaType>,
     },
     /// Entity
     Entity {
@@ -110,20 +115,36 @@ impl SchemaType {
         }
     }
 
-    /// Does this SchemaType match the given SchemaType.
+    /// Does this `SchemaType` match the given `SchemaType`.
     /// I.e., are they compatible, in the sense that there exist some concrete
     /// values that have both types.
     pub fn is_consistent_with(&self, other: &SchemaType) -> bool {
-        if self == other {
-            true
+        Self::least_upper_bound(self, other).is_some()
+    }
+
+    /// Are these `SchemaType`s all mutually consistent.
+    /// I.e., does some concrete value exist that has all of these types.
+    pub fn are_all_consistent<'a>(tys: impl IntoIterator<Item = &'a SchemaType>) -> bool {
+        let mut tys = tys.into_iter();
+        let first_ty = match tys.next() {
+            Some(ty) => ty,
+            None => return true, // Empty list of tys are vacuously mutually consistent
+        };
+        Self::reduce_to_least_upper_bound(first_ty, tys).is_some()
+    }
+
+    /// Return the least upper bound of two types
+    pub fn least_upper_bound(ty1: &SchemaType, ty2: &SchemaType) -> Option<SchemaType> {
+        if ty1 == ty2 {
+            Some(ty1.clone())
         } else {
             use SchemaType::*;
-            match (self, other) {
-                (Set { .. }, EmptySet) => true,
-                (EmptySet, Set { .. }) => true,
-                (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
-                    elty1.is_consistent_with(elty2)
-                }
+            match (ty1, ty2) {
+                (Set { .. }, EmptySet) => Some(EmptySet),
+                (EmptySet, Set { .. }) => Some(EmptySet),
+                (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => Some(Set {
+                    element_ty: Box::new(Self::least_upper_bound(&elty1, &elty2)?),
+                }),
                 (
                     Record {
                         attrs: attrs1,
@@ -134,39 +155,89 @@ impl SchemaType {
                         open_attrs: open2,
                     },
                 ) => {
-                    attrs1.iter().all(|(k, v)| {
+                    let attrs = attrs1
+                        .iter()
+                        .filter_map(
+                            |(k, v1)| -> Option<Option<(SmolStr, AttributeType)>> // outer option controls whether `filter_map` drops the kv pair; inner option controls whether `collect()` reports there is no LUB
+                        {
                         match attrs2.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
+                            Some(v2) => match Self::least_upper_bound(&v1.attr_type, &v2.attr_type) {
+                                Some(lub) => Some(Some((k.clone(), AttributeType {
+                                    attr_type: lub,
+                                    required: v1.required && v2.required, // the LUB of a required attribute and an optional attribute is an optional attribute. This mimics the behavior of `EntityRecordKind::least_upper_bound()` in the validator crate (with permissive validation)
+                                }))),
+                                None => Some(None), // LUB does not exist of the attribute type, so LUB does not exist of the record type
                             }
                             None => {
                                 // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1 and attrs2 is
-                                // closed, incompatible.  otherwise fine
-                                !v.required || *open2
+                                if *open2 {
+                                    // attrs2 is open, so the LUB is an open record without this attribute
+                                    None
+                                } else {
+                                    // attrs2 is closed and doesn't have the attribute. There is no LUB.
+                                    Some(None)
+                                }
                             }
                         }
-                    }) && attrs2.iter().all(|(k, v)| {
+                    },
+                        )
+                        .collect::<Option<BTreeMap<SmolStr, AttributeType>>>()?;
+                    // the above only went through attrs in attrs1. now we need to check for attrs
+                    // in attrs2 but not attrs1
+                    for (k, _) in attrs2.iter() {
                         match attrs1.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
-                            }
+                            Some(_) => (), // already handled above
                             None => {
                                 // attrs2 has the attribute, attrs1 does not.
-                                // if required in attrs2 and attrs1 is closed,
-                                // incompatible.  otherwise fine
-                                !v.required || *open1
+                                if *open1 {
+                                    // attrs1 is open, so the LUB is an open record without this attribute.
+                                    // Nothing to do.
+                                } else {
+                                    // attrs1 is closed and doesn't have the attribute. There is no LUB.
+                                    return None;
+                                }
                             }
                         }
-                    })
+                    }
+                    let open_attrs = *open1 || *open2 || {
+                        // if we dropped any attrs in the course of computing the LUB,
+                        // then we need to mark the LUB open because those attrs could also exist
+                        attrs.keys().collect::<BTreeSet<_>>()
+                            != attrs1.keys().chain(attrs2.keys()).collect::<BTreeSet<_>>()
+                    };
+                    Some(Record { attrs, open_attrs })
                 }
-                _ => false,
+                (Record { attrs, .. }, EAMap { value_ty })
+                | (EAMap { value_ty }, Record { attrs, .. }) => {
+                    // The least upper bound is just the record's `attrs`, assuming
+                    // that all of those `attrs` have the type `value_ty`.
+                    // Furthermore the least upper bound is open because there could
+                    // be more attributes (the same reason that the LUB of two
+                    // records is open if either is open).
+                    if attrs.values().all(|ty| &ty.attr_type == &**value_ty) {
+                        Some(Record {
+                            attrs: attrs.clone(),
+                            open_attrs: true,
+                        })
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
             }
         }
+    }
+
+    /// Return the least upper bound of `first_ty` and all the types in `other_tys`
+    pub fn reduce_to_least_upper_bound<'a>(
+        first_ty: &'a SchemaType,
+        other_tys: impl IntoIterator<Item = &'a SchemaType>,
+    ) -> Option<SchemaType> {
+        other_tys
+            .into_iter()
+            .try_fold(first_ty.clone(), |lub, next| {
+                Self::least_upper_bound(&lub, next)
+            })
     }
 
     /// Iterate over all extension function types contained in this SchemaType
@@ -179,6 +250,7 @@ impl SchemaType {
                     .values()
                     .flat_map(|ty| ty.attr_type.contained_ext_types()),
             ),
+            Self::EAMap { value_ty } => value_ty.contained_ext_types(),
             Self::Bool | Self::Long | Self::String | Self::EmptySet | Self::Entity { .. } => {
                 Box::new(std::iter::empty())
             }
@@ -242,6 +314,9 @@ impl std::fmt::Display for SchemaType {
                 }
                 write!(f, " }}")?;
                 Ok(())
+            }
+            Self::EAMap { value_ty } => {
+                write!(f, "{{ ?: {value_ty} }}")
             }
             Self::Entity { ty } => write!(f, "`{ty}`"),
             Self::Extension { name } => write!(f, "{name}"),

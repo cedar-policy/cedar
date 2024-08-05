@@ -152,6 +152,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// `EAMap`s cannot be used in certain positions, like inside record
+    /// literals in policies.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEAMapUse(#[from] validation_errors::InvalidEAMapUse),
 }
 
 impl ValidationError {
@@ -236,6 +241,24 @@ impl ValidationError {
             context,
         }
         .into()
+    }
+
+    /// Construct a type error for when there is an `==` expression with `EAMap`s
+    /// on both sides (which is not allowed in strict mode).
+    pub(crate) fn equality_between_eamaps(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        lhs: Type,
+        rhs: Type,
+        context: validation_errors::LubContext,
+    ) -> Self {
+        Self::incompatible_types(
+            source_loc,
+            policy_id,
+            [lhs, rhs],
+            validation_errors::LubHelp::EAMaps,
+            context,
+        )
     }
 
     pub(crate) fn unsafe_attribute_access(
@@ -328,7 +351,6 @@ impl ValidationError {
 
     pub(crate) fn hierarchy_not_respected(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         in_lhs: Option<EntityType>,
         in_rhs: Option<EntityType>,
@@ -338,6 +360,19 @@ impl ValidationError {
             policy_id,
             in_lhs,
             in_rhs,
+        }
+        .into()
+    }
+
+    pub(crate) fn invalid_ea_map_use(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        kind: validation_errors::InvalidEAMapUseKind,
+    ) -> Self {
+        validation_errors::InvalidEAMapUse {
+            source_loc,
+            policy_id,
+            specific: kind,
         }
         .into()
     }

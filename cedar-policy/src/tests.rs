@@ -1407,6 +1407,7 @@ mod entity_validate_tests {
                                     "innerinner": { "type": "Entity", "name": "Employee" }
                                 }}
                             }},
+                            "tags": { "type": "Record", "default": { "type": "String" } },
                             "home_ip": { "type": "Extension", "name": "ipaddr" },
                             "work_ip": { "type": "Extension", "name": "ipaddr" },
                             "trust_score": { "type": "Extension", "name": "decimal" },
@@ -1432,6 +1433,13 @@ mod entity_validate_tests {
     fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), EntitiesError> {
         let _ = Entities::from_entities([entity], Some(schema))?;
         Ok(())
+    }
+
+    #[track_caller]
+    fn assert_valid_entity(entity: Entity, schema: &Schema) {
+        if let Err(e) = validate_entity(entity, schema) {
+            panic!("{:?}", miette::Report::new(e));
+        }
     }
 
     #[test]
@@ -1470,6 +1478,14 @@ mod entity_validate_tests {
                     .unwrap(),
                 ),
                 (
+                    "tags".into(),
+                    RestrictedExpression::new_record([(
+                        "abc".into(),
+                        RestrictedExpression::new_string("yes".into()),
+                    )])
+                    .unwrap(),
+                ),
+                (
                     "home_ip".into(),
                     RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
                 ),
@@ -1489,9 +1505,9 @@ mod entity_validate_tests {
             HashSet::new(),
         )
         .unwrap();
-        validate_entity(entity.clone(), &schema()).unwrap();
+        assert_valid_entity(entity.clone(), &schema());
         let (uid, attrs, parents) = entity.into_inner();
-        validate_entity(Entity::new(uid, attrs, parents).unwrap(), &schema()).unwrap();
+        assert_valid_entity(Entity::new(uid, attrs, parents).unwrap(), &schema());
     }
 
     #[test]
@@ -1528,6 +1544,14 @@ mod entity_validate_tests {
                             .unwrap(),
                         ),
                     ])
+                    .unwrap(),
+                ),
+                (
+                    "tags".into(),
+                    RestrictedExpression::new_record([(
+                        "abc".into(),
+                        RestrictedExpression::new_string("yes".into()),
+                    )])
                     .unwrap(),
                 ),
                 (
@@ -1596,6 +1620,14 @@ mod entity_validate_tests {
                     .unwrap(),
                 ),
                 (
+                    "tags".into(),
+                    RestrictedExpression::new_record([(
+                        "abc".into(),
+                        RestrictedExpression::new_string("yes".into()),
+                    )])
+                    .unwrap(),
+                ),
+                (
                     "home_ip".into(),
                     RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
                 ),
@@ -1660,6 +1692,14 @@ mod entity_validate_tests {
                             .unwrap(),
                         ),
                     ])
+                    .unwrap(),
+                ),
+                (
+                    "tags".into(),
+                    RestrictedExpression::new_record([(
+                        "abc".into(),
+                        RestrictedExpression::new_string("yes".into()),
+                    )])
                     .unwrap(),
                 ),
                 (
@@ -1765,6 +1805,7 @@ mod schema_based_parsing_tests {
                                     "innerinner": { "type": "Entity", "name": "Employee" }
                                 }}
                             }},
+                            "tags": { "type": "Record", "default": { "type": "String" } },
                             "home_ip": { "type": "Extension", "name": "ipaddr" },
                             "work_ip": { "type": "Extension", "name": "ipaddr" },
                             "trust_score": { "type": "Extension", "name": "decimal" },
@@ -1803,6 +1844,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -1884,6 +1926,12 @@ mod schema_based_parsing_tests {
             assert_matches!(innerinner, EvalResult::EntityUid(_));
         };
         assert_matches!(
+            parsed.attr("tags"),
+            Some(Ok(EvalResult::Record(rec))) => {
+                assert_eq!(rec.get("abc").expect("expected abc tag to exist"), &EvalResult::String("yes".into()));
+            }
+        );
+        assert_matches!(
             parsed.attr("home_ip"),
             Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
         );
@@ -1914,6 +1962,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -1950,6 +1999,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -1984,6 +2034,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2020,6 +2071,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2057,6 +2109,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": { "fn": "decimal", "arg": "3.33" },
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2092,6 +2145,7 @@ mod schema_based_parsing_tests {
                             "inner1": false,
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2128,6 +2182,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2143,6 +2198,43 @@ mod schema_based_parsing_tests {
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
                 .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                .build()
+        );
+
+        // EAMap attribute has the wrong type
+        let entity = json!(
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "tags": { "abc": 222 },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+        );
+        let err = Entity::from_json_value(entity, Some(&schema))
+            .expect_err("should fail due to type mismatch on attribute \"tags\"");
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `tags` on `Employee::"12UA45"`, type mismatch: value was expected to have type { ?: string }, but actually has type { "abc" => (optional) long }: `{"abc": 222}`"#)
                 .build()
         );
 
@@ -2163,6 +2255,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": { "__extn": { "fn": "ip", "arg": "222.222.222.101" } },
                         "work_ip": { "__extn": { "fn": "ip", "arg": "2.2.2.0/24" } },
                         "trust_score": { "__extn": { "fn": "decimal", "arg": "5.7" } },
@@ -2230,6 +2323,7 @@ mod schema_based_parsing_tests {
                                     "innerinner": { "type": "Entity", "name": "Employee" }
                                 }}
                             }},
+                            "tags": { "type": "Record", "default": { "type": "String" } },
                             "home_ip": { "type": "Extension", "name": "ipaddr" },
                             "work_ip": { "type": "Extension", "name": "ipaddr" },
                             "trust_score": { "type": "Extension", "name": "decimal" },
@@ -2269,6 +2363,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2367,6 +2462,12 @@ mod schema_based_parsing_tests {
             assert_matches!(innerinner, EvalResult::EntityUid(_));
         };
         assert_matches!(
+            parsed.attr("tags"),
+            Some(Ok(EvalResult::Record(rec))) => {
+                assert_eq!(rec.get("abc").expect("expected abc tag to exist"), &EvalResult::String("yes".into()));
+            }
+        );
+        assert_matches!(
             parsed.attr("home_ip"),
             Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
         );
@@ -2398,6 +2499,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2436,6 +2538,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2472,6 +2575,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2510,6 +2614,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2549,6 +2654,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": { "fn": "decimal", "arg": "3.33" },
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2586,6 +2692,7 @@ mod schema_based_parsing_tests {
                             "inner1": false,
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2624,6 +2731,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
@@ -2640,6 +2748,45 @@ mod schema_based_parsing_tests {
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                 .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (optional) long, "inner2" => (optional) string, "inner3" => (optional) { "innerinner" => (optional) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
+                .build()
+        );
+
+        // EAMap attribute has the wrong type
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "tags": { "abc": 222 },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+            ]
+        );
+        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+            .expect_err("should fail due to type mismatch on attribute \"tags\"");
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `tags` on `Employee::"12UA45"`, type mismatch: value was expected to have type { ?: string }, but actually has type { "abc" => (optional) long }: `{"abc": 222}`"#)
                 .build()
         );
 
@@ -2661,6 +2808,7 @@ mod schema_based_parsing_tests {
                             "inner2": "-*/",
                             "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
                         },
+                        "tags": { "abc": "yes" },
                         "home_ip": { "__extn": { "fn": "ip", "arg": "222.222.222.101" } },
                         "work_ip": { "__extn": { "fn": "ip", "arg": "2.2.2.0/24" } },
                         "trust_score": { "__extn": { "fn": "decimal", "arg": "5.7" } },
@@ -3141,6 +3289,7 @@ mod schema_based_parsing_tests {
                                     "innerinner": { "type": "Entity", "name": "Employee" }
                                 }}
                             }},
+                            "tags": { "type": "Record", "default": { "type": "String" } },
                             "home_ip": { "type": "Extension", "name": "ipaddr" },
                             "work_ip": { "type": "Extension", "name": "ipaddr" },
                             "trust_score": { "type": "Extension", "name": "decimal" },
@@ -3181,6 +3330,7 @@ mod schema_based_parsing_tests {
                             "inner2": { "__extn": { "fn": "unknown", "arg": "hhh" }},
                             "inner3": { "innerinner": { "__extn": { "fn": "unknown", "arg": "bbb" }}},
                         },
+                        "tags": { "abc": { "__extn": { "fn": "unknown", "arg": "ggg" }}},
                         "home_ip": { "__extn": { "fn": "unknown", "arg": "uuu" }},
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": { "__extn": { "fn": "unknown", "arg": "dec" }},
@@ -3230,6 +3380,10 @@ mod schema_based_parsing_tests {
         assert_matches!(
             parsed.attr("json_blob"),
             Some(Err(e)) => assert_contains_unknown(&e.to_string(), "bbb")
+        );
+        assert_matches!(
+            parsed.attr("tags"),
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "ggg")
         );
         assert_matches!(
             parsed.attr("home_ip"),

@@ -182,6 +182,16 @@ impl Type {
         Type::EntityOrRecord(EntityRecordKind::AnyEntity)
     }
 
+    pub(crate) fn eamap(value_ty: Type) -> Type {
+        Type::EntityOrRecord(EntityRecordKind::EAMap {
+            value_type: Some(Box::new(value_ty)),
+        })
+    }
+
+    pub(crate) fn any_eamap() -> Type {
+        Type::EntityOrRecord(EntityRecordKind::EAMap { value_type: None })
+    }
+
     pub(crate) fn extension(name: Name) -> Type {
         Type::ExtensionType { name }
     }
@@ -308,7 +318,26 @@ impl Type {
                     // common, are not disjoint types.
                     lub1.is_disjoint(&lub2)
                 } else {
-                    false // conservatively false, not promising disjointness; see notes on this function
+                    match (k1, k2) {
+                        (EntityRecordKind::EAMap { .. }, EntityRecordKind::EAMap { .. })
+                        | (EntityRecordKind::EAMap { .. }, EntityRecordKind::Record { .. })
+                        | (EntityRecordKind::Record { .. }, EntityRecordKind::EAMap { .. }) => {
+                            // EAMap with either another EAMap or a record:
+                            // conservatively we don't promise they're disjoint.
+                            // (Especially consider that {} can be a value of any
+                            // EAMap type and many record types.)
+                            // See notes on this function.
+                            false
+                        }
+                        (EntityRecordKind::EAMap { .. }, _)
+                        | (_, EntityRecordKind::EAMap { .. }) => {
+                            // All cases involving EAMaps other than the cases already
+                            // handled above:
+                            // disjoint. For instance, EAMaps are disjoint from all entity types.
+                            true
+                        }
+                        _ => false, // conservatively false, not promising disjointness; see notes on this function
+                    }
                 }
             }
             _ => false, // conservatively false, not promising disjointness; see notes on this function
@@ -394,7 +423,7 @@ impl Type {
             Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 attrs.get_attr(attr).is_some()
             }
-            // `AnyEntity` is handled by the open-attribute match case.
+            // `AnyEntity`, `EAMap`, etc are handled by the open-attribute match case.
             // No other types may have attributes.
             _ => false,
         }
@@ -441,43 +470,51 @@ impl Type {
                     EntityRecordKind::Record {
                         attrs: self_attrs,
                         open_attributes: self_open,
+                    } => Self::is_consistent_with_record(
+                        core_attrs, *core_open, self_attrs, *self_open,
+                    ),
+                    EntityRecordKind::EAMap {
+                        value_type: Some(value_type),
                     } => {
-                        core_attrs.iter().all(|(k, core_attr_ty)| {
-                            match self_attrs.get_attr(k) {
-                                Some(self_attr_ty) => {
-                                    // both have the attribute, doesn't matter
-                                    // if one or both consider it required or
-                                    // optional
-                                    self_attr_ty
-                                        .attr_type
-                                        .is_consistent_with(core_attr_ty.schema_type())
-                                }
-                                None => {
-                                    // core_attrs has the attribute, self_attrs does not.
-                                    // if required in core_attrs, incompatible.
-                                    // otherwise fine
-                                    !core_attr_ty.is_required() || self_open.is_open()
-                                }
-                            }
-                        }) && self_attrs.iter().all(|(k, self_attr_ty)| {
-                            match core_attrs.get(k) {
-                                Some(core_attr_ty) => {
-                                    // both have the attribute, doesn't matter
-                                    // if one or both consider it required or
-                                    // optional
-                                    self_attr_ty
-                                        .attr_type
-                                        .is_consistent_with(core_attr_ty.schema_type())
-                                }
-                                None => {
-                                    // self_attrs has the attribute, core_attrs does not.
-                                    // if required in self_attrs, incompatible.
-                                    // otherwise fine
-                                    !self_attr_ty.is_required || *core_open
-                                }
-                            }
+                        // all values in the core type need to be consistent with the EAMap value type
+                        core_attrs.values().all(|core_value_type| {
+                            value_type.is_consistent_with(core_value_type.schema_type())
                         })
                     }
+                    EntityRecordKind::EAMap { value_type: None } => {
+                        // all attrs in the core type need to be consistent
+                        // with _some_ possible EAMap value type.
+                        // `CoreSchemaType::are_all_consistent()` will do the
+                        // job -- it returns `true` if some concrete value V
+                        // exists that has all of the needed types, and in that
+                        // case, all of the core type attrs are consistent with
+                        // _some_ possible `EAMap` value type.
+                        CoreSchemaType::are_all_consistent(
+                            core_attrs.values().map(|attr_ty| attr_ty.schema_type()),
+                        )
+                    }
+                    EntityRecordKind::Entity(_)
+                    | EntityRecordKind::AnyEntity
+                    | EntityRecordKind::ActionEntity { .. } => false,
+                },
+                _ => false,
+            },
+            CoreSchemaType::EAMap { value_ty } => match self {
+                Type::EntityOrRecord(kind) => match kind {
+                    EntityRecordKind::Record {
+                        attrs: self_attrs, ..
+                    } => {
+                        // all attrs in the self type need to be consistent with
+                        // the EAMap value type.
+                        self_attrs
+                            .attrs
+                            .values()
+                            .all(|ty| ty.attr_type.is_consistent_with(&value_ty))
+                    }
+                    EntityRecordKind::EAMap {
+                        value_type: Some(self_value_type),
+                    } => self_value_type.is_consistent_with(&value_ty),
+                    EntityRecordKind::EAMap { value_type: None } => true,
                     EntityRecordKind::Entity(_)
                     | EntityRecordKind::AnyEntity
                     | EntityRecordKind::ActionEntity { .. } => false,
@@ -491,6 +528,7 @@ impl Type {
                     }
                     EntityRecordKind::AnyEntity => true,
                     EntityRecordKind::Record { .. } => false,
+                    EntityRecordKind::EAMap { .. } => false,
                     EntityRecordKind::ActionEntity { name, .. } => concrete_name.eq(name),
                 },
                 _ => false,
@@ -499,6 +537,53 @@ impl Type {
                 matches!(self, Type::ExtensionType { name: n } if name == n)
             }
         }
+    }
+
+    /// helper function for the `Record` case
+    ///
+    /// Is `CoreSchemaType::Record { attrs: core_attrs, open_attributes: core_open }`
+    /// consistent with the given `self_attrs` and `self_open`?
+    fn is_consistent_with_record(
+        core_attrs: &BTreeMap<SmolStr, CoreAttributeType>,
+        core_open: bool,
+        self_attrs: &Attributes,
+        self_open: OpenTag,
+    ) -> bool {
+        core_attrs.iter().all(|(k, core_attr_ty)| {
+            match self_attrs.get_attr(k) {
+                Some(self_attr_ty) => {
+                    // both have the attribute, doesn't matter
+                    // if one or both consider it required or
+                    // optional
+                    self_attr_ty
+                        .attr_type
+                        .is_consistent_with(core_attr_ty.schema_type())
+                }
+                None => {
+                    // core_attrs has the attribute, self_attrs does not.
+                    // if required in core_attrs, and self_attrs is not open,
+                    // incompatible. otherwise fine
+                    !core_attr_ty.is_required() || self_open.is_open()
+                }
+            }
+        }) && self_attrs.iter().all(|(k, self_attr_ty)| {
+            match core_attrs.get(k) {
+                Some(core_attr_ty) => {
+                    // both have the attribute, doesn't matter
+                    // if one or both consider it required or
+                    // optional
+                    self_attr_ty
+                        .attr_type
+                        .is_consistent_with(core_attr_ty.schema_type())
+                }
+                None => {
+                    // self_attrs has the attribute, core_attrs does not.
+                    // if required in self_attrs, and core_attrs is not open,
+                    // then incompatible. otherwise fine
+                    !self_attr_ty.is_required() || core_open
+                }
+            }
+        })
     }
 
     /// Does the given `PartialValue` have this validator type?
@@ -625,6 +710,43 @@ impl Type {
                 }
                 None => Ok(false),
             },
+            Type::EntityOrRecord(EntityRecordKind::EAMap {
+                value_type: Some(value_type),
+            }) => {
+                match restricted_expr.as_record_pairs() {
+                    Some(pairs) => {
+                        // Just need that all of the restricted_expr's values
+                        // typecheck at `value_type`
+                        for (_, attr_val) in pairs {
+                            if !value_type.typecheck_restricted_expr(attr_val, extensions)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    None => Ok(false),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::EAMap { value_type: None }) => {
+                // Just need that \exists some `value_type` such that all of the restricted expr's
+                // attr values typecheck at that `value_type`.
+                //
+                // We get the `CoreSchemaType` of each of the restricted expr's attr values,
+                // and then check if those `CoreSchemaType`s are all mutually consistent.
+                match restricted_expr.as_record_pairs() {
+                    Some(pairs) => {
+                        let attr_tys: Vec<CoreSchemaType> = pairs
+                            .map(|(_, val)| {
+                                cedar_policy_core::entities::schematype_of_restricted_expr(
+                                    val, extensions,
+                                )
+                            })
+                            .collect::<Result<_, _>>()?;
+                        Ok(CoreSchemaType::are_all_consistent(attr_tys.iter()))
+                    }
+                    None => Ok(false),
+                }
+            }
             Type::ExtensionType { name } => match restricted_expr.as_extn_fn_call() {
                 Some((fn_name, args)) => {
                     let func = extensions.func(fn_name)?;
@@ -712,6 +834,14 @@ impl Display for Type {
                 }
                 write!(f, "}}")
             }
+            Type::EntityOrRecord(EntityRecordKind::EAMap {
+                value_type: Some(value_type),
+            }) => {
+                write!(f, "{{ ?: {value_type} }}")
+            }
+            Type::EntityOrRecord(EntityRecordKind::EAMap { value_type: None }) => {
+                write!(f, "{{ ?: __cedar::internal::Any }}")
+            }
             Type::ExtensionType { name } => write!(f, "{name}"),
         }
     }
@@ -765,6 +895,14 @@ impl TryFrom<Type> for CoreSchemaType {
                 },
                 open_attrs: open_attributes.is_open(),
             }),
+            Type::EntityOrRecord(EntityRecordKind::EAMap {
+                value_type: Some(value_type),
+            }) => Ok(CoreSchemaType::EAMap {
+                value_ty: Box::new((*value_type).try_into()?),
+            }),
+            Type::EntityOrRecord(kind @ EntityRecordKind::EAMap { value_type: None }) => Err(
+                format!("EAMap-any type is not representable in core::SchemaType: {kind:?}"),
+            ),
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match lub.into_single_entity() {
                 Some(name) => Ok(CoreSchemaType::Entity { ty: name }),
                 None => Err(
@@ -1106,12 +1244,42 @@ pub enum EntityRecordKind {
     /// the schema, based on the elements of the [`EntityLUB`].
     Entity(EntityLUB),
 
-    /// We special case action entities, which store their attributes directly, like `Record`s do
+    /// We special-case action entities, which store their attributes directly,
+    /// like `Record`s do.
+    ///
+    /// Unlike records, action attributes can never be `OpenTag::OpenAttributes`,
+    /// because we always have the full list of all action attributes.
     ActionEntity {
         /// Type name of the action entity
         name: EntityType,
         /// Attributes of the action entity
         attrs: Attributes,
+    },
+
+    /// An embedded attribute map (RFC 68)
+    ///
+    /// That is, a map from String to the given value type.
+    ///
+    /// Runtime values of type `EAMap` are compatible with (e.g., can be equal
+    /// to) runtime values of type `Record`. The distinction is only in the
+    /// validator type system.
+    EAMap {
+        /// The `EAMap` is a map from `String` to this value type.
+        ///
+        /// `None` represents an arbitrary `EAMap` type. This should only be
+        /// `None` when the type is being used in a subtype comparison (commonly
+        /// done through `expect_type` in `typecheck.rs`) or for error reporting
+        /// through the `TypeError` structure.
+        ///
+        /// We assert (but do not enforce via the type system) that the value
+        /// type may not itself be (or contain) `EAMap`s.
+        /// This invariant is enforced at the type level in the `json_schema`
+        /// module's structures, but for expediency it is not enforced at the
+        /// type level here.
+        /// Similarly, we assert here, but enforce via the type system only in
+        /// the `json_schema` module's structures, that only entity attributes
+        /// may be `EAMap` -- e.g. context attributes must not be `EAMap`.
+        value_type: Option<Box<Type>>,
     },
 }
 
@@ -1119,6 +1287,7 @@ impl EntityRecordKind {
     pub(crate) fn as_entity_lub(&self) -> Option<EntityLUB> {
         match self {
             EntityRecordKind::Record { .. } => None,
+            EntityRecordKind::EAMap { .. } => None,
             EntityRecordKind::AnyEntity => None,
             EntityRecordKind::Entity(lub) => Some(lub.clone()),
             EntityRecordKind::ActionEntity { name, .. } => {
@@ -1135,6 +1304,8 @@ impl EntityRecordKind {
             EntityRecordKind::Record {
                 open_attributes, ..
             } => open_attributes.is_open(),
+            // EAMaps can always have more attributes.
+            EntityRecordKind::EAMap { .. } => true,
             // We know Actions never have additional attributes. This is true
             // because the upper bound for any two action entities is
             // `AnyEntity`, so if we have an ActionEntity here its attributes
@@ -1163,10 +1334,11 @@ impl EntityRecordKind {
     ///
     /// - If the attribute is known to not exist on this entity or record, returns
     ///   `None`.
-    /// - If the attribute is known to be optional on tihs entity or record,
+    /// - If the attribute is optional on this entity or record (may or may not
+    ///   exist, but if the attribute does exist, it has a given specified type),
     ///   returns `Some` with the type.
-    ///   (Note that [`AttributeType`] contains an `is_required` flag, so you can
-    ///   distinguish this case.)
+    ///   (Note that the returned [`AttributeType`] contains an `is_required`
+    ///   flag, so you can distinguish this case.)
     /// - If the attribute may exist, but multiple types are possible for the
     ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
@@ -1178,7 +1350,18 @@ impl EntityRecordKind {
             EntityRecordKind::ActionEntity { attrs, .. } => {
                 attrs.get_attr(attr).cloned().map(Into::into)
             }
-            EntityRecordKind::AnyEntity => {
+            EntityRecordKind::EAMap {
+                value_type: Some(value_type),
+            } => {
+                // the attribute may or may not exist, but if it does exist, it
+                // has the type `value_type`.
+                // Treat this exactly like an optional attribute.
+                Some(AttributeType {
+                    attr_type: (**value_type).clone(),
+                    is_required: false,
+                })
+            }
+            EntityRecordKind::AnyEntity | EntityRecordKind::EAMap { value_type: None } => {
                 // the attribute may exist, but multiple types for it are possible
                 None
             }
@@ -1190,6 +1373,7 @@ impl EntityRecordKind {
     /// For `AnyEntity`, this will return an empty vec, as there are no
     /// attribute names we _know_ must exist (even though `AnyEntity` types may
     /// clearly have attributes).
+    /// For `EAMap` types, this will likewise return an empty vec.
     /// For LUB types, this will return only the attribute names known to exist
     /// in the LUB.
     pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
@@ -1201,6 +1385,7 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).attrs.into_keys().collect()
             }
+            EntityRecordKind::EAMap { .. } => vec![],
         }
     }
 
@@ -1248,6 +1433,83 @@ impl EntityRecordKind {
                     open_attributes,
                 })
             }
+            (
+                Record { attrs, .. },
+                EAMap {
+                    value_type: Some(value_type),
+                },
+            )
+            | (
+                EAMap {
+                    value_type: Some(value_type),
+                },
+                Record { attrs, .. },
+            ) => {
+                // The least upper bound is just the record's `attrs`, assuming
+                // that all of those `attrs` have the type `value_type`.
+                // Furthermore the least upper bound is open because there could
+                // be more attributes (the same reason that the LUB of two
+                // records is open if either is open).
+                if attrs
+                    .attrs
+                    .values()
+                    .all(|ty| &ty.attr_type == &**value_type)
+                {
+                    Ok(Record {
+                        attrs: attrs.clone(),
+                        open_attributes: OpenTag::OpenAttributes,
+                    })
+                } else {
+                    Err(LubHelp::RecordEAMap)
+                }
+            }
+            (Record { attrs, .. }, EAMap { value_type: None })
+            | (EAMap { value_type: None }, Record { attrs, .. }) => {
+                // For the least upper bound to exist, there must exist some type T
+                // such that all of the record's `attrs` are consistent with type T.
+                // Then, the least upper bound is the record that maps all of
+                // the record's attr names to optional attributes of type T.
+                // Furthermore the least upper bound is open because there could
+                // be more attributes (the same reason that the LUB of two
+                // records is open if either is open).
+                //
+                // To compute a type T, we compute the least upper bound of all of
+                // the record's attribute types. If that exists, it is a suitable T.
+                let lub = Type::reduce_to_least_upper_bound(
+                    schema,
+                    attrs.attrs.values().map(|attr_ty| &attr_ty.attr_type),
+                    mode,
+                )?;
+                Ok(Record {
+                    attrs: Attributes::with_attributes(
+                        attrs
+                            .attrs
+                            .keys()
+                            .map(|k| (k.clone(), AttributeType::optional_attribute(lub.clone()))),
+                    ),
+                    open_attributes: OpenTag::OpenAttributes,
+                })
+            }
+            (
+                eamap0 @ EAMap {
+                    value_type: value_type_0,
+                },
+                eamap1 @ EAMap {
+                    value_type: value_type_1,
+                },
+            ) => match (value_type_0, value_type_1) {
+                (Some(value_type_0), Some(value_type_1)) => Ok(EAMap {
+                    value_type: Some(Box::new(Type::least_upper_bound(
+                        schema,
+                        value_type_0,
+                        value_type_1,
+                        mode,
+                    )?)),
+                }),
+                (None, _) => Ok(eamap1.clone()),
+                (Some(_), None) => Ok(eamap0.clone()),
+            },
+
             //We cannot, in general, have precise upper bounds between action
             //entities because `may_have_attr` assumes the list of attrs is
             //complete.
@@ -1306,10 +1568,15 @@ impl EntityRecordKind {
             // Entity and record types do not have a least upper bound to avoid
             // a non-terminating case.
             (AnyEntity, Record { .. }) | (Record { .. }, AnyEntity) => Err(LubHelp::EntityRecord),
+            (AnyEntity, EAMap { .. }) | (EAMap { .. }, AnyEntity) => Err(LubHelp::EntityRecord),
             (Record { .. }, Entity(_)) | (Entity(_), Record { .. }) => Err(LubHelp::EntityRecord),
+            (EAMap { .. }, Entity(_)) | (Entity(_), EAMap { .. }) => Err(LubHelp::EntityRecord),
 
             //Likewise, we can't mix action entities and records
             (ActionEntity { .. }, Record { .. }) | (Record { .. }, ActionEntity { .. }) => {
+                Err(LubHelp::EntityRecord)
+            }
+            (ActionEntity { .. }, EAMap { .. }) | (EAMap { .. }, ActionEntity { .. }) => {
                 Err(LubHelp::EntityRecord)
             }
             //Action entities can be mixed with Entities. In this case, the LUB is AnyEntity
@@ -1358,6 +1625,92 @@ impl EntityRecordKind {
                     && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype(schema, attrs1, mode))
                         || attrs0.is_subtype_depth_only(schema, attrs1, mode))
             }
+            (
+                Record { attrs, .. },
+                EAMap {
+                    value_type: Some(value_type),
+                },
+            ) => {
+                // A record can subtype an EAMap for the same reason that closed
+                // attributes subtype open attributes (see above case).
+                // We just need that all of the attributes of the record (both
+                // required and optional attributes) subtype the EAMap `value_type`
+                attrs
+                    .attrs
+                    .values()
+                    .all(|ty| Type::is_subtype(schema, &ty.attr_type, &**value_type, mode))
+            }
+            (
+                EAMap {
+                    value_type: Some(value_type),
+                },
+                Record {
+                    attrs,
+                    open_attributes,
+                },
+            ) => {
+                // An EAMap can only subtype a record if the record is open and
+                // the EAMap's `value_type` is a subtype of all attributes of
+                // the record (both required and optional attributes)
+                open_attributes.is_open()
+                    && attrs
+                        .attrs
+                        .values()
+                        .all(|ty| Type::is_subtype(schema, &**value_type, &ty.attr_type, mode))
+            }
+            (Record { attrs, .. }, EAMap { value_type: None }) => {
+                // A record can subtype any-EAMap if \exists some type T such
+                // that all attributes of the record (both required and optional
+                // attributes) are subtypes of T.
+                //
+                // We implement this by checking if a LUB exists of all the
+                // attribute types of the record. If so, then there exists such
+                // a T, namely, the LUB.
+                match Type::reduce_to_least_upper_bound(
+                    schema,
+                    attrs.attrs.values().map(|attr_ty| &attr_ty.attr_type),
+                    mode,
+                ) {
+                    Ok(_) => true,   // the LUB exists
+                    Err(_) => false, // the LUB does not exist
+                }
+            }
+            (
+                EAMap { value_type: None },
+                Record {
+                    attrs,
+                    open_attributes,
+                },
+            ) => {
+                // any-EAMap is not the subtype of any record except an open record
+                // with no declared attributes of any type
+                open_attributes.is_open() && attrs.attrs.is_empty()
+            }
+            (
+                EAMap {
+                    value_type: Some(value_type_0),
+                },
+                EAMap {
+                    value_type: Some(value_type_1),
+                },
+            ) => {
+                // REVIEW: even in strict mode, this depth subtyping is ok?
+                Type::is_subtype(schema, value_type_0.as_ref(), value_type_1.as_ref(), mode)
+            }
+            (
+                EAMap { value_type: None },
+                EAMap {
+                    value_type: Some(_),
+                },
+            ) => false,
+            (
+                EAMap {
+                    value_type: Some(_),
+                },
+                EAMap { value_type: None },
+            ) => true,
+            (EAMap { value_type: None }, EAMap { value_type: None }) => true,
+
             (ActionEntity { .. }, ActionEntity { .. }) => false,
             (Entity(lub0), Entity(lub1)) => {
                 if mode.is_strict() {
@@ -1372,8 +1725,8 @@ impl EntityRecordKind {
 
             // Entities cannot subtype records or vice-versa because their LUB
             // is undefined to avoid a non-terminating case.
-            (Entity(_) | AnyEntity | ActionEntity { .. }, Record { .. }) => false,
-            (Record { .. }, Entity(_) | AnyEntity | ActionEntity { .. }) => false,
+            (Entity(_) | AnyEntity | ActionEntity { .. }, Record { .. } | EAMap { .. }) => false,
+            (Record { .. } | EAMap { .. }, Entity(_) | AnyEntity | ActionEntity { .. }) => false,
 
             (ActionEntity { .. }, Entity(_)) => false,
             (AnyEntity, Entity(_)) => false,
@@ -1390,13 +1743,13 @@ pub struct AttributeType {
     pub attr_type: Type,
 
     /// True when the attribute must be present. False if it is optional, and so
-    /// may not be present in a record or entity.
+    /// may not be present in the record.
     pub is_required: bool,
 }
 
 impl AttributeType {
-    /// Construct an [`AttributeType`] with some type that may be required or
-    /// optional as specified by the `is_required` parameter.
+    /// Construct an [`AttributeType`] with some type that may be required or optional
+    /// as specified by the `is_required` parameter.
     pub fn new(attr_type: Type, is_required: bool) -> Self {
         Self {
             attr_type,

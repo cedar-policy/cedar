@@ -24,6 +24,8 @@
 
 //! Shared test utilities.
 
+use itertools::Itertools;
+
 /// Describes the contents of an error message. Fields are based on the contents
 /// of `miette::Diagnostic`.
 #[derive(Debug)]
@@ -456,4 +458,24 @@ pub fn expect_err<'a>(
             }
         }
     }
+}
+
+/// Expect that some error in the input `errs` matches the given
+/// [`ExpectedErrorMessage`].
+/// See notes on [`expect_err()`].
+#[track_caller]
+pub fn expect_some_err<'a, E: miette::Diagnostic + Send + Sync + Clone + 'static>(
+    src: &'a str,
+    errs: &[E],
+    msg: &ExpectedErrorMessage<'a>,
+) {
+    assert!(
+        errs.iter().any(|err| msg.matches(Some(src), err)),
+        "expected some error to match, but none did: {}",
+        errs.iter()
+            .cloned()
+            .map(miette::Report::new)
+            .map(|report| format!("{report:?}"))
+            .join("\n\n"),
+    );
 }

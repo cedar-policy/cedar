@@ -3439,6 +3439,185 @@ pub(crate) mod test {
             );
         });
     }
+
+    /// Test involving `EAMap`s (RFC 68)
+    #[test]
+    fn ea_maps() {
+        // This schema taken directly from the RFC 68 text
+        let src = "
+        entity User = {
+            jobLevel: Long,
+            authTags: { ?: Set<String> },
+        };
+        entity Document = {
+            owner: User,
+            policyTags: { ?: Set<String> },
+        };
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+            assert!(warnings.is_empty());
+            let user = schema.get_entity_type(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.attr("jobLevel"), Some(job_level) => {
+                assert_eq!(job_level.attr_type, Type::primitive_long());
+            });
+            assert_matches!(&user.attr("authTags"), Some(auth_tags) => {
+                assert_eq!(auth_tags.attr_type, Type::eamap(Type::set(Type::primitive_string())));
+            });
+            let doc = schema.get_entity_type(&"Document".parse().unwrap()).unwrap();
+            assert_matches!(&doc.attr("owner"), Some(owner) => {
+                assert_eq!(owner.attr_type, Type::named_entity_reference_from_str("User"));
+            });
+            assert_matches!(&doc.attr("policyTags"), Some(policy_tags) => {
+                assert_eq!(policy_tags.attr_type, Type::eamap(Type::set(Type::primitive_string())));
+            });
+        });
+
+        // This schema also taken directly from the RFC 68 text
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "jobLevel": {
+                                    "type": "Long",
+                                },
+                                "authTags": {
+                                    "type": "Record",
+                                    "default": {
+                                        "type": "Set",
+                                        "element": { "type": "String" },
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "Document": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "owner": {
+                                    "type": "Entity",
+                                    "name": "User",
+                                },
+                                "policyTags": {
+                                    "type": "Record",
+                                    "default": {
+                                        "type": "Set",
+                                        "element": { "type": "String" },
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": {}
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src, &Extensions::all_available()), Ok(schema) => {
+            let user = schema.get_entity_type(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.attr("jobLevel"), Some(job_level) => {
+                assert_eq!(job_level.attr_type, Type::primitive_long());
+            });
+            assert_matches!(&user.attr("authTags"), Some(auth_tags) => {
+                assert_eq!(auth_tags.attr_type, Type::eamap(Type::set(Type::primitive_string())));
+            });
+            let doc = schema.get_entity_type(&"Document".parse().unwrap()).unwrap();
+            assert_matches!(&doc.attr("owner"), Some(owner) => {
+                assert_eq!(owner.attr_type, Type::named_entity_reference_from_str("User"));
+            });
+            assert_matches!(&doc.attr("policyTags"), Some(policy_tags) => {
+                assert_eq!(policy_tags.attr_type, Type::eamap(Type::set(Type::primitive_string())));
+            });
+        });
+
+        // `EAMap`s with other value types
+        let src = "
+        entity E;
+        type Blah = {
+            foo: Long,
+            bar: Set<E>,
+        };
+        entity Foo in E {
+            bool: Bool,
+            tags1: { ?: Bool },
+            tags2: { ? : { a: String, b: Long }},
+            tags3: { ?: E },
+            tags4: { ?: Blah },
+            tags5: { ?: Set<Set<{a: Blah}>> },
+        };
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+            assert!(warnings.is_empty());
+            let foo = schema.get_entity_type(&"Foo".parse().unwrap()).unwrap();
+            assert_matches!(&foo.attr("bool"), Some(b) => {
+                assert_eq!(b.attr_type, Type::primitive_boolean());
+            });
+            assert_matches!(&foo.attr("tags1"), Some(tags1) => {
+                assert_eq!(tags1.attr_type, Type::eamap(Type::primitive_boolean()));
+            });
+            assert_matches!(&foo.attr("tags2"), Some(tags2) => {
+                assert_eq!(tags2.attr_type, Type::eamap(Type::record_with_required_attributes(
+                    [
+                        ("a".into(), Type::primitive_string()),
+                        ("b".into(), Type::primitive_long())
+                    ],
+                    OpenTag::ClosedAttributes,
+                )));
+            });
+            assert_matches!(&foo.attr("tags3"), Some(tags3) => {
+                assert_eq!(tags3.attr_type, Type::eamap(Type::named_entity_reference_from_str("E")));
+            });
+            assert_matches!(&foo.attr("tags4"), Some(tags4) => {
+                assert_eq!(tags4.attr_type, Type::eamap(Type::record_with_required_attributes(
+                    [
+                        ("foo".into(), Type::primitive_long()),
+                        ("bar".into(), Type::set(Type::named_entity_reference_from_str("E")))
+                    ],
+                    OpenTag::ClosedAttributes,
+                )));
+            });
+            assert_matches!(&foo.attr("tags5"), Some(tags5) => {
+                assert_eq!(tags5.attr_type, Type::eamap(
+                    Type::set(Type::set(Type::record_with_required_attributes(
+                        [("a".into(), Type::record_with_required_attributes(
+                            [
+                                ("foo".into(), Type::primitive_long()),
+                                ("bar".into(), Type::set(Type::named_entity_reference_from_str("E")))
+                            ],
+                            OpenTag::ClosedAttributes,
+                        ))],
+                        OpenTag::ClosedAttributes,
+                    ))),
+                ));
+            });
+        });
+
+        // An invalid `EAMap`. More thorough tests for invalid ways to use
+        // `EAMap`s are in tests in json_schema.rs and cedar_schema/test.rs.
+        let src = "
+        entity E;
+        type Blah = {
+            foo: Long,
+            bar: Set<E>,
+        };
+        entity Foo in E {
+            bool: Bool,
+            tags: { ?: { ?: Long } },
+            blah: Blah,
+        };
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
+                    .exactly_one_underline("?: Long")
+                    .build(),
+            )
+        });
+    }
 }
 
 #[cfg(test)]

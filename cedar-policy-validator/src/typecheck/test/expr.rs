@@ -619,7 +619,11 @@ fn has_typecheck_fails() {
         [ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            [
+                Type::any_entity_reference(),
+                Type::any_record(),
+                Type::any_eamap(),
+            ],
             Type::singleton_boolean(true),
             None,
         )],
@@ -661,7 +665,11 @@ fn record_get_attr_typecheck_fails() {
         [ValidationError::expected_one_of_types(
             get_loc(src, "2"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            [
+                Type::any_entity_reference(),
+                Type::any_record(),
+                Type::any_eamap(),
+            ],
             Type::primitive_long(),
             None,
         )],

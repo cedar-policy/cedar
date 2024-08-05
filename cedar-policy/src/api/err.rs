@@ -403,6 +403,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// `EAMap`s cannot be used in certain positions, like inside record
+    /// literals in policies.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEAMapUse(#[from] validation_errors::InvalidEAMapUse),
 }
 
 impl ValidationError {
@@ -422,6 +427,7 @@ impl ValidationError {
             Self::EmptySetForbidden(e) => e.policy_id(),
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
+            Self::InvalidEAMapUse(e) => e.policy_id(),
         }
     }
 }
@@ -468,6 +474,9 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
                 Self::HierarchyNotRespected(e.into())
+            }
+            cedar_policy_validator::ValidationError::InvalidEAMapUse(e) => {
+                Self::InvalidEAMapUse(e.into())
             }
         }
     }

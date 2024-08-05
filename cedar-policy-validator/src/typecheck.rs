@@ -34,7 +34,7 @@ use crate::{
         AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
         Type,
     },
-    validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
+    validation_errors::{AttributeAccess, InvalidEAMapUseKind, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
 };
 
@@ -130,7 +130,7 @@ impl<'a> Typechecker<'a> {
         all_succ
     }
 
-    /// Secondary entry point for typechecking requests. This method takes a policy and
+    /// Secondary entry point for typechecking policies. This method takes a policy and
     /// typechecks it under every schema-defined request environment. The result contains
     /// these environments and the individual typechecking response for each, in no
     /// particular order.
@@ -160,7 +160,7 @@ impl<'a> Typechecker<'a> {
         })
     }
 
-    /// Utility abstracting the common logic for strict and regular typechecking
+    /// Utility abstracting the common logic for strict and permissive typechecking
     /// by request environment.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
         &'b self,
@@ -174,7 +174,7 @@ impl<'a> Typechecker<'a> {
 
         // Validate each (principal, resource) pair with the substituted policy
         // for the corresponding action. Implemented as for loop to make it
-        // explicit that `expect_type` will be called for every element of
+        // explicit that `typecheck_fn` will be called for every element of
         // request_env without short circuiting.
         let policy_condition = &t.condition();
         for requeste in self
@@ -532,7 +532,7 @@ impl<'a> Typechecker<'a> {
                         // When we don't short circuit, the `then` and `else`
                         // branches are individually typechecked with the same
                         // prior capability are in their individual cases.
-                        let ans_then = self
+                        let mut ans_then = self
                             .typecheck(
                                 request_env,
                                 &prior_capability.union(&test_capability),
@@ -540,8 +540,38 @@ impl<'a> Typechecker<'a> {
                                 type_errors,
                             )
                             .map_capability(|capability| capability.union(&test_capability));
-                        let ans_else =
+                        let mut ans_else =
                             self.typecheck(request_env, prior_capability, else_expr, type_errors);
+                        // If either of the branches were assigned type `EAMap`,
+                        // then we need to report a type error in strict mode,
+                        // as RFC 68 disallows this in strict mode.
+                        // (In strict mode, you can't write things like
+                        // `if principal.isAdmin then principal.authTags else principal.authTags`
+                        // where `principal.authTags` is declared as `EAMap` in
+                        // the schema. See RFC 68.)
+                        if self.mode.is_strict() {
+                            if let Some(Type::EntityOrRecord(EntityRecordKind::EAMap { .. })) =
+                                ans_then.ty()
+                            {
+                                type_errors.push(ValidationError::invalid_ea_map_use(
+                                    then_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    InvalidEAMapUseKind::InsideIfThenElse,
+                                ));
+                                ans_then = ans_then.into_fail();
+                            }
+                            if let Some(Type::EntityOrRecord(EntityRecordKind::EAMap { .. })) =
+                                ans_else.ty()
+                            {
+                                type_errors.push(ValidationError::invalid_ea_map_use(
+                                    else_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    InvalidEAMapUseKind::InsideIfThenElse,
+                                ));
+                                ans_else = ans_else.into_fail();
+                            }
+                        }
+
                         // The type of the if expression is then the least
                         // upper bound of the types of the then and else
                         // branches.  If either of these fails to typecheck, the
@@ -782,13 +812,17 @@ impl<'a> Typechecker<'a> {
             }
 
             ExprKind::GetAttr { expr, attr } => {
-                // Accessing an attribute requires either an entity or a record
-                // that has the attribute.
+                // Accessing an attribute requires either an entity, record, or
+                // `EAMap` that has the attribute.
                 let actual = self.expect_one_of_types(
                     request_env,
                     prior_capability,
                     expr,
-                    &[Type::any_entity_reference(), Type::any_record()],
+                    &[
+                        Type::any_entity_reference(),
+                        Type::any_record(),
+                        Type::any_eamap(),
+                    ],
                     type_errors,
                     |_| None,
                 );
@@ -871,12 +905,16 @@ impl<'a> Typechecker<'a> {
             }
 
             ExprKind::HasAttr { expr, attr } => {
-                // `has` applies to an entity or a record
+                // `has` applies to an entity, record, or `EAMap`
                 let actual = self.expect_one_of_types(
                     request_env,
                     prior_capability,
                     expr,
-                    &[Type::any_entity_reference(), Type::any_record()],
+                    &[
+                        Type::any_entity_reference(),
+                        Type::any_record(),
+                        Type::any_eamap(),
+                    ],
                     type_errors,
                     |actual| match actual {
                         Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
@@ -897,13 +935,15 @@ impl<'a> Typechecker<'a> {
                                 // `false` when this is the case, we can't
                                 // conclude that `has` is true just because an
                                 // attribute is required for an entity type.
-                                let exists_in_store = matches!(
-                                    typ_actual,
-                                    Type::EntityOrRecord(EntityRecordKind::Record { .. })
-                                );
                                 // However, we can make an exception when the attribute
                                 // access of the expression is already in the prior capability,
                                 // which means the entity must exist.
+                                let exists_in_store = matches!(
+                                    typ_actual,
+                                    // Records and `EAMap`s always exist, that is, can't not exist
+                                    Type::EntityOrRecord(EntityRecordKind::Record { .. })
+                                        | Type::EntityOrRecord(EntityRecordKind::EAMap { .. })
+                                );
                                 let in_prior_capability =
                                     prior_capability.contains(&Capability::new(expr, attr));
                                 let type_of_has = if exists_in_store || in_prior_capability {
@@ -944,18 +984,16 @@ impl<'a> Typechecker<'a> {
                             None => TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(
                                     if Type::may_have_attr(self.schema, typ_actual, attr) {
-                                        // The type might have the attribute, but we
-                                        // can not conclude one way or the other.
-                                        // This applies to record types and least
-                                        // upper bounds between entity reference
-                                        // types where one member of the lub has the
-                                        // attribute.
+                                        // The type might have the attribute, but we cannot
+                                        // conclude one way or the other.
+                                        // This applies to record/`EAMap` types and also to
+                                        // least upper bounds between entity reference types
+                                        // where one member of the lub has the attribute.
                                         Type::primitive_boolean()
                                     } else {
-                                        // The type definitely does not have the
-                                        // attribute. This applies to entity least
-                                        // upper bounds where none of the members
-                                        // have the attribute.
+                                        // The type definitely does not have the attribute.
+                                        // This applies to entity least upper bounds where
+                                        // none of the members have the attribute.
                                         Type::singleton_boolean(false)
                                     },
                                 ))
@@ -1122,11 +1160,18 @@ impl<'a> Typechecker<'a> {
 
             // For records, each (attribute, value) pair in the initializer need
             // to be individually accounted for in the record type.
+            // Note that, per RFC 68, record literals (which is what we have
+            // here, `ExprKind::Record`) can never have `EAMap` type; they always
+            // typecheck as having `Record` type.
+            // Also note that, per RFC 68, record attributes may not have `EAMap` type;
+            // expressions like `{ foo: principal.tags }`, where `principal.tags` is
+            // declared as `EAMap` in the schema, are an error.
             ExprKind::Record(map) => {
                 // Typecheck each attribute initializer expression individually.
                 let record_attr_tys = map
                     .values()
-                    .map(|value| self.typecheck(request_env, prior_capability, value, type_errors));
+                    .map(|value| self.typecheck(request_env, prior_capability, value, type_errors))
+                    .collect::<Vec<TypecheckAnswer<'_>>>();
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
@@ -1134,6 +1179,28 @@ impl<'a> Typechecker<'a> {
                     |record_attr_tys_and_capabilities| {
                         let (record_attr_expr_tys, _): (Vec<Expr<Option<Type>>>, Vec<_>) =
                             record_attr_tys_and_capabilities.into_iter().unzip();
+                        // If any of the attributes were assigned type `EAMap`, then
+                        // we need to report a type error in strict mode, as RFC 68
+                        // disallows this in strict mode.
+                        // (In strict mode, you can't write things like
+                        // `{ foo: principal.tags }` where `principal.tags` is
+                        // declared as `EAMap` in the schema.)
+                        let mut found_eamap = false;
+                        if self.mode.is_strict() {
+                            for expr in &record_attr_expr_tys {
+                                if matches!(
+                                    expr.data(),
+                                    Some(Type::EntityOrRecord(EntityRecordKind::EAMap { .. }))
+                                ) {
+                                    type_errors.push(ValidationError::invalid_ea_map_use(
+                                        expr.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        InvalidEAMapUseKind::InsideRecordLiteral,
+                                    ));
+                                    found_eamap = true;
+                                }
+                            }
+                        }
                         // If any of the attributes could not be assigned a type
                         // (recall that a expression can fail to typecheck but still
                         // be assigned a type), then we cannot assign any type to
@@ -1153,7 +1220,7 @@ impl<'a> Typechecker<'a> {
                                 OpenTag::ClosedAttributes,
                             )
                         });
-                        let is_success = ty.is_some();
+                        let is_success = ty.is_some() && !found_eamap;
                         // PANIC SAFETY: can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap
                         #[allow(clippy::expect_used)]
                         let expr = ExprBuilder::with_data(ty)
@@ -1190,6 +1257,9 @@ impl<'a> Typechecker<'a> {
         match op {
             // The arguments to `==` may typecheck with any type, but we will
             // return false if the types are disjoint.
+            //
+            // (however, for strict validation, `self.enforce_strict_equality()`
+            // will often produce an error if the types are disjoint)
             BinaryOp::Eq => {
                 let lhs_ty = self.typecheck(request_env, prior_capability, arg1, type_errors);
                 let rhs_ty = self.typecheck(request_env, prior_capability, arg2, type_errors);
@@ -1315,9 +1385,9 @@ impl<'a> Typechecker<'a> {
                             | EntityRecordKind::Entity(_)
                             | EntityRecordKind::ActionEntity { .. },
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
-                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
-                            Some(UnexpectedTypeHelp::TryUsingHas)
-                        }
+                        Type::EntityOrRecord(
+                            EntityRecordKind::Record { .. } | EntityRecordKind::EAMap { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingHas),
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         } => Some(UnexpectedTypeHelp::TryUsingLike),
@@ -1375,9 +1445,9 @@ impl<'a> Typechecker<'a> {
                             | EntityRecordKind::Entity(_)
                             | EntityRecordKind::ActionEntity { .. },
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
-                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
-                            Some(UnexpectedTypeHelp::TryUsingHas)
-                        }
+                        Type::EntityOrRecord(
+                            EntityRecordKind::Record { .. } | EntityRecordKind::EAMap { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingHas),
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         } => Some(UnexpectedTypeHelp::TryUsingLike),
@@ -1431,9 +1501,20 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         match annotated_expr.data() {
             Some(Type::False) => {
+                // rewrite the expression to constant-false instead of the `==` expression it used to be.
+                // We allow this expression even in strict mode, even though it
+                // may have incompatible types on LHS and RHS.
+                //
+                // Note that future precision increases in `are_types_disjoint()` may have the side effect
+                // of allowing more expressions in strict mode, due to this code path here.
+                // For instance, as of this writing, `2 == "foo"` is disallowed in strict mode, but if
+                // `are_types_disjoint()` was enhanced to consider Long and String disjoint types, it
+                // would be allowed in strict mode, as we could give it type `False` and rewrite it to
+                // constant-false here.
                 TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::False)).val(false))
             }
             Some(Type::True) => {
+                // rewrite the expression to constant-true instead of the `==` expression it used to be.
                 TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
             }
             _ => match (lhs_ty, rhs_ty) {
@@ -1450,9 +1531,28 @@ impl<'a> Typechecker<'a> {
                         ));
                         TypecheckAnswer::fail(annotated_expr)
                     } else {
-                        // We had `Some` type for lhs and rhs and these types
-                        // were compatible.
-                        TypecheckAnswer::success(annotated_expr)
+                        match (lhs_ty, rhs_ty) {
+                            (
+                                Type::EntityOrRecord(EntityRecordKind::EAMap { .. }),
+                                Type::EntityOrRecord(EntityRecordKind::EAMap { .. }),
+                            ) => {
+                                // Equality between two `EAMap` types is explicitly
+                                // disallowed in strict mode; see RFC 68.
+                                type_errors.push(ValidationError::equality_between_eamaps(
+                                    unannotated_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    lhs_ty.clone(),
+                                    rhs_ty.clone(),
+                                    context,
+                                ));
+                                TypecheckAnswer::fail(annotated_expr)
+                            }
+                            _ => {
+                                // We had `Some` type for lhs and rhs and these types
+                                // were compatible (and not both `EAMap`s).
+                                TypecheckAnswer::success(annotated_expr)
+                            }
+                        }
                     }
                 }
                 // We failed to compute a type for either lhs or rhs, meaning
@@ -1471,9 +1571,11 @@ impl<'a> Typechecker<'a> {
         rhs_expr: &'b Expr,
         rhs_ty: &Option<Type>,
     ) -> Type {
-        // If we know the types are disjoint, then we can return give the
-        // expression type False. See `are_types_disjoint` definition for
-        // explanation of why fewer types are disjoint than may be expected.
+        // If we know the types are disjoint, then we can give the expression
+        // type False (note that this function doesn't consider whether we're in
+        // strict mode; strict mode checks are done separately in a different
+        // function). See `are_types_disjoint` definition for explanation of why
+        // fewer types are disjoint than may be expected.
         let disjoint_types = match (lhs_ty, rhs_ty) {
             (Some(lhs_ty), Some(rhs_ty)) => Type::are_types_disjoint(lhs_ty, rhs_ty),
             _ => false,
@@ -1498,9 +1600,10 @@ impl<'a> Typechecker<'a> {
                     Type::singleton_boolean(false)
                 }
             } else {
-                // When the left and right expressions are not both literal
-                // euids, the validator does not attempt to give a more specific
-                // type than boolean.
+                // The left and right expressions are not disjoint types but not
+                // both literal euids.
+                // In these cases, the validator does not attempt to give a more
+                // specific type than boolean.
                 Type::primitive_boolean()
             }
         }
@@ -1749,6 +1852,9 @@ impl<'a> Typechecker<'a> {
 
     /// Handles `in` expression where the `principal` or `resource` is `in` an
     /// entity literal or set of entity literals.
+    ///
+    /// Although the type of `lhs_var` is `Var`, this function actually assumes
+    /// it must be `Var::Principal` or `Var::Resource`.
     fn type_of_var_in_entity_literals<'b, 'c>(
         &self,
         request_env: &RequestEnv<'_>,
@@ -2064,10 +2170,10 @@ impl<'a> Typechecker<'a> {
                     // strict typechecking because we use this function and
                     // `expect_type` to require that an operand is a record type
                     // or an entity type by calling this function with
-                    // `AnyEntity` or `{}` as the expected type. In either case,
-                    // we need to make the check using width subtyping to avoid
-                    // reporting an error every time we see a `GetAttr` on a
-                    // non-empty record.
+                    // `AnyEntity` or `{}` or `EAMap { None }` as the expected type.
+                    // In any of these cases, we need to make the check using
+                    // width subtyping to avoid reporting an error every time we
+                    // see a `GetAttr` on a non-empty record.
                     Type::is_subtype(
                         self.schema,
                         actual_ty,

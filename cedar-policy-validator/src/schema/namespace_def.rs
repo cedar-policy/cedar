@@ -1091,11 +1091,16 @@ fn parse_entity_attributes(
                         try_jsonschema_type_into_validator_type(inner_ty, extensions)?;
                     Ok((attr, (validator_type, ty.required)))
                 }
-                json_schema::EntityAttributeTypeInternal::EAMap { .. } => {
-                    // This will be implemented in the next RFC 68 PR, which will
-                    // introduce the necessary changes to [`Attributes`] and its
-                    // associated types
-                    Err(UnsupportedFeatureError(UnsupportedFeature::EAMaps).into())
+                json_schema::EntityAttributeTypeInternal::EAMap { value_type } => {
+                    let validator_value_type =
+                        try_jsonschema_type_into_validator_type(value_type, extensions)?;
+                    let validator_eamap_type =
+                        WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+                            Ok(Type::eamap(
+                                validator_value_type.resolve_common_type_refs(common_type_defs)?,
+                            ))
+                        });
+                    Ok((attr, (validator_eamap_type, ty.required)))
                 }
             }
         })

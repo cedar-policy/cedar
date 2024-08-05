@@ -616,6 +616,8 @@ fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
             }
         }
 
+        EntityRecordKind::EAMap { .. } => unimplemented!("RFC 68 and RFC 74 interaction"),
+
         EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
             // no need to load data for entities, which are compared
             // using ids

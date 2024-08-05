@@ -73,13 +73,15 @@ impl<'a> TypecheckAnswer<'a> {
     /// contains a type if the type annotated AST contains `Some`
     /// of the argument type at its root.
     pub fn contains_type(&self, ty: &Type) -> bool {
+        self.ty() == Some(ty)
+    }
+
+    pub fn typed_expr(&self) -> Option<&Expr<Option<Type>>> {
         match self {
             TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
             TypecheckAnswer::RecursionLimit => None,
         }
-        .and_then(|e| e.data().as_ref())
-            == Some(ty)
     }
 
     pub fn into_typed_expr(self) -> Option<Expr<Option<Type>>> {
@@ -88,6 +90,10 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
             TypecheckAnswer::RecursionLimit => None,
         }
+    }
+
+    pub fn ty(&self) -> Option<&Type> {
+        self.typed_expr().and_then(|e| e.data().as_ref())
     }
 
     /// Return true if this represents successful typechecking.

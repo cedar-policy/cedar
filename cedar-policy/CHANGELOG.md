@@ -29,6 +29,9 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
+- (*) Implemented [RFC 68](https://github.com/cedar-policy/rfcs/blob/main/text/0068-entity-tags.md).
+  Embedded attribute maps (as described in the RFC) are now supported in both the
+  Cedar and JSON schema syntaxes.
 
 ### Changed
 

@@ -23,13 +23,10 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID, Template},
     parser::{parse_policy, parse_policy_or_template},
+    test_utils::{expect_err, expect_some_err, ExpectedErrorMessageBuilder},
 };
 
-use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typecheck_fails_for_mode,
-    assert_policy_typecheck_warns, assert_policy_typecheck_warns_for_mode,
-    assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks, get_loc,
-};
+use super::test_utils::*;
 use crate::{
     diagnostics::ValidationError,
     json_schema,
@@ -1065,6 +1062,222 @@ fn validate_policy_with_common_type_schema() {
         )
         .expect("Policy should parse."),
     );
+}
+
+#[test]
+fn eamap_simple() {
+    let schema = r#"
+        entity E {
+            foo: { ?: String },
+            bar: { ?: Set<String> },
+            spam: String,
+        };
+        action act appliesTo {
+            principal: [E],
+            resource: [E],
+        };
+    "#;
+
+    assert_policy_typechecks(
+        schema,
+        parse_policy(
+            Some(PolicyID::from_string("0")),
+            r#"permit(principal, action == Action::"act", resource) when {
+                principal.foo has abc &&
+                resource.bar has def &&
+                resource.bar.def.contains(principal.foo.abc)
+            };"#,
+        )
+        .unwrap(),
+    );
+
+    // but it does not typecheck if either of the `has` checks is omitted
+
+    let src = r#"
+        permit(principal, action == Action::"act", resource) when {
+            resource.bar has def &&
+            resource.bar.def.contains(principal.foo.abc)
+        };
+    "#;
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error("unable to guarantee safety of access to optional attribute `foo.abc` for entity type E")
+            .help("try testing for the attribute with `e.foo has abc && ..`")
+            .exactly_one_underline("principal.foo.abc")
+            .build(),
+    );
+
+    let src = r#"
+        permit(principal, action == Action::"act", resource) when {
+            principal.foo has abc &&
+            resource.bar.def.contains(principal.foo.abc)
+        };
+    "#;
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error("unable to guarantee safety of access to optional attribute `bar.def` for entity type E")
+            .help("try testing for the attribute with `e.bar has def && ..`")
+            .exactly_one_underline("resource.bar.def.contains(principal.foo.abc)") // might be slightly better if this was just `resource.bar.def`
+            .build(),
+    );
+}
+
+/// These operations on `EAMap`s are explicitly disallowed per RFC 68, at least in strict mode
+#[test]
+fn eamap_disallowed_ops() {
+    let schema = r#"
+      entity User = {
+        jobLevel: Long,
+        isAdmin: Bool,
+        authTags: { ?: Set<String> },
+      };
+      entity Document = {
+        owner: User,
+        policyTags: { ?: Set<String> },
+      };
+      action Act appliesTo {
+        principal: [User],
+        resource: [Document],
+      };
+    "#;
+
+    let src =
+        "permit(principal, action, resource) when { resource.policyTags == principal.authTags };";
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error("the types { ?: Set<String> } are not compatible")
+            .help("for policy `0`, both operands to a `==` expression must have compatible types. Entire embedded attribute maps cannot be compared with `==`, `.contains()`, etc in strict mode; see RFC 68. Try comparing individual attributes of the embedded attribute map instead.")
+            .exactly_one_underline("resource.policyTags == principal.authTags")
+            .build(),
+    );
+
+    let src = "permit(principal, action, resource) when { [resource.policyTags, principal.authTags].contains(principal.authTags) };";
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error("the types { ?: Set<String> } are not compatible")
+            .help("for policy `0`, elements of the first operand and the second operand to a `contains` expression must have compatible types. Entire embedded attribute maps cannot be compared with `==`, `.contains()`, etc in strict mode; see RFC 68. Try comparing individual attributes of the embedded attribute map instead.")
+            .exactly_one_underline("[resource.policyTags, principal.authTags].contains(principal.authTags)")
+            .build(),
+    );
+
+    let src = "permit(principal, action, resource) when { {foo: principal.authTags}.foo has abc };";
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error(
+            "for policy `0`, embedded attribute maps cannot be nested inside a record literal",
+        )
+        .exactly_one_underline("principal.authTags")
+        .build(),
+    );
+
+    let src = r#"permit(principal, action, resource) when { (if principal.isAdmin then principal.authTags else principal.authTags).write.contains("yes") };"#;
+    let errs = assert_policy_typecheck_fails_n_errors(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+        3,
+    )
+    .collect::<Vec<_>>();
+    assert_eq!(
+        errs.len(),
+        3,
+        "assert_policy_typecheck_fails_n_errors should have already guaranteed there are 3 errors"
+    );
+    expect_some_err(
+        src,
+        &errs,
+        &ExpectedErrorMessageBuilder::error(
+            "for policy `0`, embedded attribute maps cannot be used inside an if-then-else",
+        )
+        .exactly_one_underline("principal.authTags")
+        .build(),
+    );
+    expect_some_err(
+        src,
+        &errs,
+        &ExpectedErrorMessageBuilder::error("unable to guarantee safety of access to optional attribute `write`")
+            .help("try testing for the attribute with `e has write && ..`")
+            .exactly_one_underline(r#"(if principal.isAdmin then principal.authTags else principal.authTags).write.contains("yes")"#)
+            .build(),
+    );
+}
+
+#[test]
+fn eamap_vs_record() {
+    let schema = r#"
+        entity E {
+            foo: { ?: String },
+            bar: { str: String },
+            spam: String,
+        };
+        action act appliesTo {
+            principal: [E],
+            resource: [E],
+        };
+    "#;
+
+    let src = r#"permit(principal, action == Action::"act", resource) when {
+        principal.foo.abc == "magic"
+    };"#;
+    let e = assert_policy_typecheck_fails_single_error(
+        schema,
+        parse_policy(Some(PolicyID::from_string("0")), src).unwrap(),
+    );
+    expect_err(
+        src,
+        &miette::Report::new(e),
+        &ExpectedErrorMessageBuilder::error("unable to guarantee safety of access to optional attribute `foo.abc` for entity type E")
+            .help("try testing for the attribute with `e.foo has abc && ..`")
+            .exactly_one_underline("principal.foo.abc")
+            .build(),
+    );
+
+    assert_policy_typechecks(
+        schema,
+        parse_policy(
+            Some(PolicyID::from_string("0")),
+            r#"permit(principal, action == Action::"act", resource) when {
+                principal.foo has abc &&
+                principal.foo.abc == resource.bar.str
+            };"#,
+        )
+        .unwrap(),
+    );
+
+    assert_policy_typechecks(
+        schema,
+        parse_policy(
+            Some(PolicyID::from_string("0")),
+            r#"permit(principal, action == Action::"act", resource) when {
+                principal.foo == resource.bar
+            };"#,
+        )
+        .unwrap(),
+    )
 }
 
 mod templates {

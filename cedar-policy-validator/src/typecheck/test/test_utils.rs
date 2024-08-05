@@ -19,11 +19,9 @@
 // GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
+use itertools::Itertools;
+use similar_asserts::assert_eq;
 use std::{collections::HashSet, sync::Arc};
-
-use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
-use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::parser::Loc;
 
 use crate::{
     json_schema,
@@ -33,8 +31,9 @@ use crate::{
     NamespaceDefinitionWithActionAttributes, RawName, ValidationError, ValidationMode,
     ValidationWarning, ValidatorSchema,
 };
-
-use similar_asserts::assert_eq;
+use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
+use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::parser::Loc;
 
 // Placeholder policy id for use when typechecking an expression directly.
 pub fn expr_id_placeholder() -> PolicyID {
@@ -81,6 +80,7 @@ impl Type {
 impl Typechecker<'_> {
     /// Typecheck an expression outside the context of a policy. This is
     /// currently only used for testing.
+    #[cfg(test)]
     pub(crate) fn typecheck_expr<'a>(
         &self,
         e: &'a Expr,
@@ -105,6 +105,24 @@ impl Typechecker<'_> {
         let ans = self.typecheck(&request_env, &CapabilitySet::new(), e, &mut type_errors);
         unique_type_errors.extend(type_errors);
         ans
+    }
+
+    /// Assert that the policy typechecks, panicking (with an appropriate pretty
+    /// error message) if it does not.
+    #[cfg(test)]
+    #[track_caller]
+    pub(crate) fn assert_policy_typechecks(&self, policy: &Template) {
+        let mut type_errors: HashSet<ValidationError> = HashSet::new();
+        let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+        let typechecked = self.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+        if let Some(e) = type_errors.iter().next() {
+            panic!(
+                "Did not expect any errors, but got {} error(s). First error:\n{:?}",
+                type_errors.len(),
+                miette::Report::new(e.clone())
+            );
+        }
+        assert!(typechecked, "Expected that policy would typecheck.");
     }
 }
 
@@ -201,26 +219,13 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     let policy = policy.into();
     let schema = schema.schema();
     let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
-    let mut type_errors: HashSet<ValidationError> = HashSet::new();
-    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
-    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
-    assert!(typechecked, "Expected that policy would typecheck.");
+    typechecker.assert_policy_typechecks(&policy);
 
     // Ensure that partial schema validation doesn't cause any policy that
     // should validate with a complete schema to no longer validate with the
     // same complete schema.
     typechecker.mode = ValidationMode::Permissive;
-    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_eq!(
-        type_errors,
-        HashSet::new(),
-        "Did not expect any errors under partial schema validation."
-    );
-    assert!(
-        typechecked,
-        "Expected that policy would typecheck under partial schema validation."
-    );
+    typechecker.assert_policy_typechecks(&policy);
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -235,6 +240,27 @@ pub(crate) fn assert_policy_typecheck_fails(
         expected_type_errors,
         ValidationMode::Strict,
     )
+}
+
+/// Assert that typechecking fails and returns exactly one error. Returns the
+/// error.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_fails_single_error(
+    schema: impl SchemaProvider,
+    policy: impl Into<Arc<Template>>,
+) -> ValidationError {
+    assert_policy_typecheck_fails_for_mode_single_error(schema, policy, ValidationMode::Strict)
+}
+
+/// Assert that typechecking fails and returns exactly `n` errors. Returns the
+/// errors.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_fails_n_errors(
+    schema: impl SchemaProvider,
+    policy: impl Into<Arc<Template>>,
+    n: usize,
+) -> impl Iterator<Item = ValidationError> {
+    assert_policy_typecheck_fails_for_mode_n_errors(schema, policy, ValidationMode::Strict, n)
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -286,6 +312,70 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
         typechecked,
         "Expected that policy would typecheck (with warnings)."
     );
+}
+
+/// Assert that typechecking fails and returns exactly one error. Returns the
+/// error.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_fails_for_mode_single_error(
+    schema: impl SchemaProvider,
+    policy: impl Into<Arc<Template>>,
+    mode: ValidationMode,
+) -> ValidationError {
+    let policy = policy.into();
+    let schema = schema.schema();
+    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
+    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert!(!typechecked, "expected that policy would not typecheck");
+    match type_errors.len() {
+        0 => panic!("expected exactly one error but got zero errors"),
+        1 => type_errors
+            .into_iter()
+            .next()
+            .expect("already checked that there is one error"),
+        2.. => panic!(
+            "expected exactly one error but got {} errors:\n{}",
+            type_errors.len(),
+            type_errors
+                .into_iter()
+                .map(miette::Report::new)
+                .map(|report| format!("{report:?}"))
+                .join("\n\n"),
+        ),
+    }
+}
+
+/// Assert that typechecking fails and returns exactly `n` errors. Returns the
+/// errors.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_fails_for_mode_n_errors(
+    schema: impl SchemaProvider,
+    policy: impl Into<Arc<Template>>,
+    mode: ValidationMode,
+    n: usize,
+) -> impl Iterator<Item = ValidationError> {
+    let policy = policy.into();
+    let schema = schema.schema();
+    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
+    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut warnings: HashSet<ValidationWarning> = HashSet::new();
+    let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
+    assert!(!typechecked, "expected that policy would not typecheck");
+    match type_errors.len() {
+        0 => panic!("expected exactly {n} errors but got zero errors"),
+        actual if actual == n => type_errors.into_iter(),
+        actual => panic!(
+            "expected exactly {n} errors but got {} errors:\n{}",
+            actual,
+            type_errors
+                .into_iter()
+                .map(miette::Report::new)
+                .map(|report| format!("{report:?}"))
+                .join("\n\n"),
+        ),
+    }
 }
 
 /// Assert that expr type checks successfully with a particular type, and
