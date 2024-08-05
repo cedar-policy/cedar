@@ -2103,27 +2103,6 @@ impl RequestEnv {
     }
 }
 
-#[doc(hidden)]
-impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
-    fn from(value: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
-        match value {
-            cedar_policy_validator::types::RequestEnv::DeclaredAction {
-                principal,
-                action,
-                resource,
-                ..
-            } => Self {
-                principal: principal.clone().into(),
-                resource: resource.clone().into(),
-                action: action.clone().into(),
-            },
-            //PANIC SAFETY: partial validation should not be enabled and hence `RequestEnv::UndeclaredAction` should not show up
-            #[allow(clippy::unreachable)]
-            _ => unreachable!("used unsupported feature"),
-        }
-    }
-}
-
 /// Policy template datatype
 #[derive(Debug, Clone)]
 pub struct Template {
@@ -2317,7 +2296,21 @@ impl Template {
             .into_iter()
             .filter_map(|(env, pc)| {
                 if matches!(pc, PolicyCheck::Success(_)) {
-                    Some(RequestEnv::from(env))
+                    Some(match env {
+                        cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                            principal,
+                            action,
+                            resource,
+                            ..
+                        } => RequestEnv {
+                            principal: principal.clone().into(),
+                            resource: resource.clone().into(),
+                            action: action.clone().into(),
+                        },
+                        //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+                        #[allow(clippy::unreachable)]
+                        _ => unreachable!("used unsupported feature"),
+                    })
                 } else {
                     None
                 }

@@ -19,6 +19,7 @@ use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::{collections::HashMap, str::FromStr};
 
 // Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
@@ -360,13 +361,13 @@ impl Template {
     > {
         let t = self.parse(None)?;
         let (s, _) = s.parse()?;
-        let mut principals = Vec::new();
-        let mut actions = Vec::new();
-        let mut resources = Vec::new();
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
         for env in t.get_valid_request_envs(&s) {
-            principals.push(env.principal.to_string());
-            actions.push(env.action.to_string());
-            resources.push(env.resource.to_string());
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
         }
         Ok((
             principals.into_iter(),
