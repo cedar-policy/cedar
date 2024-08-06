@@ -3659,9 +3659,9 @@ mod issue_779 {
     #[test]
     fn issue_779() {
         let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
-        let human = r"namespace Foo { entity User; action View; invalid }";
+        let cedar = r"namespace Foo { entity User; action View; invalid }";
 
-        assert_matches!(Schema::from_json_str(human), Err(e) => {
+        assert_matches!(Schema::from_json_str(cedar), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
         });
         assert_matches!(Schema::from_json_str(json), Err(e) => {
@@ -3673,7 +3673,7 @@ mod issue_779 {
         assert_matches!(Schema::from_str_cedar(json).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"));
         });
-        assert_matches!(Schema::from_str_cedar(human).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_str_cedar(cedar).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant JSON format, because this doesn't look like JSON
         });
         assert_matches!(

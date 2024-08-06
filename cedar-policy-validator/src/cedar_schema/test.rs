@@ -1319,7 +1319,7 @@ mod translator_tests {
         "#,
             Extensions::all_available(),
         ))
-        .expect("should be a valid natural schema");
+        .expect("should be a valid Cedar schema");
         let validator_schema: ValidatorSchema =
             schema.try_into().expect("should be a valid schema");
         for (name, ety) in validator_schema.entity_types() {

@@ -95,9 +95,9 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
-    /// Translate natural policy syntax to JSON (except comments)
+    /// Translate Cedar policy syntax to JSON policy syntax (except comments)
     TranslatePolicy(TranslatePolicyArgs),
-    /// Translate JSON schema to natural schema syntax and vice versa (except comments)
+    /// Translate Cedar schema syntax to JSON schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Visualize a set of JSON entities to the graphviz format.
     /// Warning: Entity visualization is best-effort and not well tested.
@@ -122,8 +122,8 @@ pub struct TranslatePolicyArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum PolicyTranslationDirection {
-    /// Human policy syntax -> JSON
-    HumanToJson,
+    /// Cedar policy syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Args, Debug)]
@@ -455,7 +455,7 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
             PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
@@ -522,9 +522,9 @@ pub struct VisualizeArgs {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum PolicyFormat {
-    /// The standard human-readable Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    /// The standard Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     #[default]
-    Human,
+    Cedar,
     /// Cedar's JSON policy format, documented at <https://docs.cedarpolicy.com/policies/json-format.html>
     Json,
 }
@@ -873,15 +873,15 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+fn translate_policy_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(cedar_src.as_ref())?;
     let output = policy_set.to_json()?.to_string();
     Ok(output)
 }
 
 fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
-        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+        PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
 }
@@ -905,8 +905,8 @@ fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
     Ok(output)
 }
 
-fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_cedar(natural_src.as_ref())?;
+fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let (fragment, warnings) = SchemaFragment::from_str_cedar(cedar_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
@@ -1358,9 +1358,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
-/// Read a policy set, in Cedar human syntax, from the file given in `filename`,
+/// Read a policy set, in Cedar syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_human_policy_set(
+fn read_cedar_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "policy set";

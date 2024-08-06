@@ -239,7 +239,7 @@ mod test {
             permit(principal, action, resource)
             when { principal has "Email" && principal.Email == "a@a.com" };
         "#;
-        let result = policy_to_json(Policy::Human(text.into()));
+        let result = policy_to_json(Policy::Cedar(text.into()));
         let expected = json!({
             "effect": "permit",
             "principal": {
@@ -295,7 +295,7 @@ mod test {
             permit(principal, action, resource)
             when { principal has "Email" && principal.Email == };
         "#;
-        let result = policy_to_json(Policy::Human(text.into()));
+        let result = policy_to_json(Policy::Cedar(text.into()));
         assert_matches!(result, PolicyToJsonAnswer::Failure { errors } => {
             assert_exactly_one_error(
                 &errors,
@@ -342,7 +342,7 @@ mod test {
         let text = r#"
             permit(principal in ?principal, action, resource);
         "#;
-        let result = template_to_json(Template::Human(text.into()));
+        let result = template_to_json(Template::Cedar(text.into()));
         let expected = json!({
             "effect": "permit",
             "principal": {

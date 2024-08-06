@@ -1126,7 +1126,7 @@ pub(crate) mod test {
     use super::*;
 
     /// Transform the output of functions like
-    /// `ValidatorSchema::from_str_natural()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
+    /// `ValidatorSchema::from_str_cedar()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
     /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
     /// `assert_matches`, `.unwrap_err()`, etc
     pub fn collect_warnings<A, B, E>(

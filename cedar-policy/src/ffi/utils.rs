@@ -274,7 +274,7 @@ impl From<serde_json::Value> for Entities {
 )]
 pub enum Policy {
     /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
-    Human(String),
+    Cedar(String),
     /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
     Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
@@ -288,7 +288,7 @@ impl Policy {
             .clone()
             .map_or(String::new(), |id| format!(" with id `{id}`"));
         match self {
-            Self::Human(str) => crate::Policy::parse(id, str)
+            Self::Cedar(str) => crate::Policy::parse(id, str)
                 .wrap_err(format!("failed to parse policy{msg} from string")),
             Self::Json(json) => crate::Policy::from_json(id, json.into())
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
@@ -335,7 +335,7 @@ impl Policy {
 )]
 pub enum Template {
     /// Template in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
-    Human(String),
+    Cedar(String),
     /// Template in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
     Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
@@ -350,7 +350,7 @@ impl Template {
             .map(|id| format!(" with id `{id}`"))
             .unwrap_or_default();
         match self {
-            Self::Human(str) => crate::Template::parse(id, str)
+            Self::Cedar(str) => crate::Template::parse(id, str)
                 .wrap_err(format!("failed to parse template{msg} from string")),
             Self::Json(json) => crate::Template::from_json(id, json.into())
                 .wrap_err(format!("failed to parse template{msg} from JSON")),
@@ -914,7 +914,7 @@ mod test {
         // Invalid static policy set - the second policy is a template
         let policies_json = json!(
             "
-            permit(principal == User::\"alice\", action, resource); 
+            permit(principal == User::\"alice\", action, resource);
             permit(principal == ?principal, action, resource);
         "
         );

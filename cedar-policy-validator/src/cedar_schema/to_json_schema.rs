@@ -221,7 +221,7 @@ fn convert_action_decl(
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
     let ty = json_schema::ActionType {
-        attributes: None, // Action attributes are currently unsupported in the natural schema
+        attributes: None, // Action attributes are currently unsupported in the Cedar schema format
         applies_to: Some(applies_to),
         member_of,
     };
