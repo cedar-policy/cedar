@@ -1284,14 +1284,7 @@ impl TryFrom<&Node<Option<cst::Literal>>> for Expr {
                     .map_err(|_| lit.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)))?,
             ))),
             cst::Literal::Str(node) => match node.try_as_inner()? {
-                cst::Str::String(s) => match to_unescaped_string(s) {
-                    Ok(s) => Ok(Expr::lit(CedarValueJson::String(s))),
-                    Err(errs) => {
-                        Err(ParseErrors::new_from_nonempty(errs.map(|err| {
-                            node.to_ast_err(ToASTErrorKind::Unescape(err)).into()
-                        })))
-                    }
-                },
+                cst::Str::String(s) => Ok(Expr::lit(CedarValueJson::String(s.clone()))),
                 cst::Str::Invalid(invalid_str) => Err(node
                     .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
                     .into()),
