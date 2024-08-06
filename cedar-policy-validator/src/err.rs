@@ -38,21 +38,21 @@ pub enum CedarSchemaError {
     /// Parse error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parsing(#[from] CedarSyntaxParseError),
+    Parsing(#[from] CedarSchemaParseError),
 }
 
 /// Error parsing a Cedar-syntax schema
 #[derive(Debug, Error)]
 #[error("error parsing schema: {errs}")]
-pub struct CedarSyntaxParseError {
+pub struct CedarSchemaParseError {
     /// Underlying parse error(s)
-    errs: cedar_schema::parser::CedarSyntaxParseErrors,
+    errs: cedar_schema::parser::CedarSchemaParseErrors,
     /// Did the schema look like it was intended to be JSON format instead of
     /// Cedar?
     suspect_json_format: bool,
 }
 
-impl Diagnostic for CedarSyntaxParseError {
+impl Diagnostic for CedarSchemaParseError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let suspect_json_help = if self.suspect_json_format {
             Some(Box::new("this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"))
@@ -92,11 +92,11 @@ impl Diagnostic for CedarSyntaxParseError {
     }
 }
 
-impl CedarSyntaxParseError {
+impl CedarSchemaParseError {
     /// `errs`: the `cedar_schema::parser::CedarSyntaxParseErrors` that were thrown
     ///
     /// `src`: the Cedar-syntax text that we were trying to parse
-    pub(crate) fn new(errs: cedar_schema::parser::CedarSyntaxParseErrors, src: &str) -> Self {
+    pub(crate) fn new(errs: cedar_schema::parser::CedarSchemaParseErrors, src: &str) -> Self {
         // let's see what the first non-whitespace character is
         let suspect_json_format = match src.trim_start().chars().next() {
             None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
@@ -110,7 +110,7 @@ impl CedarSyntaxParseError {
     }
 
     #[cfg(test)]
-    pub(crate) fn inner(&self) -> &cedar_schema::parser::CedarSyntaxParseErrors {
+    pub(crate) fn inner(&self) -> &cedar_schema::parser::CedarSchemaParseErrors {
         &self.errs
     }
 }

@@ -85,7 +85,7 @@ lazy_static::lazy_static! {
 
 /// Parse errors for parsing a schema in the Cedar syntax
 #[derive(Debug, Diagnostic, Error)]
-pub enum CedarSyntaxParseErrors {
+pub enum CedarSchemaParseErrors {
     /// Parse error for the Cedar syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -106,7 +106,7 @@ pub fn parse_cedar_schema_fragment<'a>(
         json_schema::Fragment<crate::RawName>,
         impl Iterator<Item = SchemaWarning> + 'a,
     ),
-    CedarSyntaxParseErrors,
+    CedarSchemaParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = cedar_schema_to_json_schema(ast, extensions)?;

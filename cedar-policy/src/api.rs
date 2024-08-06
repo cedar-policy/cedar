@@ -1298,7 +1298,7 @@ impl SchemaFragment {
 
     /// Serialize this [`SchemaFragment`] into a string in the Cedar schema
     /// syntax
-    pub fn to_cedarschema(&self) -> Result<String, ToCedarSyntaxError> {
+    pub fn to_cedarschema(&self) -> Result<String, ToCedarSchemaError> {
         let str = self.lossless.to_cedarschema()?;
         Ok(str)
     }

@@ -279,7 +279,7 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
@@ -309,7 +309,7 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
@@ -489,7 +489,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )), Err(err) => {
             assert_matches!(err, CedarSchemaError::Parsing(err) => {
-                assert_matches!(err.inner(), cedar_schema::parser::CedarSyntaxParseErrors::SyntaxError(errs) => {
+                assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::SyntaxError(errs) => {
                     assert!(errs.to_smolstr().contains("Invalid escape codes"));
                 });
             });

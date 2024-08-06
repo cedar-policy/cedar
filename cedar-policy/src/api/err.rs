@@ -163,7 +163,7 @@ impl From<cedar_policy_core::authorizer::ReauthorizationError> for Reauthorizati
 
 /// Errors serializing Schemas to the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]
-pub enum ToCedarSyntaxError {
+pub enum ToCedarSchemaError {
     /// Duplicate names were found in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -193,7 +193,7 @@ pub mod to_cedar_syntax_errors {
 
 #[doc(hidden)]
 impl From<cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
-    for ToCedarSyntaxError
+    for ToCedarSchemaError
 {
     fn from(value: cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError) -> Self {
         match value {
@@ -213,7 +213,7 @@ pub mod cedar_schema_errors {
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct ParseError(#[from] pub(super) cedar_policy_validator::CedarSyntaxParseError);
+    pub struct ParseError(#[from] pub(super) cedar_policy_validator::CedarSchemaParseError);
 
     /// IO error while parsing a Cedar schema
     #[derive(Debug, Error, Diagnostic)]

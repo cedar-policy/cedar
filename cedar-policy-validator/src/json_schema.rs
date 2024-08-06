@@ -42,7 +42,7 @@ use crate::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
     err::{schema_errors::*, Result},
-    CedarSchemaError, CedarSyntaxParseError, ConditionalName, RawName, ReferenceType,
+    CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
@@ -148,7 +148,7 @@ impl Fragment<RawName> {
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
         parse_cedar_schema_fragment(src, extensions)
-            .map_err(|e| CedarSyntaxParseError::new(e, src).into())
+            .map_err(|e| CedarSchemaParseError::new(e, src).into())
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a reader
