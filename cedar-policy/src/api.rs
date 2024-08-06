@@ -1221,7 +1221,7 @@ impl SchemaFragment {
     }
 
     /// Create a [`SchemaFragment`] from a string containing JSON in the
-    /// appropriate shape.
+    /// JSON schema format.
     pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
         Ok(Self {
@@ -1277,7 +1277,7 @@ impl SchemaFragment {
     }
 
     /// Create a [`SchemaFragment`] directly from a JSON file (which should
-    /// contain an object of the shape required for for the JSON schema format).
+    /// contain an object of the shape required for the JSON schema format).
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
         Ok(Self {
@@ -1354,8 +1354,8 @@ impl FromStr for Schema {
 
 impl Schema {
     /// Create a [`Schema`] from multiple [`SchemaFragment`]. The individual
-    /// fragments may references entity types that are not declared in that
-    /// fragment, but all referenced entity types must be declared in some
+    /// fragments may reference entity or common types that are not declared in that
+    /// fragment, but all referenced entity and common types must be declared in some
     /// fragment.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = SchemaFragment>,
