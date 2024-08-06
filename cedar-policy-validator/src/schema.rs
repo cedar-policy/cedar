@@ -433,7 +433,7 @@ impl ValidatorSchema {
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = {
                     let unresolved = try_jsonschema_type_into_validator_type(
-                        entity_type.attributes,
+                        entity_type.attributes.0,
                         extensions,
                     )?;
                     Self::record_attributes_or_none(
@@ -1051,26 +1051,30 @@ impl<'a> CommonTypeResolver<'a> {
                     element: Box::new(Self::resolve_type(resolve_table, *element)?),
                 }))
             }
-            json_schema::Type::Type(json_schema::TypeVariant::Record {
-                attributes,
-                additional_attributes,
-            }) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record {
-                attributes: BTreeMap::from_iter(
-                    attributes
-                        .into_iter()
-                        .map(|(attr, attr_ty)| {
-                            Ok((
-                                attr,
-                                json_schema::TypeOfAttribute {
-                                    required: attr_ty.required,
-                                    ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
-                                },
-                            ))
-                        })
-                        .collect::<Result<Vec<(_, _)>>>()?,
-                ),
-                additional_attributes,
-            })),
+            json_schema::Type::Type(json_schema::TypeVariant::Record(
+                json_schema::RecordType {
+                    attributes,
+                    additional_attributes,
+                },
+            )) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
+                json_schema::RecordType {
+                    attributes: BTreeMap::from_iter(
+                        attributes
+                            .into_iter()
+                            .map(|(attr, attr_ty)| {
+                                Ok((
+                                    attr,
+                                    json_schema::TypeOfAttribute {
+                                        required: attr_ty.required,
+                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                    },
+                                ))
+                            })
+                            .collect::<Result<Vec<(_, _)>>>()?,
+                    ),
+                    additional_attributes,
+                },
+            ))),
             _ => Ok(ty),
         }
     }
@@ -1715,10 +1719,10 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Record {
+            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: BTreeMap::new(),
                 additional_attributes: false,
-            }),
+            })),
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_entity_defs = HashSet::from_iter([InternalName::from_str("Foo").unwrap()]);

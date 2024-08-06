@@ -466,10 +466,13 @@ impl EntityTypesDef<ConditionalName> {
 /// in `attributes` may or may not be fully qualified yet, depending on `N`.
 #[derive(Debug)]
 pub struct EntityTypeFragment<N> {
-    /// The attributes record type for this entity type. This may contain
-    /// references to common types which have not yet been resolved/inlined
-    /// (e.g., because they are not defined in this schema fragment).
-    pub(super) attributes: json_schema::Type<N>,
+    /// Description of the attribute types for this entity type. This may
+    /// contain references to common types which have not yet been
+    /// resolved/inlined (e.g., because they are not defined in this schema
+    /// fragment).
+    /// In the extreme case, this may itself be just a common type pointing to a
+    /// `Record` type defined in another fragment.
+    pub(super) attributes: json_schema::AttributesOrContext<N>,
     /// Direct parent entity types for this entity type.
     /// These entity types may be declared in a different namespace or schema
     /// fragment.
@@ -489,7 +492,6 @@ impl EntityTypeFragment<ConditionalName> {
         Self {
             attributes: schema_file_type
                 .shape
-                .into_inner()
                 .conditionally_qualify_type_references(schema_namespace),
             parents: schema_file_type
                 .member_of_types
@@ -970,26 +972,8 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
         json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
             Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
         }
-        json_schema::Type::Type(json_schema::TypeVariant::Record {
-            attributes,
-            additional_attributes,
-        }) => {
-            if cfg!(not(feature = "partial-validate")) && additional_attributes {
-                Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
-            } else {
-                Ok(
-                    parse_record_attributes(attributes, extensions)?.map(move |attrs| {
-                        Type::record_with_attributes(
-                            attrs,
-                            if additional_attributes {
-                                OpenTag::OpenAttributes
-                            } else {
-                                OpenTag::ClosedAttributes
-                            },
-                        )
-                    }),
-                )
-            }
+        json_schema::Type::Type(json_schema::TypeVariant::Record(rty)) => {
+            try_record_type_into_validator_type(rty, extensions)
         }
         json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
             Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
@@ -1053,10 +1037,34 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     }
 }
 
-/// Given the attributes for an entity type or action context in the schema
-/// file format structures (but with fully-qualified names), convert the
-/// types of the attributes into the [`Type`] data structure used by the
-/// validator, and return the result as an [`Attributes`] structure.
+/// Convert a [`json_schema::RecordType`] (with fully qualified names) into the
+/// [`Type`] type used by the validator.
+pub(crate) fn try_record_type_into_validator_type(
+    rty: json_schema::RecordType<InternalName>,
+    extensions: &Extensions<'_>,
+) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
+    if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
+        Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
+    } else {
+        Ok(
+            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
+                Type::record_with_attributes(
+                    attrs,
+                    if rty.additional_attributes {
+                        OpenTag::OpenAttributes
+                    } else {
+                        OpenTag::ClosedAttributes
+                    },
+                )
+            }),
+        )
+    }
+}
+
+/// Given the attributes for an entity or record type in the schema file format
+/// structures (but with fully-qualified names), convert the types of the
+/// attributes into the [`Type`] data structure used by the validator, and
+/// return the result as an [`Attributes`] structure.
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
