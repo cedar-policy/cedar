@@ -901,17 +901,17 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
 
 fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
-    let output = fragment.as_cedar()?;
+    let output = fragment.to_cedarschema()?;
     Ok(output)
 }
 
 fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_cedar(cedar_src.as_ref())?;
+    let (fragment, warnings) = SchemaFragment::from_cedarschema_str(cedar_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
     }
-    let output = fragment.as_json_string()?;
+    let output = fragment.to_json_string()?;
     Ok(output)
 }
 
@@ -1443,14 +1443,14 @@ fn read_schema_file(
 ) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
     match format {
-        SchemaFormat::Json => Schema::from_str(&schema_src).wrap_err_with(|| {
+        SchemaFormat::Json => Schema::from_json_str(&schema_src).wrap_err_with(|| {
             format!(
                 "failed to parse schema from file {}",
                 filename.as_ref().display()
             )
         }),
         SchemaFormat::Cedar => {
-            let (schema, warnings) = Schema::from_str_cedar(&schema_src)?;
+            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
                 eprintln!("{:?}", report);

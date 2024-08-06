@@ -2122,7 +2122,7 @@ mod test {
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
         let (schema, _) =
-            ValidatorSchema::from_str_cedar(&type_str, &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_cedarschema_str(&type_str, &Extensions::all_available()).unwrap();
         assert_eq!(
             &schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())

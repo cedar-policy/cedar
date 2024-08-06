@@ -604,7 +604,7 @@ impl Schema {
         miette::Report,
     > {
         match self {
-            Self::Cedar(str) => crate::SchemaFragment::from_str_cedar(&str)
+            Self::Cedar(str) => crate::SchemaFragment::from_cedarschema_str(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,

@@ -1231,13 +1231,14 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a reader containing the Cedar schema syntax
-    pub fn from_file_cedar(
+    pub fn from_cedarschema_file(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::json_schema::Fragment::from_file_cedar(
-            r,
-            Extensions::all_available(),
-        )?;
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::Fragment::from_cedarschema_file(
+                r,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1248,13 +1249,14 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a string containing the Cedar schema syntax
-    pub fn from_str_cedar(
+    pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::json_schema::Fragment::from_str_cedar(
-            src,
-            Extensions::all_available(),
-        )?;
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::Fragment::from_cedarschema_str(
+                src,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1265,8 +1267,8 @@ impl SchemaFragment {
     }
 
     /// Create a [`SchemaFragment`] directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_file(file)?;
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1279,13 +1281,13 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
-    pub fn as_json_string(&self) -> Result<String, SchemaError> {
+    pub fn to_json_string(&self) -> Result<String, SchemaError> {
         serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
     /// Serialize this [`SchemaFragment`] into the Cedar syntax
-    pub fn as_cedar(&self) -> Result<String, ToCedarSyntaxError> {
-        let str = self.lossless.as_cedar_schema()?;
+    pub fn to_cedarschema(&self) -> Result<String, ToCedarSyntaxError> {
+        let str = self.lossless.to_schemaschema()?;
         Ok(str)
     }
 }
@@ -1329,7 +1331,7 @@ impl FromStr for SchemaFragment {
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
 
 impl FromStr for Schema {
-    type Err = SchemaError;
+    type Err = CedarSchemaError;
 
     /// Construct a schema from a string containing a schema formatted in the
     /// Cedar schema format. This can fail if it is not possible to parse a
@@ -1338,7 +1340,7 @@ impl FromStr for Schema {
     /// found to not be a valid attribute name according to the Cedar
     /// grammar.
     fn from_str(schema_src: &str) -> Result<Self, Self::Err> {
-        Ok(Self(schema_src.parse()?))
+        Self::from_cedarschema_str(schema_src).map(|(schema, _)| schema)
     }
 }
 
@@ -1382,18 +1384,20 @@ impl Schema {
 
     /// Create a `Schema` directly from a file containing JSON in the
     /// appropriate shape.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
-            file,
-            &Extensions::all_available(),
-        )?))
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_validator::ValidatorSchema::from_json_file(
+                file,
+                &Extensions::all_available(),
+            )?,
+        ))
     }
 
     /// Parse the schema from a reader
-    pub fn from_file_cedar(
+    pub fn from_cedarschema_file(
         file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_cedar(
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_file(
             file,
             &Extensions::all_available(),
         )?;
@@ -1401,10 +1405,10 @@ impl Schema {
     }
 
     /// Parse the schema from a string
-    pub fn from_str_cedar(
+    pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_cedar(
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_str(
             src,
             &Extensions::all_available(),
         )?;

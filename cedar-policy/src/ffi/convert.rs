@@ -90,7 +90,7 @@ pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
 pub fn schema_to_text(schema: Schema) -> SchemaToTextAnswer {
     match schema.parse_schema_fragment() {
         Ok((schema_frag, warnings)) => {
-            match schema_frag.as_cedar() {
+            match schema_frag.to_cedarschema() {
                 Ok(text) => {
                     // Before returning, check that the schema fragment corresponds to a valid schema
                     if let Err(e) = TryInto::<crate::Schema>::try_into(schema_frag) {

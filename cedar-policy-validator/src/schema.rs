@@ -236,9 +236,9 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] directly from a file containing JSON
     /// in the appropriate shape.
-    pub fn from_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
+    pub fn from_json_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
-            json_schema::Fragment::<RawName>::from_file(file)?,
+            json_schema::Fragment::<RawName>::from_json_file(file)?,
             ActionBehavior::default(),
             extensions,
         )
@@ -246,12 +246,12 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] directly from a file containing the
     /// Cedar schema syntax.
-    pub fn from_file_cedar<'a>(
+    pub fn from_cedarschema_file<'a>(
         r: impl std::io::Read,
         extensions: &'a Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
-        let (fragment, warnings) = json_schema::Fragment::from_file_cedar(r, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_file(r, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;
@@ -260,12 +260,12 @@ impl ValidatorSchema {
 
     /// Construct a [`ValidatorSchema`] from a string containing the Cedar
     /// schema syntax.
-    pub fn from_str_cedar<'a>(
+    pub fn from_cedarschema_str<'a>(
         src: &str,
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
-        let (fragment, warnings) = json_schema::Fragment::from_str_cedar(src, extensions)?;
+        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(src, extensions)?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
                 .map(|schema| (schema, warnings))?;

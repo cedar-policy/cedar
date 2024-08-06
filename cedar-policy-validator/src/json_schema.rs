@@ -137,12 +137,12 @@ impl Fragment<RawName> {
     }
 
     /// Create a [`Fragment`] directly from a file containing a JSON object.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self> {
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self> {
         serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a string
-    pub fn from_str_cedar<'a>(
+    pub fn from_cedarschema_str<'a>(
         src: &str,
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
@@ -152,20 +152,20 @@ impl Fragment<RawName> {
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a reader
-    pub fn from_file_cedar<'a>(
+    pub fn from_cedarschema_file<'a>(
         mut file: impl std::io::Read,
         extensions: &'a Extensions<'_>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
-        Self::from_str_cedar(&src, extensions)
+        Self::from_cedarschema_str(&src, extensions)
     }
 }
 
 impl<N: Display> Fragment<N> {
     /// Pretty print this [`Fragment`]
-    pub fn as_cedar_schema(&self) -> std::result::Result<String, ToCedarSchemaSyntaxError> {
+    pub fn to_schemaschema(&self) -> std::result::Result<String, ToCedarSchemaSyntaxError> {
         let src = cedar_schema::fmt::json_schema_to_cedar_schema_str(self)?;
         Ok(src)
     }
