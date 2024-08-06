@@ -170,7 +170,7 @@ pub enum ToCedarSchemaError {
     NameCollisions(#[from] to_cedar_syntax_errors::NameCollisionsError),
 }
 
-/// Error subtypes for [`ToCedarSyntaxError`]
+/// Error subtypes for [`ToCedarSchemaError`]
 pub mod to_cedar_syntax_errors {
     use miette::Diagnostic;
     use thiserror::Error;
