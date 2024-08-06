@@ -2122,7 +2122,7 @@ mod test {
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
         let (schema, _) =
-            ValidatorSchema::from_str_natural(&type_str, &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_cedarschema_str(&type_str, &Extensions::all_available()).unwrap();
         assert_eq!(
             &schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
@@ -2172,10 +2172,10 @@ mod test {
     // Test display for types that don't roundtrip.
     #[test]
     fn test_type_display() {
-        // Entity types don't roundtrip because the human format type parser
+        // Entity types don't roundtrip because the Cedar format type parser
         // checks that they are defined already, so we'd need to provide a
         // complete schema. TODO: the final stage of schema parsing already does
-        // this. Can we remove duplicated checks from human schema parsing?
+        // this. Can we remove duplicated checks from Cedar schema parsing?
         assert_displays_as(Type::named_entity_reference_from_str("Foo"), "Foo");
         assert_displays_as(
             Type::named_entity_reference_from_str("Foo::Bar"),

@@ -52,6 +52,11 @@ Cedar Language Version: 4.0
 - (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
   Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
 `A::__cedar::B`) are now invalid. (#969)
+- Replace uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
+  APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
+  Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
+  now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
+  to parse strings in the JSON schema format.
 
 ### Removed
 

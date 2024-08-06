@@ -445,7 +445,7 @@ fn get_valid_request_pars_tests() {
     "#,
     )
     .unwrap();
-    let schema = Schema::from_str_natural(
+    let schema = Schema::from_cedarschema_str(
         r#"
     namespace NS {
         entity E;

@@ -2678,7 +2678,7 @@ mod schema_based_parsing_tests {
     /// Test that involves namespaced entity types
     #[test]
     fn namespaces() {
-        let schema = Schema::from_str(
+        let schema = Schema::from_json_str(
             r#"
         {"XYZCorp": {
             "entityTypes": {
@@ -2771,7 +2771,7 @@ mod schema_based_parsing_tests {
     /// Test that involves optional attributes
     #[test]
     fn optional_attrs() {
-        let schema = Schema::from_str(
+        let schema = Schema::from_json_str(
             r#"
         {"": {
             "entityTypes": {
@@ -2849,7 +2849,7 @@ mod schema_based_parsing_tests {
     fn schema_sanity_check() {
         let src = "{ , .. }";
         assert_matches!(
-            Schema::from_str(src),
+            Schema::from_json_str(src),
             Err(crate::SchemaError::JsonDeserialization(_))
         );
     }
@@ -2960,15 +2960,16 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn schema_namespace() {
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "Foo::Bar": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(
@@ -2977,15 +2978,16 @@ mod schema_based_parsing_tests {
         );
         let _schema: Schema = fragment.try_into().expect("Should convert to schema");
 
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(namespaces, None);
@@ -3659,9 +3661,9 @@ mod issue_779 {
     #[test]
     fn issue_779() {
         let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
-        let human = r"namespace Foo { entity User; action View; invalid }";
+        let cedar = r"namespace Foo { entity User; action View; invalid }";
 
-        assert_matches!(Schema::from_json_str(human), Err(e) => {
+        assert_matches!(Schema::from_json_str(cedar), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
         });
         assert_matches!(Schema::from_json_str(json), Err(e) => {
@@ -3670,14 +3672,14 @@ mod issue_779 {
         assert_matches!(Schema::from_json_str("    "), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant non-JSON format
         });
-        assert_matches!(Schema::from_str_natural(json).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_cedarschema_str(json).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"));
         });
-        assert_matches!(Schema::from_str_natural(human).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_cedarschema_str(cedar).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant JSON format, because this doesn't look like JSON
         });
         assert_matches!(
-            Schema::from_str_natural("    ").map(|(s, _warnings)| s),
+            Schema::from_cedarschema_str("    ").map(|(s, _warnings)| s),
             Ok(_)
         );
     }

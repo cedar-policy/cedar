@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//! `Display` implementations for formatting a schema in human syntax
+//! `Display` implementations for formatting a schema in the Cedar schema syntax
 
 use std::{collections::HashSet, fmt::Display};
 
@@ -158,10 +158,10 @@ impl<N: Display> Display for json_schema::ActionType<N> {
     }
 }
 
-/// Error converting a schema to human syntax
+/// Error converting a schema to the Cedar syntax
 #[derive(Debug, Diagnostic, Error)]
-pub enum ToHumanSchemaSyntaxError {
-    /// Collisions between names prevented the conversion to human syntax
+pub enum ToCedarSchemaSyntaxError {
+    /// Collisions between names prevented the conversion to the Cedar syntax
     #[diagnostic(transparent)]
     #[error(transparent)]
     NameCollisions(#[from] NameCollisionsError),
@@ -182,7 +182,7 @@ impl NameCollisionsError {
     }
 }
 
-/// Convert a [`json_schema::Fragment`] to a string containing human schema syntax
+/// Convert a [`json_schema::Fragment`] to a string containing the Cedar schema syntax
 ///
 /// As of this writing, this existing code throws an error if any
 /// fully-qualified name in a non-empty namespace is a valid common type and
@@ -191,15 +191,15 @@ impl NameCollisionsError {
 // Two notes:
 // 1) This check is more conservative than necessary. Schemas are allowed to
 // shadow an entity type with a common type declaration in the same namespace;
-// see RFCs 24 and 70. What the human syntax can't express is if, in that
+// see RFCs 24 and 70. What the Cedar syntax can't express is if, in that
 // situation, we then specifically refer to the shadowed entity type name.  But
 // it's harder to walk all type references than it is to walk all type
 // declarations, so the conservative code here is fine; we can always make it
 // less conservative in the future without breaking people.
 // 2) This code is also likely the cause of #1063; see that issue
-pub fn json_schema_to_custom_schema_str<N: Display>(
+pub fn json_schema_to_cedar_schema_str<N: Display>(
     json_schema: &json_schema::Fragment<N>,
-) -> Result<String, ToHumanSchemaSyntaxError> {
+) -> Result<String, ToCedarSchemaSyntaxError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
         let entity_types: HashSet<SmolStr> = ns

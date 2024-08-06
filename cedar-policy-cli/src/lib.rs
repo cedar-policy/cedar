@@ -95,9 +95,9 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
-    /// Translate natural policy syntax to JSON (except comments)
+    /// Translate Cedar policy syntax to JSON policy syntax (except comments)
     TranslatePolicy(TranslatePolicyArgs),
-    /// Translate JSON schema to natural schema syntax and vice versa (except comments)
+    /// Translate Cedar schema syntax to JSON schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Visualize a set of JSON entities to the graphviz format.
     /// Warning: Entity visualization is best-effort and not well tested.
@@ -122,8 +122,8 @@ pub struct TranslatePolicyArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum PolicyTranslationDirection {
-    /// Human policy syntax -> JSON
-    HumanToJson,
+    /// Cedar policy syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Args, Debug)]
@@ -140,23 +140,23 @@ pub struct TranslateSchemaArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaTranslationDirection {
-    /// JSON -> Human schema syntax
-    JsonToHuman,
-    /// Human schema syntax -> JSON
-    HumanToJson,
+    /// JSON -> Cedar schema syntax
+    JsonToCedar,
+    /// Cedar schema syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaFormat {
-    /// Human-readable format
-    Human,
+    /// the Cedar format
+    Cedar,
     /// JSON format
     Json,
 }
 
 impl Default for SchemaFormat {
     fn default() -> Self {
-        Self::Human
+        Self::Cedar
     }
 }
 
@@ -181,8 +181,8 @@ pub struct ValidateArgs {
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
-    /// Schema format (Human-readable or json)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// Validate the policy using this mode.
     /// The options `permissive` and `partial` are experimental
@@ -455,7 +455,7 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_human_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
             PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
@@ -479,8 +479,8 @@ pub struct AuthorizeArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -522,9 +522,9 @@ pub struct VisualizeArgs {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum PolicyFormat {
-    /// The standard human-readable Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    /// The standard Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     #[default]
-    Human,
+    Cedar,
     /// Cedar's JSON policy format, documented at <https://docs.cedarpolicy.com/policies/json-format.html>
     Json,
 }
@@ -643,8 +643,8 @@ pub struct EvaluateArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
@@ -873,15 +873,15 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+fn translate_policy_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(cedar_src.as_ref())?;
     let output = policy_set.to_json()?.to_string();
     Ok(output)
 }
 
 fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
-        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+        PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
 }
@@ -899,26 +899,26 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
     }
 }
 
-fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
-    let output = fragment.as_natural()?;
+    let output = fragment.to_cedarschema()?;
     Ok(output)
 }
 
-fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let (fragment, warnings) = SchemaFragment::from_cedarschema_str(cedar_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
     }
-    let output = fragment.as_json_string()?;
+    let output = fragment.to_json_string()?;
     Ok(output)
 }
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        SchemaTranslationDirection::JsonToHuman => translate_schema_to_human,
-        SchemaTranslationDirection::HumanToJson => translate_schema_to_json,
+        SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
+        SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
@@ -1358,9 +1358,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
-/// Read a policy set, in Cedar human syntax, from the file given in `filename`,
+/// Read a policy set, in Cedar syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_human_policy_set(
+fn read_cedar_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "policy set";
@@ -1443,14 +1443,14 @@ fn read_schema_file(
 ) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
     match format {
-        SchemaFormat::Json => Schema::from_str(&schema_src).wrap_err_with(|| {
+        SchemaFormat::Json => Schema::from_json_str(&schema_src).wrap_err_with(|| {
             format!(
                 "failed to parse schema from file {}",
                 filename.as_ref().display()
             )
         }),
-        SchemaFormat::Human => {
-            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+        SchemaFormat::Cedar => {
+            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
                 eprintln!("{:?}", report);

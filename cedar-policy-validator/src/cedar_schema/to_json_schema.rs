@@ -28,7 +28,7 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
 
-use crate::{human_schema, json_schema, RawName};
+use crate::{cedar_schema, json_schema, RawName};
 
 use super::{
     ast::{
@@ -38,8 +38,8 @@ use super::{
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
-impl From<human_schema::Path> for RawName {
-    fn from(p: human_schema::Path) -> Self {
+impl From<cedar_schema::Path> for RawName {
+    fn from(p: cedar_schema::Path) -> Self {
         RawName::from_name(p.into())
     }
 }
@@ -51,8 +51,8 @@ impl From<human_schema::Path> for RawName {
 ///     * An iterator of warnings that were generated
 ///
 /// TODO(#1085): These warnings should be generated later in the process, such
-/// that we apply the same checks to JSON and human schemas
-pub fn custom_schema_to_json_schema(
+/// that we apply the same checks to JSON and Cedar schemas
+pub fn cedar_schema_to_json_schema(
     schema: Schema,
     extensions: &Extensions<'_>,
 ) -> Result<
@@ -66,7 +66,7 @@ pub fn custom_schema_to_json_schema(
     // single unqualified namespace
     //
     // TODO(#1086): If we want to allow reopening a namespace within the same
-    // (human) schema fragment, then in this step we would also need to combine
+    // (Cedar) schema fragment, then in this step we would also need to combine
     // namespaces with matching non-empty names, so that all definitions from
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
@@ -95,10 +95,10 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn human_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
+pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
     match ty.node {
         Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
-            element: Box::new(human_type_to_json_type(*t)),
+            element: Box::new(cedar_type_to_json_type(*t)),
         }),
         Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
             type_name: RawName::from(p),
@@ -147,7 +147,7 @@ fn convert_namespace(
         .name
         .clone()
         .map(|p| {
-            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the human syntax
+            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
             Name::try_from(internal_name).map_err(|e| {
                 ToJsonSchemaError::ReservedName(Node {
                     node: e.name().to_smolstr(),
@@ -188,7 +188,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                         loc: name_loc,
                     })
                 })?;
-                Ok((id, human_type_to_json_type(decl.def)))
+                Ok((id, cedar_type_to_json_type(decl.def)))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -221,7 +221,7 @@ fn convert_action_decl(
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
     let ty = json_schema::ActionType {
-        attributes: None, // Action attributes are currently unsupported in the natural schema
+        attributes: None, // Action attributes are currently unsupported in the Cedar schema format
         applies_to: Some(applies_to),
         member_of,
     };
@@ -404,7 +404,7 @@ fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, json_schema::TypeOfAttribute<R
     (
         attr.name.node,
         json_schema::TypeOfAttribute {
-            ty: human_type_to_json_type(attr.ty),
+            ty: cedar_type_to_json_type(attr.ty),
             required: attr.required,
         },
     )
