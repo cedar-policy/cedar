@@ -52,7 +52,7 @@ Cedar Language Version: 4.0
 - (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
   Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
 `A::__cedar::B`) are now invalid. (#969)
-- Replace naming "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
+- Replace uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
   APIs with these names (e.g., ) are changed accordingly. CLI arguments `--policy-format`
   and `--schema-format` now take options `cedar` or `json`.
 
