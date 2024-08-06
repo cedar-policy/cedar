@@ -160,8 +160,8 @@ fn convert_namespace(
     Ok((ns_name, def))
 }
 
-/// Test if this id is a reserved JSON schema keyword.
-/// Issue: https://github.com/cedar-policy/cedar/issues/1070
+// Test if this id is a reserved JSON schema keyword.
+// Issue: https://github.com/cedar-policy/cedar/issues/1070
 fn is_reserved_json_schema_keyword(id: &UnreservedId) -> bool {
     matches!(id.as_ref(), "Set" | "Record" | "Entity" | "Extension")
 }
