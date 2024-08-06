@@ -160,6 +160,12 @@ fn convert_namespace(
     Ok((ns_name, def))
 }
 
+/// Test if this id is a reserved JSON schema keyword.
+/// Issue: https://github.com/cedar-policy/cedar/issues/1070
+fn is_reserved_json_schema_keyword(id: &UnreservedId) -> bool {
+    matches!(id.as_ref(), "Set" | "Record" | "Entity" | "Extension")
+}
+
 impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
     type Error = ToJsonSchemaErrors;
 
@@ -185,10 +191,17 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                 let id = UnreservedId::try_from(decl.name.node).map_err(|e| {
                     ToJsonSchemaError::ReservedName(Node {
                         node: e.name().to_smolstr(),
-                        loc: name_loc,
+                        loc: name_loc.clone(),
                     })
                 })?;
-                Ok((id, cedar_type_to_json_type(decl.def)))
+                if is_reserved_json_schema_keyword(&id) {
+                    Err(ToJsonSchemaError::ReservedJsonSchemaKeyword(Node {
+                        node: id.to_smolstr(),
+                        loc: name_loc,
+                    }))
+                } else {
+                    Ok((id, cedar_type_to_json_type(decl.def)))
+                }
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 

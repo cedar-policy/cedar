@@ -1162,7 +1162,10 @@ mod translator_tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        cedar_schema::{parser::parse_schema, to_json_schema::cedar_schema_to_json_schema},
+        cedar_schema::{
+            err::ToJsonSchemaError, parser::parse_schema,
+            to_json_schema::cedar_schema_to_json_schema,
+        },
         json_schema,
         schema::test::collect_warnings,
         types::{EntityLUB, Type},
@@ -1861,6 +1864,57 @@ mod translator_tests {
         )
         .map(|_| ());
         assert_matches!(schema, Err(_));
+    }
+
+    #[test]
+    fn reserved_json_schema_keyword() {
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Entity = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedJsonSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Extension = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedJsonSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Set = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedJsonSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Record = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedJsonSchemaKeyword(_)));
     }
 }
 
