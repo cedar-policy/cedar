@@ -336,7 +336,7 @@ mod demo_tests {
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment =
             json_schema::Fragment(HashMap::from([(Some("bar".parse().unwrap()), namespace)]));
-        let as_src = fragment.to_schemaschema().unwrap();
+        let as_src = fragment.to_cedarschema().unwrap();
         let expected = r#"action "foo";"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
     }
@@ -447,7 +447,7 @@ namespace Baz {action "Foo" appliesTo {
             )]),
         };
         let fragment = json_schema::Fragment(HashMap::from([(None, namespace)]));
-        let src = fragment.to_schemaschema().unwrap();
+        let src = fragment.to_cedarschema().unwrap();
         assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 

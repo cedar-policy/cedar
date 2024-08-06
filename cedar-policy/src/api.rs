@@ -1220,8 +1220,18 @@ impl SchemaFragment {
         })
     }
 
+    /// Create a [`SchemaFragment`] from a string containing JSON in the
+    /// appropriate shape.
+    pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
     /// Create a [`SchemaFragment`] from a JSON value (which should be an
-    /// object of the shape required for for the JSON schema format).
+    /// object of the shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value(json)?;
         Ok(Self {
@@ -1289,7 +1299,7 @@ impl SchemaFragment {
     /// Serialize this [`SchemaFragment`] into a string in the Cedar schema
     /// syntax
     pub fn to_cedarschema(&self) -> Result<String, ToCedarSyntaxError> {
-        let str = self.lossless.to_schemaschema()?;
+        let str = self.lossless.to_cedarschema()?;
         Ok(str)
     }
 }
@@ -1311,19 +1321,15 @@ impl TryInto<Schema> for SchemaFragment {
 }
 
 impl FromStr for SchemaFragment {
-    type Err = SchemaError;
+    type Err = CedarSchemaError;
     /// Construct `SchemaFragment` from a string containing a schema formatted
-    /// in the cedar schema format. This can fail if the string is not valid
+    /// in the Cedar schema format. This can fail if the string is not valid
     /// JSON, or if the JSON structure does not form a valid schema. This
     /// function does not check for consistency in the schema (e.g., references
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
-        Ok(Self {
-            value: lossless.clone().try_into()?,
-            lossless,
-        })
+        Self::from_cedarschema_str(src).map(|(frag, _)| frag)
     }
 }
 

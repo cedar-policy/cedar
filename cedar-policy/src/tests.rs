@@ -2960,15 +2960,16 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn schema_namespace() {
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "Foo::Bar": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(
@@ -2977,15 +2978,16 @@ mod schema_based_parsing_tests {
         );
         let _schema: Schema = fragment.try_into().expect("Should convert to schema");
 
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(namespaces, None);

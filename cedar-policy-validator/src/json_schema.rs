@@ -165,7 +165,7 @@ impl Fragment<RawName> {
 
 impl<N: Display> Fragment<N> {
     /// Pretty print this [`Fragment`]
-    pub fn to_schemaschema(&self) -> std::result::Result<String, ToCedarSchemaSyntaxError> {
+    pub fn to_cedarschema(&self) -> std::result::Result<String, ToCedarSchemaSyntaxError> {
         let src = cedar_schema::fmt::json_schema_to_cedar_schema_str(self)?;
         Ok(src)
     }
