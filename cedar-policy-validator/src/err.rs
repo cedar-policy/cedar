@@ -23,11 +23,11 @@ use miette::Diagnostic;
 use nonempty::NonEmpty;
 use thiserror::Error;
 
-use crate::human_schema;
+use crate::cedar_schema;
 
-/// Error creating a schema from human syntax
+/// Error creating a schema from the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]
-pub enum HumanSchemaError {
+pub enum CedarSchemaError {
     /// Errors with the schema content
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -38,21 +38,21 @@ pub enum HumanSchemaError {
     /// Parse error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parsing(#[from] HumanSyntaxParseError),
+    Parsing(#[from] CedarSchemaParseError),
 }
 
-/// Error parsing a human-syntax schema
+/// Error parsing a Cedar-syntax schema
 #[derive(Debug, Error)]
 #[error("error parsing schema: {errs}")]
-pub struct HumanSyntaxParseError {
+pub struct CedarSchemaParseError {
     /// Underlying parse error(s)
-    errs: human_schema::parser::HumanSyntaxParseErrors,
+    errs: cedar_schema::parser::CedarSchemaParseErrors,
     /// Did the schema look like it was intended to be JSON format instead of
-    /// human?
+    /// Cedar?
     suspect_json_format: bool,
 }
 
-impl Diagnostic for HumanSyntaxParseError {
+impl Diagnostic for CedarSchemaParseError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let suspect_json_help = if self.suspect_json_format {
             Some(Box::new("this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"))
@@ -92,14 +92,14 @@ impl Diagnostic for HumanSyntaxParseError {
     }
 }
 
-impl HumanSyntaxParseError {
-    /// `errs`: the `human_schema::parser::HumanSyntaxParseErrors` that were thrown
+impl CedarSchemaParseError {
+    /// `errs`: the `cedar_schema::parser::CedarSyntaxParseErrors` that were thrown
     ///
-    /// `src`: the human-syntax text that we were trying to parse
-    pub(crate) fn new(errs: human_schema::parser::HumanSyntaxParseErrors, src: &str) -> Self {
+    /// `src`: the Cedar-syntax text that we were trying to parse
+    pub(crate) fn new(errs: cedar_schema::parser::CedarSchemaParseErrors, src: &str) -> Self {
         // let's see what the first non-whitespace character is
         let suspect_json_format = match src.trim_start().chars().next() {
-            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
             Some('{') => true, // yes, this looks like it was intended to be a JSON schema
             Some(_) => false, // any character other than '{', not likely it was intended to be a JSON schema
         };
@@ -110,7 +110,7 @@ impl HumanSyntaxParseError {
     }
 
     #[cfg(test)]
-    pub(crate) fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
+    pub(crate) fn inner(&self) -> &cedar_schema::parser::CedarSchemaParseErrors {
         &self.errs
     }
 }
@@ -584,7 +584,7 @@ pub mod schema_errors {
     #[derive(Debug, Error)]
     enum JsonDeserializationAdvice {
         #[error("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?")]
-        HumanFormat,
+        CedarFormat,
         #[error("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{{ \"\": {{..}} }}`")]
         MissingNamespace,
     }
@@ -599,7 +599,7 @@ pub mod schema_errors {
                 Some(src) => {
                     // let's see what the first non-whitespace character is
                     let advice = match src.trim_start().chars().next() {
-                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
                         Some('{') => {
                             // This looks like it was intended to be a JSON schema. Check fields of top level JSON object to see
                             // if it looks like it's missing a namespace.
@@ -622,7 +622,7 @@ pub mod schema_errors {
                                 None
                             }
                         }
-                        Some(_) => Some(JsonDeserializationAdvice::HumanFormat), // any character other than '{', we suspect it might be a human-format schema
+                        Some(_) => Some(JsonDeserializationAdvice::CedarFormat), // any character other than '{', we suspect it might be a Cedar-format schema
                     };
                     Self { err, advice }
                 }

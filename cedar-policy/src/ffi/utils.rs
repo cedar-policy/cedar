@@ -19,6 +19,7 @@ use crate::{PolicyId, SchemaWarning, SlotId};
 use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::{collections::HashMap, str::FromStr};
 
 // Publicly expose the `JsonValueWithNoDuplicateKeys` type so that the
@@ -273,7 +274,7 @@ impl From<serde_json::Value> for Entities {
 )]
 pub enum Policy {
     /// Policy in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
-    Human(String),
+    Cedar(String),
     /// Policy in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
     Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
@@ -287,11 +288,40 @@ impl Policy {
             .clone()
             .map_or(String::new(), |id| format!(" with id `{id}`"));
         match self {
-            Self::Human(str) => crate::Policy::parse(id, str)
+            Self::Cedar(str) => crate::Policy::parse(id, str)
                 .wrap_err(format!("failed to parse policy{msg} from string")),
             Self::Json(json) => crate::Policy::from_json(id, json.into())
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
         }
+    }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
     }
 }
 
@@ -305,7 +335,7 @@ impl Policy {
 )]
 pub enum Template {
     /// Template in the Cedar policy format. See <https://docs.cedarpolicy.com/policies/syntax-policy.html>
-    Human(String),
+    Cedar(String),
     /// Template in Cedar's JSON policy format. See <https://docs.cedarpolicy.com/policies/json-format.html>
     Json(#[cfg_attr(feature = "wasm", tsify(type = "PolicyJson"))] JsonValueWithNoDuplicateKeys),
 }
@@ -320,7 +350,7 @@ impl Template {
             .map(|id| format!(" with id `{id}`"))
             .unwrap_or_default();
         match self {
-            Self::Human(str) => crate::Template::parse(id, str)
+            Self::Cedar(str) => crate::Template::parse(id, str)
                 .wrap_err(format!("failed to parse template{msg} from string")),
             Self::Json(json) => crate::Template::from_json(id, json.into())
                 .wrap_err(format!("failed to parse template{msg} from JSON")),
@@ -342,6 +372,35 @@ impl Template {
         policies
             .add_template(template)
             .wrap_err(format!("failed to add template{msg} to policy set"))
+    }
+
+    /// Get valid principals, actions, and resources.
+    pub fn get_valid_request_envs(
+        self,
+        s: Schema,
+    ) -> Result<
+        (
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+            impl Iterator<Item = String>,
+        ),
+        miette::Report,
+    > {
+        let t = self.parse(None)?;
+        let (s, _) = s.parse()?;
+        let mut principals = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        let mut resources = BTreeSet::new();
+        for env in t.get_valid_request_envs(&s) {
+            principals.insert(env.principal.to_string());
+            actions.insert(env.action.to_string());
+            resources.insert(env.resource.to_string());
+        }
+        Ok((
+            principals.into_iter(),
+            actions.into_iter(),
+            resources.into_iter(),
+        ))
     }
 }
 
@@ -516,7 +575,7 @@ impl PolicySet {
 )]
 pub enum Schema {
     /// Schema in the Cedar schema format. See <https://docs.cedarpolicy.com/schema/human-readable-schema.html>
-    Human(String),
+    Cedar(String),
     /// Schema in Cedar's JSON schema format. See <https://docs.cedarpolicy.com/schema/json-schema.html>
     Json(
         #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
@@ -525,6 +584,7 @@ pub enum Schema {
 }
 
 impl Schema {
+    /// Parse a [`Schema`] into a [`crate::Schema`]
     pub(super) fn parse(
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
@@ -544,7 +604,7 @@ impl Schema {
         miette::Report,
     > {
         match self {
-            Self::Human(str) => crate::SchemaFragment::from_str_natural(&str)
+            Self::Cedar(str) => crate::SchemaFragment::from_cedarschema_str(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,
@@ -854,7 +914,7 @@ mod test {
         // Invalid static policy set - the second policy is a template
         let policies_json = json!(
             "
-            permit(principal == User::\"alice\", action, resource); 
+            permit(principal == User::\"alice\", action, resource);
             permit(principal == ?principal, action, resource);
         "
         );

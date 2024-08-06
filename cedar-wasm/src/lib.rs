@@ -17,11 +17,13 @@
 #![forbid(unsafe_code)]
 
 use wasm_bindgen::prelude::*;
+mod utils;
 
 pub use cedar_policy::ffi::{
     check_parse_context, check_parse_entities, check_parse_policy_set, check_parse_schema, format,
     is_authorized, policy_to_json, policy_to_text, schema_to_json, schema_to_text, validate,
 };
+pub use utils::*;
 
 #[wasm_bindgen(js_name = "getCedarVersion")]
 pub fn get_cedar_version() -> String {

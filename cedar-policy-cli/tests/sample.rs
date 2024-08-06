@@ -37,7 +37,7 @@ fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: Ce
     let cmd = CheckParseArgs {
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
     };
@@ -84,7 +84,7 @@ fn run_authorize_test_with_linked_policies(
         },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: links_file.map(Into::into),
         },
         schema_file: None,
@@ -108,7 +108,7 @@ fn run_link_test(
     let cmd = LinkArgs {
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: Some(links_file.into()),
         },
         template_id: template_id.into(),
@@ -139,7 +139,7 @@ fn run_authorize_test_context(
         },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
         schema_file: None,
@@ -169,7 +169,7 @@ fn run_authorize_test_json(
         },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
         schema_file: None,
@@ -565,7 +565,7 @@ fn test_validate_samples(
         schema_file: schema_file.clone(),
         policies: PoliciesArgs {
             policies_file: Some(policies_file.clone()),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
         deny_warnings: false,
@@ -575,7 +575,7 @@ fn test_validate_samples(
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
 
-    // Run with human schema
+    // Run with Cedar schema
     let cmd = ValidateArgs {
         schema_file: schema_file
             .strip_suffix(".json")
@@ -583,12 +583,12 @@ fn test_validate_samples(
             .to_string(),
         policies: PoliciesArgs {
             policies_file: Some(policies_file),
-            policy_format: PolicyFormat::Human,
+            policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
-        schema_format: SchemaFormat::Human,
+        schema_format: SchemaFormat::Cedar,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)
@@ -1105,17 +1105,17 @@ fn test_authorize_json_policy() {
 
 #[test]
 fn test_translate_policy() {
-    let human_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
-    let human = std::fs::read_to_string(human_filename).unwrap();
+    let cedar = std::fs::read_to_string(cedar_filename).unwrap();
     let json = std::fs::read_to_string(json_filename).unwrap();
     let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("translate-policy")
         .arg("--direction")
-        .arg("human-to-json")
+        .arg("cedar-to-json")
         .arg("-p")
-        .arg(human_filename)
+        .arg(cedar_filename)
         .assert();
 
     let translated = std::str::from_utf8(&translate_cmd.get_output().stdout)
@@ -1123,6 +1123,6 @@ fn test_translate_policy() {
 
     assert_eq!(
         translated, json,
-        "\noriginal:\n{human}\n\ttranslated:\n{translated}",
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated}",
     );
 }

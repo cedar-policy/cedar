@@ -16,6 +16,9 @@ files to be visualized using the graphviz format.
 - The `--partial-validate` option has been replaced with `--validation-mode`,
   taking the values `strict`, `permissive` (new) and `partial`.
   The latter two are kept behind their respective feature flags.
+- CLI arguments `--policy-format` and `--schema-format` now take options
+  `cedar` or `json`, as opposed to previous `human` or `json`.
+
 
 ## 3.2.0
 

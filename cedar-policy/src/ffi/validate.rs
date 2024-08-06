@@ -266,7 +266,7 @@ mod test {
 
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
-            schema: Schema::Human(String::new()),
+            schema: Schema::Cedar(String::new()),
             policies: PolicySet::new(),
         };
 

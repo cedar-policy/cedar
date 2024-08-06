@@ -16,12 +16,12 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::human_schema::err::{RawErrorRecovery, RawUserError, UserError};
+use crate::cedar_schema::err::{RawErrorRecovery, RawUserError, UserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
 use cedar_policy_core::ast::Id;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
-use crate::human_schema::ast::{
+use crate::cedar_schema::ast::{
     Path,
     EntityDecl,
     Declaration,

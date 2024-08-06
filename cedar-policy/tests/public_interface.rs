@@ -16,7 +16,7 @@
 
 use cedar_policy::*;
 
-use std::{error::Error, str::FromStr};
+use std::{collections::BTreeSet, error::Error, str::FromStr};
 
 #[test]
 fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
@@ -434,4 +434,78 @@ fn change_ids() {
     }
     // find a policy with new id
     assert!(new_ps.policy(&"first".parse().unwrap()).is_some());
+}
+
+#[test]
+fn get_valid_request_pars_tests() {
+    let policy = Policy::from_str(
+        r#"
+    @id("E1,E2 a,a2 R2")
+    permit (principal, action, resource is NS::R2);
+    "#,
+    )
+    .unwrap();
+    let schema = Schema::from_cedarschema_str(
+        r#"
+    namespace NS {
+        entity E;
+        entity R1 in [R] = {"p1": String};
+        entity R;
+        entity R2 in [R] = {"p1": Long};
+        entity E1 in [E] = {"p1": String};
+        entity E2 in [E] = {"p1": Long};
+        action "as";
+        action "a" in [Action::"as"] appliesTo {
+          principal: [E1, E2],
+          resource: [R1, R2],
+          context: {"c1": Long}
+        };
+        action "a1" in [Action::"as"] appliesTo {
+          principal: [E1],
+          resource: [R1],
+          context: {"c1": Long}
+        };
+        action "a2" in [Action::"as"] appliesTo {
+          principal: [E2],
+          resource: [R2],
+          context: {"c1": Long}
+        };
+      }
+    "#,
+    )
+    .unwrap()
+    .0;
+    assert_eq!(
+        BTreeSet::from_iter(policy.get_valid_request_envs(&schema)),
+        BTreeSet::from_iter([
+            RequestEnv::new(
+                "NS::E1".parse().unwrap(),
+                "NS::Action::\"a\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+            RequestEnv::new(
+                "NS::E2".parse().unwrap(),
+                "NS::Action::\"a\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+            RequestEnv::new(
+                "NS::E2".parse().unwrap(),
+                "NS::Action::\"a2\"".parse().unwrap(),
+                "NS::R2".parse().unwrap()
+            ),
+        ])
+    );
+
+    // refer to undeclared entity type, the result should be all empty sets
+    let policy = Policy::from_str(
+        r#"
+    @id("E1,E2 a,a2 R2")
+    permit (principal, action, resource is NS::R3);
+    "#,
+    )
+    .unwrap();
+    assert_eq!(
+        BTreeSet::from_iter(policy.get_valid_request_envs(&schema)),
+        BTreeSet::new(),
+    );
 }

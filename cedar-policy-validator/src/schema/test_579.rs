@@ -71,7 +71,7 @@ use serde_json::json;
 #[track_caller]
 fn assert_parses_successfully_human(s: &str) -> (ValidatorSchema, Vec<SchemaWarning>) {
     println!("{s}");
-    collect_warnings(ValidatorSchema::from_str_natural(
+    collect_warnings(ValidatorSchema::from_cedarschema_str(
         s,
         &Extensions::all_available(),
     ))
@@ -90,7 +90,7 @@ fn assert_parses_successfully_json(v: serde_json::Value) -> ValidatorSchema {
 #[track_caller]
 fn assert_parse_error_human(s: &str, e: &ExpectedErrorMessage<'_>) {
     println!("{s}");
-    assert_matches!(collect_warnings(ValidatorSchema::from_str_natural(s, &Extensions::all_available())), Err(err) => {
+    assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(s, &Extensions::all_available())), Err(err) => {
         expect_err(s, &miette::Report::new(err), e);
     });
 }

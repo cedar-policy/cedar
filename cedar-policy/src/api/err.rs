@@ -26,13 +26,13 @@ pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
 use cedar_policy_core::{ast, authorizer, est};
-pub use cedar_policy_validator::human_schema::{schema_warnings, SchemaWarning};
+pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
-use to_human_syntax_errors::NameCollisionsError;
+use to_cedar_syntax_errors::NameCollisionsError;
 
 /// Errors related to [`crate::Entities`]
 pub mod entities_errors {
@@ -161,17 +161,17 @@ impl From<cedar_policy_core::authorizer::ReauthorizationError> for Reauthorizati
     }
 }
 
-/// Errors serializing Schemas to the natural syntax
+/// Errors serializing Schemas to the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]
-pub enum ToHumanSyntaxError {
+pub enum ToCedarSchemaError {
     /// Duplicate names were found in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    NameCollisions(#[from] to_human_syntax_errors::NameCollisionsError),
+    NameCollisions(#[from] to_cedar_syntax_errors::NameCollisionsError),
 }
 
-/// Error subtypes for [`ToHumanSyntaxError`]
-pub mod to_human_syntax_errors {
+/// Error subtypes for [`ToCedarSchemaError`]
+pub mod to_cedar_syntax_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -180,7 +180,7 @@ pub mod to_human_syntax_errors {
     #[repr(transparent)]
     #[error(transparent)]
     pub struct NameCollisionsError(
-        pub(super) cedar_policy_validator::human_schema::fmt::NameCollisionsError,
+        pub(super) cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
     );
 
     impl NameCollisionsError {
@@ -192,30 +192,30 @@ pub mod to_human_syntax_errors {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError>
-    for ToHumanSyntaxError
+impl From<cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
+    for ToCedarSchemaError
 {
-    fn from(value: cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError) -> Self {
+    fn from(value: cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError) -> Self {
         match value {
-            cedar_policy_validator::human_schema::fmt::ToHumanSchemaSyntaxError::NameCollisions(
+            cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(
                 name_collision_err,
             ) => NameCollisionsError(name_collision_err).into(),
         }
     }
 }
 
-/// Error subtypes for [`HumanSchemaError`]
-pub mod human_schema_errors {
+/// Error subtypes for [`CedarSchemaError`]
+pub mod cedar_schema_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    /// Error parsing a schema in human-readable syntax
+    /// Error parsing a schema in the Cedar syntax
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct ParseError(#[from] pub(super) cedar_policy_validator::HumanSyntaxParseError);
+    pub struct ParseError(#[from] pub(super) cedar_policy_validator::CedarSchemaParseError);
 
-    /// IO error while parsing a human-readable schema
+    /// IO error while parsing a Cedar schema
     #[derive(Debug, Error, Diagnostic)]
     #[error(transparent)]
     pub struct IoError(#[from] pub(super) std::io::Error);
@@ -224,31 +224,31 @@ pub mod human_schema_errors {
 /// Errors when parsing schemas
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
-pub enum HumanSchemaError {
-    /// Error parsing a schema in human-readable syntax
+pub enum CedarSchemaError {
+    /// Error parsing a schema in the Cedar syntax
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parse(#[from] human_schema_errors::ParseError),
-    /// IO error while parsing a human-readable schema
+    Parse(#[from] cedar_schema_errors::ParseError),
+    /// IO error while parsing a Cedar schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Io(#[from] human_schema_errors::IoError),
-    /// Encountered a `SchemaError` while parsing a human-readable schema
+    Io(#[from] cedar_schema_errors::IoError),
+    /// Encountered a `SchemaError` while parsing a Cedar schema
     #[error(transparent)]
     #[diagnostic(transparent)]
     Schema(#[from] SchemaError),
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
-    fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
+impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
+    fn from(value: cedar_policy_validator::CedarSchemaError) -> Self {
         match value {
-            cedar_policy_validator::HumanSchemaError::Schema(e) => e.into(),
-            cedar_policy_validator::HumanSchemaError::IO(e) => {
-                human_schema_errors::IoError(e).into()
+            cedar_policy_validator::CedarSchemaError::Schema(e) => e.into(),
+            cedar_policy_validator::CedarSchemaError::IO(e) => {
+                cedar_schema_errors::IoError(e).into()
             }
-            cedar_policy_validator::HumanSchemaError::Parsing(e) => {
-                human_schema_errors::ParseError(e).into()
+            cedar_policy_validator::CedarSchemaError::Parsing(e) => {
+                cedar_schema_errors::ParseError(e).into()
             }
         }
     }
