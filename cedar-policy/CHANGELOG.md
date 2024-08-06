@@ -55,7 +55,8 @@ Cedar Language Version: 4.0
 - Replace uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
   APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
-  now parse strings in the Cedar schema format.
+  now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
+  to parse strings in the JSON schema format.
 
 ### Removed
 
