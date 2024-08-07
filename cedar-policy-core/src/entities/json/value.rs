@@ -738,7 +738,7 @@ pub trait DeserializationContext {
 }
 
 /// A [`DeserializationContext`] that always returns [`None`].
-/// This is the default behaviour,
+/// This is the default behaviour.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct NoStaticContext;
 
