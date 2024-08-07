@@ -728,8 +728,8 @@ impl<'e> ValueParser<'e> {
     }
 }
 
-/// A (optional) static context for deserialization of entity uids
-/// This is useful when, for plumbing reasons, we can't get the appopriate values into the dynamic
+/// An (optional) static context for deserialization of entity uids.
+/// This is useful when, for plumbing reasons, we can't get the appropriate values into the dynamic
 /// context. Primary use case is in the [`DeserializeAs`] trait.
 pub trait DeserializationContext {
     /// Access the (optional) static context.
