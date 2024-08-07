@@ -64,9 +64,8 @@ Cedar Language Version: 4.0
   evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
 - Removed the `error` extension function, which was previously used during
   partial evaluation. (#874)
-- Removed the (deprecated) integration testing harness from the `cedar-policy`
-  crate. It is now in an internal crate, allowing us to make semver incompatible
-  changes. (#857)
+- Removed integration testing harness from the `cedar-policy` crate. It is now
+  in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
   introduced in 3.2.0. See #757.
 - Removed `ParseErrors::errors_as_strings`.  Callers should consider examining
@@ -87,26 +86,23 @@ Cedar Language Version: 4.0
 - (*) JSON format Cedar policies will now fail to parse if the action scope
   constraint contains a non-action entity type, matching the behavior for
   human-readable Cedar policies. (#943, resolving #925)
+- (*) Schemas can now reference entity and common types defined in the empty namespace,
+  even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+- `Template` parsing functions (e.g., `Template::parse()`) will now fail when
+  passed a static policy as input. Use the `Policy` parsing functions instead.
+  (#1108, resolving #1095)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
 
 _Note:_ 3.2.2 and 3.2.3 skipped to maintain consistency with the `cedar-wasm` package
 
-### Changed
-
-- (*) `unknown()` is no longer a valid extension function if `partial-eval`
-  is not enabled as a feature. (#1101, resolving #1096)
-
 ### Fixed
 
 - (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
-- (*) Schemas can now reference entity and common types defined in the empty namespace,
-  even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
-- `Template` parsing functions (e.g., `Template::parse()`) will now fail when
-  passed a static policy as input. Use the `Policy` parsing functions instead.
-  (#1108, resolving #1095)
+- (*) `unknown()` is no longer a valid extension function if `partial-eval`
+  is not enabled as a feature. (#1101, resolving #1096)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
