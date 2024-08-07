@@ -16,7 +16,7 @@
 
 // GRCOV_STOP_COVERAGE
 
-use crate::{NamespaceDefinition, RawName};
+use crate::{json_schema, RawName};
 use cool_asserts::assert_matches;
 
 fn schema_with_unspecified() -> &'static str {
@@ -56,7 +56,7 @@ fn schema_with_unspecified() -> &'static str {
 #[test]
 fn unspecified_does_not_parse() {
     assert_matches!(
-        serde_json::from_str::<NamespaceDefinition<RawName>>(schema_with_unspecified()),
+        serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(schema_with_unspecified()),
         Err(_)
     );
 }

@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder, PolicyID};
 
 use super::test_utils::{empty_schema_file, expr_id_placeholder};
-use crate::{typecheck::Typechecker, types::Type, RawName, SchemaFragment, ValidationMode};
+use crate::{json_schema, typecheck::Typechecker, types::Type, ValidationMode};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
@@ -137,7 +137,7 @@ fn expr_typechecks_with_correct_annotation() {
         .unwrap(),
     );
 
-    let schema = serde_json::from_value::<SchemaFragment<RawName>>(
+    let schema = json_schema::Fragment::from_json_value(
         json!({"": { "entityTypes": { "Foo": {} }, "actions": {} }}),
     )
     .unwrap()

@@ -160,7 +160,7 @@ impl ast::RequestSchema for ValidatorSchema {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
@@ -197,10 +197,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     euid: principal, ..
                 } = request.principal()
                 {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_principal_type(principal.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
                         return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
@@ -209,10 +206,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
                 if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_resource_type(resource.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
                         return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
@@ -252,7 +246,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         self.schema.validate_request(request, extensions)
     }
@@ -501,7 +495,7 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src, Extensions::all_available())
+        ValidatorSchema::from_json_value(src, &Extensions::all_available())
             .expect("failed to create ValidatorSchema")
     }
 

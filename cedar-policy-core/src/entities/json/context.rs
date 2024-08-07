@@ -54,7 +54,7 @@ pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 }
 
 impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
@@ -66,7 +66,7 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     /// `schema` -- for instance, it will error if attributes have the wrong
     /// types (e.g., string instead of integer), or if required attributes are
     /// missing or superfluous attributes are provided.
-    pub fn new(schema: Option<&'s S>, extensions: Extensions<'e>) -> Self {
+    pub fn new(schema: Option<&'s S>, extensions: &'e Extensions<'e>) -> Self {
         Self { schema, extensions }
     }
 
@@ -82,12 +82,12 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
         &self,
         json: serde_json::Value,
     ) -> Result<Context, ContextJsonDeserializationError> {
-        let vparser = ValueParser::new(self.extensions.clone());
+        let vparser = ValueParser::new(self.extensions);
         let expected_ty = self.schema.map(|s| s.context_type());
         let rexpr = vparser.val_into_restricted_expr(json, expected_ty.as_ref(), || {
             JsonDeserializationErrorContext::Context
         })?;
-        Context::from_expr(rexpr.as_borrowed(), self.extensions.clone())
+        Context::from_expr(rexpr.as_borrowed(), self.extensions)
             .map_err(ContextJsonDeserializationError::ContextCreation)
     }
 

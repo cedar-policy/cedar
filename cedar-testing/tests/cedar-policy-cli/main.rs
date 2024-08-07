@@ -88,7 +88,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg("--policies")
             .arg(&policy_file)
             .arg("--schema-format")
-            .arg("human")
+            .arg("cedar")
             .assert()
             .append_context("validation", json_request.description.clone());
 
@@ -128,7 +128,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg("--schema")
             .arg(&schema_file)
             .arg("--schema-format")
-            .arg("human")
+            .arg("cedar")
             .arg("--verbose") // so that reasons are displayed
             .assert()
             .append_context("authorization", json_request.description.clone());

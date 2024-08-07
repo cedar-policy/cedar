@@ -1107,7 +1107,7 @@ fn interpret_primary(
                 (&[], cst::Ident::Resource) => Ok(Either::Right(Expr::var(ast::Var::Resource))),
                 (&[], cst::Ident::Context) => Ok(Either::Right(Expr::var(ast::Var::Context))),
                 (path, cst::Ident::Ident(id)) => Ok(Either::Left(
-                    ast::UncheckedName::new(
+                    ast::InternalName::new(
                         id.parse()?,
                         path.iter()
                             .map(|node| {

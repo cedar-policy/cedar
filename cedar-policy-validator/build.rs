@@ -23,6 +23,6 @@ fn generate_parsers() {
     // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
     #[allow(clippy::expect_used)]
     lalrpop::Configuration::new()
-        .process_dir("src/human_schema/")
+        .process_dir("src/cedar_schema/")
         .expect("parser synth");
 }

@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-//! The Cedar human/natural syntax for schemas
+//! The Cedar syntax for schemas
 
 mod ast;
+pub use ast::Path;
 mod err;
 pub mod fmt;
 pub mod parser;

@@ -24,24 +24,25 @@ use std::str::FromStr;
 use std::vec;
 
 use cedar_policy_core::{
-    ast::{EntityUID, Expr, PolicyID, StaticPolicy},
+    ast::{Expr, PolicyID, StaticPolicy},
     extensions::Extensions,
     parser::parse_policy,
 };
 
 use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
-    assert_typecheck_fails, assert_typechecks, expr_id_placeholder,
+    assert_typecheck_fails, assert_typechecks, expr_id_placeholder, get_loc,
 };
 use crate::{
     diagnostics::ValidationError,
+    json_schema,
     types::{EntityLUB, Type},
     validation_errors::AttributeAccess,
-    RawName, SchemaError, SchemaFragment, ValidationWarning, ValidatorSchema,
+    RawName, SchemaError, ValidationWarning, ValidatorSchema,
 };
 
-fn namespaced_entity_type_schema() -> SchemaFragment<RawName> {
-    serde_json::from_str(
+fn namespaced_entity_type_schema() -> json_schema::Fragment<RawName> {
+    json_schema::Fragment::from_json_str(
         r#"
             { "N::S": {
                 "entityTypes": {
@@ -78,7 +79,7 @@ fn assert_expr_typechecks_namespace_schema(e: Expr, t: Type) {
 fn assert_expr_typecheck_fails_namespace_schema(
     e: Expr,
     t: Option<Type>,
-    errs: Vec<ValidationError>,
+    errs: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_typecheck_fails(namespaced_entity_type_schema(), e, t, errs)
 }
@@ -138,11 +139,12 @@ fn namespaced_entity_get_attr() {
 
 #[test]
 fn namespaced_entity_can_type_error() {
+    let src = r#"N::S::Foo::"alice" > 1"#;
     assert_expr_typecheck_fails_namespace_schema(
-        Expr::from_str(r#"N::S::Foo::"alice" > 1"#).expect("Expr should parse."),
+        Expr::from_str(src).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
-        vec![ValidationError::expected_type(
-            Expr::from_str(r#"N::S::Foo::"alice""#).expect("Expr should parse."),
+        [ValidationError::expected_type(
+            get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::named_entity_reference_from_str("N::S::Foo"),
@@ -156,38 +158,38 @@ fn namespaced_entity_wrong_namespace() {
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
     assert_expr_typecheck_fails_namespace_schema(
         Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
         None,
-        vec![],
+        [],
     );
 }
 
 #[test]
 fn namespaced_entity_type_in_attribute() {
-    let schema: SchemaFragment<RawName> = serde_json::from_str(
+    let schema = json_schema::Fragment::from_json_str(
         r#"{ "N::S":
             {
                 "entityTypes": {
@@ -235,7 +237,7 @@ fn namespaced_entity_type_in_attribute() {
 
 #[test]
 fn namespaced_entity_type_member_of() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
+    let schema = json_schema::Fragment::from_json_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": {
@@ -268,7 +270,7 @@ fn namespaced_entity_type_member_of() {
 
 #[test]
 fn namespaced_entity_type_applies_to() {
-    let schema: SchemaFragment<RawName> = serde_json::from_value(serde_json::json!(
+    let schema = json_schema::Fragment::from_json_value(serde_json::json!(
     {"N::S": {
         "entityTypes": {
             "Foo": { },
@@ -294,7 +296,7 @@ fn namespaced_entity_type_applies_to() {
 
 #[test]
 fn multiple_namespaces_literals() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {"Foo": {}},
@@ -332,7 +334,7 @@ fn multiple_namespaces_literals() {
 
 #[test]
 fn multiple_namespaces_attributes() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -361,13 +363,14 @@ fn multiple_namespaces_attributes() {
         Expr::from_str("A::Foo::\"foo\".x").unwrap(),
         Type::named_entity_reference_from_str("B::Foo"),
     );
+    let src = "B::Foo::\"foo\".x";
     assert_typecheck_fails(
         schema,
-        Expr::from_str("B::Foo::\"foo\".x").unwrap(),
+        Expr::from_str(src).unwrap(),
         None,
-        vec![ValidationError::unsafe_attribute_access(
-            Expr::from_str("B::Foo::\"foo\".x").unwrap(),
-            PolicyID::from_string("policy0"),
+        [ValidationError::unsafe_attribute_access(
+            get_loc(src, src),
+            PolicyID::from_string("expr"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("B::Foo".parse().unwrap()),
                 vec!["x".into()],
@@ -380,7 +383,7 @@ fn multiple_namespaces_attributes() {
 
 #[test]
 fn multiple_namespaces_member_of() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -419,7 +422,7 @@ fn multiple_namespaces_member_of() {
 
 #[test]
 fn multiple_namespaces_applies_to() {
-    let authorization_model: SchemaFragment<RawName> = serde_json::from_value(json!(
+    let authorization_model = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -488,27 +491,24 @@ fn multiple_namespaces_applies_to() {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_namespace_schema(
     p: StaticPolicy,
-    expected_type_errors: Vec<ValidationError>,
+    expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     assert_policy_typecheck_fails(namespaced_entity_type_schema(), p, expected_type_errors);
 }
 
 #[test]
 fn namespaced_entity_is_wrong_type_and() {
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"
+    let src = r#"
             permit(principal, action, resource)
             when {
                 (true && N::S::Foo::"alice")
             };
-            "#,
-    )
-    .expect("Policy should parse.");
+        "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![ValidationError::expected_type(
-            Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+        [ValidationError::expected_type(
+            get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
@@ -519,20 +519,17 @@ fn namespaced_entity_is_wrong_type_and() {
 
 #[test]
 fn namespaced_entity_is_wrong_type_when() {
-    let policy = parse_policy(
-        Some(PolicyID::from_string("0")),
-        r#"
+    let src = r#"
             permit(principal, action, resource)
             when {
                 N::S::Foo::"alice"
             };
-            "#,
-    )
-    .expect("Policy should parse.");
+            "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     assert_policy_typecheck_fails_namespace_schema(
         policy,
-        vec![ValidationError::expected_type(
-            Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
+        [ValidationError::expected_type(
+            get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
@@ -543,7 +540,7 @@ fn namespaced_entity_is_wrong_type_when() {
 
 #[test]
 fn multi_namespace_action_eq() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
             entity E;
             action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
@@ -585,7 +582,7 @@ fn multi_namespace_action_eq() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -594,7 +591,7 @@ fn multi_namespace_action_eq() {
 
 #[test]
 fn multi_namespace_action_in() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
             entity E;
             namespace NS1 { action "Group"; }
@@ -651,7 +648,7 @@ fn multi_namespace_action_in() {
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
-        vec![ValidationWarning::impossible_policy(
+        [ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )],
@@ -660,7 +657,7 @@ fn multi_namespace_action_in() {
 
 #[test]
 fn test_cedar_policy_642() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
         namespace NS1 {
             entity SystemEntity2 in SystemEntity1;
@@ -697,7 +694,7 @@ fn test_cedar_policy_642() {
 
 #[test]
 fn multi_namespace_action_group_cycle() {
-    let (schema, _) = SchemaFragment::from_str_natural(
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
             namespace A { action "Act" in C::Action::"Act"; }
             namespace B { action "Act" in A::Action::"Act"; }

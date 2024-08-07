@@ -48,11 +48,10 @@ mod fuzzy_match;
 mod rbac;
 mod schema;
 pub use schema::*;
-mod schema_file_format;
-pub use schema_file_format::*;
+pub mod json_schema;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
-pub mod human_schema;
+pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 pub mod types;
@@ -217,7 +216,7 @@ mod test {
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, Expr, PolicyID},
+        ast::{self, PolicyID},
         parser::{self, Loc},
     };
 
@@ -227,30 +226,30 @@ mod test {
         let foo_type = "foo_type";
         let bar_type = "bar_type";
         let action_name = "action";
-        let schema_file = NamespaceDefinition::new(
+        let schema_file = json_schema::NamespaceDefinition::new(
             [
                 (
                     foo_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     bar_type.parse().unwrap(),
-                    EntityType {
+                    json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
             ],
             [(
                 action_name.into(),
-                ActionType {
-                    applies_to: Some(ApplySpec {
+                json_schema::ActionType {
+                    applies_to: Some(json_schema::ApplySpec {
                         principal_types: vec!["foo_type".parse().unwrap()],
                         resource_types: vec!["bar_type".parse().unwrap()],
-                        context: AttributesOrContext::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
                     attributes: None,
@@ -311,7 +310,7 @@ mod test {
     #[test]
     fn top_level_validate_with_links() -> Result<()> {
         let mut set = PolicySet::new();
-        let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment<RawName>>(
+        let schema: ValidatorSchema = json_schema::Fragment::from_json_str(
             r#"
             {
                 "some_namespace": {
@@ -356,7 +355,7 @@ mod test {
         .expect("Expected valid schema.");
         let validator = Validator::new(schema);
 
-        let t = parser::parse_policy_template(
+        let t = parser::parse_policy_or_template(
             Some(PolicyID::from_string("template")),
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
@@ -458,7 +457,7 @@ mod test {
 
     #[test]
     fn validate_finds_warning_and_error() {
-        let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment<RawName>>(
+        let schema: ValidatorSchema = json_schema::Fragment::from_json_str(
             r#"
             {
                 "": {
@@ -491,7 +490,7 @@ mod test {
         assert_eq!(
             result.validation_errors().collect::<Vec<_>>(),
             vec![&ValidationError::expected_type(
-                Expr::val(true),
+                typecheck::test::test_utils::get_loc(src, "true"),
                 PolicyID::from_string("policy0"),
                 Type::primitive_long(),
                 Type::singleton_boolean(true),

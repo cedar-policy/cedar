@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::{Id, UncheckedName},
+    ast::{Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::SchemaTypeVariant;
+use crate::json_schema;
 
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
@@ -92,9 +92,9 @@ impl Path {
     }
 }
 
-impl From<Path> for UncheckedName {
+impl From<Path> for InternalName {
     fn from(value: Path) -> Self {
-        UncheckedName::new(
+        InternalName::new(
             value.0.node.basename,
             value.0.node.namespace,
             Some(value.0.loc),
@@ -240,12 +240,12 @@ pub enum PrimitiveType {
     Bool,
 }
 
-impl<N> From<PrimitiveType> for SchemaTypeVariant<N> {
+impl<N> From<PrimitiveType> for json_schema::TypeVariant<N> {
     fn from(value: PrimitiveType) -> Self {
         match value {
-            PrimitiveType::Long => SchemaTypeVariant::Long,
-            PrimitiveType::String => SchemaTypeVariant::String,
-            PrimitiveType::Bool => SchemaTypeVariant::Boolean,
+            PrimitiveType::Long => json_schema::TypeVariant::Long,
+            PrimitiveType::String => json_schema::TypeVariant::String,
+            PrimitiveType::Bool => json_schema::TypeVariant::Boolean,
         }
     }
 }
