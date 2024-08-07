@@ -591,10 +591,11 @@ impl Diagnostic for HierarchyNotRespected {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy)]
+/// Represents how many entity dereferences can be applied to a node
 /// `None` represents infinity.
 pub struct EntityDerefLevel {
     /// `None` represents infinity.
-    pub level: Option<usize>,
+    pub level: Option<i64>,
 }
 
 impl Display for EntityDerefLevel {
@@ -612,22 +613,32 @@ impl Default for EntityDerefLevel {
     }
 }
 
-impl std::ops::Add for EntityDerefLevel {
-    type Output = Self;
-    fn add(self, other: Self) -> Self {
-        match (self.level, other.level) {
-            (Some(l1), Some(l2)) => Self {
-                level: Some(l1 + l2),
-            },
-            (_, _) => Self { level: None },
-        }
-    }
-}
+// impl std::ops::Add for EntityDerefLevel {
+//     type Output = Self;
+//     fn add(self, other: Self) -> Self {
+//         match (self.level, other.level) {
+//             (Some(l1), Some(l2)) => Self {
+//                 level: Some(l1 + l2),
+//             },
+//             (_, _) => Self { level: None },
+//         }
+//     }
+// }
 
 /// Reverse of default partial_cmp
 impl PartialOrd for EntityDerefLevel {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         other.level.partial_cmp(&self.level)
+    }
+}
+
+impl EntityDerefLevel {
+    /// Decrement the entity deref level
+    pub fn decrement(&self) -> Self {
+        match self.level {
+            None => self.clone(),
+            Some(l) => EntityDerefLevel { level: Some(l - 1) },
+        }
     }
 }
 
