@@ -1736,8 +1736,6 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
     use cedar_policy_core::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -2073,7 +2071,7 @@ mod test {
             "entityTypes": { "User": { } },
             "actions": {}
         }"#;
-        let schema = ValidatorSchema::from_str(src);
+        let schema = ValidatorSchema::from_json_str(src, Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 src,

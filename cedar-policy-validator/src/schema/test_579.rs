@@ -55,7 +55,7 @@
 //!         1. as an entity type
 //!         2. as a common type
 //!
-//! We also repeat all of these tests with both the human syntax and the JSON syntax.
+//! We also repeat all of these tests with both the Cedar syntax and the JSON syntax.
 //! The JSON syntax distinguishes syntactically between entity and common type _references_;
 //! we only do the test for the more sensible one. (For instance, for 1a1, we
 //! only test an entity type reference, not a common type reference.)
@@ -69,7 +69,7 @@ use cool_asserts::assert_matches;
 use serde_json::json;
 
 #[track_caller]
-fn assert_parses_successfully_human(s: &str) -> (ValidatorSchema, Vec<SchemaWarning>) {
+fn assert_parses_successfully_cedar(s: &str) -> (ValidatorSchema, Vec<SchemaWarning>) {
     println!("{s}");
     collect_warnings(ValidatorSchema::from_cedarschema_str(
         s,
@@ -88,7 +88,7 @@ fn assert_parses_successfully_json(v: serde_json::Value) -> ValidatorSchema {
 }
 
 #[track_caller]
-fn assert_parse_error_human(s: &str, e: &ExpectedErrorMessage<'_>) {
+fn assert_parse_error_cedar(s: &str, e: &ExpectedErrorMessage<'_>) {
     println!("{s}");
     assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(s, &Extensions::all_available())), Err(err) => {
         expect_err(s, &miette::Report::new(err), e);
@@ -108,7 +108,7 @@ fn assert_parse_error_json(v: serde_json::Value, e: &ExpectedErrorMessage<'_>) {
 ///
 /// In all of these cases, `MyType` is declared as an entity type in the
 /// current namespace (NS1).
-fn a1_human(mytype_use: &str) -> String {
+fn a1_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         namespace NS1 {{
@@ -144,7 +144,7 @@ fn a1_json() -> serde_json::Value {
 ///
 /// In all of these cases, `MyType` is declared as a common type in the
 /// current namespace (NS1).
-fn a2_human(mytype_use: &str) -> String {
+fn a2_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         namespace NS1 {{
@@ -182,7 +182,7 @@ fn a2_json() -> serde_json::Value {
 ///
 /// In all of these cases, `MyType` is declared as an entity type in the
 /// empty namespace.
-fn b1_human(mytype_use: &str) -> String {
+fn b1_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         entity MyType;
@@ -223,7 +223,7 @@ fn b1_json() -> serde_json::Value {
 ///
 /// In all of these cases, `MyType` is declared as a common type in the
 /// empty namespace.
-fn b2_human(mytype_use: &str) -> String {
+fn b2_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         type MyType = String;
@@ -264,7 +264,7 @@ fn b2_json() -> serde_json::Value {
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is not declared in any namespace.
-fn c_human(mytype_use: &str) -> String {
+fn c_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         namespace NS1 {{
@@ -297,7 +297,7 @@ fn c_json() -> serde_json::Value {
 ///
 /// In all of these cases, `MyType` is declared as an entity type in an
 /// unrelated namespace (NS2).
-fn d1_human(mytype_use: &str) -> String {
+fn d1_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         namespace NS2 {{
@@ -340,7 +340,7 @@ fn d1_json() -> serde_json::Value {
 ///
 /// In all of these cases, `MyType` is declared as a common type in an
 /// unrelated namespace (NS2).
-fn d2_human(mytype_use: &str) -> String {
+fn d2_cedar(mytype_use: &str) -> String {
     format!(
         r#"
         namespace NS2 {{
@@ -379,8 +379,8 @@ fn d2_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind A1.
-fn A1_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind A1.
+fn A1_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [User], resource: [Resource], context: { foo: MyType }};"#
 }
 
@@ -420,8 +420,8 @@ fn A1X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind A2.
-fn A2_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind A2.
+fn A2_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [User], resource: [Resource], context: { foo: NS1::MyType }};"#
 }
 
@@ -461,8 +461,8 @@ fn A2X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind A3.
-fn A3_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind A3.
+fn A3_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [User], resource: [Resource], context: { foo: NS2::MyType }};"#
 }
 
@@ -502,8 +502,8 @@ fn A3X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind B1.
-fn B1_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind B1.
+fn B1_cedar() -> &'static str {
     r#"entity E { foo: MyType };"#
 }
 
@@ -537,8 +537,8 @@ fn B1X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind B2.
-fn B2_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind B2.
+fn B2_cedar() -> &'static str {
     r#"entity E { foo: NS1::MyType };"#
 }
 
@@ -572,8 +572,8 @@ fn B2X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind B3.
-fn B3_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind B3.
+fn B3_cedar() -> &'static str {
     r#"entity E { foo: NS2::MyType };"#
 }
 
@@ -607,8 +607,8 @@ fn B3X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind C1.
-fn C1_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind C1.
+fn C1_cedar() -> &'static str {
     r#"type E = { foo: MyType };"#
 }
 
@@ -636,8 +636,8 @@ fn C1X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind C2.
-fn C2_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind C2.
+fn C2_cedar() -> &'static str {
     r#"type E = { foo: NS1::MyType };"#
 }
 
@@ -665,8 +665,8 @@ fn C2X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind C3.
-fn C3_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind C3.
+fn C3_cedar() -> &'static str {
     r#"type E = { foo: NS2::MyType };"#
 }
 
@@ -694,8 +694,8 @@ fn C3X2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind D1.
-fn D1_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind D1.
+fn D1_cedar() -> &'static str {
     r#"entity E in [MyType];"#
 }
 
@@ -712,8 +712,8 @@ fn D1_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind D2.
-fn D2_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind D2.
+fn D2_cedar() -> &'static str {
     r#"entity E in [NS1::MyType];"#
 }
 
@@ -730,8 +730,8 @@ fn D2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind D3.
-fn D3_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind D3.
+fn D3_cedar() -> &'static str {
     r#"entity E in [NS2::MyType];"#
 }
 
@@ -748,8 +748,8 @@ fn D3_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind E1.
-fn E1_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind E1.
+fn E1_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [MyType], resource: [Resource] };"#
 }
 
@@ -766,8 +766,8 @@ fn E1_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind E2.
-fn E2_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind E2.
+fn E2_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [NS1::MyType], resource: [Resource] };"#
 }
 
@@ -784,8 +784,8 @@ fn E2_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for a `MyType` use of kind E3.
-fn E3_human() -> &'static str {
+/// Generate cedar-schema syntax for a `MyType` use of kind E3.
+fn E3_cedar() -> &'static str {
     r#"action Read appliesTo { principal: [NS2::MyType], resource: [Resource] };"#
 }
 
@@ -802,10 +802,10 @@ fn E3_json(mut schema: serde_json::Value) -> serde_json::Value {
     schema
 }
 
-/// Generate human-schema syntax for F1a.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F1a.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F1a_human() -> &'static str {
+fn F1a_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action ActionGroup;
@@ -831,10 +831,10 @@ fn F1a_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F1b.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F1b.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F1b_human() -> &'static str {
+fn F1b_cedar() -> &'static str {
     r#"
     action ActionGroup;
     namespace NS1 {
@@ -865,10 +865,10 @@ fn F1b_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F1c.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F1c.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F1c_human() -> &'static str {
+fn F1c_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action Read in [ActionGroup];
@@ -892,10 +892,10 @@ fn F1c_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F2a.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F2a.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F2a_human() -> &'static str {
+fn F2a_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action ActionGroup;
@@ -921,10 +921,10 @@ fn F2a_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F2b.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F2b.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F2b_human() -> &'static str {
+fn F2b_cedar() -> &'static str {
     r#"
     action ActionGroup;
     namespace NS1 {
@@ -955,10 +955,10 @@ fn F2b_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F2c.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F2c.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F2c_human() -> &'static str {
+fn F2c_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action Read in [NS1::Action::"ActionGroup"];
@@ -982,10 +982,10 @@ fn F2c_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F3a.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F3a.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F3a_human() -> &'static str {
+fn F3a_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action ActionGroup;
@@ -1011,10 +1011,10 @@ fn F3a_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F3b.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F3b.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F3b_human() -> &'static str {
+fn F3b_cedar() -> &'static str {
     r#"
     action ActionGroup;
     namespace NS1 {
@@ -1045,10 +1045,10 @@ fn F3b_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F3c.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F3c.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F3c_human() -> &'static str {
+fn F3c_cedar() -> &'static str {
     r#"
     namespace NS1 {
         action Read in [NS2::Action::"ActionGroup"];
@@ -1072,10 +1072,10 @@ fn F3c_json() -> serde_json::Value {
     })
 }
 
-/// Generate human-schema syntax for F3d.
-/// (F tests cannot use the standard `a1_human()` etc, because they need action
+/// Generate cedar-schema syntax for F3d.
+/// (F tests cannot use the standard `a1_cedar()` etc, because they need action
 /// declarations instead of entity/common declarations.)
-fn F3d_human() -> &'static str {
+fn F3d_cedar() -> &'static str {
     r#"
     namespace NS2 {
         action ActionGroup;
@@ -1117,31 +1117,31 @@ fn F3d_json() -> serde_json::Value {
 
 #[test]
 fn A1a1() {
-    assert_parses_successfully_human(&a1_human(A1_human()));
+    assert_parses_successfully_cedar(&a1_cedar(A1_cedar()));
     assert_parses_successfully_json(A1X1_json(a1_json()));
 }
 #[test]
 fn A1a2() {
-    assert_parses_successfully_human(&a2_human(A1_human()));
+    assert_parses_successfully_cedar(&a2_cedar(A1_cedar()));
     assert_parses_successfully_json(A1X2_json(a2_json()));
 }
 #[test]
 fn A1b1() {
-    assert_parses_successfully_human(&b1_human(A1_human()));
+    assert_parses_successfully_cedar(&b1_cedar(A1_cedar()));
     assert_parses_successfully_json(A1X1_json(b1_json()));
 }
 #[test]
 fn A1b2() {
-    assert_parses_successfully_human(&b2_human(A1_human()));
+    assert_parses_successfully_cedar(&b2_cedar(A1_cedar()));
     assert_parses_successfully_json(A1X2_json(b2_json()));
 }
 #[test]
 fn A1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1149,176 +1149,176 @@ fn A1c() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&c_human(A1_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(A1_cedar()), &expected_cedar);
     assert_parse_error_json(A1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A2a1() {
-    assert_parses_successfully_human(&a1_human(A2_human()));
+    assert_parses_successfully_cedar(&a1_cedar(A2_cedar()));
     assert_parses_successfully_json(A2X1_json(a1_json()));
 }
 #[test]
 fn A2a2() {
-    assert_parses_successfully_human(&a2_human(A2_human()));
+    assert_parses_successfully_cedar(&a2_cedar(A2_cedar()));
     assert_parses_successfully_json(A2X2_json(a2_json()));
 }
 #[test]
 fn A2b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(A2_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(A2_cedar()), &expected_cedar);
     assert_parse_error_json(A2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A2b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(A2_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(A2_cedar()), &expected_cedar);
     assert_parse_error_json(A2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A2c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(A2_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(A2_cedar()), &expected_cedar);
     assert_parse_error_json(A2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A3a1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a1_human(A3_human()), &expected_human);
+    assert_parse_error_cedar(&a1_cedar(A3_cedar()), &expected_cedar);
     assert_parse_error_json(A3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn A3a2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&a2_human(A3_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(A3_cedar()), &expected_cedar);
     assert_parse_error_json(A3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn A3b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(A3_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(A3_cedar()), &expected_cedar);
     assert_parse_error_json(A3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A3b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(A3_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(A3_cedar()), &expected_cedar);
     assert_parse_error_json(A3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A3c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(A3_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(A3_cedar()), &expected_cedar);
     assert_parse_error_json(A3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A3d1() {
-    assert_parses_successfully_human(&d1_human(A3_human()));
+    assert_parses_successfully_cedar(&d1_cedar(A3_cedar()));
     assert_parses_successfully_json(A3X1_json(d1_json()));
 }
 #[test]
 fn A3d2() {
-    assert_parses_successfully_human(&d2_human(A3_human()));
+    assert_parses_successfully_cedar(&d2_cedar(A3_cedar()));
     assert_parses_successfully_json(A3X2_json(d2_json()));
 }
 #[test]
 fn B1a1() {
-    assert_parses_successfully_human(&a1_human(B1_human()));
+    assert_parses_successfully_cedar(&a1_cedar(B1_cedar()));
     assert_parses_successfully_json(B1X1_json(a1_json()));
 }
 #[test]
 fn B1a2() {
-    assert_parses_successfully_human(&a2_human(B1_human()));
+    assert_parses_successfully_cedar(&a2_cedar(B1_cedar()));
     assert_parses_successfully_json(B1X2_json(a2_json()));
 }
 #[test]
 fn B1b1() {
-    assert_parses_successfully_human(&b1_human(B1_human()));
+    assert_parses_successfully_cedar(&b1_cedar(B1_cedar()));
     assert_parses_successfully_json(B1X1_json(b1_json()));
 }
 #[test]
 fn B1b2() {
-    assert_parses_successfully_human(&b2_human(B1_human()));
+    assert_parses_successfully_cedar(&b2_cedar(B1_cedar()));
     assert_parses_successfully_json(B1X2_json(b2_json()));
 }
 #[test]
 fn B1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1326,176 +1326,176 @@ fn B1c() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&c_human(B1_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(B1_cedar()), &expected_cedar);
     assert_parse_error_json(B1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B2a1() {
-    assert_parses_successfully_human(&a1_human(B2_human()));
+    assert_parses_successfully_cedar(&a1_cedar(B2_cedar()));
     assert_parses_successfully_json(B2X1_json(a1_json()));
 }
 #[test]
 fn B2a2() {
-    assert_parses_successfully_human(&a2_human(B2_human()));
+    assert_parses_successfully_cedar(&a2_cedar(B2_cedar()));
     assert_parses_successfully_json(B2X2_json(a2_json()));
 }
 #[test]
 fn B2b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(B2_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(B2_cedar()), &expected_cedar);
     assert_parse_error_json(B2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B2b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(B2_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(B2_cedar()), &expected_cedar);
     assert_parse_error_json(B2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B2c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(B2_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(B2_cedar()), &expected_cedar);
     assert_parse_error_json(B2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B3a1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a1_human(B3_human()), &expected_human);
+    assert_parse_error_cedar(&a1_cedar(B3_cedar()), &expected_cedar);
     assert_parse_error_json(B3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn B3a2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&a2_human(B3_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(B3_cedar()), &expected_cedar);
     assert_parse_error_json(B3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn B3b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(B3_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(B3_cedar()), &expected_cedar);
     assert_parse_error_json(B3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B3b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(B3_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(B3_cedar()), &expected_cedar);
     assert_parse_error_json(B3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B3c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(B3_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(B3_cedar()), &expected_cedar);
     assert_parse_error_json(B3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B3d1() {
-    assert_parses_successfully_human(&d1_human(B3_human()));
+    assert_parses_successfully_cedar(&d1_cedar(B3_cedar()));
     assert_parses_successfully_json(B3X1_json(d1_json()));
 }
 #[test]
 fn B3d2() {
-    assert_parses_successfully_human(&d2_human(B3_human()));
+    assert_parses_successfully_cedar(&d2_cedar(B3_cedar()));
     assert_parses_successfully_json(B3X2_json(d2_json()));
 }
 #[test]
 fn C1a1() {
-    assert_parses_successfully_human(&a1_human(C1_human()));
+    assert_parses_successfully_cedar(&a1_cedar(C1_cedar()));
     assert_parses_successfully_json(C1X1_json(a1_json()));
 }
 #[test]
 fn C1a2() {
-    assert_parses_successfully_human(&a2_human(C1_human()));
+    assert_parses_successfully_cedar(&a2_cedar(C1_cedar()));
     assert_parses_successfully_json(C1X2_json(a2_json()));
 }
 #[test]
 fn C1b1() {
-    assert_parses_successfully_human(&b1_human(C1_human()));
+    assert_parses_successfully_cedar(&b1_cedar(C1_cedar()));
     assert_parses_successfully_json(C1X1_json(b1_json()));
 }
 #[test]
 fn C1b2() {
-    assert_parses_successfully_human(&b2_human(C1_human()));
+    assert_parses_successfully_cedar(&b2_cedar(C1_cedar()));
     assert_parses_successfully_json(C1X2_json(b2_json()));
 }
 #[test]
 fn C1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as a common or entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1503,152 +1503,152 @@ fn C1c() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&c_human(C1_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(C1_cedar()), &expected_cedar);
     assert_parse_error_json(C1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C2a1() {
-    assert_parses_successfully_human(&a1_human(C2_human()));
+    assert_parses_successfully_cedar(&a1_cedar(C2_cedar()));
     assert_parses_successfully_json(C2X1_json(a1_json()));
 }
 #[test]
 fn C2a2() {
-    assert_parses_successfully_human(&a2_human(C2_human()));
+    assert_parses_successfully_cedar(&a2_cedar(C2_cedar()));
     assert_parses_successfully_json(C2X2_json(a2_json()));
 }
 #[test]
 fn C2b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(C2_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(C2_cedar()), &expected_cedar);
     assert_parse_error_json(C2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C2b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(C2_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(C2_cedar()), &expected_cedar);
     assert_parse_error_json(C2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C2c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(C2_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(C2_cedar()), &expected_cedar);
     assert_parse_error_json(C2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C3a1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a1_human(C3_human()), &expected_human);
+    assert_parse_error_cedar(&a1_cedar(C3_cedar()), &expected_cedar);
     assert_parse_error_json(C3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn C3a2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&a2_human(C3_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(C3_cedar()), &expected_cedar);
     assert_parse_error_json(C3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn C3b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(C3_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(C3_cedar()), &expected_cedar);
     assert_parse_error_json(C3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C3b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common type")
         .build();
-    assert_parse_error_human(&b2_human(C3_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(C3_cedar()), &expected_cedar);
     assert_parse_error_json(C3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C3c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as a common or entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(C3_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(C3_cedar()), &expected_cedar);
     assert_parse_error_json(C3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C3d1() {
-    assert_parses_successfully_human(&d1_human(C3_human()));
+    assert_parses_successfully_cedar(&d1_cedar(C3_cedar()));
     assert_parses_successfully_json(C3X1_json(d1_json()));
 }
 #[test]
 fn C3d2() {
-    assert_parses_successfully_human(&d2_human(C3_human()));
+    assert_parses_successfully_cedar(&d2_cedar(C3_cedar()));
     assert_parses_successfully_json(C3X2_json(d2_json()));
 }
 #[test]
 fn D1a1() {
-    assert_parses_successfully_human(&a1_human(D1_human()));
+    assert_parses_successfully_cedar(&a1_cedar(D1_cedar()));
     assert_parses_successfully_json(D1_json(a1_json()));
 }
 #[test]
@@ -1657,11 +1657,11 @@ fn D1a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1669,12 +1669,12 @@ fn D1a2() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&a2_human(D1_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(D1_cedar()), &expected_cedar);
     assert_parse_error_json(D1_json(a2_json()), &expected_json);
 }
 #[test]
 fn D1b1() {
-    assert_parses_successfully_human(&b1_human(D1_human()));
+    assert_parses_successfully_cedar(&b1_cedar(D1_cedar()));
     assert_parses_successfully_json(D1_json(b1_json()));
 }
 #[test]
@@ -1683,11 +1683,11 @@ fn D1b2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1695,16 +1695,16 @@ fn D1b2() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&b2_human(D1_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(D1_cedar()), &expected_cedar);
     assert_parse_error_json(D1_json(b2_json()), &expected_json);
 }
 #[test]
 fn D1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1712,12 +1712,12 @@ fn D1c() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&c_human(D1_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(D1_cedar()), &expected_cedar);
     assert_parse_error_json(D1_json(c_json()), &expected_json);
 }
 #[test]
 fn D2a1() {
-    assert_parses_successfully_human(&a1_human(D2_human()));
+    assert_parses_successfully_cedar(&a1_cedar(D2_cedar()));
     assert_parses_successfully_json(D2_json(a1_json()));
 }
 #[test]
@@ -1726,142 +1726,142 @@ fn D2a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a2_human(D2_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(D2_cedar()), &expected_cedar);
     assert_parse_error_json(D2_json(a2_json()), &expected_json);
 }
 #[test]
 fn D2b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(D2_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(D2_cedar()), &expected_cedar);
     assert_parse_error_json(D2_json(b1_json()), &expected_json);
 }
 #[test]
 fn D2b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b2_human(D2_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(D2_cedar()), &expected_cedar);
     assert_parse_error_json(D2_json(b2_json()), &expected_json);
 }
 #[test]
 fn D2c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(D2_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(D2_cedar()), &expected_cedar);
     assert_parse_error_json(D2_json(c_json()), &expected_json);
 }
 #[test]
 fn D3a1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a1_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&a1_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(a1_json()), &expected_json);
 }
 #[test]
 fn D3a2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a2_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(a2_json()), &expected_json);
 }
 #[test]
 fn D3b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(b1_json()), &expected_json);
 }
 #[test]
 fn D3b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b2_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(b2_json()), &expected_json);
 }
 #[test]
 fn D3c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(c_json()), &expected_json);
 }
 #[test]
 fn D3d1() {
-    assert_parses_successfully_human(&d1_human(D3_human()));
+    assert_parses_successfully_cedar(&d1_cedar(D3_cedar()));
     assert_parses_successfully_json(D3_json(d1_json()));
 }
 #[test]
@@ -1870,18 +1870,18 @@ fn D3d2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&d2_human(D3_human()), &expected_human);
+    assert_parse_error_cedar(&d2_cedar(D3_cedar()), &expected_cedar);
     assert_parse_error_json(D3_json(d2_json()), &expected_json);
 }
 #[test]
 fn E1a1() {
-    assert_parses_successfully_human(&a1_human(E1_human()));
+    assert_parses_successfully_cedar(&a1_cedar(E1_cedar()));
     assert_parses_successfully_json(E1_json(a1_json()));
 }
 #[test]
@@ -1890,11 +1890,11 @@ fn E1a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1902,12 +1902,12 @@ fn E1a2() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&a2_human(E1_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(E1_cedar()), &expected_cedar);
     assert_parse_error_json(E1_json(a2_json()), &expected_json);
 }
 #[test]
 fn E1b1() {
-    assert_parses_successfully_human(&b1_human(E1_human()));
+    assert_parses_successfully_cedar(&b1_cedar(E1_cedar()));
     assert_parses_successfully_json(E1_json(b1_json()));
 }
 #[test]
@@ -1916,11 +1916,11 @@ fn E1b2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1928,16 +1928,16 @@ fn E1b2() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&b2_human(E1_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(E1_cedar()), &expected_cedar);
     assert_parse_error_json(E1_json(b2_json()), &expected_json);
 }
 #[test]
 fn E1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             // No source location on this error because the JSON structures don't carry source locations,
-            // and since the human-syntax processing works by first converting to the JSON structures,
+            // and since the cedar-syntax processing works by first converting to the JSON structures,
             // we lose the source locations at that point.
             // See #1084.
             .build();
@@ -1945,12 +1945,12 @@ fn E1c() {
         ExpectedErrorMessageBuilder::error("failed to resolve type: MyType")
             .help("neither `NS1::MyType` nor `MyType` refers to anything that has been declared as an entity type")
             .build();
-    assert_parse_error_human(&c_human(E1_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(E1_cedar()), &expected_cedar);
     assert_parse_error_json(E1_json(c_json()), &expected_json);
 }
 #[test]
 fn E2a1() {
-    assert_parses_successfully_human(&a1_human(E2_human()));
+    assert_parses_successfully_cedar(&a1_cedar(E2_cedar()));
     assert_parses_successfully_json(E2_json(a1_json()));
 }
 #[test]
@@ -1959,142 +1959,142 @@ fn E2a2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a2_human(E2_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(E2_cedar()), &expected_cedar);
     assert_parse_error_json(E2_json(a2_json()), &expected_json);
 }
 #[test]
 fn E2b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(E2_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(E2_cedar()), &expected_cedar);
     assert_parse_error_json(E2_json(b1_json()), &expected_json);
 }
 #[test]
 fn E2b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b2_human(E2_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(E2_cedar()), &expected_cedar);
     assert_parse_error_json(E2_json(b2_json()), &expected_json);
 }
 #[test]
 fn E2c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS1::MyType")
         .help("`NS1::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(E2_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(E2_cedar()), &expected_cedar);
     assert_parse_error_json(E2_json(c_json()), &expected_json);
 }
 #[test]
 fn E3a1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a1_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&a1_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(a1_json()), &expected_json);
 }
 #[test]
 fn E3a2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&a2_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&a2_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(a2_json()), &expected_json);
 }
 #[test]
 fn E3b1() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b1_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&b1_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(b1_json()), &expected_json);
 }
 #[test]
 fn E3b2() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&b2_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&b2_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(b2_json()), &expected_json);
 }
 #[test]
 fn E3c() {
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         // No source location on this error because the JSON structures don't carry source locations,
-        // and since the human-syntax processing works by first converting to the JSON structures,
+        // and since the cedar-syntax processing works by first converting to the JSON structures,
         // we lose the source locations at that point.
         // See #1084.
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&c_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&c_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(c_json()), &expected_json);
 }
 #[test]
 fn E3d1() {
-    assert_parses_successfully_human(&d1_human(E3_human()));
+    assert_parses_successfully_cedar(&d1_cedar(E3_cedar()));
     assert_parses_successfully_json(E3_json(d1_json()));
 }
 #[test]
@@ -2103,28 +2103,28 @@ fn E3d2() {
     // The error message could be more clear, e.g., specialized to check whether
     // the type that failed to resolve would have resolved to a common type if
     // it were allowed to.
-    let expected_human = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
+    let expected_cedar = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
     let expected_json = ExpectedErrorMessageBuilder::error("failed to resolve type: NS2::MyType")
         .help("`NS2::MyType` has not been declared as an entity type")
         .build();
-    assert_parse_error_human(&d2_human(E3_human()), &expected_human);
+    assert_parse_error_cedar(&d2_cedar(E3_cedar()), &expected_cedar);
     assert_parse_error_json(E3_json(d2_json()), &expected_json);
 }
 #[test]
 fn F1a() {
-    assert_parses_successfully_human(F1a_human());
+    assert_parses_successfully_cedar(F1a_cedar());
     assert_parses_successfully_json(F1a_json());
 }
 #[test]
 fn F1b() {
-    assert_parses_successfully_human(F1b_human());
+    assert_parses_successfully_cedar(F1b_cedar());
     assert_parses_successfully_json(F1b_json());
 }
 #[test]
 fn F1c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2132,17 +2132,17 @@ fn F1c() {
         ExpectedErrorMessageBuilder::error("undeclared action: Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F1c_human(), &expected_human);
+    assert_parse_error_cedar(F1c_cedar(), &expected_cedar);
     assert_parse_error_json(F1c_json(), &expected_json);
 }
 #[test]
 fn F2a() {
-    assert_parses_successfully_human(F2a_human());
+    assert_parses_successfully_cedar(F2a_cedar());
     assert_parses_successfully_json(F2a_json());
 }
 #[test]
 fn F2b() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2150,12 +2150,12 @@ fn F2b() {
         ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F2b_human(), &expected_human);
+    assert_parse_error_cedar(F2b_cedar(), &expected_cedar);
     assert_parse_error_json(F2b_json(), &expected_json);
 }
 #[test]
 fn F2c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2163,12 +2163,12 @@ fn F2c() {
         ExpectedErrorMessageBuilder::error("undeclared action: NS1::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F2c_human(), &expected_human);
+    assert_parse_error_cedar(F2c_cedar(), &expected_cedar);
     assert_parse_error_json(F2c_json(), &expected_json);
 }
 #[test]
 fn F3a() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2176,12 +2176,12 @@ fn F3a() {
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F3a_human(), &expected_human);
+    assert_parse_error_cedar(F3a_cedar(), &expected_cedar);
     assert_parse_error_json(F3a_json(), &expected_json);
 }
 #[test]
 fn F3b() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2189,12 +2189,12 @@ fn F3b() {
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F3b_human(), &expected_human);
+    assert_parse_error_cedar(F3b_cedar(), &expected_cedar);
     assert_parse_error_json(F3b_json(), &expected_json);
 }
 #[test]
 fn F3c() {
-    let expected_human =
+    let expected_cedar =
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
@@ -2202,11 +2202,11 @@ fn F3c() {
         ExpectedErrorMessageBuilder::error("undeclared action: NS2::Action::\"ActionGroup\"")
             .help("any actions appearing as parents need to be declared as actions")
             .build();
-    assert_parse_error_human(F3c_human(), &expected_human);
+    assert_parse_error_cedar(F3c_cedar(), &expected_cedar);
     assert_parse_error_json(F3c_json(), &expected_json);
 }
 #[test]
 fn F3d() {
-    assert_parses_successfully_human(F3d_human());
+    assert_parses_successfully_cedar(F3d_cedar());
     assert_parses_successfully_json(F3d_json());
 }
