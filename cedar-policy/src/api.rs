@@ -34,7 +34,6 @@ use cedar_policy_core::entities::{
     JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
-use cedar_policy_core::est::{Link, PolicyEntry};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
@@ -2497,22 +2496,18 @@ impl PolicySet {
 
     /// Get the EST representation of the [`PolicySet`]
     fn est(self) -> Result<est::PolicySet, PolicyToJsonError> {
-        let (static_policies, links): (Vec<_>, Vec<_>) =
+        let (static_policies, template_links): (Vec<_>, Vec<_>) =
             fold_partition(self.policies, is_static_or_link)?;
+        let static_policies = static_policies.into_iter().collect::<HashMap<_, _>>();
         let templates = self
             .templates
             .into_iter()
-            .map(|(id, template)| {
-                template.lossless.est().map(|est| PolicyEntry {
-                    id: id.0,
-                    policy: est,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|(id, template)| template.lossless.est().map(|est| (id.0, est)))
+            .collect::<Result<HashMap<_, _>, _>>()?;
         let est = est::PolicySet {
             templates,
             static_policies,
-            links,
+            template_links,
         };
 
         Ok(est)
@@ -2786,27 +2781,22 @@ impl std::fmt::Display for PolicySet {
 /// link
 fn is_static_or_link(
     (id, policy): (PolicyId, Policy),
-) -> Result<Either<est::PolicyEntry, Link>, PolicyToJsonError> {
+) -> Result<Either<(ast::PolicyID, est::Policy), est::TemplateLink>, PolicyToJsonError> {
     match policy.template_id() {
         Some(template_id) => {
-            let slots = policy
+            let values = policy
                 .ast
                 .env()
                 .iter()
                 .map(|(id, euid)| (*id, euid.clone()))
                 .collect();
-            Ok(Either::Right(Link {
-                id: id.0,
-                template: template_id.clone().0,
-                slots,
+            Ok(Either::Right(est::TemplateLink {
+                new_id: id.0,
+                template_id: template_id.clone().0,
+                values,
             }))
         }
-        None => policy.lossless.est().map(|est| {
-            Either::Left(PolicyEntry {
-                id: id.0,
-                policy: est,
-            })
-        }),
+        None => policy.lossless.est().map(|est| Either::Left((id.0, est))),
     }
 }
 
@@ -4810,9 +4800,9 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_empty() {
         let empty = serde_json::json!({
-            "templates" : [],
-            "staticPolicies" : [],
-            "links" : []
+            "templates" : {},
+            "staticPolicies" : {},
+            "templateLinks" : []
         });
         let empty = PolicySet::from_json_value(empty).unwrap();
         assert_eq!(empty, PolicySet::default());
@@ -4821,48 +4811,46 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_single() {
         let value = serde_json::json!({
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies" :{
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-        ],
-        "links" : [
-        ]});
+                        }
+                    ]
+                }
+            },
+            "templates" : {},
+            "templateLinks" : []
+        });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
         assert_eq!(policyset.templates().count(), 0);
@@ -4873,71 +4861,69 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates() {
         let value = serde_json::json!({
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates":{
+                "template": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" }
+                    }
+                }
+            ]
+        });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
         assert_eq!(policyset.policies().count(), 2);
@@ -4964,145 +4950,141 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_link_name() {
         let value = serde_json::json!({
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "non_existant",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "non_existent",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" }
+                    }
+                }
+            ]
+        });
 
         let err = PolicySet::from_json_value(value).err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Error deserializing a policy/template from JSON: Error linking policy set: failed to find a template with id `non_existant`"
+            "Error deserializing a policy/template from JSON: Error linking policy set: failed to find a template with id `non_existent`"
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_empty_env() {
         let value = serde_json::json!({
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {},
-            }
-        ]});
+                        }
+                    ]
+                }
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {},
+                }
+            ]
+        });
 
         let err = PolicySet::from_json_value(value).err().unwrap();
         assert_eq!(
@@ -5114,41 +5096,40 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_links() {
         let value = serde_json::json!({
-            "staticPolicies" : [],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
+            "staticPolicies" : {},
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
                 }
             },
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                    }
+                },
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                    }
                 }
-            }
-        ]});
+            ]
+        });
 
         let err = PolicySet::from_json_value(value).err().unwrap().to_string();
         assert_eq!(err, "Error deserializing a policy/template from JSON: Error linking policy set: template-linked policy id `link` conflicts with an existing policy id");
@@ -5157,72 +5138,70 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_extra_vals() {
         let value = serde_json::json!({
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All",
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?resource" : { "type" : "Box", "id" : "ABC" }
+                        }
+                    ]
                 }
-            }
-        ]});
+            },
+            "templates": {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                        "?resource" : { "type" : "Box", "id" : "ABC" }
+                    }
+                }
+            ]}
+        );
 
         let err = PolicySet::from_json_value(value).err().unwrap();
         assert_eq!(
@@ -5234,72 +5213,69 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_vals() {
         let value = r#" {
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User", "id" : "John" },
-                    "?principal" : { "type" : "User", "id" : "Duplicate" }
+                        }
+                    ]
                 }
-            }
-        ]}"#;
+            },
+            "templates" : {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All"
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "John" },
+                        "?principal" : { "type" : "User", "id" : "Duplicate" }
+                    }
+                }
+            ]}"#;
 
         let err = PolicySet::from_json_str(value).err().unwrap().to_string();
         assert!(err.contains("found duplicate key"));
@@ -5308,71 +5284,68 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_euid() {
         let value = r#" {
-            "staticPolicies" : [
-                { "id" : "policy1",
-                   "policy" : {
-                        "effect": "permit",
-                        "principal": {
-                            "op": "==",
-                            "entity": { "type": "User", "id": "12UA45" }
-                        },
-                        "action": {
-                            "op": "==",
-                            "entity": { "type": "Action", "id": "view" }
-                        },
-                        "resource": {
-                            "op": "in",
-                            "entity": { "type": "Folder", "id": "abc" }
-                        },
-                        "conditions": [
-                            {
-                                "kind": "when",
-                                "body": {
-                                    "==": {
-                                        "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                            "attr": "tls_version"
-                                            }
-                                        },
-                                        "right": {
-                                            "Value": "1.3"
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "abc" }
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        ".": {
+                                            "left": {
+                                                "Var": "context"
+                                            },
+                                        "attr": "tls_version"
                                         }
+                                    },
+                                    "right": {
+                                        "Value": "1.3"
                                     }
                                 }
                             }
-                        ]
-            }
-        }],
-        "templates" : [
-            { "id" : "template1",
-              "policy" : {
-                  "effect" : "permit",
-                  "principal" : {
-                      "op" : "==",
-                      "slot" : "?principal"
-                  },
-                  "action" : {
-                      "op" : "All"
-                  },
-                  "resource" : {
-                      "op" : "All"
-                  },
-                  "conditions": []
-              }
-            }
-        ],
-        "links" : [
-            {
-                "id" : "link",
-                "template" : "template1",
-                "slots" : {
-                    "?principal" : { "type" : "User" }
+                        }
+                    ]
                 }
-            }
-        ]}"#;
+            },
+            "templates" : {
+                "template1": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All"
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template1",
+                    "values" : {
+                        "?principal" : { "type" : "User" }
+                    }
+                }
+            ]}"#;
 
         let err = PolicySet::from_json_str(value).err().unwrap().to_string();
         assert!(err.contains("while parsing a template link, expected a literal entity reference"));

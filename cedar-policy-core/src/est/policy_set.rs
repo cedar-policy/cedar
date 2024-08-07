@@ -25,16 +25,20 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
 
-/// An EST set of policies
+/// Serde JSON structure for a policy set in the EST format
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct PolicySet {
     /// The set of templates in a policy set
-    pub templates: Vec<PolicyEntry>,
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    pub templates: HashMap<PolicyID, Policy>,
     /// The set of static policies in a policy set
-    pub static_policies: Vec<PolicyEntry>,
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    pub static_policies: HashMap<PolicyID, Policy>,
     /// The set of template links
-    pub links: Vec<Link>,
+    pub template_links: Vec<TemplateLink>,
 }
 
 impl PolicySet {
@@ -43,26 +47,16 @@ impl PolicySet {
     /// used in cases where the policy set is guaranteed to be well-formed
     /// (e.g., after successful conversion to an `ast::PolicySet`)
     pub fn get_policy(&self, id: &PolicyID) -> Option<Policy> {
-        let maybe_static_policy = self
-            .static_policies
-            .iter()
-            .filter_map(|entry| {
-                if &entry.id == id {
-                    Some(entry.policy.clone())
-                } else {
-                    None
-                }
-            })
-            .next();
+        let maybe_static_policy = self.static_policies.get(id).cloned();
 
         let maybe_link = self
-            .links
+            .template_links
             .iter()
             .filter_map(|link| {
-                if &link.id == id {
-                    self.get_template(&link.template).and_then(|template| {
+                if &link.new_id == id {
+                    self.get_template(&link.template_id).and_then(|template| {
                         let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> =
-                            link.slots.iter().map(|(k, v)| (*k, v.into())).collect();
+                            link.values.iter().map(|(k, v)| (*k, v.into())).collect();
                         template.link(&unwrapped_est_vals).ok()
                     })
                 } else {
@@ -79,39 +73,23 @@ impl PolicySet {
     /// used in cases where the policy set is guaranteed to be well-formed
     /// (e.g., after successful conversion to an `ast::PolicySet`)
     pub fn get_template(&self, id: &PolicyID) -> Option<Policy> {
-        self.templates
-            .iter()
-            .filter_map(|entry| {
-                if &entry.id == id {
-                    Some(entry.policy.clone())
-                } else {
-                    None
-                }
-            })
-            .next()
+        self.templates.get(id).cloned()
     }
 }
 
-/// A policy id and EST policy pair
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PolicyEntry {
-    /// The id of this policy
-    pub id: PolicyID,
-    /// The EST of this policy
-    pub policy: Policy,
-}
-
-/// A record of a template-linked policy
+/// Serde JSON structure describing a template-linked policy
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Link {
-    /// The id of the link
-    pub id: PolicyID,
-    /// The id of the template
-    pub template: PolicyID,
-    /// The mapping between slots and entity uids
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct TemplateLink {
+    /// Id of the template to link against
+    pub template_id: PolicyID,
+    /// Id of the generated policy
+    pub new_id: PolicyID,
+    /// Mapping between slots and entity uids
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,EntityUidJson<TemplateLinkContext>>")]
-    pub slots: HashMap<SlotId, EntityUID>,
+    pub values: HashMap<SlotId, EntityUID>,
 }
 
 /// Statically set the deserialization error context to be deserialization of a template link
@@ -129,23 +107,23 @@ impl TryFrom<PolicySet> for ast::PolicySet {
     fn try_from(value: PolicySet) -> Result<Self, Self::Error> {
         let mut ast_pset = ast::PolicySet::default();
 
-        for PolicyEntry { id, policy } in value.templates {
+        for (id, policy) in value.templates {
             let ast = policy.try_into_ast_template(Some(id))?;
             ast_pset.add_template(ast)?;
         }
 
-        for PolicyEntry { id, policy } in value.static_policies {
+        for (id, policy) in value.static_policies {
             let ast = policy.try_into_ast_policy(Some(id))?;
             ast_pset.add(ast)?;
         }
 
-        for Link {
-            id,
-            template,
-            slots: env,
-        } in value.links
+        for TemplateLink {
+            template_id,
+            new_id,
+            values,
+        } in value.template_links
         {
-            ast_pset.link(template, id, env)?;
+            ast_pset.link(template_id, new_id, values)?;
         }
 
         Ok(ast_pset)
@@ -154,19 +132,173 @@ impl TryFrom<PolicySet> for ast::PolicySet {
 
 #[cfg(test)]
 mod test {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
-    fn link_prevents_duplicates() {
-        let value = r#"
-            "id" : "foo",
-            "template" : "bar",
-            "env" : {
+    fn valid_example() {
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" }
+                    },
+                    "resource": {
+                        "op": "in",
+                        "entity": { "type": "Folder", "id": "foo" }
+                    },
+                    "conditions": []
+                }
+            },
+            "templates": {
+                "template": {
+                    "effect" : "permit",
+                    "principal" : {
+                        "op" : "==",
+                        "slot" : "?principal"
+                    },
+                    "action" : {
+                        "op" : "All"
+                    },
+                    "resource" : {
+                        "op" : "All",
+                    },
+                    "conditions": []
+                }
+            },
+            "templateLinks" : [
+                {
+                    "newId" : "link",
+                    "templateId" : "template",
+                    "values" : {
+                        "?principal" : { "type" : "User", "id" : "bob" }
+                    }
+                }
+            ]
+        });
+
+        let est_policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        let ast_policy_set: ast::PolicySet =
+            est_policy_set.try_into().expect("failed to convert to AST");
+        assert_eq!(ast_policy_set.policies().count(), 2);
+        assert_eq!(ast_policy_set.templates().count(), 1);
+        assert!(ast_policy_set
+            .get_template(&PolicyID::from_string("template"))
+            .is_some());
+        let link = ast_policy_set.get(&PolicyID::from_string("link")).unwrap();
+        assert_eq!(link.template().id(), &PolicyID::from_string("template"));
+        assert_eq!(
+            link.env(),
+            &HashMap::from_iter([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())])
+        );
+        assert_eq!(
+            ast_policy_set
+                .get_linked_policies(&PolicyID::from_string("template"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn unknown_field() {
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op" : "All"
+                    },
+                    "resource": {
+                        "op" : "All"
+                    },
+                    "conditions": []
+                }
+            },
+            "templates": {},
+            "links" : []
+        });
+
+        let err = serde_json::from_value::<PolicySet>(json)
+            .expect_err("should have failed to parse from JSON");
+        assert_eq!(
+            err.to_string(),
+            "unknown field `links`, expected one of `templates`, `staticPolicies`, `templateLinks`"
+        );
+    }
+
+    #[test]
+    fn duplicate_policy_ids() {
+        let str = r#"{
+            "staticPolicies" : {
+                "policy0": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op" : "All"
+                    },
+                    "resource": {
+                        "op" : "All"
+                    },
+                    "conditions": []
+                },
+                "policy0": {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "User", "id": "alice" }
+                    },
+                    "action": {
+                        "op" : "All"
+                    },
+                    "resource": {
+                        "op" : "All"
+                    },
+                    "conditions": []
+                }
+            },
+            "templates" : {},
+            "templateLinks" : []
+        }"#;
+        let err = serde_json::from_str::<PolicySet>(str)
+            .expect_err("should have failed to parse from JSON");
+        assert_eq!(
+            err.to_string(),
+            "invalid entry: found duplicate key at line 31 column 13"
+        );
+    }
+
+    #[test]
+    fn duplicate_slot_ids() {
+        let str = r#"{
+            "newId" : "foo",
+            "templateId" : "bar",
+            "values" : {
                 "?principal" : { "type" : "User", "id" : "John" },
                 "?principal" : { "type" : "User", "id" : "John" },
             }
         }"#;
-        let r: Result<Link, _> = serde_json::from_str(value);
-        assert!(r.is_err());
+
+        let err = serde_json::from_str::<TemplateLink>(str)
+            .expect_err("should have failed to parse from JSON");
+        assert_eq!(
+            err.to_string(),
+            "invalid entry: found duplicate key at line 6 column 65"
+        );
     }
 }
