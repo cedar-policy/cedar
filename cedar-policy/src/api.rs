@@ -2429,51 +2429,63 @@ impl FromStr for PolicySet {
 
 impl PolicySet {
     /// Build the policy set AST from the EST
-    fn from_est(est: est::PolicySet) -> Result<Self, PolicySetError> {
-        let mut pset = Self::default();
-
-        for PolicyEntry { id, policy } in est.templates {
-            let template = Template::from_est(Some(PolicyId(id)), policy)?;
-            pset.add_template(template)?;
-        }
-
-        for PolicyEntry { id, policy } in est.static_policies {
-            let p = Policy::from_est(Some(PolicyId(id)), policy)?;
-            pset.add(p)?;
-        }
-
-        for Link {
-            id,
-            template,
-            slots,
-        } in est.links
-        {
-            let slots = slots
-                .into_iter()
-                .map(|(key, value)| (key.into(), EntityUid(value)))
-                .collect();
-            pset.link(PolicyId(template), PolicyId(id), slots)?;
-        }
-
-        Ok(pset)
+    fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
+        let ast: ast::PolicySet = est.clone().try_into()?;
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let policies = ast
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::Est(est.get_policy(p.id()).expect(
+                            "internal invariant violation: policy id exists in asts but not ests",
+                        )),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.templates()` occurs in `est`
+        #[allow(clippy::expect_used)]
+        let templates = ast
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::Est(est.get_template(t.id()).expect(
+                            "internal invariant violation: template id exists in asts but not ests",
+                        )),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
+        Ok(Self {
+            ast,
+            policies,
+            templates,
+        })
     }
 
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_str(src.as_ref())?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON value
     pub fn from_json_value(src: serde_json::Value) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_value(src)?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Deserialize the [`PolicySet`] from a JSON reader
     pub fn from_json_file(r: impl std::io::Read) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_reader(r)?;
-        Self::from_est(est)
+        Self::from_est(&est)
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
@@ -4799,7 +4811,7 @@ mod test {
     fn test_est_policyset_decoding_empty() {
         let empty = serde_json::json!({
             "templates" : [],
-            "static_policies" : [],
+            "staticPolicies" : [],
             "links" : []
         });
         let empty = PolicySet::from_json_value(empty).unwrap();
@@ -4809,7 +4821,7 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_single() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4861,7 +4873,7 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -4952,7 +4964,7 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_link_name() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -5019,17 +5031,16 @@ mod test {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let template1 = PolicyId::new("non_existant").0;
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate { id }) if id == template1
+        assert_eq!(
+            err.to_string(),
+            "Error deserializing a policy/template from JSON: Error linking policy set: failed to find a template with id `non_existant`"
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_empty_env() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -5094,20 +5105,59 @@ mod test {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_principal = vec![SlotId::principal().into()];
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if extra_values.is_empty() && unbound_values == just_principal
+        assert_eq!(
+            err.to_string(),
+            "Error deserializing a policy/template from JSON: Error linking policy set: the following slots were not provided as arguments: ?principal"
         );
+    }
+
+    #[test]
+    fn test_est_policyset_decoding_templates_bad_dup_links() {
+        let value = serde_json::json!({
+            "staticPolicies" : [],
+        "templates" : [
+            { "id" : "template1",
+              "policy" : {
+                  "effect" : "permit",
+                  "principal" : {
+                      "op" : "==",
+                      "slot" : "?principal"
+                  },
+                  "action" : {
+                      "op" : "All"
+                  },
+                  "resource" : {
+                      "op" : "All",
+                  },
+                  "conditions": []
+              }
+            }
+        ],
+        "links" : [
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            },
+            {
+                "id" : "link",
+                "template" : "template1",
+                "slots" : {
+                    "?principal" : { "type" : "User", "id" : "John" },
+                }
+            }
+        ]});
+
+        let err = PolicySet::from_json_value(value).err().unwrap().to_string();
+        assert_eq!(err, "Error deserializing a policy/template from JSON: Error linking policy set: template-linked policy id `link` conflicts with an existing policy id");
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_extra_vals() {
         let value = serde_json::json!({
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -5175,20 +5225,16 @@ mod test {
         ]});
 
         let err = PolicySet::from_json_value(value).err().unwrap();
-        let just_resource = vec![SlotId::resource().into()];
-        assert_matches!(
-            err,
-            PolicySetError::LinkingError(ast::LinkingError::ArityError {
-                unbound_values,
-                extra_values
-            }) if unbound_values.is_empty() && extra_values == just_resource
+        assert_eq!(
+            err.to_string(),
+            "Error deserializing a policy/template from JSON: Error linking policy set: the following slots were provided as arguments, but did not exist in the template: ?resource"
         );
     }
 
     #[test]
     fn test_est_policyset_decoding_templates_bad_dup_vals() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
@@ -5262,7 +5308,7 @@ mod test {
     #[test]
     fn test_est_policyset_decoding_templates_bad_euid() {
         let value = r#" {
-            "static_policies" : [
+            "staticPolicies" : [
                 { "id" : "policy1",
                    "policy" : {
                         "effect": "permit",
