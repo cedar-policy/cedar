@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The "Cedar Language Version" refers to the language version as documented in the [Cedar Policy Language Guide](https://docs.cedarpolicy.com/other/doc-history.html). The language version may differ from the Rust crate version because a breaking change for the Cedar Rust API may or may not be a breaking change for the Cedar language.
 
-Starting with version 4.0, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
+Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
 ## [Unreleased]
 Cedar Language Version: 4.0
@@ -27,8 +27,6 @@ Cedar Language Version: 4.0
 
 ### Changed
 
-- `unknown()` is no longer a valid extension function if `partial-eval`
-  is not enabled as a feature.
 - The API around `Request::new` has changed to remove the `Option`s
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
@@ -57,8 +55,9 @@ Cedar Language Version: 4.0
   evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
 - Removed the `error` extension function, which was previously used during
   partial evaluation. (#874)
-- Removed integration testing harness from the `cedar-policy` crate. It is now
-  in an internal crate, allowing us to make semver incompatible changes. (#857)
+- Removed the (deprecated) integration testing harness from the `cedar-policy`
+  crate. It is now in an internal crate, allowing us to make semver incompatible
+  changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
   introduced in 3.2.0. See #757.
 - Removed `ParseErrors::errors_as_strings`.  Callers should consider examining
@@ -79,16 +78,21 @@ Cedar Language Version: 4.0
 - (*) JSON format Cedar policies will now fail to parse if the action scope
   constraint contains a non-action entity type, matching the behavior for
   human-readable Cedar policies. (#943, resolving #925)
-- (*) JSON format Cedar policies will now fail to parse if any annotations are not
-  valid Cedar identifiers. (#1004, resolving #994)
 
-## [3.2.4] - TBA
+## [3.2.4] - 2024-08-07
+Cedar Language Version: 3.3
+
+_Note:_ 3.2.2 and 3.2.3 skipped to maintain consistency with the `cedar-wasm` package
+
 ### Changed
-- `unknown()` is no longer a valid extension function if `partial-eval`
-  is not enabled as a feature.
+
+- (*) `unknown()` is no longer a valid extension function if `partial-eval`
+  is not enabled as a feature. (#1101, resolving #1096)
 
 ### Fixed
-- JSON format Cedar policies will now fail to parse if any annotations are not valid Cedar identifiers. (#1004, resolving #994) 
+
+- (*) JSON format Cedar policies will now fail to parse if any annotations are not
+  valid Cedar identifiers. (#1004, resolving #994)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
@@ -624,7 +628,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.4...main
+[3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
 [3.1.4]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.1.4
