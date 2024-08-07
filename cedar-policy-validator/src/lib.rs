@@ -282,7 +282,7 @@ impl Validator {
                 None,
             ),
             ExprKind::Var(_) => (max_allowed_level.clone(), None), //Roots start at `max_allowed_level`
-            ExprKind::Slot(_) => (max_allowed_level.clone(), None), //Slot is `Principal` or `Resource` so treat the same
+            ExprKind::Slot(_) => (EntityDerefLevel { level: Some(0) }, None), //Slot will be replaced by Entity literal so treat the same
             ExprKind::Unknown(_) => (
                 EntityDerefLevel { level: Some(0) }, //Can't dereference an unknown
                 None,
