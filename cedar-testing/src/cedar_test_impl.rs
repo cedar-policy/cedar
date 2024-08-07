@@ -20,7 +20,6 @@
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
 pub use cedar_policy::ffi;
-use cedar_policy::Entity;
 use cedar_policy_core::ast::{self, PartialValue};
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
@@ -214,7 +213,7 @@ pub trait CedarTestImplementation {
     fn validate_entities(
         &self,
         schema: &ValidatorSchema,
-        entities: Entities,
+        entities: &Entities,
     ) -> TestResult<TestValidationResult>;
 
     /// `ErrorComparisonMode` that should be used for this `CedarTestImplementation`
@@ -411,7 +410,7 @@ impl CedarTestImplementation for RustEngine {
     fn validate_entities(
         &self,
         schema: &ValidatorSchema,
-        entities: Entities,
+        entities: &Entities,
     ) -> TestResult<TestValidationResult> {
         let (res, dur) = time_function(|| {
             Entities::from_entities(
