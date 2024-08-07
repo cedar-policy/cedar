@@ -364,7 +364,7 @@ impl EntityType<ConditionalName> {
     }
 }
 
-/// Declaration of entity attributes, or of an action context.
+/// Declaration of entity or record attributes, or of an action context.
 /// These share a JSON format.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
@@ -395,10 +395,19 @@ impl<N> AttributesOrContext<N> {
 
 impl<N> Default for AttributesOrContext<N> {
     fn default() -> Self {
-        Self(Type::Type(TypeVariant::Record {
-            attributes: BTreeMap::new(),
-            additional_attributes: partial_schema_default(),
-        }))
+        Self::from(RecordType::default())
+    }
+}
+
+impl<N: Display> Display for AttributesOrContext<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<N> From<RecordType<N>> for AttributesOrContext<N> {
+    fn from(rty: RecordType<N>) -> AttributesOrContext<N> {
+        Self(Type::Type(TypeVariant::Record(rty)))
     }
 }
 
@@ -833,7 +842,7 @@ impl<N> Type<N> {
     /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
-            Type::Type(TypeVariant::Record { attributes, .. }) => attributes
+            Type::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
                 .iter()
                 .map(|(_, ty)| ty.ty.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
@@ -857,15 +866,13 @@ impl<N> Type<N> {
         match self {
             Self::Type(TypeVariant::Extension { .. }) => Some(true),
             Self::Type(TypeVariant::Set { element }) => element.is_extension(),
-            Self::Type(TypeVariant::Record { attributes, .. }) => {
-                attributes
-                    .values()
-                    .try_fold(false, |a, e| match e.ty.is_extension() {
-                        Some(true) => Some(true),
-                        Some(false) => Some(a),
-                        None => None,
-                    })
-            }
+            Self::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
+                .values()
+                .try_fold(false, |a, e| match e.ty.is_extension() {
+                    Some(true) => Some(true),
+                    Some(false) => Some(a),
+                    None => None,
+                }),
             Self::Type(_) => Some(false),
             Self::CommonTypeRef { .. } => None,
         }
@@ -875,10 +882,7 @@ impl<N> Type<N> {
     /// implementation to avoid printing unnecessary entity/action data.
     pub fn is_empty_record(&self) -> bool {
         match self {
-            Self::Type(TypeVariant::Record {
-                attributes,
-                additional_attributes,
-            }) => *additional_attributes == partial_schema_default() && attributes.is_empty(),
+            Self::Type(TypeVariant::Record(rty)) => rty.is_empty_record(),
             _ => false,
         }
     }
@@ -1184,7 +1188,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             if let Some(attributes) = attributes {
                                 let additional_attributes =
                                     additional_attributes.unwrap_or(Ok(partial_schema_default()));
-                                Ok(Type::Type(TypeVariant::Record {
+                                Ok(Type::Type(TypeVariant::Record(RecordType {
                                     attributes: attributes?
                                         .0
                                         .into_iter()
@@ -1199,7 +1203,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         })
                                         .collect(),
                                     additional_attributes: additional_attributes?,
-                                }))
+                                })))
                             } else {
                                 Err(serde::de::Error::missing_field(Attributes.as_str()))
                             }
@@ -1304,8 +1308,90 @@ impl<N> From<TypeVariant<N>> for Type<N> {
     }
 }
 
-/// The variants of [`Type`] that are exposed to users, i.e., legal to write in
-/// schemas. Does not include common types, which are handled separately.
+/// Represents the type-level information about a record type.
+///
+/// The parameter `N` is the type of entity type names and common type names in
+/// this [`RecordType`], including recursively.
+/// See notes on [`Fragment`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct RecordType<N> {
+    /// Attribute names and types for the record
+    pub attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
+    /// Whether "additional attributes" are possible on this record
+    #[serde(default = "partial_schema_default")]
+    #[serde(skip_serializing_if = "is_partial_schema_default")]
+    pub additional_attributes: bool,
+}
+
+impl<N> Default for RecordType<N> {
+    fn default() -> Self {
+        Self {
+            attributes: BTreeMap::new(),
+            additional_attributes: partial_schema_default(),
+        }
+    }
+}
+
+impl<N> RecordType<N> {
+    /// Is this [`RecordType`] an empty record?
+    pub fn is_empty_record(&self) -> bool {
+        self.additional_attributes == partial_schema_default() && self.attributes.is_empty()
+    }
+}
+
+impl RecordType<RawName> {
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> RecordType<ConditionalName> {
+        RecordType {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .collect(),
+            additional_attributes: self.additional_attributes,
+        }
+    }
+}
+
+impl RecordType<ConditionalName> {
+    /// Convert this [`RecordType<ConditionalName>`] into a
+    /// [`RecordType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<RecordType<InternalName>, TypeResolutionError> {
+        Ok(RecordType {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                    ))
+                })
+                .collect::<std::result::Result<_, _>>()?,
+            additional_attributes: self.additional_attributes,
+        })
+    }
+}
+
+/// All the variants of [`Type`] other than common types, which are handled
+/// directly in [`Type`]. See notes on [`Type`] for why it's necessary to have a
+/// separate enum here.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`TypeVariant`], including recursively.
@@ -1328,14 +1414,7 @@ pub enum TypeVariant<N> {
         element: Box<Type<N>>,
     },
     /// Record
-    Record {
-        /// Attribute names and types for the record
-        attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
-        /// Whether "additional attributes" are possible on this record
-        #[serde(rename = "additionalAttributes")]
-        #[serde(skip_serializing_if = "is_partial_schema_default")]
-        additional_attributes: bool,
-    },
+    Record(RecordType<N>),
     /// Entity
     Entity {
         /// Name of the entity type.
@@ -1396,10 +1475,10 @@ impl TypeVariant<RawName> {
             Self::Set { element } => TypeVariant::Set {
                 element: Box::new(element.conditionally_qualify_type_references(ns)),
             },
-            Self::Record {
+            Self::Record(RecordType {
                 attributes,
                 additional_attributes,
-            } => TypeVariant::Record {
+            }) => TypeVariant::Record(RecordType {
                 attributes: BTreeMap::from_iter(attributes.into_iter().map(
                     |(attr, TypeOfAttribute { ty, required })| {
                         (
@@ -1412,7 +1491,7 @@ impl TypeVariant<RawName> {
                     },
                 )),
                 additional_attributes,
-            },
+            }),
         }
     }
 
@@ -1425,16 +1504,16 @@ impl TypeVariant<RawName> {
             Self::EntityOrCommon { type_name } => TypeVariant::EntityOrCommon {
                 type_name: type_name.into(),
             },
-            Self::Record {
+            Self::Record(RecordType {
                 attributes,
                 additional_attributes,
-            } => TypeVariant::Record {
+            }) => TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
                     .map(|(k, v)| (k, v.into_n()))
                     .collect(),
                 additional_attributes,
-            },
+            }),
             Self::Set { element } => TypeVariant::Set {
                 element: Box::new(element.into_n()),
             },
@@ -1472,10 +1551,10 @@ impl TypeVariant<ConditionalName> {
                     element.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
                 ),
             }),
-            Self::Record {
+            Self::Record(RecordType {
                 attributes,
                 additional_attributes,
-            } => Ok(TypeVariant::Record {
+            }) => Ok(TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
                     .map(|(attr, TypeOfAttribute { ty, required })| {
@@ -1492,7 +1571,7 @@ impl TypeVariant<ConditionalName> {
                     })
                     .collect::<std::result::Result<BTreeMap<_, _>, _>>()?,
                 additional_attributes,
-            }),
+            })),
         }
     }
 }
@@ -1524,10 +1603,10 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                         .map(|attr_name| Ok((attr_name.into(), u.arbitrary()?)))
                         .collect::<arbitrary::Result<_>>()?
                 };
-                TypeVariant::Record {
+                TypeVariant::Record(RecordType {
                     attributes,
                     additional_attributes: u.arbitrary()?,
-                }
+                })
             }
             6 => TypeVariant::Entity {
                 name: u.arbitrary()?,
@@ -1586,6 +1665,39 @@ impl TypeOfAttribute<RawName> {
             ty: self.ty.into_n(),
             required: self.required,
         }
+    }
+
+    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
+    pub fn conditionally_qualify_type_references(
+        self,
+        ns: Option<&InternalName>,
+    ) -> TypeOfAttribute<ConditionalName> {
+        TypeOfAttribute {
+            ty: self.ty.conditionally_qualify_type_references(ns),
+            required: self.required,
+        }
+    }
+}
+
+impl TypeOfAttribute<ConditionalName> {
+    /// Convert this [`TypeOfAttribute<ConditionalName>`] into a
+    /// [`TypeOfAttribute<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
+    ///
+    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
+    /// fully-qualified typenames (of common and entity types respectively) that
+    /// are defined in the schema (in all schema fragments).
+    pub fn fully_qualify_type_references(
+        self,
+        all_common_defs: &HashSet<InternalName>,
+        all_entity_defs: &HashSet<InternalName>,
+    ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeResolutionError> {
+        Ok(TypeOfAttribute {
+            ty: self
+                .ty
+                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            required: self.required,
+        })
     }
 }
 
@@ -1646,11 +1758,11 @@ mod test {
         let et = serde_json::from_str::<EntityType<RawName>>(user).expect("Parse Error");
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
-            et.shape.into_inner(),
-            Type::Type(TypeVariant::Record {
+            et.shape,
+            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
                 attributes: BTreeMap::new(),
                 additional_attributes: false
-            })
+            }))),
         );
     }
 
@@ -1662,11 +1774,11 @@ mod test {
         let et = serde_json::from_str::<EntityType<RawName>>(src).expect("Parse Error");
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
-            et.shape.into_inner(),
-            Type::Type(TypeVariant::Record {
+            et.shape,
+            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
                 attributes: BTreeMap::new(),
                 additional_attributes: false
-            })
+            }))),
         );
     }
 
@@ -2380,10 +2492,10 @@ mod test_json_roundtrip {
                     "a".parse().unwrap(),
                     EntityType {
                         member_of_types: vec!["a".parse().unwrap()],
-                        shape: AttributesOrContext(Type::Type(TypeVariant::Record {
+                        shape: AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
                             attributes: BTreeMap::new(),
                             additional_attributes: false,
-                        })),
+                        }))),
                     },
                 )]),
                 actions: HashMap::from([(
@@ -2393,10 +2505,12 @@ mod test_json_roundtrip {
                         applies_to: Some(ApplySpec {
                             resource_types: vec!["a".parse().unwrap()],
                             principal_types: vec!["a".parse().unwrap()],
-                            context: AttributesOrContext(Type::Type(TypeVariant::Record {
-                                attributes: BTreeMap::new(),
-                                additional_attributes: false,
-                            })),
+                            context: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                RecordType {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            ))),
                         }),
                         member_of: None,
                     },
@@ -2417,10 +2531,12 @@ mod test_json_roundtrip {
                         "a".parse().unwrap(),
                         EntityType {
                             member_of_types: vec!["a".parse().unwrap()],
-                            shape: AttributesOrContext(Type::Type(TypeVariant::Record {
-                                attributes: BTreeMap::new(),
-                                additional_attributes: false,
-                            })),
+                            shape: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                RecordType {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            ))),
                         },
                     )]),
                     actions: HashMap::new(),
@@ -2438,10 +2554,12 @@ mod test_json_roundtrip {
                             applies_to: Some(ApplySpec {
                                 resource_types: vec!["foo::a".parse().unwrap()],
                                 principal_types: vec!["foo::a".parse().unwrap()],
-                                context: AttributesOrContext(Type::Type(TypeVariant::Record {
-                                    attributes: BTreeMap::new(),
-                                    additional_attributes: false,
-                                })),
+                                context: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                    RecordType {
+                                        attributes: BTreeMap::new(),
+                                        additional_attributes: false,
+                                    },
+                                ))),
                             }),
                             member_of: None,
                         },

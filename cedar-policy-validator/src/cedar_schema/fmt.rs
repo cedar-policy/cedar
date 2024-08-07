@@ -64,31 +64,32 @@ impl<N: Display> Display for json_schema::Type<N> {
                 }
                 json_schema::TypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
                 json_schema::TypeVariant::Long => write!(f, "__cedar::Long"),
-                json_schema::TypeVariant::Record {
-                    attributes,
-                    additional_attributes: _,
-                } => {
-                    write!(f, "{{")?;
-                    for (i, (n, ty)) in attributes.iter().enumerate() {
-                        write!(
-                            f,
-                            "\"{}\"{}: {}",
-                            n.escape_debug(),
-                            if ty.required { "" } else { "?" },
-                            ty.ty
-                        )?;
-                        if i < (attributes.len() - 1) {
-                            write!(f, ", ")?;
-                        }
-                    }
-                    write!(f, "}}")?;
-                    Ok(())
-                }
+                json_schema::TypeVariant::Record(rty) => write!(f, "{rty}"),
                 json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
             json_schema::Type::CommonTypeRef { type_name } => write!(f, "{type_name}"),
         }
+    }
+}
+
+impl<N: Display> Display for json_schema::RecordType<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        for (i, (n, ty)) in self.attributes.iter().enumerate() {
+            write!(
+                f,
+                "\"{}\"{}: {}",
+                n.escape_debug(),
+                if ty.required { "" } else { "?" },
+                ty.ty
+            )?;
+            if i < (self.attributes.len() - 1) {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -110,7 +111,7 @@ impl<N: Display> Display for json_schema::EntityType<N> {
             fmt_vec(f, non_empty)?;
         }
 
-        let ty = &self.shape.0;
+        let ty = &self.shape;
         // Don't print `= { }`
         if !ty.is_empty_record() {
             write!(f, " = {ty}")?;

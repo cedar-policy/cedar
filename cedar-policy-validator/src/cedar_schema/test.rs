@@ -430,7 +430,7 @@ namespace Baz {action "Foo" appliesTo {
                 "a".parse().unwrap(),
                 json_schema::EntityType::<RawName> {
                     member_of_types: vec![],
-                    shape: json_schema::AttributesOrContext::<RawName>::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )]),
             actions: HashMap::from([(
@@ -440,7 +440,7 @@ namespace Baz {action "Foo" appliesTo {
                     applies_to: Some(json_schema::ApplySpec::<RawName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: json_schema::AttributesOrContext::<RawName>::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
                 },
@@ -555,28 +555,27 @@ namespace Baz {action "Foo" appliesTo {
         assert!(repo.member_of_types.is_empty());
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
         for group in groups {
-            assert_matches!(&repo.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
-                    attributes,
-                    additional_attributes: false,
-                }) => {
-                    let expected =
-                        json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-                            type_name: "UserGroup".parse().unwrap(),
-                        });
-                    let attribute = attributes.get(group).expect("No attribute `{group}`");
-                    assert_has_type(attribute, expected);
-                }
-            );
+            assert_matches!(&repo.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
+                attributes,
+                additional_attributes: false,
+            }))) => {
+                let expected =
+                    json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                        type_name: "UserGroup".parse().unwrap(),
+                    });
+                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                assert_has_type(attribute, expected);
+            });
         }
         let issue = github
             .entity_types
             .get(&"Issue".parse().unwrap())
             .expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
-        assert_matches!(&issue.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+        assert_matches!(&issue.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }) => {
+        }))) => {
             let attribute = attributes.get("repo").expect("No `repo`");
             assert_has_type(
                 attribute,
@@ -599,10 +598,10 @@ namespace Baz {action "Foo" appliesTo {
         assert!(org.member_of_types.is_empty());
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
-            assert_matches!(&org.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+            assert_matches!(&org.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes,
                 additional_attributes: false,
-            }) => {
+            }))) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "UserGroup".parse().unwrap(),
                 });
@@ -623,12 +622,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[track_caller]
     fn assert_empty_record<N: std::fmt::Debug>(etyp: &json_schema::EntityType<N>) {
-        assert_matches!(&etyp.shape.0,
-            json_schema::Type::Type(json_schema::TypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => assert!(attributes.is_empty(), "Record should be empty")
-        );
+        assert!(etyp.shape.is_empty_record());
     }
 
     #[test]
@@ -667,10 +661,10 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"User".parse().unwrap())
             .expect("No `User`");
         assert_eq!(&user.member_of_types, &vec!["Group".parse().unwrap()]);
-        assert_matches!(&user.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+        assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }) => {
+        }))) => {
             assert_has_type(
                 attributes.get("personalGroup").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
@@ -694,10 +688,10 @@ namespace Baz {action "Foo" appliesTo {
             &group.member_of_types,
             &vec!["DocumentShare".parse().unwrap()]
         );
-        assert_matches!(&group.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+        assert_matches!(&group.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }) => {
+        }))) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
@@ -710,10 +704,10 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"Document".parse().unwrap())
             .expect("No `Group`");
         assert!(document.member_of_types.is_empty());
-        assert_matches!(&document.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+        assert_matches!(&document.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }) => {
+        }))) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
@@ -882,10 +876,10 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
-        assert_matches!(&resource.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record {
+        assert_matches!(&resource.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }) => {
+        }))) => {
             assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
                 assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
@@ -1417,7 +1411,10 @@ mod translator_tests {
         .unwrap();
         let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
         let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
-        assert_matches!(&user.shape.0, json_schema::Type::Type(json_schema::TypeVariant::Record { attributes, additional_attributes: false }) => {
+        assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
+            attributes,
+            additional_attributes: false,
+        }))) => {
             assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
