@@ -222,6 +222,7 @@ impl Validator {
     }
 
     /// Check that `t` respects `max_allowed_level`
+    /// This assumes that (strict) typechecking has passed
     fn check_entity_deref_level<'a>(
         &'a self,
         t: &'a Template,
@@ -241,7 +242,8 @@ impl Validator {
                         None => (),
                     }
                 }
-                _ => (), //Don't report level violations if typechecking already failed
+                PolicyCheck::Fail(e) => println!("Typechecking failed: {:?}", e),
+                PolicyCheck::Irrelevant(_) => println!("Typechecking always false"), // _ => (), //Don't report level violations if typechecking already failed
             }
         }
         // TODO: maybe only give one err for all typecheck envs?
@@ -701,20 +703,39 @@ mod test {
             )]
         );
     }
+}
 
-    #[test]
-    fn test_levels_computation() {
-        let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment<RawName>>(
+#[cfg(test)]
+mod levels_validation_tests {
+    use super::*;
+    use cedar_policy_core::parser;
+
+    fn get_schema() -> ValidatorSchema {
+        serde_json::from_str::<SchemaFragment<RawName>>(
             r#"
             {
                 "": {
                     "entityTypes": {
-                        "User": { }
+                        "User": {
+                            "memberOfTypes": ["User"]
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "Entity",
+                                        "name": "User",
+                                        "required": true
+                                    }
+                                }
+                            }
+                        }
                     },
                     "actions": {
                         "view": {
                             "appliesTo": {
-                                "resourceTypes": [ "User" ],
+                                "resourceTypes": [ "Photo" ],
                                 "principalTypes": [ "User" ]
                             }
                         }
@@ -725,7 +746,12 @@ mod test {
         )
         .expect("Schema parse error.")
         .try_into()
-        .expect("Expected valid schema.");
+        .expect("Expected valid schema.")
+    }
+
+    #[test]
+    fn test_levels_validation_passes() {
+        let schema = get_schema();
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
@@ -740,5 +766,24 @@ mod test {
             &template_name,
         );
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_levels_validation_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
+        let p = parser::parse_policy(None, src).unwrap();
+        set.add_static(p).unwrap();
+
+        let template_name = PolicyID::from_string("policy0");
+        let result = validator.check_entity_deref_level(
+            set.get_template(&template_name).unwrap().as_ref(),
+            &EntityDerefLevel { level: Some(0) },
+            &template_name,
+        );
+        assert!(result.len() == 1);
     }
 }

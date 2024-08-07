@@ -613,22 +613,21 @@ impl Default for EntityDerefLevel {
     }
 }
 
-// impl std::ops::Add for EntityDerefLevel {
-//     type Output = Self;
-//     fn add(self, other: Self) -> Self {
-//         match (self.level, other.level) {
-//             (Some(l1), Some(l2)) => Self {
-//                 level: Some(l1 + l2),
-//             },
-//             (_, _) => Self { level: None },
-//         }
-//     }
-// }
+// Ordering where `None` represents Inf
+impl Ord for EntityDerefLevel {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self.level, other.level) {
+            (Some(sl), Some(ol)) => sl.cmp(&ol),
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some(_), None) => std::cmp::Ordering::Less,
+        }
+    }
+}
 
-/// Reverse of default partial_cmp
 impl PartialOrd for EntityDerefLevel {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.level.partial_cmp(&self.level)
+        Some(self.cmp(other))
     }
 }
 
@@ -925,5 +924,20 @@ mod test_attr_access {
         assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
         assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
+    }
+}
+
+#[cfg(test)]
+mod test_entity_deref_level {
+    use super::EntityDerefLevel;
+
+    #[test]
+    fn entity_deref_level() {
+        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: Some(1) });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(1) });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(0) });
+        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: None });
+        assert!(EntityDerefLevel { level: Some(1) } < EntityDerefLevel { level: None });
+        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: None });
     }
 }
