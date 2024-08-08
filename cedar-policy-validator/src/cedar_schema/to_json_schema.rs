@@ -164,7 +164,7 @@ fn convert_namespace(
 
 // Test if this id is a reserved JSON schema keyword.
 // Issue: https://github.com/cedar-policy/cedar/issues/1070
-fn is_reserved_json_schema_keyword(id: &UnreservedId) -> bool {
+fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
     matches!(id.as_ref(), "Set" | "Record" | "Entity" | "Extension")
 }
 
@@ -196,8 +196,8 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                         loc: name_loc.clone(),
                     })
                 })?;
-                if is_reserved_json_schema_keyword(&id) {
-                    Err(ToJsonSchemaError::ReservedJsonSchemaKeyword(Node {
+                if is_reserved_schema_keyword(&id) {
+                    Err(ToJsonSchemaError::ReservedSchemaKeyword(Node {
                         node: id.to_smolstr(),
                         loc: name_loc,
                     }))

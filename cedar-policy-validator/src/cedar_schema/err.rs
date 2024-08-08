@@ -372,9 +372,9 @@ pub enum ToJsonSchemaError {
     /// Invalid type name
     #[error("this uses a reserved namespace or typename: {}", .0.node)]
     ReservedName(Node<SmolStr>),
-    /// Use reserved JSON schema keywords
-    #[error("this uses a reserved JSON schema keyword: {}", .0.node)]
-    ReservedJsonSchemaKeyword(Node<SmolStr>),
+    /// Use reserved schema keywords
+    #[error("this uses a reserved schema keyword: {}", .0.node)]
+    ReservedSchemaKeyword(Node<SmolStr>),
 }
 
 impl ToJsonSchemaError {
@@ -413,9 +413,9 @@ impl Diagnostic for ToJsonSchemaError {
             }
             ToJsonSchemaError::UnknownTypeName(node)
             | ToJsonSchemaError::ReservedName(node)
-            | ToJsonSchemaError::ReservedJsonSchemaKeyword(node) => Some(Box::new(
-                std::iter::once(LabeledSpan::underline(node.loc.span)),
-            )),
+            | ToJsonSchemaError::ReservedSchemaKeyword(node) => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(node.loc.span),
+            ))),
             ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
             }
