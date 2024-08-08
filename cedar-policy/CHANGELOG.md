@@ -13,11 +13,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: 4.0
 
 ### Added
-- JSON representation for Policy Sets, along with methods like
-  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
-  resolving #549)
-- Added methods for reading and writing individual `Entity`s as JSON
-  (resolving #807)
+
 - `Context::into_iter` to get the contents of a `Context` and `Context::merge`
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
@@ -27,7 +23,6 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
-- Partial authorization to CLI (#1082)
 
 ### Changed
 
@@ -91,6 +86,17 @@ Cedar Language Version: 4.0
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
   passed a static policy as input. Use the `Policy` parsing functions instead.
   (#1108, resolving #1095)
+
+## [3.3.0] - TBD
+Cedar Language Version: 3.4
+
+### Added
+
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+- Added methods for reading and writing individual `Entity`s as JSON
+  (#924, resolving #807)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
@@ -638,7 +644,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.4...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.3.0...main
+[3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
