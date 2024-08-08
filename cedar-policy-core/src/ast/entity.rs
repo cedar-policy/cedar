@@ -236,6 +236,11 @@ impl Eid {
     pub fn new(eid: impl Into<SmolStr>) -> Self {
         Eid(eid.into())
     }
+
+    /// Get the contents of the `Eid` as an escaped string
+    pub fn escaped(&self) -> SmolStr {
+        self.0.escape_debug().collect()
+    }
 }
 
 impl AsRef<SmolStr> for Eid {

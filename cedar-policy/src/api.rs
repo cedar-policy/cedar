@@ -1314,6 +1314,16 @@ impl SchemaFragment {
             .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
     }
 
+    /// Create a [`SchemaFragment`] from a string containing JSON in the
+    /// JSON schema format.
+    pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
+        let lossless = cedar_policy_validator::SchemaFragment::from_json_str(src)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
@@ -1325,6 +1335,7 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
+    #[deprecated(since = "3.3.0", note = "Use `from_cedarschema_file()` instead")]
     pub fn from_file_natural(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1338,7 +1349,15 @@ impl SchemaFragment {
         ))
     }
 
+    /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
+    pub fn from_cedarschema_file(
+        r: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        Self::from_file_natural(r)
+    }
+
     /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
+    #[deprecated(since = "3.3.0", note = "Use `from_cedarschema_str()` instead")]
     pub fn from_str_natural(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1352,13 +1371,26 @@ impl SchemaFragment {
         ))
     }
 
+    /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
+    pub fn from_cedarschema_str(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        Self::from_str_natural(src)
+    }
+
     /// Create a `SchemaFragment` directly from a file.
+    #[deprecated(since = "3.3.0", note = "Use `from_json_file()` instead")]
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
         })
+    }
+
+    /// Create a `SchemaFragment` directly from a file.
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        Self::from_file(file)
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
@@ -1368,15 +1400,27 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
+    #[deprecated(since = "3.3.0", note = "Use `to_json_string()` instead")]
     pub fn as_json_string(&self) -> Result<String, SchemaError> {
         let str = serde_json::to_string(&self.lossless)?;
         Ok(str)
     }
 
+    /// Serialize this [`SchemaFragment`] as a json value
+    pub fn to_json_string(&self) -> Result<String, SchemaError> {
+        self.as_json_string()
+    }
+
     /// Serialize this [`SchemaFragment`] into the natural syntax
+    #[deprecated(since = "3.3.0", note = "Use `to_cedarschema()` instead")]
     pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
         let str = self.lossless.as_natural_schema()?;
         Ok(str)
+    }
+
+    /// Serialize this [`SchemaFragment`] into the natural syntax
+    pub fn to_cedarschema(&self) -> Result<String, ToHumanSyntaxError> {
+        self.as_natural()
     }
 }
 
@@ -1456,6 +1500,7 @@ impl Schema {
     }
 
     /// Create a `Schema` directly from a file.
+    #[deprecated(since = "3.3.0", note = "Use `from_json_file()` instead")]
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
@@ -1463,7 +1508,13 @@ impl Schema {
         )?))
     }
 
+    /// Create a `Schema` directly from a file.
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        Self::from_file(file)
+    }
+
     /// Parse the schema from a reader
+    #[deprecated(since = "3.3.0", note = "Use `from_cedarschema_file()` instead")]
     pub fn from_file_natural(
         file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1474,7 +1525,15 @@ impl Schema {
         Ok((Self(schema), warnings))
     }
 
+    /// Parse the schema from a reader
+    pub fn from_cedarschema_file(
+        file: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        Self::from_file_natural(file)
+    }
+
     /// Parse the schema from a string
+    #[deprecated(since = "3.3.0", note = "Use `from_cedarschema_str()` instead")]
     pub fn from_str_natural(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1483,6 +1542,13 @@ impl Schema {
             Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
+    }
+
+    /// Parse the schema from a string
+    pub fn from_cedarschema_str(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        Self::from_str_natural(src)
     }
 
     /// Extract from the schema an `Entities` containing the action entities
@@ -2125,6 +2191,10 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 /// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
+///
+/// The `Display` implementation for `EntityId` is deprecated as of v3.3.0.
+/// To get an escaped representation, use `.escaped()`.
+/// To get an unescaped representation, use `.as_ref()`.
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
@@ -2136,6 +2206,11 @@ impl EntityId {
             Ok(eid) => eid,
             Err(infallible) => match infallible {},
         }
+    }
+
+    /// Get the contents of the `EntityId` as an escaped string
+    pub fn escaped(&self) -> SmolStr {
+        self.0.escaped()
     }
 }
 
@@ -2155,6 +2230,9 @@ impl AsRef<str> for EntityId {
 // Note that this Display formatter will format the EntityId as it would be expected
 // in the EntityUid string form. For instance, the `"alice"` in `User::"alice"`.
 // This means it adds quotes and potentially performs some escaping.
+//
+// This trait implementation is deprecated as of v3.3.0 in favor of explicit `.escaped()`
+// and `.as_ref()` for escaped and unescaped representations (respectively)
 impl std::fmt::Display for EntityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
