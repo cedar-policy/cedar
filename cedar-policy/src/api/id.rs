@@ -229,13 +229,11 @@ impl EntityUid {
     /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
     #[allow(clippy::result_large_err)]
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+    pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        Ok::<Self, JsonDeserializationError>(
-            parsed
-                .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
-                .into(),
-        )
+        Ok(parsed
+            .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+            .into())
     }
 
     /// Testing utility for creating `EntityUids` a bit easier

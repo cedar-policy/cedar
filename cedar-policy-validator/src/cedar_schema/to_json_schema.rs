@@ -150,12 +150,8 @@ fn convert_namespace(
         .clone()
         .map(|p| {
             let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
-            Name::try_from(internal_name).map_err(|e| {
-                ToJsonSchemaError::ReservedName(Node {
-                    node: e.name().to_smolstr(),
-                    loc: p.loc,
-                })
-            })
+            Name::try_from(internal_name)
+                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc))
         })
         .transpose()?;
     let def = namespace.try_into()?;
@@ -190,17 +186,10 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
             .into_iter()
             .map(|decl| {
                 let name_loc = decl.name.loc.clone();
-                let id = UnreservedId::try_from(decl.name.node).map_err(|e| {
-                    ToJsonSchemaError::ReservedName(Node {
-                        node: e.name().to_smolstr(),
-                        loc: name_loc.clone(),
-                    })
-                })?;
+                let id = UnreservedId::try_from(decl.name.node)
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 if is_reserved_schema_keyword(&id) {
-                    Err(ToJsonSchemaError::ReservedSchemaKeyword(Node {
-                        node: id.to_smolstr(),
-                        loc: name_loc,
-                    }))
+                    Err(ToJsonSchemaError::reserved_keyword(id, name_loc))
                 } else {
                     Ok((id, cedar_type_to_json_type(decl.def)))
                 }
@@ -224,10 +213,9 @@ fn convert_action_decl(
         parents,
         app_decls,
     } = a;
-    let info = (&names.first().node, &names.first().loc);
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
-        .map(|decls| convert_app_decls(info, decls))
+        .map(|decls| convert_app_decls(&names.first().node, &names.first().loc, decls))
         .transpose()?
         .unwrap_or_else(|| json_schema::ApplySpec {
             resource_types: vec![],
@@ -250,7 +238,8 @@ fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName
 
 // Convert the applies to decls
 fn convert_app_decls(
-    action_info: (&SmolStr, &Loc),
+    name: &SmolStr,
+    loc: &Loc,
     decls: Node<NonEmpty<Node<AppDecl>>>,
 ) -> Result<json_schema::ApplySpec<RawName>, ToJsonSchemaErrors> {
     // Split AppDecl's into context/principal/resource decls
@@ -266,10 +255,11 @@ fn convert_app_decls(
                 loc,
             } => match context {
                 Some(existing_context) => {
-                    return Err(ToJsonSchemaError::DuplicateContext {
-                        loc1: existing_context.loc,
-                        loc2: loc,
-                    }
+                    return Err(ToJsonSchemaError::duplicate_context(
+                        name.clone(),
+                        existing_context.loc,
+                        loc,
+                    )
                     .into());
                 }
                 None => {
@@ -292,12 +282,12 @@ fn convert_app_decls(
                 loc,
             } => match principal_types {
                 Some(existing_tys) => {
-                    return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
-                        kind: PR::Principal,
-                        loc1: existing_tys.loc,
-                        loc2: loc,
-                    }
-                    .into())
+                    return Err(ToJsonSchemaError::duplicate_principal(
+                        name.clone(),
+                        existing_tys.loc,
+                        loc,
+                    )
+                    .into());
                 }
                 None => {
                     principal_types = Some(Node::with_source_loc(
@@ -318,12 +308,12 @@ fn convert_app_decls(
                 loc,
             } => match resource_types {
                 Some(existing_tys) => {
-                    return Err(ToJsonSchemaError::DuplicatePrincipalOrResource {
-                        kind: PR::Resource,
-                        loc1: existing_tys.loc,
-                        loc2: loc,
-                    }
-                    .into())
+                    return Err(ToJsonSchemaError::duplicate_resource(
+                        name.clone(),
+                        existing_tys.loc,
+                        loc,
+                    )
+                    .into());
                 }
                 None => {
                     resource_types = Some(Node::with_source_loc(
@@ -335,31 +325,19 @@ fn convert_app_decls(
         }
     }
     Ok(json_schema::ApplySpec {
-        resource_types: resource_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::NoPrincipalOrResource {
-                kind: PR::Resource,
-                name: action_info.0.clone(),
-                loc: action_info.1.clone(),
-            },
-        )?,
-        principal_types: principal_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::NoPrincipalOrResource {
-                kind: PR::Principal,
-                name: action_info.0.clone(),
-                loc: action_info.1.clone(),
-            },
-        )?,
+        resource_types: resource_types
+            .map(|node| node.node)
+            .ok_or(ToJsonSchemaError::no_resource(name.clone(), loc.clone()))?,
+        principal_types: principal_types
+            .map(|node| node.node)
+            .ok_or(ToJsonSchemaError::no_principal(name.clone(), loc.clone()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
 
 fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
-    UnreservedId::try_from(node.node).map_err(|e| {
-        ToJsonSchemaError::ReservedName(Node {
-            node: e.name().to_smolstr(),
-            loc: node.loc,
-        })
-    })
+    UnreservedId::try_from(node.node)
+        .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), node.loc))
 }
 
 /// Convert Entity declarations
@@ -472,12 +450,8 @@ impl NamespaceRecord {
             .clone()
             .map(|n| {
                 let internal_name = RawName::from(n.node).qualify_with(None); // namespace names are already fully-qualified
-                Name::try_from(internal_name).map_err(|e| {
-                    ToJsonSchemaError::ReservedName(Node {
-                        node: e.name().to_smolstr(),
-                        loc: n.loc,
-                    })
-                })
+                Name::try_from(internal_name)
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc))
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -521,11 +495,11 @@ where
     let mut map: HashMap<N, Node<()>> = HashMap::new();
     for (key, node) in i {
         match map.entry(key.clone()) {
-            Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateDeclarations {
-                decl: key.to_smolstr(),
-                loc1: entry.get().loc.clone(),
-                loc2: node.loc,
-            }),
+            Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_decls(
+                key,
+                entry.get().loc.clone(),
+                node.loc,
+            )),
             Entry::Vacant(entry) => {
                 entry.insert(node);
                 Ok(())
@@ -611,11 +585,11 @@ fn update_namespace_record(
     record: NamespaceRecord,
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {
-        Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateNameSpaces {
-            namespace_id: name.map_or("".into(), |n| n.to_smolstr()),
-            loc1: record.loc,
-            loc2: entry.get().loc.clone(),
-        }
+        Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_namespace(
+            name.map_or("".into(), |n| n.to_smolstr()),
+            record.loc,
+            entry.get().loc.clone(),
+        )
         .into()),
         Entry::Vacant(entry) => {
             entry.insert(record);
