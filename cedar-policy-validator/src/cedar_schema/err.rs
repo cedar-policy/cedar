@@ -192,7 +192,7 @@ impl ParseErrors {
         Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
 
-    // Borrowed Iterator over reported errors
+    /// Borrowed Iterator over reported errors
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter()
     }
@@ -264,7 +264,7 @@ impl Diagnostic for ParseErrors {
 
 /// Collection of [`ToJsonSchemaError`]
 /// This collection is guaranteed (by construction) to have at least one error.
-// WARNING: This type is publicly exported from [`cedar-core`]
+// WARNING: This type is publicly exported from [`cedar-policy`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
 
@@ -387,7 +387,7 @@ pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate namespace IDs
     #[error(transparent)]
     #[diagnostic(transparent)]
-    DuplicateNameSpaces(DuplicateNameSpace),
+    DuplicateNamespaces(DuplicateNamespace),
     /// Error raised when a type name is unknown
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -399,7 +399,7 @@ pub enum ToJsonSchemaError {
     /// Use reserved schema keywords
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ReservedSchemaKeyword(SchemaKeyword),
+    ReservedSchemaKeyword(ReservedSchemaKeyword),
 }
 
 impl ToJsonSchemaError {
@@ -432,7 +432,7 @@ impl ToJsonSchemaError {
         loc1: Option<Loc>,
         loc2: Option<Loc>,
     ) -> Self {
-        Self::DuplicateNameSpaces(DuplicateNameSpace {
+        Self::DuplicateNamespaces(DuplicateNamespace {
             namespace_id: namespace_id.to_smolstr(),
             loc1,
             loc2,
@@ -481,7 +481,7 @@ impl ToJsonSchemaError {
     }
 
     pub(crate) fn reserved_keyword(keyword: impl ToSmolStr, loc: Loc) -> Self {
-        Self::ReservedSchemaKeyword(SchemaKeyword {
+        Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
             keyword: keyword.to_smolstr(),
             loc,
         })
@@ -490,12 +490,12 @@ impl ToJsonSchemaError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("this uses a reserved schema keyword: `{keyword}`")]
-pub struct SchemaKeyword {
+pub struct ReservedSchemaKeyword {
     keyword: SmolStr,
     loc: Loc,
 }
 
-impl Diagnostic for SchemaKeyword {
+impl Diagnostic for ReservedSchemaKeyword {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         underline_spans(once(self.loc.span))
     }
@@ -664,14 +664,14 @@ impl Diagnostic for NoPrincipalOrResource {
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 #[error("duplicate namespace id: `{namespace_id}`")]
-pub struct DuplicateNameSpace {
+pub struct DuplicateNamespace {
     namespace_id: SmolStr,
     // `Loc`s are optional here as the implicit empty namespace has no location
     loc1: Option<Loc>,
     loc2: Option<Loc>,
 }
 
-impl Diagnostic for DuplicateNameSpace {
+impl Diagnostic for DuplicateNamespace {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         underline_spans([self.loc1.as_ref()?.span, self.loc2.as_ref()?.span])
     }
@@ -686,9 +686,7 @@ fn underline_spans<'a, I>(i: I) -> Option<Box<dyn Iterator<Item = LabeledSpan> +
 where
     I: IntoIterator<Item = SourceSpan> + 'a,
 {
-    Some(Box::new(
-        i.into_iter().map(|span| LabeledSpan::underline(span)),
-    ))
+    Some(Box::new(i.into_iter().map(LabeledSpan::underline)))
 }
 
 /// Error subtypes for [`SchemaWarning`]
