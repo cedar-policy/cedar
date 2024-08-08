@@ -77,12 +77,10 @@ pub struct ToASTError {
     loc: Loc,
 }
 
-// Construct `labels` and `source_code` based on the `loc` in this struct;
-// and everything else forwarded directly to `kind`.
+// Construct `labels` and `source_code` based on the `loc` in this
+// struct; and everything else forwarded directly to `kind`.
 impl Diagnostic for ToASTError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(iter::once(LabeledSpan::underline(self.loc.span))))
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.code()
@@ -98,10 +96,6 @@ impl Diagnostic for ToASTError {
 
     fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {

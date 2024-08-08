@@ -15,22 +15,39 @@
  */
 
 /// Macro which implements the `.labels()` and `.source_code()` methods of
-/// `miette::Diagnostic` by using the `self.source_loc` field (assumed to be an
-/// `Option<Loc>`)
+/// `miette::Diagnostic` by using the parameter `$i` which must be the name
+/// of a field of type `Loc`
 #[macro_export]
 macro_rules! impl_diagnostic_from_source_loc_field {
-    () => {
+    ( $i:ident ) => {
         fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.source_loc
+            Some(&self.$i.src as &dyn miette::SourceCode)
+        }
+
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
+                self.$i.span,
+            ))) as _)
+        }
+    };
+}
+
+/// Macro which implements the `.labels()` and `.source_code()` methods of
+/// `miette::Diagnostic` by using the parameter `$i` which must be the name
+/// of a field of type `Option<Loc>`
+#[macro_export]
+macro_rules! impl_diagnostic_from_source_loc_opt_field {
+    ( $i:ident ) => {
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.$i
                 .as_ref()
                 .map(|loc| &loc.src as &dyn miette::SourceCode)
         }
 
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.source_loc.as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
+            self.$i
+                .as_ref()
+                .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
         }
     };
 }
@@ -49,10 +66,10 @@ macro_rules! impl_diagnostic_from_expr_field {
         }
 
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.$i.source_loc().as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
+            self.$i
+                .source_loc()
+                .as_ref()
+                .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
         }
     };
 }

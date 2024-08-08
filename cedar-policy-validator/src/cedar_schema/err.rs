@@ -423,7 +423,7 @@ impl Diagnostic for ToJsonSchemaError {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::parser::Loc;
+    use cedar_policy_core::{impl_diagnostic_from_source_loc_field, parser::Loc};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -441,11 +441,7 @@ pub mod schema_warnings {
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-                self.loc.span,
-            ))))
-        }
+        impl_diagnostic_from_source_loc_field!(loc);
 
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)
@@ -472,6 +468,13 @@ pub mod schema_warnings {
                     .chain(std::iter::once(&self.common_loc))
                     .map(miette::LabeledSpan::underline),
             ))
+        }
+
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            // just have to pick one; we assume `entity_loc` and `common_loc`
+            // have the same source code.
+            // if that isn't true we'll have a confusing underline.
+            Some(&self.entity_loc.src as _)
         }
 
         fn severity(&self) -> Option<miette::Severity> {
