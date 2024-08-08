@@ -29,6 +29,8 @@ use cedar_policy_cli::{
     EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
 };
 
+use predicates::prelude::*;
+
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
         policies: PoliciesArgs {
@@ -1020,4 +1022,134 @@ fn test_require_policies_for_write() {
         .stderr(predicates::str::contains(
             "the following required arguments were not provided:\n  --policies <FILE>",
         ));
+}
+
+#[test]
+fn test_check_parse_json_static_policy() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/static_policy.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_template() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_template.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_set() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/policy_set.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_mixed_properties() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_mixed_properties.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "matching properties from both formats",
+        ));
+}
+
+#[test]
+fn test_check_parse_json_policy_no_matching_properties() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_no_matching_properties.cedar.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("no matching properties"));
+}
+
+#[test]
+fn test_authorize_json_policy() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-authorize/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json-authorize/entity.json";
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("authorize")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_translate_policy() {
+    let human_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
+    let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
+    let human = std::fs::read_to_string(human_filename).unwrap();
+    let json = std::fs::read_to_string(json_filename).unwrap();
+    let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("human-to-json")
+        .arg("-p")
+        .arg(human_filename)
+        .assert();
+
+    let translated = std::str::from_utf8(&translate_cmd.get_output().stdout)
+        .expect("output should be decodable");
+
+    assert_eq!(
+        translated, json,
+        "\noriginal:\n{human}\n\ttranslated:\n{translated}",
+    );
 }

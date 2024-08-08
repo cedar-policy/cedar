@@ -1,0 +1,44 @@
+{
+    "effect": "permit",
+    "principal": {
+        "op": "in",
+        "slot": "?principal"
+    },
+    "action": {
+        "op": "in",
+        "entities": [
+            {
+                "type": "Action",
+                "id": "view"
+            },
+            {
+                "type": "Action",
+                "id": "comment"
+            }
+        ]
+    },
+    "resource": {
+        "op": "in",
+        "slot": "?resource"
+    },
+    "conditions": [
+        {
+            "kind": "unless",
+            "body": {
+                "==": {
+                    "left": {
+                        ".": {
+                            "left": {
+                                "Var": "resource"
+                            },
+                            "attr": "tag"
+                        }
+                    },
+                    "right": {
+                        "Value": "private"
+                    }
+                }
+            }
+        }
+    ]
+}
