@@ -330,7 +330,7 @@ pub mod evaluation_errors {
     // Or, we could have separate fields for source code and label instead of
     // combining them into `Loc`, which would work around the issue.
     impl Diagnostic for EntityDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -365,7 +365,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for EntityAttrDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
@@ -412,7 +412,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for RecordAttrDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
@@ -457,7 +457,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for TypeError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             self.advice.as_ref().map(|advice| Box::new(advice) as _)
@@ -509,7 +509,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for WrongNumArgumentsError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -575,7 +575,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for BinaryOpOverflowError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -605,7 +605,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for UnaryOpOverflowError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -633,7 +633,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for UnlinkedSlotError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -663,7 +663,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for ExtensionFunctionExecutionError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None
@@ -700,7 +700,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for NonValueError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             Some(Box::new("consider using the partial evaluation APIs"))
@@ -726,7 +726,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for RecursionLimitError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             None

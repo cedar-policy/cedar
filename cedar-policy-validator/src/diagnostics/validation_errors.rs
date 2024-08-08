@@ -21,7 +21,7 @@ use thiserror::Error;
 
 use std::fmt::Display;
 
-use cedar_policy_core::impl_diagnostic_from_source_loc_field;
+use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 
 use std::collections::BTreeSet;
@@ -50,7 +50,7 @@ pub struct UnrecognizedEntityType {
 }
 
 impl Diagnostic for UnrecognizedEntityType {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_entity_type {
@@ -76,7 +76,7 @@ pub struct UnrecognizedActionId {
 }
 
 impl Diagnostic for UnrecognizedActionId {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_action_id {
@@ -101,7 +101,7 @@ pub struct InvalidActionApplication {
 }
 
 impl Diagnostic for InvalidActionApplication {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match (self.would_in_fix_principal, self.would_in_fix_resource) {
@@ -141,7 +141,7 @@ pub struct UnexpectedType {
 }
 
 impl Diagnostic for UnexpectedType {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.help.as_ref().map(|h| Box::new(h) as Box<dyn Display>)
@@ -198,7 +198,7 @@ pub struct IncompatibleTypes {
 }
 
 impl Diagnostic for IncompatibleTypes {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
@@ -274,7 +274,7 @@ pub struct UnsafeAttributeAccess {
 }
 
 impl Diagnostic for UnsafeAttributeAccess {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.suggestion, self.may_exist) {
@@ -299,7 +299,7 @@ pub struct UnsafeOptionalAttributeAccess {
 }
 
 impl Diagnostic for UnsafeOptionalAttributeAccess {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
@@ -322,7 +322,7 @@ pub struct UndefinedFunction {
 }
 
 impl Diagnostic for UndefinedFunction {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a wrong number of arguments error.
@@ -340,7 +340,7 @@ pub struct WrongNumberArguments {
 }
 
 impl Diagnostic for WrongNumberArguments {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a function argument validation error.
@@ -356,7 +356,7 @@ pub struct FunctionArgumentValidation {
 }
 
 impl Diagnostic for FunctionArgumentValidation {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a hierarchy not respected error
@@ -374,7 +374,7 @@ pub struct HierarchyNotRespected {
 }
 
 impl Diagnostic for HierarchyNotRespected {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.in_lhs, &self.in_rhs) {
@@ -397,7 +397,7 @@ pub struct EmptySetForbidden {
 }
 
 impl Diagnostic for EmptySetForbidden {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// The policy passes a non-literal to an extension constructor, which is
@@ -412,7 +412,7 @@ pub struct NonLitExtConstructor {
 }
 
 impl Diagnostic for NonLitExtConstructor {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(
