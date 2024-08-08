@@ -1913,19 +1913,19 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
-    pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<SmolStr> {
+    pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(|ann| ann.val.clone())
+            .map(AsRef::as_ref)
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
-    pub fn template_annotation(self, id: &PolicyId, key: impl AsRef<str>) -> Option<SmolStr> {
+    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
-            .get_template(id.as_ref())?
+            .get_template_ref(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(|ann| ann.val.clone())
+            .map(AsRef::as_ref)
     }
 
     /// Returns true iff the `PolicySet` is empty

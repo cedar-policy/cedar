@@ -457,9 +457,14 @@ impl PolicySet {
         self.templates.is_empty() && self.links.is_empty()
     }
 
-    /// Lookup a template by policy id
+    /// Lookup a template by policy id, returns [`Option<Arc<Template>>`]
     pub fn get_template(&self, id: &PolicyID) -> Option<Arc<Template>> {
         self.templates.get(id).cloned()
+    }
+
+    /// Lookup a template by policy id, returns [`Option<&Template>`]
+    pub fn get_template_ref(&self, id: &PolicyID) -> Option<&Template> {
+        self.templates.get(id).map(AsRef::as_ref)
     }
 
     /// Lookup an policy by policy id
