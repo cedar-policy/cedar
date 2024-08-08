@@ -31,6 +31,8 @@ Cedar Language Version: 4.0
 
 ### Changed
 
+- `EntityUID::from_json` now returns a concrete type instead of an existential type
+- `CedarSchemaError::Parse` is more transparent
 - The API around `Request::new` has changed to remove the `Option`s
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Significantly reworked all public-facing error types to address some issues
