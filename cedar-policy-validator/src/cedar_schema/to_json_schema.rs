@@ -236,10 +236,13 @@ fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName
     json_schema::ActionEntityUID::new(qn.node.path.map(Into::into), qn.node.eid)
 }
 
-// Convert the applies to decls
+/// Convert the applies to decls
+/// # Arguments
+/// * `name` - The (first) name of the action being declared
+/// * `name_loc` - The location of that first name
 fn convert_app_decls(
     name: &SmolStr,
-    loc: &Loc,
+    name_loc: &Loc,
     decls: Node<NonEmpty<Node<AppDecl>>>,
 ) -> Result<json_schema::ApplySpec<RawName>, ToJsonSchemaErrors> {
     // Split AppDecl's into context/principal/resource decls
@@ -325,12 +328,12 @@ fn convert_app_decls(
         }
     }
     Ok(json_schema::ApplySpec {
-        resource_types: resource_types
-            .map(|node| node.node)
-            .ok_or(ToJsonSchemaError::no_resource(name.clone(), loc.clone()))?,
-        principal_types: principal_types
-            .map(|node| node.node)
-            .ok_or(ToJsonSchemaError::no_principal(name.clone(), loc.clone()))?,
+        resource_types: resource_types.map(|node| node.node).ok_or(
+            ToJsonSchemaError::no_resource(name.clone(), name_loc.clone()),
+        )?,
+        principal_types: principal_types.map(|node| node.node).ok_or(
+            ToJsonSchemaError::no_principal(name.clone(), name_loc.clone()),
+        )?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
