@@ -1913,23 +1913,19 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
-    pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<&'a str> {
+    pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<SmolStr> {
         self.ast
             .get(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(AsRef::as_ref)
+            .map(|ann| ann.val.clone())
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
-    //
-    // TODO: unfortunate that this method returns `Option<String>` and the corresponding method
-    // for policies (`.annotation()`) above returns `Option<&str>`, but this can't be changed
-    // without a semver break
-    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
+    pub fn template_annotation(self, id: &PolicyId, key: impl AsRef<str>) -> Option<SmolStr> {
         self.ast
             .get_template(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(|annot| annot.val.to_string())
+            .map(|ann| ann.val.clone())
     }
 
     /// Returns true iff the `PolicySet` is empty
