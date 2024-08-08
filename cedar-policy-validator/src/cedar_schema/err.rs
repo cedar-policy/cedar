@@ -33,11 +33,12 @@ use thiserror::Error;
 
 use super::ast::PR;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
 pub enum UserError {
     #[error("An empty list was passed")]
     EmptyList,
     #[error("Invalid escape codes")]
+    #[diagnostic(help("Cedar adopts Rust's escape sequences"))]
     StringEscape(NonEmpty<UnescapeError>),
     #[error("`{0}` is a reserved identifier")]
     ReservedIdentifierUsed(SmolStr),
@@ -153,6 +154,13 @@ impl Display for ParseError {
 impl std::error::Error for ParseError {}
 
 impl Diagnostic for ParseError {
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match &self.err {
+            lalrpop_util::ParseError::User { error } => error.help(),
+            _ => None,
+        }
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         let Self { err } = self;
@@ -352,11 +360,11 @@ pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate declarations
     #[error("duplicate declarations: {decl}")]
     DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
-    #[error("duplicate context declaration. Action may have at most one context declaration")]
+    #[error("duplicate context declaration")]
     DuplicateContext { loc1: Loc, loc2: Loc },
-    #[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
+    #[error("duplicate `{kind}` declaration")]
     DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
-    #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
+    #[error("missing `{kind}` declaration for `{name}`")]
     NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
 
     /// Error raised when there are duplicate namespace IDs
@@ -394,6 +402,16 @@ impl ToJsonSchemaError {
 }
 
 impl Diagnostic for ToJsonSchemaError {
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match self {
+            Self::DuplicateContext { .. } => Some(Box::new("Action may have at most one context declaration")),
+            Self::DuplicateDeclarations { .. } | Self::DuplicateKeys { .. } | Self::DuplicateNameSpaces { .. } | Self::UnknownTypeName(_) => None,
+            Self::DuplicatePrincipalOrResource { kind, .. } => Some(Box::new(format!("Action may have at most one {kind} declaration"))),
+            Self::NoPrincipalOrResource { .. } => Some(Box::new(format!("Actions must define both a `principals` and `resources` field"))),
+            Self::ReservedName(_) => Some(Box::new(format!("Names containing `__cedar` (e.g, `__cedar`, `__cedar::A`, `A::__cedar`, and `A::__cedar::B`) are reserved"))),
+            Self::ReservedSchemaKeyword(_) => Some(Box::new(format!("Keywords `Entity`, `Extension`, `Set`, and `Record` cannot be used as common type names"))),
+        }
+    }
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match self {
             ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }

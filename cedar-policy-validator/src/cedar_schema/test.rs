@@ -66,8 +66,10 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
+
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -84,8 +86,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -101,8 +104,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -120,8 +124,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -140,8 +145,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -159,8 +165,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
@@ -179,8 +186,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help("Actions must define both a `principals` and `resources` field")
                     .build(),
             );
         });
