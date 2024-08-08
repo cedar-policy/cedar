@@ -491,6 +491,10 @@ impl Diagnostic for ReservedSchemaKeyword {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         Some(&self.loc.src as &dyn miette::SourceCode)
     }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("Keywords such as `entity`, `extension`, `set` and `record` cannot be used as common type names"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -507,6 +511,12 @@ impl Diagnostic for ReservedName {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         Some(&self.loc.src as &dyn miette::SourceCode)
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "Names containing `__cedar` (for example: `__cedar::A`, `A::__cedar`, or `A::__cedar::B`) are reserved",
+        ))
     }
 }
 
@@ -536,7 +546,7 @@ impl Diagnostic for UnknownTypeName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("duplicate `{kind}` declaration in action `{name}`. Action may have at most one {kind} declaration")]
+#[error("duplicate `{kind}` declaration in action `{name}`")]
 pub struct DuplicatePrincipalOrResource {
     name: SmolStr,
     kind: PR,
@@ -567,7 +577,7 @@ impl Diagnostic for DuplicatePrincipalOrResource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("duplicate context declaration in action `{name}`. Action may have at most one context declaration")]
+#[error("duplicate context declaration in action `{name}`")]
 pub struct DuplicateContext {
     name: SmolStr,
     loc1: Loc,
