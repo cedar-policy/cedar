@@ -364,10 +364,6 @@ impl Diagnostic for ToJsonSchemaErrors {
 /// For errors during schema format conversion
 #[derive(Clone, Debug, Error, PartialEq, Eq, Diagnostic)]
 pub enum ToJsonSchemaError {
-    /// Error raised when there are duplicate keys
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    DuplicateKeys(DuplicateKeys),
     /// Error raised when there are duplicate declarations
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -403,14 +399,6 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub(crate) fn duplicate_keys(key: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateKeys(DuplicateKeys {
-            key: key.to_smolstr(),
-            loc1,
-            loc2,
-        })
-    }
-
     pub(crate) fn duplicate_context(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
@@ -610,24 +598,6 @@ pub struct DuplicateDeclarations {
 }
 
 impl Diagnostic for DuplicateDeclarations {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans([self.loc1.span, self.loc2.span])
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc1.src as &dyn miette::SourceCode)
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Error)]
-#[error("`{key}` declared twice")]
-pub struct DuplicateKeys {
-    key: SmolStr,
-    loc1: Loc,
-    loc2: Loc,
-}
-
-impl Diagnostic for DuplicateKeys {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         underline_spans([self.loc1.span, self.loc2.span])
     }
