@@ -177,11 +177,13 @@ pub struct ValidatorSchema {
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 }
 
+/// Construct [`ValidatorSchema`] from a string containing a schema formatted
+/// in the Cedar schema format.
 impl std::str::FromStr for ValidatorSchema {
-    type Err = SchemaError;
+    type Err = CedarSchemaError;
 
-    fn from_str(s: &str) -> Result<Self> {
-        ValidatorSchema::try_from(json_schema::Fragment::from_json_str(s)?)
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::from_cedarschema_str(s, Extensions::all_available()).map(|(schema, _)| schema)
     }
 }
 
@@ -1205,7 +1207,7 @@ pub(crate) mod test {
             }
         }}"#;
 
-        match ValidatorSchema::from_str(src) {
+        match ValidatorSchema::from_json_str(src, Extensions::all_available()) {
             Err(SchemaError::JsonDeserialization(_)) => (),
             _ => panic!("Expected JSON deserialization error due to duplicate entity type."),
         }
@@ -1240,7 +1242,7 @@ pub(crate) mod test {
                 "view_photo": { }
             }
         }"#;
-        match ValidatorSchema::from_str(src) {
+        match ValidatorSchema::from_json_str(src, Extensions::all_available()) {
             Err(SchemaError::JsonDeserialization(_)) => (),
             _ => panic!("Expected JSON deserialization error due to duplicate action type."),
         }
