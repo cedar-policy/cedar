@@ -103,6 +103,12 @@ impl SchemaFragment {
         serde_json::from_value(json).map_err(Into::into)
     }
 
+    /// Create a [`SchemaFragment`] from a string containing JSON (which should
+    /// be an object of the appropriate shape).
+    pub fn from_json_str(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(Into::into)
+    }
+
     /// Create a [`SchemaFragment`] directly from a file containing a JSON object.
     pub fn from_file(file: impl std::io::Read) -> Result<Self> {
         serde_json::from_reader(file).map_err(Into::into)

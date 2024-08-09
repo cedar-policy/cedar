@@ -66,6 +66,10 @@ pub enum ParseError {
 
 impl ParseError {
     /// Extract a primary source span locating the error, if one is available.
+    #[deprecated(
+        since = "3.3.0",
+        note = "Use the location information provided by miette::Diagnostic via `.labels()` and `.source_code()` instead"
+    )]
     pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
@@ -707,6 +711,10 @@ impl ParseErrors {
     }
 
     /// returns a Vec with stringified versions of the ParseErrors
+    #[deprecated(
+        since = "3.3.0",
+        note = "Use `.iter().map(ToString::to_string)` instead; note that converting to string discards some information from the error which is available through `miette::Diagnostic`"
+    )]
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()
     }
