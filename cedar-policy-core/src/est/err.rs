@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
+use std::sync::Arc;
+
 use crate::ast;
-use crate::ast::{LinkingError, PolicySetError};
+use crate::ast::PolicySetError;
 use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
-use crate::parser::unescape;
+use crate::parser::{join_with_conjunction, unescape};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -87,7 +90,31 @@ pub enum FromJsonError {
     /// Error reported when attempting to create a template-link
     #[error("Error linking policy set: {0}")]
     #[diagnostic(transparent)]
-    Linking(#[from] LinkingError),
+    Linking(#[from] ast::LinkingError),
+    /// Error reported when the extension function name is unknown
+    #[error("Invalid extension function name: `{0}`")]
+    UnknownExtFunc(ast::Name),
+    /// Returned when an Entity UID used as an action does not have the type `Action`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionType(#[from] InvalidActionType),
+}
+
+/// Details about an `InvalidActionType` error.
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
+pub struct InvalidActionType {
+    pub(crate) euids: NonEmpty<Arc<crate::ast::EntityUID>>,
+}
+
+impl std::fmt::Display for InvalidActionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "expected that action entity uids would have the type `Action` but got "
+        )?;
+        join_with_conjunction(f, "and", self.euids.iter(), |f, e| write!(f, "`{e}`"))
+    }
 }
 
 /// Errors while instantiating a policy
