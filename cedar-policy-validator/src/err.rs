@@ -557,6 +557,10 @@ pub mod schema_errors {
         // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
         #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
         ActionAttributes(Vec<String>),
+        #[error(
+            "Embedded attribute maps (RFC 68) are not fully implemented in this version of Cedar"
+        )]
+        EAMaps,
     }
 
     /// This error is thrown when `serde_json` fails to deserialize the JSON

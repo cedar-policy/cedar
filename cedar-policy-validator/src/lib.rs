@@ -232,14 +232,14 @@ mod test {
                     foo_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::AttributesOrContext::default(),
+                        shape: json_schema::EntityAttributes::default(),
                     },
                 ),
                 (
                     bar_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::AttributesOrContext::default(),
+                        shape: json_schema::EntityAttributes::default(),
                     },
                 ),
             ],
@@ -249,7 +249,7 @@ mod test {
                     applies_to: Some(json_schema::ApplySpec {
                         principal_types: vec!["foo_type".parse().unwrap()],
                         resource_types: vec!["bar_type".parse().unwrap()],
-                        context: json_schema::AttributesOrContext::default(),
+                        context: json_schema::RecordOrContextAttributes::default(),
                     }),
                     member_of: None,
                     attributes: None,

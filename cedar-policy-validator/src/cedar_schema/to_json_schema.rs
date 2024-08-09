@@ -28,15 +28,17 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
 
-use crate::{cedar_schema, json_schema, RawName};
-
 use super::{
     ast::{
         ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
         QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
-    err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
+    err::{
+        schema_warnings, EAMapError, EAMapNotAllowedHereError, EAMapWithConcreteAttributesError,
+        MultipleEAMapDeclarationsError, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors,
+    },
 };
+use crate::{cedar_schema, json_schema, RawName};
 
 impl From<cedar_schema::Path> for RawName {
     fn from(p: cedar_schema::Path) -> Self {
@@ -95,23 +97,99 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
+pub fn cedar_type_to_json_type(
+    ty: Node<Type>,
+) -> Result<json_schema::Type<RawName>, EAMapNotAllowedHereError> {
     match ty.node {
-        Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
-            element: Box::new(cedar_type_to_json_type(*t)),
-        }),
-        Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-            type_name: RawName::from(p),
-        }),
-        Type::Record(fields) => {
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
+        Type::Set(t) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
+            element: Box::new(cedar_type_to_json_type(*t)?),
+        })),
+        Type::Ident(p) => Ok(json_schema::Type::Type(
+            json_schema::TypeVariant::EntityOrCommon {
+                type_name: RawName::from(p),
+            },
+        )),
+        Type::Record(fields) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
+            json_schema::RecordType {
                 attributes: fields
                     .into_iter()
-                    .map(|field| convert_attr_decl(field.node))
-                    .collect(),
+                    .map(|field| convert_attr_decl_for_record(field))
+                    .collect::<Result<_, _>>()?,
                 additional_attributes: false,
-            }))
+            },
+        ))),
+    }
+}
+
+/// Convert a [`Type`] representing an entity attribute type into the JSON
+/// representation of the type. Unlike [`cedar_type_to_json_type()`], this
+/// function allows (and handles) `EAMap` types as well.
+///
+/// This can still return [`EAMapNotAllowedHereError`] if an `EAMap` is found,
+/// e.g., in a set element type, or nested in another `EAMap`.
+pub fn cedar_type_to_entity_attr_type(
+    ty: Node<Type>,
+) -> Result<json_schema::EntityAttributeTypeInternal<RawName>, EAMapError> {
+    match &ty.node {
+        Type::Record(decls) => {
+            let ea_map_decls = decls
+                .iter()
+                .filter_map(|decl| match &decl.node {
+                    AttrDecl::EAMap { value_ty } => Some((&decl.loc, value_ty)),
+                    _ => None,
+                })
+                .collect::<Vec<(&Loc, &Node<Type>)>>();
+            match (decls.len(), ea_map_decls.len()) {
+                (_, 0) => {
+                    // no `EAMap` decls
+                    Ok(json_schema::EntityAttributeTypeInternal::Type(
+                        cedar_type_to_json_type(ty)?,
+                    ))
+                }
+                (1, 1) => {
+                    // exactly one decl, and it's an `EAMap` decl like `?: String`.
+                    // Convert to an `EAMap`.
+                    // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
+                    #[allow(clippy::indexing_slicing)]
+                    let (_, value_type) = ea_map_decls[0];
+                    Ok(json_schema::EntityAttributeTypeInternal::EAMap {
+                        value_type: cedar_type_to_json_type(value_type.clone())?,
+                    })
+                }
+                (2.., 1) => {
+                    // one `EAMap` decl, but more than one decl total. This is an error.
+                    // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
+                    #[allow(clippy::indexing_slicing)]
+                    let (source_loc, _) = ea_map_decls[0];
+                    Err(EAMapWithConcreteAttributesError {
+                        source_loc: source_loc.clone(),
+                    }
+                    .into())
+                }
+                (2.., 2..) => {
+                    // multiple `EAMap` decls, this is an error
+                    // PANIC SAFETY: already determined `ea_map_decls.len()` is at least 2
+                    #[allow(clippy::indexing_slicing)]
+                    let (source_loc_1, _) = ea_map_decls[0];
+                    // PANIC SAFETY: already determined `ea_map_decls.len()` is at least 2
+                    #[allow(clippy::indexing_slicing)]
+                    let (source_loc_2, _) = ea_map_decls[1];
+                    Err(MultipleEAMapDeclarationsError {
+                        source_loc_1: source_loc_1.clone(),
+                        source_loc_2: source_loc_2.clone(),
+                    }
+                    .into())
+                }
+                (0, 1..) | (1, 2..) => {
+                    // impossible: more `EAMap` decls than total decls
+                    // PANIC SAFETY: see above
+                    unreachable!("can't have more `EAMap` decls than total decls")
+                }
+            }
         }
+        Type::Set(_) | Type::Ident(_) => Ok(json_schema::EntityAttributeTypeInternal::Type(
+            cedar_type_to_json_type(ty)?,
+        )),
     }
 }
 
@@ -202,7 +280,10 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                         loc: name_loc,
                     }))
                 } else {
-                    Ok((id, cedar_type_to_json_type(decl.def)))
+                    Ok((
+                        id,
+                        cedar_type_to_json_type(decl.def).map_err(EAMapError::from)?,
+                    ))
                 }
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
@@ -232,7 +313,7 @@ fn convert_action_decl(
         .unwrap_or_else(|| json_schema::ApplySpec {
             resource_types: vec![],
             principal_types: vec![],
-            context: json_schema::AttributesOrContext::default(),
+            context: json_schema::RecordOrContextAttributes::default(),
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
     let ty = json_schema::ActionType {
@@ -257,7 +338,7 @@ fn convert_app_decls(
     let (decls, _) = decls.into_inner();
     let mut principal_types: Option<Node<Vec<RawName>>> = None;
     let mut resource_types: Option<Node<Vec<RawName>>> = None;
-    let mut context: Option<Node<json_schema::AttributesOrContext<RawName>>> = None;
+    let mut context: Option<Node<json_schema::RecordOrContextAttributes<RawName>>> = None;
 
     for decl in decls {
         match decl {
@@ -274,7 +355,7 @@ fn convert_app_decls(
                 }
                 None => {
                     context = Some(Node::with_source_loc(
-                        convert_context_decl(context_decl),
+                        convert_context_decl(context_decl).map_err(EAMapError::from)?,
                         loc,
                     ));
                 }
@@ -372,7 +453,9 @@ fn convert_entity_decl(
     // First build up the defined entity type
     let etype = json_schema::EntityType {
         member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
-        shape: convert_attr_decls(e.attrs),
+        shape: convert_attr_decls_for_entity(e.attrs)
+            .map(Into::into)
+            .map_err(ToJsonSchemaError::from)?,
     };
 
     // Then map over all of the bound names
@@ -385,25 +468,27 @@ fn convert_entity_decl(
     )
 }
 
-/// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
-fn convert_attr_decls(
+/// Create a [`json_schema::RecordType`] from a series of `AttrDecl`s
+/// representing the attributes of an entity
+fn convert_attr_decls_for_entity(
     attrs: impl IntoIterator<Item = Node<AttrDecl>>,
-) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::RecordType {
+) -> Result<json_schema::RecordType<json_schema::EntityAttributeType<RawName>>, EAMapError> {
+    Ok(json_schema::RecordType {
         attributes: attrs
             .into_iter()
-            .map(|attr| convert_attr_decl(attr.node))
-            .collect(),
+            .map(|attr| convert_attr_decl_for_entity(attr))
+            .collect::<Result<_, _>>()?,
         additional_attributes: false,
-    }
-    .into()
+    })
 }
 
-/// Create a context decl
+/// Create a [`json_schema::RecordOrContextAttributes`] from a series of
+/// `AttrDecl`s representing the attributes of the context (or a `Path`
+/// representing the common-type defining those attributes)
 fn convert_context_decl(
     decl: Either<Path, Vec<Node<AttrDecl>>>,
-) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::AttributesOrContext(match decl {
+) -> Result<json_schema::RecordOrContextAttributes<RawName>, EAMapNotAllowedHereError> {
+    Ok(json_schema::RecordOrContextAttributes(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
             type_name: p.into(),
         },
@@ -411,23 +496,56 @@ fn convert_context_decl(
             json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: attrs
                     .into_iter()
-                    .map(|attr| convert_attr_decl(attr.node))
-                    .collect(),
+                    .map(|attr| convert_attr_decl_for_record(attr))
+                    .collect::<Result<_, _>>()?,
                 additional_attributes: false,
             }))
         }
-    })
+    }))
 }
 
 /// Convert an attribute type from an `AttrDecl`
-fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
-    (
-        attr.name.node,
-        json_schema::TypeOfAttribute {
-            ty: cedar_type_to_json_type(attr.ty),
-            required: attr.required,
-        },
-    )
+fn convert_attr_decl_for_record(
+    attr: Node<AttrDecl>,
+) -> Result<(SmolStr, json_schema::RecordAttributeType<RawName>), EAMapNotAllowedHereError> {
+    match attr.node {
+        AttrDecl::Concrete { name, required, ty } => Ok((
+            name.node,
+            json_schema::RecordAttributeType {
+                ty: cedar_type_to_json_type(ty)?,
+                required,
+            },
+        )),
+        AttrDecl::EAMap { .. } => Err(EAMapNotAllowedHereError {
+            source_loc: attr.loc,
+        }),
+    }
+}
+
+/// Convert an `AttrDecl` representing an entity attribute type to a pair `(name, ty)`.
+/// `attr` is not allowed to be `AttrDecl::EAMap` itself, but in the returned pair
+/// `(name, ty)`, `ty` is allowed to be an `EAMap`.
+fn convert_attr_decl_for_entity(
+    attr: Node<AttrDecl>,
+) -> Result<(SmolStr, json_schema::EntityAttributeType<RawName>), EAMapError> {
+    match attr.node {
+        AttrDecl::Concrete { name, required, ty } => Ok((
+            name.node,
+            json_schema::EntityAttributeType {
+                ty: cedar_type_to_entity_attr_type(ty)?,
+                required,
+            },
+        )),
+        AttrDecl::EAMap { .. } => {
+            // EAMap is not allowed here, as the descriptor of all entity attributes.
+            // EAMap is only allowed as the top-level type of one of the entity attributes.
+            // That is, as `ty` in `AttrDecl::Concrete`.
+            Err(EAMapNotAllowedHereError {
+                source_loc: attr.loc,
+            }
+            .into())
+        }
+    }
 }
 
 /// Takes a collection of results returning multiple errors

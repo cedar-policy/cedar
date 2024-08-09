@@ -24,6 +24,9 @@ use cedar_policy_core::parser::{
     unescape::UnescapeError,
     Loc, Node,
 };
+use cedar_policy_core::{
+    impl_diagnostic_from_source_loc_field, impl_diagnostic_from_two_source_loc_fields,
+};
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
@@ -278,6 +281,12 @@ impl From<ToJsonSchemaError> for ToJsonSchemaErrors {
     }
 }
 
+impl From<EAMapError> for ToJsonSchemaErrors {
+    fn from(e: EAMapError) -> Self {
+        Self::from(ToJsonSchemaError::from(e))
+    }
+}
+
 impl Display for ToJsonSchemaErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.first()) // intentionally showing only the first error; see #326 for discussion on a similar error type
@@ -358,7 +367,6 @@ pub enum ToJsonSchemaError {
     DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
     #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
     NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
-
     /// Error raised when there are duplicate namespace IDs
     #[error("Duplicate namespace IDs: `{namespace_id}`")]
     DuplicateNameSpaces {
@@ -375,6 +383,9 @@ pub enum ToJsonSchemaError {
     /// Use reserved schema keywords
     #[error("this uses a reserved schema keyword: {}", .0.node)]
     ReservedSchemaKeyword(Node<SmolStr>),
+    /// Errors relating to embedded attribute maps
+    #[error(transparent)]
+    EAMap(#[from] EAMapError),
 }
 
 impl ToJsonSchemaError {
@@ -419,8 +430,74 @@ impl Diagnostic for ToJsonSchemaError {
             ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
             }
+            ToJsonSchemaError::EAMap(e) => e.labels(),
         }
     }
+}
+
+/// An embedded attribute map (RFC 68) was encountered where one is not allowed
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")]
+pub struct EAMapNotAllowedHereError {
+    /// Source location of the `EAMap`
+    pub(crate) source_loc: Loc,
+}
+
+impl Diagnostic for EAMapNotAllowedHereError {
+    impl_diagnostic_from_source_loc_field!(source_loc);
+}
+
+/// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
+/// This is currently not allowed.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("this type contains both concrete attributes and an embedded attribute map (`?:`), which is not allowed")]
+pub struct EAMapWithConcreteAttributesError {
+    /// Source location of the `EAMap` declaration
+    pub(crate) source_loc: Loc,
+}
+
+impl Diagnostic for EAMapWithConcreteAttributesError {
+    impl_diagnostic_from_source_loc_field!(source_loc);
+}
+
+/// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
+/// This is currently not allowed.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("this type contains two or more different embedded attribute map declarations (`?:`), which is not allowed")]
+pub struct MultipleEAMapDeclarationsError {
+    /// Source location of the first `EAMap` declaration
+    pub(crate) source_loc_1: Loc,
+    /// Source location of the second `EAMap` declaration
+    pub(crate) source_loc_2: Loc,
+}
+
+impl Diagnostic for MultipleEAMapDeclarationsError {
+    impl_diagnostic_from_two_source_loc_fields!(source_loc_1, source_loc_2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "try separating this into two different attributes",
+        ))
+    }
+}
+
+/// Errors relating to embedded attribute maps (`EAMap`s)
+#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+pub enum EAMapError {
+    /// An embedded attribute map (RFC 68) was encountered where one is not allowed
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotAllowedHere(#[from] EAMapNotAllowedHereError),
+    /// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
+    /// This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WithConcreteAttributes(#[from] EAMapWithConcreteAttributesError),
+    /// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
+    /// This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultipleEAMapDeclarations(#[from] MultipleEAMapDeclarationsError),
 }
 
 /// Error subtypes for [`SchemaWarning`]

@@ -38,8 +38,7 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<EntityType>,
 
-    /// The attributes associated with this entity. Keys are the attribute
-    /// identifiers while the values are the type of the attribute.
+    /// The attributes associated with this entity.
     pub(crate) attributes: Attributes,
 
     /// Indicates that this entity type may have additional attributes
@@ -61,7 +60,7 @@ impl ValidatorEntityType {
         self.attributes.iter()
     }
 
-    /// Return `true` if this entity type has an `EntityType` declared as a
+    /// Return `true` if this entity type has an [`EntityType`] declared as a
     /// possible descendant in the schema.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         self.descendants.contains(ety)

@@ -183,14 +183,17 @@ pub Type: Node<SType> = {
         => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, Arc::clone(src))),
 }
 
-// AttrDecls := Name ['?'] ':' Type [',' | ',' AttrDecls]
+// AttrDecls := [Name ['?'] | '?'] ':' Type [',' | ',' AttrDecls]
 AttrDecls: Vec<Node<AttrDecl>> = {
     <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
-        => vec![Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))],
+        => vec![Node::with_source_loc(AttrDecl::Concrete { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))],
     <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
-        => {ds.insert(0, Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
+        => {ds.insert(0, Node::with_source_loc(AttrDecl::Concrete { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
+    <l:@L> "?" ":" <value_ty:Type> ","? <r:@R>
+        => vec![Node::with_source_loc(AttrDecl::EAMap { value_ty }, Loc::new(l..r, Arc::clone(src)))],
+    <l:@L> "?" ":" <value_ty:Type> "," <r:@R> <mut ds: AttrDecls>
+        => {ds.insert(0, Node::with_source_loc(AttrDecl::EAMap { value_ty }, Loc::new(l..r, Arc::clone(src)))); ds},
 }
-
 
 Comma<E>: Vec<E> = {
     <e:E?> => e.into_iter().collect(),
