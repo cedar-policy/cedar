@@ -4,7 +4,7 @@ edition = "2021"
 rust-version = "1.76.0"  # minimum supported Rust version is currently 1.76.0 because of use of `Arc::unwrap_or_clone()`. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
 build = "build.rs"
 
-version = "3.2.4"
+version = "3.3.0"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Core implemenation of the Cedar Policy language."
