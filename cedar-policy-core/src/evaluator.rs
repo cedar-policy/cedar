@@ -1942,7 +1942,11 @@ pub mod test {
                 ("bar".into(), Expr::val(4)),
                 ("foo".into(), Expr::val("hi")),
             ]),
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "foo".into(),
+                context: "in record literal",
+            }
+            .into())
         );
         // entity_with_attrs.address.street
         assert_eq!(
@@ -5712,7 +5716,11 @@ pub mod test {
         ]);
         assert_eq!(
             e,
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "a".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         let e = Expr::record([
@@ -5721,7 +5729,11 @@ pub mod test {
         ]);
         assert_eq!(
             e,
-            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "a".into(),
+                context: "in record literal",
+            }
+            .into())
         );
 
         let e = Expr::record([
