@@ -55,6 +55,9 @@ Cedar Language Version: 4.0
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
   now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
   to parse strings in the JSON schema format.
+- Marked errors/warnings related to parsing and entity/request validation as
+  `non_exhaustive`, allowing future variants to be added without a breaking
+  change. (#1137)
 
 ### Removed
 

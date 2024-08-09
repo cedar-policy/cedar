@@ -51,6 +51,7 @@ impl Display for EscapeKind {
 
 /// Errors thrown during deserialization from JSON
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum JsonDeserializationError {
     /// Error thrown by the `serde_json` crate
     #[error(transparent)]
@@ -446,6 +447,7 @@ impl From<serde_json::Error> for JsonSerializationError {
 
 /// Errors thrown during serialization to JSON
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum JsonSerializationError {
     /// Error thrown by `serde_json`
     #[error(transparent)]
