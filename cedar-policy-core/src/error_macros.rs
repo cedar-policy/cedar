@@ -33,29 +33,6 @@ macro_rules! impl_diagnostic_from_source_loc_field {
 }
 
 /// Macro which implements the `.labels()` and `.source_code()` methods of
-/// `miette::Diagnostic` by using the parameters `$i` and `$j` which must be the name
-/// of fields of type `Loc`.
-/// Both spans are underlined, only the first span is reported as the source code location
-#[macro_export]
-macro_rules! impl_diagnostic_from_source_loc_fields {
-    ( $i:ident , $j:ident ) => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            Some(&self.$i.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(
-                [
-                    miette::LabeledSpan::underline(self.$i.span),
-                    miette::LabeledSpan::underline(self.$j.span),
-                ]
-                .into_iter(),
-            ) as _)
-        }
-    };
-}
-
-/// Macro which implements the `.labels()` and `.source_code()` methods of
 /// `miette::Diagnostic` by using the parameter `$i` which must be the name
 /// of a field of type `Option<Loc>`
 #[macro_export]
