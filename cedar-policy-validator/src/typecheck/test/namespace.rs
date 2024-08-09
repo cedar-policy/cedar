@@ -542,8 +542,8 @@ fn namespaced_entity_is_wrong_type_when() {
 fn multi_namespace_action_eq() {
     let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
-            entity E;
-            action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
+            entity E1;
+            action "Action" appliesTo { context: {}, principal : [E1], resource : [E1] };
             namespace NS1 {
                 entity E;
                 action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
@@ -593,7 +593,7 @@ fn multi_namespace_action_eq() {
 fn multi_namespace_action_in() {
     let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
-            entity E;
+            entity E1;
             namespace NS1 { action "Group"; }
             namespace NS2 { action "Group" in [NS1::Action::"Group"]; }
             namespace NS3 {

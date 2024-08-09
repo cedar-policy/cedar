@@ -131,27 +131,16 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     /// [`ValidatorSchemaFragment<Name>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<ValidatorSchemaFragment<InternalName, EntityType>> {
         let (nsdefs, errs) = self
             .0
             .into_iter()
-            .map(|ns_def| {
-                ns_def.fully_qualify_type_references(
-                    all_common_defs,
-                    all_entity_defs,
-                    all_action_defs,
-                )
-            })
+            .map(|ns_def| ns_def.fully_qualify_type_references(all_defs))
             .partition_result::<Vec<ValidatorNamespaceDef<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
         if let Some(errs) = NonEmpty::from_vec(errs) {
             Err(SchemaError::join_nonempty(errs))
@@ -384,22 +373,8 @@ impl ValidatorSchema {
             .collect::<Vec<_>>();
 
         // Build the sets of all entity type, common type, and action definitions
-        // (fully-qualified `Name`s) in all fragments.
-        let all_entity_defs = fragments
-            .iter()
-            .flat_map(|f| f.0.iter())
-            .flat_map(|ns_def| ns_def.all_declared_entity_type_names().cloned())
-            .collect::<HashSet<InternalName>>();
-        let mut all_common_defs = fragments
-            .iter()
-            .flat_map(|f| f.0.iter())
-            .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
-            .collect::<HashSet<InternalName>>();
-        let all_action_defs = fragments
-            .iter()
-            .flat_map(|f| f.0.iter())
-            .flat_map(|ns_def| ns_def.all_declared_action_names().cloned())
-            .collect::<HashSet<EntityUID>>();
+        // (fully-qualified names) in all fragments.
+        let mut all_defs = AllDefs::new(|| fragments.iter());
 
         // Add aliases for primitive and extension typenames in the empty namespace,
         // so that they can be accessed without `__cedar`.
@@ -412,8 +387,8 @@ impl ValidatorSchema {
             .map(|(id, _)| Name::unqualified_name(id))
             .chain(extensions.ext_types().cloned().map(Into::into))
         {
-            if !all_entity_defs.contains(tyname.as_ref())
-                && !all_common_defs.contains(tyname.as_ref())
+            if all_defs.get_entity_type(tyname.as_ref()).is_none()
+                && all_defs.get_common_type(tyname.as_ref()).is_none()
             {
                 assert!(
                     tyname.is_unqualified(),
@@ -423,13 +398,12 @@ impl ValidatorSchema {
                     tyname.basename().clone(),
                     tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
                 ));
-                all_common_defs.insert(tyname.into());
+                all_defs.mark_as_implicitly_defined_common_type(tyname.into());
             }
         }
 
-        // Now use `all_entity_defs`, `all_common_defs`, and `all_action_defs`
-        // to resolve all [`ConditionalName`] type references into
-        // fully-qualified [`InternalName`] references.
+        // Now use `all_defs` to resolve all [`ConditionalName`] type references
+        // into fully-qualified [`InternalName`] references.
         // ("Resolve" here just means convert to fully-qualified
         // `InternalName`s; it does not mean inlining common types -- that will
         // come later.)
@@ -437,13 +411,7 @@ impl ValidatorSchema {
         // `ValidatorSchemaFragment<InternalName, EntityType>`.
         let (fragments, errs) = fragments
             .into_iter()
-            .map(|frag| {
-                frag.fully_qualify_type_references(
-                    &all_common_defs,
-                    &all_entity_defs,
-                    &all_action_defs,
-                )
-            })
+            .map(|frag| frag.fully_qualify_type_references(&all_defs))
             .partition_result::<Vec<ValidatorSchemaFragment<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
         if let Some(errs) = NonEmpty::from_vec(errs) {
             return Err(SchemaError::join_nonempty(errs));
@@ -969,6 +937,123 @@ fn internal_name_to_entity_type(
     name: InternalName,
 ) -> std::result::Result<EntityType, cedar_policy_core::ast::ReservedNameError> {
     Name::try_from(name).map(Into::into)
+}
+
+/// Holds the sets of all entity type, common type, and action definitions
+/// (fully-qualified names) in all fragments.
+#[derive(Debug)]
+pub struct AllDefs {
+    /// All entity type definitions, in all fragments, as fully-qualified names.
+    all_entity_defs: HashSet<TypeDefinitionInfo>,
+    /// All common type definitions, in all fragments, as fully-qualified names.
+    all_common_defs: HashSet<TypeDefinitionInfo>,
+    /// All action definitions, in all fragments, with fully-qualified typenames.
+    all_action_defs: HashSet<EntityUID>,
+}
+
+impl AllDefs {
+    /// Build the sets of all entity type, common type, and action definitions
+    /// (fully-qualified names) in all fragments.
+    pub fn new<'a, N: 'a, A: 'a, I>(fragments: impl Fn() -> I) -> Self
+    where
+        I: Iterator<Item = &'a ValidatorSchemaFragment<N, A>>,
+    {
+        Self {
+            all_entity_defs: fragments()
+                .flat_map(|f| f.0.iter())
+                .flat_map(|ns_def| ns_def.all_declared_entity_type_names().cloned())
+                .map(|name| TypeDefinitionInfo {
+                    name,
+                    user_def: true,
+                })
+                .collect(),
+            all_common_defs: fragments()
+                .flat_map(|f| f.0.iter())
+                .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
+                .map(|name| TypeDefinitionInfo {
+                    name,
+                    user_def: true,
+                })
+                .collect(),
+            all_action_defs: fragments()
+                .flat_map(|f| f.0.iter())
+                .flat_map(|ns_def| ns_def.all_declared_action_names().cloned())
+                .collect(),
+        }
+    }
+
+    /// Build an [`AllDefs`] assuming that the given fragment is the only
+    /// fragment that exists.
+    /// Any names referring to definitions in other fragments will not resolve
+    /// properly.
+    #[cfg(test)]
+    pub fn single_fragment<N, A>(fragment: &ValidatorSchemaFragment<N, A>) -> Self {
+        Self::new(|| std::iter::once(fragment))
+    }
+
+    /// Get the [`TypeDefinitionInfo`] for the given entity type name, or `None`
+    /// if it is not defined in any fragment
+    pub fn get_entity_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
+        self.all_entity_defs.iter().find(|tdi| &tdi.name == name)
+    }
+
+    /// Get the [`TypeDefinitionInfo`] for the given common type name, or `None`
+    /// if it is not defined in any fragment
+    pub fn get_common_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
+        self.all_common_defs.iter().find(|tdi| &tdi.name == name)
+    }
+
+    /// Is the given (fully-qualified) [`EntityUID`] defined as an action in any
+    /// fragment?
+    pub fn is_defined_as_action(&self, euid: &EntityUID) -> bool {
+        self.all_action_defs.contains(euid)
+    }
+
+    /// Mark the given [`InternalName`] as defined as an implicitly-defined
+    /// common type. See notes on [`CommonTypeDefinitionInfo`].
+    pub fn mark_as_implicitly_defined_common_type(&mut self, name: InternalName) {
+        self.all_common_defs.insert(TypeDefinitionInfo {
+            name,
+            user_def: false,
+        });
+    }
+
+    /// Build an [`AllDefs`] that assumes the given fully-qualified
+    /// [`InternalName`]s are defined (by the user) as entity types, and there
+    /// are no defined common types or actions.
+    #[cfg(test)]
+    pub(crate) fn from_entity_defs(names: impl IntoIterator<Item = InternalName>) -> Self {
+        Self {
+            all_entity_defs: names
+                .into_iter()
+                .map(|name| TypeDefinitionInfo {
+                    name,
+                    user_def: true,
+                })
+                .collect(),
+            all_common_defs: HashSet::new(),
+            all_action_defs: HashSet::new(),
+        }
+    }
+}
+
+/// Used by [`AllDefs`] to record the name of a defined type as well as a flag
+/// indicating whether this definition is from the user or not.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub struct TypeDefinitionInfo {
+    /// Fully-qualified type name that is defined
+    pub(crate) name: InternalName,
+    /// `true` if this type definition is from the user.
+    ///
+    /// Some common-type definitions are implicitly added by Cedar -- for
+    /// instance, `String` in the empty namespace is defined as
+    /// `type String = __cedar::String;` unless the user defines a different
+    /// `String` type in the empty namespace.
+    ///
+    /// As of this writing, entity-type definitions are always from the user,
+    /// but we still include this flag for entity-type definitions for
+    /// consistency and future-proofing.
+    pub(crate) user_def: bool,
 }
 
 /// A common type reference resolver.
@@ -1743,13 +1828,11 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
         ));
-        let all_entity_defs = HashSet::from_iter([
+        let all_defs = AllDefs::from_entity_defs([
             InternalName::from_str("NS::Foo").unwrap(),
-            InternalName::from_str("Foo").unwrap(),
+            InternalName::from_str("Bar").unwrap(),
         ]);
-        let schema_ty = schema_ty
-            .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
-            .unwrap();
+        let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
         let ty: Type =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
@@ -1771,13 +1854,11 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
         ));
-        let all_entity_defs = HashSet::from_iter([
+        let all_defs = AllDefs::from_entity_defs([
             InternalName::from_str("NS::Foo").unwrap(),
             InternalName::from_str("Foo").unwrap(),
         ]);
-        let schema_ty = schema_ty
-            .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
-            .unwrap();
+        let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
         let ty: Type =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
@@ -1807,10 +1888,8 @@ pub(crate) mod test {
             })),
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
-        let all_entity_defs = HashSet::from_iter([InternalName::from_str("Foo").unwrap()]);
-        let schema_ty = schema_ty
-            .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
-            .unwrap();
+        let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
+        let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
         let ty: Type =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
@@ -2226,7 +2305,7 @@ pub(crate) mod test {
         .unwrap();
         assert_matches!(
             TryInto::<ValidatorSchema>::try_into(fragment),
-            Err(SchemaError::TypeResolution(_))
+            Err(SchemaError::TypeNotDefined(_))
         );
     }
 
@@ -2244,7 +2323,7 @@ pub(crate) mod test {
         .unwrap();
         assert_matches!(
             TryInto::<ValidatorSchema>::try_into(fragment),
-            Err(SchemaError::TypeResolution(_))
+            Err(SchemaError::TypeNotDefined(_))
         );
     }
 
@@ -3101,13 +3180,953 @@ pub(crate) mod test {
 mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
+mod test_rfc70 {
+    use super::test::collect_warnings;
+    use super::ValidatorSchema;
+    use crate::types::Type;
+    use cedar_policy_core::{
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[track_caller]
+    fn assert_valid_cedar_schema(src: &str) -> ValidatorSchema {
+        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+            Ok((schema, _)) => schema,
+            Err(e) => panic!("{:?}", miette::Report::new(e)),
+        }
+    }
+
+    #[track_caller]
+    fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
+        match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
+            Ok(schema) => schema,
+            Err(e) => panic!("{:?}", miette::Report::new(e)),
+        }
+    }
+
+    /// Common type shadowing a common type is disallowed in both syntaxes
+    #[test]
+    fn common_common_conflict() {
+        let src = "
+            type T = String;
+            namespace NS {
+                type T = String;
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {},
+                "actions": {},
+            },
+            "NS": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "T" },
+                            },
+                        }
+                    }
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
+
+    /// Entity type shadowing an entity type is disallowed in both syntaxes
+    #[test]
+    fn entity_entity_conflict() {
+        let src = "
+            entity T in T { foo: String };
+            namespace NS {
+                entity T { bar: String };
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+
+        // still disallowed even if there are no ambiguous references to `T`
+        let src = "
+            entity T { foo: String };
+            namespace NS {
+                entity T { bar: String };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "T": {
+                        "memberOfTypes": ["T"],
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": { "type": "String" },
+                            },
+                        }
+                    }
+                },
+                "actions": {},
+            },
+            "NS": {
+                "entityTypes": {
+                    "T": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "bar": { "type": "String" },
+                            },
+                        }
+                    },
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "Entity", "name": "T" },
+                            },
+                        }
+                    },
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
+
+    /// Common type shadowing an entity type is disallowed in both syntaxes,
+    /// even though it would be unambiguous in the JSON syntax
+    #[test]
+    fn common_entity_conflict() {
+        let src = "
+            entity T in T { foo: String };
+            namespace NS {
+                type T = String;
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "T": {
+                        "memberOfTypes": ["T"],
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": { "type": "String" },
+                            },
+                        }
+                    }
+                },
+                "actions": {},
+            },
+            "NS": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "T" },
+                            }
+                        }
+                    }
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
+
+    /// Entity type shadowing a common type is disallowed in both syntaxes, even
+    /// though it would be unambiguous in the JSON syntax
+    #[test]
+    fn entity_common_conflict() {
+        let src = "
+            type T = String;
+            namespace NS {
+                entity T in T { foo: String };
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {},
+                "actions": {},
+            },
+            "NS": {
+                "entityTypes": {
+                    "T": {
+                        "memberOfTypes": ["T"],
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": { "type": "String" },
+                            },
+                        }
+                    },
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "T" },
+                            }
+                        }
+                    }
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
+
+    /// Action shadowing an action is disallowed in both syntaxes
+    #[test]
+    fn action_action_conflict() {
+        let src = "
+            action A;
+            namespace NS {
+                action A;
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("RFC 70").build(),
+            );
+        });
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {},
+                "actions": {
+                    "A": {},
+                },
+            },
+            "NS": {
+                "actions": {
+                    "A": {},
+                },
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("RFC 70").build(),
+            );
+        });
+    }
+
+    /// Action with same name as a common type is allowed
+    #[test]
+    fn action_common_conflict() {
+        let src = "
+            action A;
+            action B; // same name as a common type in same (empty) namespace
+            action C; // same name as a common type in different (nonempty) namespace
+            type B = String;
+            type E = String;
+            namespace NS1 {
+                type C = String;
+                entity User { b: B, c: C, e: E };
+            }
+            namespace NS2 {
+                type D = String;
+                action D; // same name as a common type in same (nonempty) namespace
+                action E; // same name as a common type in different (empty) namespace
+                entity User { b: B, d: D, e: E };
+            }
+        ";
+        assert_valid_cedar_schema(src);
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "B": { "type": "String" },
+                    "E": { "type": "String" },
+                },
+                "entityTypes": {},
+                "actions": {
+                    "A": {},
+                    "B": {},
+                    "C": {},
+                },
+            },
+            "NS1": {
+                "commonTypes": {
+                    "C": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "b": { "type": "B" },
+                                "c": { "type": "C" },
+                                "e": { "type": "E" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS2": {
+                "commonTypes": {
+                    "D": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "b": { "type": "B" },
+                                "d": { "type": "D" },
+                                "e": { "type": "E" },
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "D": {},
+                    "E": {},
+                }
+            }
+        });
+        assert_valid_json_schema(src_json);
+    }
+
+    /// Action with same name as an entity type is allowed
+    #[test]
+    fn action_entity_conflict() {
+        let src = "
+            action A;
+            action B; // same name as an entity type in same (empty) namespace
+            action C; // same name as an entity type in different (nonempty) namespace
+            entity B;
+            entity E;
+            namespace NS1 {
+                entity C;
+                entity User { b: B, c: C, e: E };
+            }
+            namespace NS2 {
+                entity D;
+                action D; // same name as an entity type in same (nonempty) namespace
+                action E; // same name as an entity type in different (empty) namespace
+                entity User { b: B, d: D, e: E };
+            }
+        ";
+        assert_valid_cedar_schema(src);
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "B": {},
+                    "E": {},
+                },
+                "actions": {
+                    "A": {},
+                    "B": {},
+                    "C": {},
+                },
+            },
+            "NS1": {
+                "entityTypes": {
+                    "C": {},
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "b": { "type": "Entity", "name": "B" },
+                                "c": { "type": "Entity", "name": "C" },
+                                "e": { "type": "Entity", "name": "E" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS2": {
+                "entityTypes": {
+                    "D": {},
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "b": { "type": "Entity", "name": "B" },
+                                "d": { "type": "Entity", "name": "D" },
+                                "e": { "type": "Entity", "name": "E" },
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "D": {},
+                    "E": {},
+                }
+            }
+        });
+        assert_valid_json_schema(src_json);
+    }
+
+    /// Common type shadowing an entity type in the same namespace is allowed.
+    /// In the JSON syntax, but not the Cedar syntax, you can even define
+    /// `entity T; type T = T;`. (In the Cedar syntax, there's no way to specify
+    /// that the RHS `T` should refer to the entity type, but in the JSON syntax
+    /// there is.)
+    #[test]
+    fn common_shadowing_entity_same_namespace() {
+        let src = "
+            entity T;
+            type T = Bool; // works in the empty namespace
+            namespace NS {
+                entity E;
+                type E = Bool; // works in a nonempty namespace
+            }
+        ";
+        assert_valid_cedar_schema(src);
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "T": { "type": "Entity", "name": "T" },
+                },
+                "entityTypes": {
+                    "T": {},
+                },
+                "actions": {}
+            },
+            "NS1": {
+                "commonTypes": {
+                    "E": { "type": "Entity", "name": "E" },
+                },
+                "entityTypes": {
+                    "E": {},
+                },
+                "actions": {}
+            },
+            "NS2": {
+                "commonTypes": {
+                    "E": { "type": "String" },
+                },
+                "entityTypes": {
+                    "E": {},
+                },
+                "actions": {}
+            }
+        });
+        assert_valid_json_schema(src_json);
+    }
+
+    /// Common type shadowing a primitive type is allowed;
+    /// you can still refer to the primitive type using __cedar
+    #[test]
+    fn common_shadowing_primitive() {
+        let src = "
+            type String = Long;
+            entity E {
+                a: String,
+                b: __cedar::String,
+                c: Long,
+                d: __cedar::Long,
+            };
+            namespace NS {
+                type Bool = Long;
+                entity F {
+                    a: Bool,
+                    b: __cedar::Bool,
+                    c: Long,
+                    d: __cedar::Long,
+                };
+            }
+        ";
+        let schema = assert_valid_cedar_schema(src);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_string());
+        });
+        assert_matches!(e.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+        });
+        assert_matches!(f.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(f.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "String": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "String" },
+                                "b": { "type": "__cedar::String" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "commonTypes": {
+                    "Bool": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Bool" },
+                                "b": { "type": "__cedar::Bool" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
+        let schema = assert_valid_json_schema(src_json);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_string()); // this is arguably a BUG -- the Cedar syntax interprets this as Long due to the common type, but the JSON syntax interprets this as String. However, this schema will be illegal after #1139, so it's moot to fix now
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_string());
+        });
+        assert_matches!(e.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+        });
+        assert_matches!(f.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(f.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+    }
+
+    /// Common type shadowing an extension type is allowed;
+    /// you can still refer to the extension type using __cedar
+    #[test]
+    fn common_shadowing_extension() {
+        let src = "
+            type ipaddr = Long;
+            entity E {
+                a: ipaddr,
+                b: __cedar::ipaddr,
+                c: Long,
+                d: __cedar::Long,
+            };
+            namespace NS {
+                type decimal = Long;
+                entity F {
+                    a: decimal,
+                    b: __cedar::decimal,
+                    c: Long,
+                    d: __cedar::Long,
+                };
+            }
+        ";
+        let schema = assert_valid_cedar_schema(src);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+        });
+        assert_matches!(e.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+        });
+        assert_matches!(f.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(f.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "ipaddr": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "ipaddr" },
+                                "b": { "type": "__cedar::ipaddr" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "commonTypes": {
+                    "decimal": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "decimal" },
+                                "b": { "type": "__cedar::decimal" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
+        let schema = assert_valid_json_schema(src_json);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+        });
+        assert_matches!(e.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+        });
+        assert_matches!(f.attributes.get_attr("c"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+        assert_matches!(f.attributes.get_attr("d"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
+        });
+    }
+
+    /// Entity type shadowing a primitive type is allowed;
+    /// you can still refer to the primitive type using __cedar
+    #[test]
+    fn entity_shadowing_primitive() {
+        let src = "
+            entity String;
+            entity E {
+                a: String,
+                b: __cedar::String,
+            };
+            namespace NS {
+                entity Bool;
+                entity F {
+                    a: Bool,
+                    b: __cedar::Bool,
+                };
+            }
+        ";
+        let schema = assert_valid_cedar_schema(src);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_string());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool")); // using the common type definition
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+        });
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "String": {},
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Entity", "name": "String" },
+                                "b": { "type": "__cedar::String" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "entityTypes": {
+                    "Bool": {},
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Entity", "name": "Bool" },
+                                "b": { "type": "__cedar::Bool" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
+        let schema = assert_valid_json_schema(src_json);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_string());
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool"));
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+        });
+    }
+
+    /// Entity type shadowing an extension type is allowed;
+    /// you can still refer to the extension type using __cedar
+    #[test]
+    fn entity_shadowing_extension() {
+        let src = "
+            entity ipaddr;
+            entity E {
+                a: ipaddr,
+                b: __cedar::ipaddr,
+            };
+            namespace NS {
+                entity decimal;
+                entity F {
+                    a: decimal,
+                    b: __cedar::decimal,
+                };
+            }
+        ";
+        let schema = assert_valid_cedar_schema(src);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+        });
+
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "ipaddr": {},
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Entity", "name": "ipaddr" },
+                                "b": { "type": "__cedar::ipaddr" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "entityTypes": {
+                    "decimal": {},
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Entity", "name": "decimal" },
+                                "b": { "type": "__cedar::decimal" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
+        let schema = assert_valid_json_schema(src_json);
+        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
+        });
+        assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+        });
+        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
+        });
+        assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
+            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+        });
+    }
+}
+
+#[cfg(test)]
 mod test_resolver {
     use std::collections::HashMap;
 
     use cedar_policy_core::{ast::InternalName, extensions::Extensions};
     use cool_asserts::assert_matches;
 
-    use super::CommonTypeResolver;
+    use super::{AllDefs, CommonTypeResolver};
     use crate::{
         err::SchemaError, json_schema, types::Type, ConditionalName, ValidatorSchemaFragment,
     };
@@ -3116,24 +4135,8 @@ mod test_resolver {
         let sfrag = json_schema::Fragment::from_json_value(schema_json).unwrap();
         let schema: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
             sfrag.try_into().unwrap();
-        let all_common_defs = schema
-            .0
-            .iter()
-            .flat_map(|nsdef| nsdef.all_declared_common_type_names().cloned())
-            .collect();
-        let all_entity_defs = schema
-            .0
-            .iter()
-            .flat_map(|nsdef| nsdef.all_declared_entity_type_names().cloned())
-            .collect();
-        let all_action_defs = schema
-            .0
-            .iter()
-            .flat_map(|nsdef| nsdef.all_declared_action_names().cloned())
-            .collect();
-        let schema = schema
-            .fully_qualify_type_references(&all_common_defs, &all_entity_defs, &all_action_defs)
-            .unwrap();
+        let all_defs = AllDefs::single_fragment(&schema);
+        let schema = schema.fully_qualify_type_references(&all_defs).unwrap();
         let mut defs = HashMap::new();
         for def in schema.0 {
             defs.extend(def.common_types.defs.into_iter());

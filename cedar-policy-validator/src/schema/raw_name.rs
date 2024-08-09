@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-use crate::schema_errors::TypeResolutionError;
+use crate::err::TypeResolutionError;
+use crate::schema::{AllDefs, TypeDefinitionInfo};
+use crate::schema_errors::{TypeNotDefinedError, TypeShadowingError};
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 /// A newtype which indicates that the contained [`InternalName`] may not yet be
 /// fully-qualified.
@@ -238,25 +239,21 @@ impl ConditionalName {
     }
 
     /// Resolve the [`ConditionalName`] into a fully-qualified [`InternalName`],
-    /// given that `all_defined_common_types` and `all_defined_entity_types`
-    /// represent all fully-qualified [`InternalName`]s defined in all schema
-    /// fragments, as common and entity types respectively.
+    /// given that `all_defs` includes all fully-qualified [`InternalName`]s
+    /// defined in all schema fragments.
     ///
-    /// Note that this returns [`InternalName`], because type references may
-    /// resolve to an internal name like `__cedar::String`.
+    /// Note that this returns [`InternalName`] (as opposed to [`Name`]),
+    /// because type references may resolve to an internal name like
+    /// `__cedar::String`.
     /// In general, as noted on [`InternalName`], [`InternalName`]s are valid
     /// to appear as type _references_, and we generally expect
     /// [`ConditionalName`]s to also represent type _references_.
     ///
-    /// `all_defined_common_types` and `all_defined_entity_types` are also
-    /// defined as [`InternalName`], because some names containing `__cedar`
-    /// might be internally defined/valid, even though it is not valid for
-    /// _end-users_ to define those names.
-    pub fn resolve<'a>(
-        self,
-        all_defined_common_types: &'a HashSet<InternalName>,
-        all_defined_entity_types: &'a HashSet<InternalName>,
-    ) -> Result<&'a InternalName, TypeResolutionError> {
+    /// `all_defs` also internally includes [`InternalName`]s, because some
+    /// names containing `__cedar` might be internally defined/valid, even
+    /// though it is not valid for _end-users_ to define those names.
+    pub fn resolve<'a>(self, all_defs: &AllDefs) -> Result<InternalName, TypeResolutionError> {
+        let mut resolved = None;
         for possibility in self.possibilities.iter() {
             // Per RFC 24, we give priority to trying to resolve to a common
             // type, before trying to resolve to an entity type.
@@ -270,20 +267,23 @@ impl ConditionalName {
                 self.reference_type,
                 ReferenceType::Common | ReferenceType::CommonOrEntity
             ) {
-                if let Some(possibility) = all_defined_common_types.get(possibility) {
-                    return Ok(possibility);
+                if let Some(possibility) = all_defs.get_common_type(possibility) {
+                    update_resolved_name(&mut resolved, possibility)?;
                 }
             }
             if matches!(
                 self.reference_type,
                 ReferenceType::Entity | ReferenceType::CommonOrEntity
             ) {
-                if let Some(possibility) = all_defined_entity_types.get(possibility) {
-                    return Ok(possibility);
+                if let Some(possibility) = all_defs.get_entity_type(possibility) {
+                    update_resolved_name(&mut resolved, possibility)?;
                 }
             }
         }
-        Err(TypeResolutionError(nonempty![self]))
+        match resolved {
+            Some(possibility) => Ok(possibility.clone()),
+            None => Err(TypeNotDefinedError(nonempty![self]).into()),
+        }
     }
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve
@@ -336,4 +336,56 @@ pub enum ReferenceType {
     Entity,
     /// The reference can resolve to either an entity or common type name
     CommonOrEntity,
+}
+
+/// Given that we found a new `possibility` that is defined and we could resolve to,
+/// update the `resolved` for this, and return an error if we're in a situation
+/// disallowed by [RFC 70].
+///
+/// Assumes that we consider possibilities in decreasing order of priority.
+///
+/// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
+fn update_resolved_name<'a>(
+    resolved: &mut Option<&'a InternalName>,
+    possibility: &'a TypeDefinitionInfo,
+) -> Result<(), TypeShadowingError> {
+    match resolved {
+        Some(accepted_def) => {
+            // We just found a lower-priority definition than the one we already
+            // resolved to, meaning that the new definition is shadowed.
+            //
+            // Don't change `resolved` -- leave the higher-priority definition
+            // there.
+            //
+            // Do check whether this situation is disallowed by RFC 70.
+            // RFC 70 specifies that entity/common type definitions in a
+            // nonempty namespace cannot shadow entity/common type definitions
+            // in the empty namespace.
+            let shadowed_def = &possibility.name;
+            if shadowed_def.is_unqualified() && !accepted_def.is_unqualified() {
+                if possibility.user_def {
+                    // This is the situation disallowed by RFC 70
+                    Err(TypeShadowingError {
+                        shadowed_def: shadowed_def.clone(),
+                        shadowing_def: accepted_def.clone(),
+                    })
+                } else {
+                    // RFC 70 does not disallow defining types like `MyNamespace::String`,
+                    // if the user does not define their own `String` in the empty namespace.
+                    // Although this does shadow an empty-namespace definition (namely,
+                    // `type String = __cedar::String;`, which is added implicitly), we
+                    // don't throw an error, because shadowing _implicit_ definitions is
+                    // allowed.
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
+        }
+        None => {
+            // We just found our highest-priority definition.
+            *resolved = Some(&possibility.name);
+            Ok(())
+        }
+    }
 }

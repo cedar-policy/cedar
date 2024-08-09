@@ -42,8 +42,8 @@ use crate::{
     cedar_schema::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
-    err::{schema_errors::*, Result},
-    CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
+    err::{schema_errors::*, ActionResolutionError, Result, TypeResolutionError},
+    AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
@@ -245,52 +245,27 @@ impl NamespaceDefinition<ConditionalName> {
     /// [`NamespaceDefinition<InternalName>`] by fully-qualifying all typenames
     /// that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    ///
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<NamespaceDefinition<InternalName>> {
         Ok(NamespaceDefinition {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<std::result::Result<_, TypeResolutionError>>()?,
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<std::result::Result<_, TypeResolutionError>>()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(
-                            all_common_defs,
-                            all_entity_defs,
-                            all_action_defs,
-                        )?,
-                    ))
-                })
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
         })
     }
@@ -344,23 +319,19 @@ impl EntityType<ConditionalName> {
     /// [`EntityType<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<EntityType<InternalName>, TypeResolutionError> {
         Ok(EntityType {
             member_of_types: self
                 .member_of_types
                 .into_iter()
-                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .map(|cname| cname.resolve(all_defs))
                 .collect::<std::result::Result<_, _>>()?,
-            shape: self
-                .shape
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            shape: self.shape.fully_qualify_type_references(all_defs)?,
         })
     }
 }
@@ -427,17 +398,14 @@ impl RecordOrContextAttributes<ConditionalName> {
     /// [`RecordOrContextAttributes<InternalName>`] by fully-qualifying all typenames
     /// that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<RecordOrContextAttributes<InternalName>, TypeResolutionError> {
         Ok(RecordOrContextAttributes(
-            self.0
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            self.0.fully_qualify_type_references(all_defs)?,
         ))
     }
 }
@@ -611,20 +579,18 @@ impl EntityAttributes<ConditionalName> {
     /// [`EntityAttributes<InternalName>`] by fully-qualifying all typenames
     /// that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<EntityAttributes<InternalName>, TypeResolutionError> {
         match self {
             Self::RecordAttributes(attrs) => Ok(EntityAttributes::RecordAttributes(
-                attrs.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                attrs.fully_qualify_type_references(all_defs)?,
             )),
             Self::EntityAttributes(internal) => Ok(EntityAttributes::EntityAttributes(
-                internal.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                internal.fully_qualify_type_references(all_defs)?,
             )),
         }
     }
@@ -635,19 +601,15 @@ impl EntityAttributesInternal<ConditionalName> {
     /// [`EntityAttributes<InternalName>`] by fully-qualifying all typenames
     /// that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<EntityAttributesInternal<InternalName>, TypeResolutionError> {
         Ok(EntityAttributesInternal {
             type_placeholder_hack: self.type_placeholder_hack,
-            attrs: self
-                .attrs
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            attrs: self.attrs.fully_qualify_type_references(all_defs)?,
         })
     }
 }
@@ -756,31 +718,23 @@ impl ActionType<ConditionalName> {
     /// [`ActionType<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    ///
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<ActionType<InternalName>> {
         Ok(ActionType {
             attributes: self.attributes,
             applies_to: self
                 .applies_to
-                .map(|applyspec| {
-                    applyspec.fully_qualify_type_references(all_common_defs, all_entity_defs)
-                })
+                .map(|applyspec| applyspec.fully_qualify_type_references(all_defs))
                 .transpose()?,
             member_of: self
                 .member_of
                 .map(|v| {
                     v.into_iter()
-                        .map(|aeuid| aeuid.fully_qualify_type_references(all_action_defs))
+                        .map(|aeuid| aeuid.fully_qualify_type_references(all_defs))
                         .collect::<std::result::Result<_, ActionResolutionError>>()
                 })
                 .transpose()?,
@@ -841,28 +795,24 @@ impl ApplySpec<ConditionalName> {
     /// [`ApplySpec<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<ApplySpec<InternalName>, TypeResolutionError> {
         Ok(ApplySpec {
             resource_types: self
                 .resource_types
                 .into_iter()
-                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .map(|cname| cname.resolve(all_defs))
                 .collect::<std::result::Result<_, TypeResolutionError>>()?,
             principal_types: self
                 .principal_types
                 .into_iter()
-                .map(|cname| cname.resolve(all_common_defs, all_entity_defs).cloned())
+                .map(|cname| cname.resolve(all_defs))
                 .collect::<std::result::Result<_, TypeResolutionError>>()?,
-            context: self
-                .context
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            context: self.context.fully_qualify_type_references(all_defs)?,
         })
     }
 }
@@ -971,25 +921,29 @@ impl ActionEntityUID<ConditionalName> {
     /// Convert this [`ActionEntityUID<ConditionalName>`] into an
     /// [`ActionEntityUID<InternalName>`] by fully-qualifying its typename.
     ///
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
-    /// This `ActionEntityUID<ConditionalName>` must resolve to one of the
-    /// `all_action_defs` or else it throws `UndeclaredActionsError`.
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
+    /// This `ActionEntityUID<ConditionalName>` must resolve to something defined
+    /// in `all_defs` or else it throws [`ActionNotDefinedError`].
     pub fn fully_qualify_type_references(
         self,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<ActionEntityUID<InternalName>, ActionResolutionError> {
+        let mut resolved = None;
         for possibility in self.possibilities() {
             // This ignores any possibilities that aren't valid `EntityUID`,
             // because we know that all defined actions are valid `EntityUID`s
             // (because `all_action_defs` has type `&HashSet<EntityUID>`).
             if let Ok(euid) = EntityUID::try_from(possibility.clone()) {
-                if all_action_defs.contains(&euid) {
-                    return Ok(possibility);
+                if all_defs.is_defined_as_action(&euid) {
+                    update_resolved_name(&mut resolved, possibility.clone())?;
                 }
             }
         }
-        Err(ActionResolutionError(nonempty!(self)))
+        match resolved {
+            Some(possibility) => Ok(possibility.clone()),
+            None => Err(ActionNotDefinedError(nonempty!(self)).into()),
+        }
     }
 
     /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
@@ -1059,6 +1013,50 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
+        }
+    }
+}
+
+/// Very nearly a copy of `update_resolved_name` in `raw_name.rs`, but different
+/// types of `resolved`, `possibility`, and the error that is thrown.
+///
+/// Given that we found a new `possibility` that is defined and we could resolve to,
+/// update the `resolved` for this, and return an error if we're in a situation
+/// disallowed by [RFC 70].
+///
+/// Assumes that we consider possibilities in decreasing order of priority.
+///
+/// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
+fn update_resolved_name(
+    resolved: &mut Option<ActionEntityUID<InternalName>>,
+    possibility: ActionEntityUID<InternalName>,
+) -> std::result::Result<(), ActionShadowingError> {
+    match resolved {
+        Some(accepted_def) => {
+            // We just found a lower-priority definition than the one we already
+            // resolved to, meaning that the new definition is shadowed.
+            //
+            // Don't change `resolved` -- leave the higher-priority definition
+            // there.
+            //
+            // Do check whether this situation is disallowed by RFC 70.
+            // RFC 70 specifies that action definitions in a nonempty namespace
+            // cannot shadow action definitions in the empty namespace.
+            let shadowed_def = possibility;
+            if shadowed_def.ty().is_unqualified() && !accepted_def.ty().is_unqualified() {
+                // This is the situation disallowed by RFC 70
+                Err(ActionShadowingError {
+                    shadowed_def: shadowed_def.clone(),
+                    shadowing_def: accepted_def.clone(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+        None => {
+            // We just found our highest-priority definition.
+            *resolved = Some(possibility);
+            Ok(())
         }
     }
 }
@@ -1176,20 +1174,16 @@ impl Type<ConditionalName> {
     /// Convert this [`Type<ConditionalName>`] into a [`Type<InternalName>`] by
     /// fully-qualifying all typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<Type<InternalName>, TypeResolutionError> {
         match self {
-            Self::Type(tv) => Ok(Type::Type(
-                tv.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-            )),
+            Self::Type(tv) => Ok(Type::Type(tv.fully_qualify_type_references(all_defs)?)),
             Self::CommonTypeRef { type_name } => Ok(Type::CommonTypeRef {
-                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
+                type_name: type_name.resolve(all_defs)?.clone(),
             }),
         }
     }
@@ -1702,26 +1696,19 @@ impl RecordType<RecordAttributeType<ConditionalName>> {
     /// [`RecordType<RecordAttributeType<InternalName>>`] by fully-qualifying
     /// all typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<RecordType<RecordAttributeType<InternalName>>, TypeResolutionError>
     {
         Ok(RecordType {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
-                .collect::<std::result::Result<_, _>>()?,
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
             additional_attributes: self.additional_attributes,
         })
     }
@@ -1732,26 +1719,19 @@ impl RecordType<EntityAttributeType<ConditionalName>> {
     /// [`RecordType<EntityAttributeType<InternalName>>`] by fully-qualifying
     /// all typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<RecordType<EntityAttributeType<InternalName>>, TypeResolutionError>
     {
         Ok(RecordType {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
-                .collect::<std::result::Result<_, _>>()?,
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<std::result::Result<_, TypeResolutionError>>()?,
             additional_attributes: self.additional_attributes,
         })
     }
@@ -1895,13 +1875,11 @@ impl TypeVariant<ConditionalName> {
     /// [`TypeVariant<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<TypeVariant<InternalName>, TypeResolutionError> {
         match self {
             Self::Boolean => Ok(TypeVariant::Boolean),
@@ -1909,15 +1887,13 @@ impl TypeVariant<ConditionalName> {
             Self::String => Ok(TypeVariant::String),
             Self::Extension { name } => Ok(TypeVariant::Extension { name }),
             Self::Entity { name } => Ok(TypeVariant::Entity {
-                name: name.resolve(all_common_defs, all_entity_defs)?.clone(),
+                name: name.resolve(all_defs)?.clone(),
             }),
             Self::EntityOrCommon { type_name } => Ok(TypeVariant::EntityOrCommon {
-                type_name: type_name.resolve(all_common_defs, all_entity_defs)?.clone(),
+                type_name: type_name.resolve(all_defs)?.clone(),
             }),
             Self::Set { element } => Ok(TypeVariant::Set {
-                element: Box::new(
-                    element.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                ),
+                element: Box::new(element.fully_qualify_type_references(all_defs)?),
             }),
             Self::Record(RecordType {
                 attributes,
@@ -1929,15 +1905,12 @@ impl TypeVariant<ConditionalName> {
                         Ok((
                             attr,
                             RecordAttributeType {
-                                ty: ty.fully_qualify_type_references(
-                                    all_common_defs,
-                                    all_entity_defs,
-                                )?,
+                                ty: ty.fully_qualify_type_references(all_defs)?,
                                 required,
                             },
                         ))
                     })
-                    .collect::<std::result::Result<BTreeMap<_, _>, _>>()?,
+                    .collect::<std::result::Result<BTreeMap<_, _>, TypeResolutionError>>()?,
                 additional_attributes,
             })),
         }
@@ -2042,21 +2015,18 @@ impl EntityAttributeTypeInternal<ConditionalName> {
     /// [`EntityAttributeTypeInternal<InternalName>`] by fully-qualifying all
     /// typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<EntityAttributeTypeInternal<InternalName>, TypeResolutionError> {
         match self {
             Self::Type(ty) => Ok(EntityAttributeTypeInternal::Type(
-                ty.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                ty.fully_qualify_type_references(all_defs)?,
             )),
             Self::EAMap { value_type } => Ok(EntityAttributeTypeInternal::EAMap {
-                value_type: value_type
-                    .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+                value_type: value_type.fully_qualify_type_references(all_defs)?,
             }),
         }
     }
@@ -2166,18 +2136,14 @@ impl EntityAttributeType<ConditionalName> {
     /// [`EntityAttributeType<InternalName>`] by fully-qualifying
     /// all typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<EntityAttributeType<InternalName>, TypeResolutionError> {
         Ok(EntityAttributeType {
-            ty: self
-                .ty
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
         })
     }
@@ -2245,18 +2211,14 @@ impl RecordAttributeType<ConditionalName> {
     /// [`RecordAttributeType<InternalName>`] by fully-qualifying
     /// all typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> std::result::Result<RecordAttributeType<InternalName>, TypeResolutionError> {
         Ok(RecordAttributeType {
-            ty: self
-                .ty
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
         })
     }

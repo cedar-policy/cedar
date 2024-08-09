@@ -17,7 +17,7 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityType, EntityUID, InternalName, PartialValueSerializedAsExpr},
+    ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
     transitive_closure::TCNode,
 };
 use itertools::Itertools;
@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::internal_name_to_entity_type;
 use crate::{
-    schema::SchemaError,
+    schema::{AllDefs, SchemaError},
     types::{Attributes, Type},
     ConditionalName,
 };
@@ -182,19 +182,17 @@ impl ValidatorApplySpec<ConditionalName> {
     /// typenames that appear anywhere in any definitions, and checking that
     /// none of these typenames contain `__cedar`.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
+        all_defs: &AllDefs,
     ) -> Result<ValidatorApplySpec<ast::EntityType>, crate::schema::SchemaError> {
         let (principal_apply_spec, principal_errs) = self
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_common_defs, all_entity_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?.clone();
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();
@@ -202,7 +200,7 @@ impl ValidatorApplySpec<ConditionalName> {
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_common_defs, all_entity_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?.clone();
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();
