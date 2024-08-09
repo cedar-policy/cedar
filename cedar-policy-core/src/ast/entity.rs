@@ -572,6 +572,8 @@ pub struct EntityAttrEvaluationError {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
@@ -614,5 +616,17 @@ mod test {
 
         // e3 and e5 are displayed differently
         assert!(format!("{e3}") != format!("{e5}"));
+    }
+
+    #[test]
+    fn action_checker() {
+        let euid = EntityUID::from_str("Action::\"view\"").unwrap();
+        assert!(euid.is_action());
+        let euid = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
+        assert!(euid.is_action());
+        let euid = EntityUID::from_str("Foo::\"view\"").unwrap();
+        assert!(!euid.is_action());
+        let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
+        assert!(!euid.is_action());
     }
 }

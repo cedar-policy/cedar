@@ -43,9 +43,8 @@ use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
-    PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
-    ResourceConstraint,
+    self, ActionConstraint, CallStyle, EntityReference, EntityUID, Integer, PatternElem,
+    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
 };
 use crate::est::extract_single_argument;
 use itertools::{Either, Itertools};
@@ -703,62 +702,17 @@ impl Node<Option<cst::VariableDef>> {
             Some(ActionConstraint::Any)
         }?;
 
-        match action_constraint_contains_only_action_types(action_constraint, &self.loc) {
+        match action_constraint.contains_only_action_types() {
             Ok(a) => Some(a),
-            Err(mut id_errs) => {
-                errs.append(&mut id_errs);
+            Err(non_action_euids) => {
+                non_action_euids.map(|euid| {
+                    let new_err =
+                        self.to_ast_err(ToASTErrorKind::InvalidActionType(euid.as_ref().clone()));
+                    errs.push(new_err)
+                });
                 None
             }
         }
-    }
-}
-
-/// Check that all of the EUIDs in an action constraint have the type `Action`, under an arbitrary namespace
-fn action_constraint_contains_only_action_types(
-    a: ActionConstraint,
-    loc: &Loc,
-) -> Result<ActionConstraint, ParseErrors> {
-    match a {
-        ActionConstraint::Any => Ok(a),
-        ActionConstraint::In(ref euids) => {
-            let non_actions = euids
-                .iter()
-                .filter(|euid| !euid_has_action_type(euid))
-                .collect::<Vec<_>>();
-            if non_actions.is_empty() {
-                Ok(a)
-            } else {
-                Err(non_actions
-                    .into_iter()
-                    .map(|euid| {
-                        ToASTError::new(
-                            ToASTErrorKind::InvalidActionType(euid.as_ref().clone()),
-                            loc.clone(),
-                        )
-                    })
-                    .collect())
-            }
-        }
-        ActionConstraint::Eq(ref euid) => {
-            if euid_has_action_type(euid) {
-                Ok(a)
-            } else {
-                Err(ParseErrors(vec![ToASTError::new(
-                    ToASTErrorKind::InvalidActionType(euid.as_ref().clone()),
-                    loc.clone(),
-                )
-                .into()]))
-            }
-        }
-    }
-}
-
-/// Check if an EUID has the type `Action` under an arbitrary namespace
-fn euid_has_action_type(euid: &EntityUID) -> bool {
-    if let EntityType::Specified(name) = euid.entity_type() {
-        name.id.as_ref() == "Action"
-    } else {
-        false
     }
 }
 
@@ -4041,18 +3995,6 @@ mod tests {
                 );
             }
         });
-    }
-
-    #[test]
-    fn action_checker() {
-        let euid = EntityUID::from_str("Action::\"view\"").unwrap();
-        assert!(euid_has_action_type(&euid));
-        let euid = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
-        assert!(euid_has_action_type(&euid));
-        let euid = EntityUID::from_str("Foo::\"view\"").unwrap();
-        assert!(!euid_has_action_type(&euid));
-        let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
-        assert!(!euid_has_action_type(&euid));
     }
 
     #[test]
