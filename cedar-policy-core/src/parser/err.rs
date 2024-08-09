@@ -713,7 +713,7 @@ impl ParseErrors {
     /// returns a Vec with stringified versions of the ParseErrors
     #[deprecated(
         since = "3.3.0",
-        note = "Use `.iter().map(ToString::to_string)` instead"
+        note = "Use `.iter().map(ToString::to_string)` instead; note that converting to string discards some information from the error which is available through `miette::Diagnostic`"
     )]
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()

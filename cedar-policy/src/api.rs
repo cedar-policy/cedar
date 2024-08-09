@@ -1390,7 +1390,7 @@ impl SchemaFragment {
         })
     }
 
-    /// Create a `SchemaFragment` directly from a file.
+    /// Create a [`SchemaFragment`] directly from a file.
     #[allow(deprecated)]
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Self::from_file(file)
@@ -1422,7 +1422,7 @@ impl SchemaFragment {
         Ok(str)
     }
 
-    /// Serialize this [`SchemaFragment`] into the natural syntax
+    /// Serialize this [`SchemaFragment`] into the human-readable syntax
     #[allow(deprecated)]
     pub fn to_cedarschema(&self) -> Result<String, ToHumanSyntaxError> {
         self.as_natural()
@@ -1513,7 +1513,7 @@ impl Schema {
         )?))
     }
 
-    /// Create a `Schema` directly from a file.
+    /// Create a [`Schema`] directly from a file.
     #[allow(deprecated)]
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Self::from_file(file)
@@ -2216,7 +2216,7 @@ impl EntityId {
         }
     }
 
-    /// Get the contents of the `EntityId` as an escaped string
+    /// Get the contents of the [`EntityId`] as an escaped string
     pub fn escaped(&self) -> SmolStr {
         self.0.escaped()
     }
