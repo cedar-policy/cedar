@@ -379,11 +379,11 @@ impl PolicySet {
         new_id: PolicyID,
         values: HashMap<SlotId, EntityUID>,
     ) -> Result<&Policy, LinkingError> {
-        let t = self
-            .get_template(&template_id)
-            .ok_or_else(|| LinkingError::NoSuchTemplate {
-                id: template_id.clone(),
-            })?;
+        let t =
+            self.get_template_arc(&template_id)
+                .ok_or_else(|| LinkingError::NoSuchTemplate {
+                    id: template_id.clone(),
+                })?;
         let r = Template::link(t, new_id.clone(), values)?;
 
         // Both maps must not contain the `new_id`
@@ -457,9 +457,14 @@ impl PolicySet {
         self.templates.is_empty() && self.links.is_empty()
     }
 
-    /// Lookup a template by policy id
-    pub fn get_template(&self, id: &PolicyID) -> Option<Arc<Template>> {
+    /// Lookup a template by policy id, returns [`Option<Arc<Template>>`]
+    pub fn get_template_arc(&self, id: &PolicyID) -> Option<Arc<Template>> {
         self.templates.get(id).cloned()
+    }
+
+    /// Lookup a template by policy id, returns [`Option<&Template>`]
+    pub fn get_template(&self, id: &PolicyID) -> Option<&Template> {
+        self.templates.get(id).map(AsRef::as_ref)
     }
 
     /// Lookup an policy by policy id
@@ -576,7 +581,7 @@ mod test {
             "Adding link should succeed, even though the template wasn't previously in the pset",
         );
         assert!(
-            pset.get_template(&PolicyID::from_string("t")).is_some(),
+            pset.get_template_arc(&PolicyID::from_string("t")).is_some(),
             "Adding link should implicitly add the template"
         );
 
@@ -892,13 +897,13 @@ mod test {
             &tid2
         );
         assert!(pset.get(&tid2).is_none());
-        assert!(pset.get_template(&id1).is_some()); // Static policies are also templates
-        assert!(pset.get_template(&id2).is_some()); // Static policies are also templates
-        assert!(pset.get_template(&tid2).is_some());
+        assert!(pset.get_template_arc(&id1).is_some()); // Static policies are also templates
+        assert!(pset.get_template_arc(&id2).is_some()); // Static policies are also templates
+        assert!(pset.get_template_arc(&tid2).is_some());
         assert_eq!(pset.policies().count(), 3);
 
         assert_eq!(
-            pset.get_template(&tid1)
+            pset.get_template_arc(&tid1)
                 .expect("should find the template")
                 .id(),
             &tid1
