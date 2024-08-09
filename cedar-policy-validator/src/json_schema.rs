@@ -2000,6 +2000,8 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
 /// types for a record attribute. See
 /// [RFC 68](https://github.com/cedar-policy/rfcs/blob/main/text/0068-entity-tags.md).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EntityAttributeTypeInternal<N> {
     /// A normal type. Attributes can be `String`, an entity type, a common type, a record type, etc
     Type(Type<N>),
