@@ -14,9 +14,6 @@ Cedar Language Version: 4.0
 
 ### Added
 
-- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
-  to combine `Context`s, returning an error on duplicate keys (#1027,
-  resolving #1013)
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
 - (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a
@@ -44,7 +41,7 @@ Cedar Language Version: 4.0
   instead of `Option<String>` to set the policy id (#1055, resolving #1049)
 - (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
   Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
-`A::__cedar::B`) are now invalid. (#969)
+  `A::__cedar::B`) are now invalid. (#969)
 - Replace uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
   APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
@@ -89,6 +86,9 @@ Cedar Language Version: 3.4
   resolving #549)
 - Methods for reading and writing individual `Entity`s as JSON (#924,
   resolving #807)
+- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
+  to combine `Context`s, returning an error on duplicate keys (#1027,
+  resolving #1013)
 
 ### Changed
 
