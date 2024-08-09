@@ -475,6 +475,7 @@ pub enum EntityAttributes<N> {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[allow(clippy::manual_non_exhaustive)] // a clippy false positive; that's not the reason we're using the `type_placeholder_hack`
 pub struct EntityAttributesInternal<N> {
     /// a hack for the derived serializer/deserializer.
     /// We need to require `"type": "Record"` here (it is required for the
@@ -987,7 +988,7 @@ impl ActionEntityUID<ConditionalName> {
                 }
             }
         }
-        return Err(ActionResolutionError(nonempty!(self)));
+        Err(ActionResolutionError(nonempty!(self)))
     }
 
     /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
@@ -1389,12 +1390,13 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     /// which is not used for a particular type to be `Some` when building that
     /// type.
     ///
-    /// This method accepts EAMap types, and will construct one if it is encountered.
+    /// This method accepts `EAMap` types, and will construct one if it is
+    /// encountered.
     /// Thus it returns [`EntityAttributeTypeInternal`] rather than [`SchemaType`]
     /// directly.
-    /// If EAMap types should not be accepted in this position, it is the caller's
-    /// responsibility to check that the [`EntityAttributeTypeInternal`] is an
-    /// acceptable variant.
+    /// If `EAMap` types should not be accepted in this position, it is the
+    /// caller's responsibility to check that the [`EntityAttributeTypeInternal`]
+    /// is an acceptable variant.
     fn build_schema_type<M>(
         fields: TypeFieldsWithData<N, M::Error>,
     ) -> std::result::Result<EntityAttributeTypeInternal<N>, M::Error>

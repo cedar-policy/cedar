@@ -325,7 +325,7 @@ impl CommonTypeDefs<ConditionalName> {
                 }
                 Entry::Occupied(oentry) => {
                     return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().clone().into(),
+                        oentry.key().clone(),
                     )));
                 }
             }
@@ -944,7 +944,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
             None,
             self,
             ActionBehavior::default(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
     }
 }

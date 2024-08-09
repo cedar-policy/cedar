@@ -116,7 +116,7 @@ fn cedar_type_to_json_type(
             json_schema::RecordType {
                 attributes: fields
                     .into_iter()
-                    .map(|field| convert_attr_decl_for_record(field))
+                    .map(convert_attr_decl_for_record)
                     .collect::<Result<_, _>>()?,
                 additional_attributes: false,
             },
@@ -186,7 +186,10 @@ fn cedar_type_to_entity_attr_type(
                 (0, 1..) | (1, 2..) => {
                     // impossible: more `EAMap` decls than total decls
                     // PANIC SAFETY: see above
-                    unreachable!("can't have more `EAMap` decls than total decls")
+                    #[allow(clippy::unreachable)]
+                    {
+                        unreachable!("can't have more `EAMap` decls than total decls")
+                    }
                 }
             }
         }
@@ -460,7 +463,7 @@ fn convert_attr_decls_for_entity(
     Ok(json_schema::RecordType {
         attributes: attrs
             .into_iter()
-            .map(|attr| convert_attr_decl_for_entity(attr))
+            .map(convert_attr_decl_for_entity)
             .collect::<Result<_, _>>()?,
         additional_attributes: false,
     })
@@ -480,7 +483,7 @@ fn convert_context_decl(
             json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: attrs
                     .into_iter()
-                    .map(|attr| convert_attr_decl_for_record(attr))
+                    .map(convert_attr_decl_for_record)
                     .collect::<Result<_, _>>()?,
                 additional_attributes: false,
             }))

@@ -268,9 +268,9 @@ pub enum AttrDecl {
         /// The type of this attribute
         ty: Node<Type>,
     },
-    /// An EAMap declaration `?: ty`
+    /// An `EAMap` declaration `?: ty`
     EAMap {
-        /// Value type of the EAMap
+        /// Value type of the `EAMap`
         value_ty: Node<Type>,
     },
 }
