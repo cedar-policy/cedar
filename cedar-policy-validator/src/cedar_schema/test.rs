@@ -60,7 +60,11 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        cedar_schema::{self, ast::PR, err::ToJsonSchemaError},
+        cedar_schema::{
+            self,
+            ast::PR,
+            err::{ToJsonSchemaError, NO_PR_HELP_MSG},
+        },
         json_schema,
         schema::test::collect_warnings,
         CedarSchemaError, RawName,
@@ -97,8 +101,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -115,8 +120,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -132,8 +138,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -151,8 +158,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -171,8 +179,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -190,8 +199,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -210,8 +220,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -310,16 +321,13 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Principal,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Principal
                         )
                     })
                 );
@@ -340,16 +348,13 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Resource,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Resource
                         )
                     }));
             });
@@ -520,7 +525,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )), Err(err) => {
             assert_matches!(err, CedarSchemaError::Parsing(err) => {
-                assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::SyntaxError(errs) => {
+                assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::SyntaxError(errs) => {
                     assert!(errs.to_smolstr().contains("Invalid escape codes"));
                 });
             });
@@ -2464,6 +2469,7 @@ mod ea_maps {
                 src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error parsing schema: this type contains two or more different embedded attribute map declarations (`?:`), which is not allowed")
+                    .help("try separating this into two different attributes")
                     .exactly_two_underlines("?: Long,", "?: String")
                     .build(),
             );

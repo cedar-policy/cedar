@@ -42,6 +42,7 @@ pub enum CedarSchemaError {
 }
 
 /// Error parsing a Cedar-syntax schema
+// WARNING: this type is publicly exported from `cedar-policy`
 #[derive(Debug, Error)]
 #[error("error parsing schema: {errs}")]
 pub struct CedarSchemaParseError {
@@ -109,8 +110,16 @@ impl CedarSchemaParseError {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &cedar_schema::parser::CedarSchemaParseErrors {
+    /// Did the schema look like it was JSON data?
+    /// If so, it was probably intended to be parsed as the JSON schema format.
+    /// In that case, the reported errors are probably not super helpful.
+    /// (This check is provided on a best-effort basis)
+    pub fn suspect_json_format(&self) -> bool {
+        self.suspect_json_format
+    }
+
+    /// Get the errors that were encountered while parsing
+    pub fn errors(&self) -> &cedar_schema::parser::CedarSchemaParseErrors {
         &self.errs
     }
 }

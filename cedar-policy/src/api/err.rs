@@ -209,11 +209,7 @@ pub mod cedar_schema_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    /// Error parsing a schema in the Cedar syntax
-    #[derive(Debug, Error, Diagnostic)]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    pub struct ParseError(#[from] pub(super) cedar_policy_validator::CedarSchemaParseError);
+    pub use cedar_policy_validator::CedarSchemaParseError as ParseError;
 
     /// IO error while parsing a Cedar schema
     #[derive(Debug, Error, Diagnostic)]
@@ -247,9 +243,7 @@ impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
             cedar_policy_validator::CedarSchemaError::IO(e) => {
                 cedar_schema_errors::IoError(e).into()
             }
-            cedar_policy_validator::CedarSchemaError::Parsing(e) => {
-                cedar_schema_errors::ParseError(e).into()
-            }
+            cedar_policy_validator::CedarSchemaError::Parsing(e) => e.into(),
         }
     }
 }
