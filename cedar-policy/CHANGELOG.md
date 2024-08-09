@@ -57,6 +57,9 @@ Cedar Language Version: 4.0
   to parse strings in the JSON schema format.
 - `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
   `Option<String>` in the previous version (#1131, resolving #1116)
+- Marked errors/warnings related to parsing and entity/request validation as
+  `non_exhaustive`, allowing future variants to be added without a breaking
+  change. (#1137)
 
 ### Removed
 

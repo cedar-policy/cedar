@@ -130,6 +130,7 @@ impl CedarSchemaParseError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during serialization
     #[error(transparent)]
