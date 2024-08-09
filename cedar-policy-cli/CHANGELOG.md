@@ -10,7 +10,8 @@
   taking the values `strict`, `permissive` (new) and `partial`.
   The latter two are kept behind their respective feature flags. (#915)
 - CLI arguments `--policy-format` and `--schema-format` now take options
-  `cedar` or `json`, as opposed to previous `human` or `json`. (#1114)
+  `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
+  takes `cedar-to-json` or `json-to-cedar`. (#1114)
 
 ## 3.3.0
 
