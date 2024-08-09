@@ -13,6 +13,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: 4.0
 
 ### Added
+- A bunch of new APIs for schemas. Allows you to query
+  principals,actions, and resources. (#1141, resolving #1134)
 - JSON representation for Policy Sets, along with methods like
   `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
   resolving #549)
