@@ -54,11 +54,6 @@ Cedar Language Version: 4.0
 ### Removed
 
 - (*) Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
-  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
-  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
-- Removed the `error` extension function, which was previously used during
-  partial evaluation. (#874)
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
@@ -95,8 +90,19 @@ Cedar Language Version: 3.4
 - JSON representation for Policy Sets, along with methods like
   `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
   resolving #549)
-- Added methods for reading and writing individual `Entity`s as JSON
-  (#924, resolving #807)
+- Methods for reading and writing individual `Entity`s as JSON (#924,
+  resolving #807)
+
+### Changed
+
+- Added deprecation warnings to APIs that will be removed in the upcoming 4.0
+  release, as well as wrapper methods with the new names, where appropriate.
+  See the notes under that release for more details. (#1128)
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
+  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
+  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
+- Removed the `error` extension function, which was previously used during
+  partial evaluation. (#874)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
