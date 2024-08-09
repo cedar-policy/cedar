@@ -13,11 +13,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: 4.0
 
 ### Added
-- JSON representation for Policy Sets, along with methods like
-  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
-  resolving #549)
-- Added methods for reading and writing individual `Entity`s as JSON
-  (resolving #807)
+
 - `Context::into_iter` to get the contents of a `Context` and `Context::merge`
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
@@ -27,7 +23,6 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
-- Partial authorization to CLI (#1082)
 
 ### Changed
 
@@ -59,11 +54,6 @@ Cedar Language Version: 4.0
 ### Removed
 
 - (*) Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
-  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
-  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
-- Removed the `error` extension function, which was previously used during
-  partial evaluation. (#874)
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
@@ -91,6 +81,28 @@ Cedar Language Version: 4.0
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
   passed a static policy as input. Use the `Policy` parsing functions instead.
   (#1108, resolving #1095)
+
+## [3.3.0] - TBD
+Cedar Language Version: 3.4
+
+### Added
+
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+- Methods for reading and writing individual `Entity`s as JSON (#924,
+  resolving #807)
+
+### Changed
+
+- Added deprecation warnings to APIs that will be removed in the upcoming 4.0
+  release, as well as wrapper methods with the new names, where appropriate.
+  See the notes under that release for more details. (#1128)
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
+  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
+  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
+- Removed the `error` extension function, which was previously used during
+  partial evaluation. (#874)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
@@ -638,7 +650,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.4...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.3.0...main
+[3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
