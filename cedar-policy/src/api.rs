@@ -1350,6 +1350,7 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
+    #[allow(deprecated)]
     pub fn from_cedarschema_file(
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1372,6 +1373,7 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
+    #[allow(deprecated)]
     pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1389,6 +1391,7 @@ impl SchemaFragment {
     }
 
     /// Create a `SchemaFragment` directly from a file.
+    #[allow(deprecated)]
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Self::from_file(file)
     }
@@ -1407,6 +1410,7 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] as a json value
+    #[allow(deprecated)]
     pub fn to_json_string(&self) -> Result<String, SchemaError> {
         self.as_json_string()
     }
@@ -1419,6 +1423,7 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
+    #[allow(deprecated)]
     pub fn to_cedarschema(&self) -> Result<String, ToHumanSyntaxError> {
         self.as_natural()
     }
@@ -1509,6 +1514,7 @@ impl Schema {
     }
 
     /// Create a `Schema` directly from a file.
+    #[allow(deprecated)]
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Self::from_file(file)
     }
@@ -1526,6 +1532,7 @@ impl Schema {
     }
 
     /// Parse the schema from a reader
+    #[allow(deprecated)]
     pub fn from_cedarschema_file(
         file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
@@ -1545,6 +1552,7 @@ impl Schema {
     }
 
     /// Parse the schema from a string
+    #[allow(deprecated)]
     pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {

@@ -893,17 +893,17 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
 
 fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
-    let output = fragment.as_natural()?;
+    let output = fragment.to_cedarschema()?;
     Ok(output)
 }
 
 fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    let (fragment, warnings) = SchemaFragment::from_cedarschema_str(natural_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
     }
-    let output = fragment.as_json_string()?;
+    let output = fragment.to_json_string()?;
     Ok(output)
 }
 
@@ -1441,7 +1441,7 @@ fn read_schema_file(
             )
         }),
         SchemaFormat::Human => {
-            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
                 eprintln!("{:?}", report);

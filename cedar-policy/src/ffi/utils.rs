@@ -249,7 +249,7 @@ impl Schema {
         self,
     ) -> Result<(crate::Schema, Box<dyn Iterator<Item = SchemaWarning>>), miette::Report> {
         match self {
-            Self::Human(str) => crate::Schema::from_str_natural(&str)
+            Self::Human(str) => crate::Schema::from_cedarschema_str(&str)
                 .map(|(sch, warnings)| {
                     (
                         sch,
