@@ -17,14 +17,18 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    iter::{once, Chain, Once},
+    iter::{Chain, Once},
     vec,
 };
 
-use cedar_policy_core::parser::{
-    err::{expected_to_string, ExpectedTokenConfig},
-    unescape::UnescapeError,
-    Loc, Node,
+use cedar_policy_core::{
+    impl_diagnostic_from_source_loc_field, impl_diagnostic_from_source_loc_fields,
+    impl_diagnostic_from_source_loc_opt_fields,
+    parser::{
+        err::{expected_to_string, ExpectedTokenConfig},
+        unescape::UnescapeError,
+        Loc, Node,
+    },
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
@@ -262,8 +266,7 @@ impl Diagnostic for ParseErrors {
     }
 }
 
-/// Collection of [`ToJsonSchemaError`]
-/// This collection is guaranteed (by construction) to have at least one error.
+/// Non-empty collection of [`ToJsonSchemaError`]
 // WARNING: This type is publicly exported from [`cedar-policy`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
@@ -372,7 +375,7 @@ pub enum ToJsonSchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateContext(DuplicateContext),
-    /// Error raised when a `principal` or `resource` is declared twice
+    /// Error raised when a `principal` or `resource` is declared multiple times
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicatePrincipalOrResource(DuplicatePrincipalOrResource),
@@ -484,13 +487,7 @@ pub struct ReservedSchemaKeyword {
 }
 
 impl Diagnostic for ReservedSchemaKeyword {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans(once(self.loc.span))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new("Keywords such as `entity`, `extension`, `set` and `record` cannot be used as common type names"))
@@ -505,13 +502,7 @@ pub struct ReservedName {
 }
 
 impl Diagnostic for ReservedName {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans(once(self.loc.span))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(
@@ -528,13 +519,7 @@ pub struct UnknownTypeName {
 }
 
 impl Diagnostic for UnknownTypeName {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans(once(self.loc.span))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         let msg = format!(
@@ -562,13 +547,7 @@ impl DuplicatePrincipalOrResource {
 }
 
 impl Diagnostic for DuplicatePrincipalOrResource {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans([self.loc1.span, self.loc2.span])
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc1.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         let msg = format!("Actions may only have a single {} declaration. If you need it to apply to multiple types, try creating a parent type and using the `in` keyword", self.kind);
@@ -585,13 +564,7 @@ pub struct DuplicateContext {
 }
 
 impl Diagnostic for DuplicateContext {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans([self.loc1.span, self.loc2.span])
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc1.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(
@@ -608,13 +581,7 @@ pub struct DuplicateDeclarations {
 }
 
 impl Diagnostic for DuplicateDeclarations {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans([self.loc1.span, self.loc2.span])
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc1.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -629,13 +596,7 @@ pub const NO_PR_HELP_MSG: &str =
     "Every action must define both `principal` and `resource` targets.";
 
 impl Diagnostic for NoPrincipalOrResource {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(once(LabeledSpan::underline(self.loc.span))))
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(NO_PR_HELP_MSG))
@@ -652,21 +613,7 @@ pub struct DuplicateNamespace {
 }
 
 impl Diagnostic for DuplicateNamespace {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        underline_spans([self.loc1.as_ref()?.span, self.loc2.as_ref()?.span])
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc1.as_ref()?.src as &dyn miette::SourceCode)
-    }
-}
-
-/// Generate an underlined span for each source location in the input iterator
-fn underline_spans<'a, I>(i: I) -> Option<Box<dyn Iterator<Item = LabeledSpan> + 'a>>
-where
-    I: IntoIterator<Item = SourceSpan> + 'a,
-{
-    Some(Box::new(i.into_iter().map(LabeledSpan::underline)))
+    impl_diagnostic_from_source_loc_opt_fields!(loc1, loc2);
 }
 
 /// Error subtypes for [`SchemaWarning`]
