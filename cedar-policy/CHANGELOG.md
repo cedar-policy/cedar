@@ -73,9 +73,6 @@ Cedar Language Version: 4.0
 
 - (*) JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
-- (*) JSON format Cedar policies will now fail to parse if the action scope
-  constraint contains a non-action entity type, matching the behavior for
-  human-readable Cedar policies. (#943, resolving #925)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
@@ -103,6 +100,12 @@ Cedar Language Version: 3.4
   evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
 - Removed the `error` extension function, which was previously used during
   partial evaluation. (#874)
+
+### Fixed
+
+- (*) JSON format Cedar policies will now fail to parse if the action scope
+  constraint contains a non-action entity type, matching the behavior for
+  human-readable Cedar policies. (#943, resolving #925)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
