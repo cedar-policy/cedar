@@ -2108,7 +2108,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de>
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityAttributeType`], including recursively.
-/// See notes on [`SchemaFragment`].
+/// See notes on [`Fragment`].
 ///
 /// Note that we can't add `#[serde(deny_unknown_fields)]` here because we are
 /// using `#[serde(tag = "type")]` in [`Type`] which is (eventually) flattened
@@ -2184,7 +2184,7 @@ impl EntityAttributeType<ConditionalName> {
 /// (`<https://github.com/serde-rs/serde/issues/1547>`). This shouldn't apply to
 /// us as we're using `flatten` only once
 /// (`<https://github.com/serde-rs/serde/issues/1600>`). This should be ok because
-/// unknown fields for [`TypeOfAttribute`] should be passed to [`Type`] where
+/// unknown fields for [`RecordAttributeType`] should be passed to [`Type`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]

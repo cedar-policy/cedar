@@ -96,8 +96,11 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
         .any(|ext_ty| ty == ext_ty.basename_as_ref())
 }
 
-/// Convert a `Type` into the JSON representation of the type.
-pub fn cedar_type_to_json_type(
+/// Convert a [`Type`] into the JSON representation of the type.
+/// In this function, `EAMap` types are not allowed and will result in errors.
+/// For a similar function that accepts `EAMap` types, see
+/// [`cedar_type_to_entity_attr_type()`].
+fn cedar_type_to_json_type(
     ty: Node<Type>,
 ) -> Result<json_schema::Type<RawName>, EAMapNotAllowedHereError> {
     match ty.node {
@@ -125,9 +128,9 @@ pub fn cedar_type_to_json_type(
 /// representation of the type. Unlike [`cedar_type_to_json_type()`], this
 /// function allows (and handles) `EAMap` types as well.
 ///
-/// This can still return [`EAMapNotAllowedHereError`] if an `EAMap` is found,
-/// e.g., in a set element type, or nested in another `EAMap`.
-pub fn cedar_type_to_entity_attr_type(
+/// This can still return [`EAMapError`] if an `EAMap` is found, e.g., in a set
+/// element type, or nested in another `EAMap`.
+fn cedar_type_to_entity_attr_type(
     ty: Node<Type>,
 ) -> Result<json_schema::EntityAttributeTypeInternal<RawName>, EAMapError> {
     match &ty.node {
