@@ -411,7 +411,7 @@ fn policy_annotations() {
     assert_eq!(s.annotation(&pid, "anno"), Some("good annotation"));
     assert_eq!(
         s.template_annotation(&tid, "tanno"),
-        Some("good annotation".to_string())
+        Some("good annotation")
     );
 }
 

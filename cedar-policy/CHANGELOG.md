@@ -55,6 +55,8 @@ Cedar Language Version: 4.0
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
   now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
   to parse strings in the JSON schema format.
+- `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
+  `Option<String>` in the previous version (#1131, resolving #1116)
 
 ### Removed
 
