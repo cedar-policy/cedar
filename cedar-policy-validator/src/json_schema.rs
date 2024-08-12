@@ -1262,6 +1262,7 @@ impl TypeFields {
 /// for a particular type variant.
 /// We instead report that the field should not exist at all, so that the schema
 /// author can delete the field without wasting time fixing errors in the value.
+#[derive(Debug)]
 struct TypeFieldsWithData<N, E> {
     /// If this is `Some`, the `type` field is present, with the given value
     type_name: Option<std::result::Result<SmolStr, E>>,
@@ -1277,6 +1278,8 @@ struct TypeFieldsWithData<N, E> {
     default: Option<std::result::Result<Type<N>, E>>,
 }
 
+/// Manual impl of `Default` (rather than `derive(Default)`) because the derived
+/// impl of `Default` requires `N: Default`, but this manual impl works for all `N`
 impl<N, E> Default for TypeFieldsWithData<N, E> {
     fn default() -> Self {
         Self {
@@ -1352,7 +1355,7 @@ fn collect_type_fields_data<'de, N: Deserialize<'de> + From<RawName>, M: MapAcce
 /// reporting an error if there are any duplicate keys in the map. I could not
 /// find a way to do the `serde_with` conversion inline without introducing this
 /// struct.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct AttributesTypeMap(
     #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
     BTreeMap<SmolStr, RecordAttributeType<RawName>>,
