@@ -460,7 +460,7 @@ mod test {
             Annotations, Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint,
             ResourceConstraint,
         },
-        parser::{parse_policy, parse_policy_template},
+        parser::{parse_policy, parse_policy_or_template},
     };
 
     use super::*;
@@ -540,7 +540,7 @@ mod test {
         let schema = schema_file.try_into().unwrap();
 
         let src = r#"permit(principal == admins::"admin1", action == Action::"act", resource == bin::"bin");"#;
-        let p = parse_policy_template(None, src).unwrap();
+        let p = parse_policy_or_template(None, src).unwrap();
 
         let validate = Validator::new(schema);
         let notes: Vec<ValidationErrorKind> = validate
@@ -1340,12 +1340,12 @@ mod test {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
-            parse_policy_template(None, "permit(principal is bar, action, resource);").unwrap();
+            parse_policy_or_template(None, "permit(principal is bar, action, resource);").unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_succeeds(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal is bar in bar::"baz", action, resource);"#,
         )
@@ -1359,7 +1359,7 @@ mod test {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
-            parse_policy_template(None, "permit(principal is baz, action, resource);").unwrap();
+            parse_policy_or_template(None, "permit(principal is baz, action, resource);").unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_fails(
@@ -1371,7 +1371,7 @@ mod test {
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal is biz in faz::"a", action, resource);"#,
         )
@@ -1388,7 +1388,7 @@ mod test {
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal is bar in baz::"buz", action, resource);"#,
         )
@@ -1409,12 +1409,12 @@ mod test {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
-            parse_policy_template(None, "permit(principal, action, resource is baz);").unwrap();
+            parse_policy_or_template(None, "permit(principal, action, resource is baz);").unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_succeeds(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal, action, resource is baz in baz::"bar");"#,
         )
@@ -1428,7 +1428,7 @@ mod test {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
-            parse_policy_template(None, "permit(principal, action, resource is bar);").unwrap();
+            parse_policy_or_template(None, "permit(principal, action, resource is bar);").unwrap();
 
         let validator = Validator::new(schema);
         assert_validate_policy_fails(
@@ -1440,7 +1440,7 @@ mod test {
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal, action, resource is baz in bar::"buz");"#,
         )
@@ -1455,7 +1455,7 @@ mod test {
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
 
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal, action, resource is biz in faz::"a");"#,
         )
@@ -1476,7 +1476,7 @@ mod test {
     #[test]
     fn is_unknown_entity_condition() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
-        let policy = parse_policy_template(
+        let policy = parse_policy_or_template(
             None,
             r#"permit(principal, action, resource) when { resource is biz };"#,
         )

@@ -28,7 +28,7 @@ pub use policy_set::*;
 use crate::ast;
 use crate::entities::EntityUidJson;
 use crate::parser::cst;
-use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -214,7 +214,7 @@ impl TryFrom<cst::Cond> for Clause {
 }
 
 impl Policy {
-    /// Try to convert EST Policy into AST Policy.
+    /// Try to convert a [`Policy`] into a [`ast::Policy`].
     ///
     /// This process requires a policy ID. If not supplied, this method will
     /// fill it in as "JSON policy".
@@ -222,17 +222,37 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Policy, FromJsonError> {
-        let template: ast::Template = self.try_into_ast_template(id)?;
+        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(Into::into)
     }
 
-    /// Try to convert EST Policy into AST Template.
+    /// Try to convert a [`Policy`] into a [`ast::Template`]. Returns an error
+    /// if the input is a static policy.
     ///
     /// This process requires a policy ID. If not supplied, this method will
     /// fill it in as "JSON policy".
     pub fn try_into_ast_template(
+        self,
+        id: Option<ast::PolicyID>,
+    ) -> Result<ast::Template, FromJsonError> {
+        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
+        if template.slots().count() == 0 {
+            Err(FromJsonError::PolicyToTemplate(
+                parse_errors::ExpectedTemplate::new(),
+            ))
+        } else {
+            Ok(template)
+        }
+    }
+
+    /// Try to convert a [`Policy`] into a [`ast::Template`]. The `Template` may
+    /// represent a template or static policy (which is a template with zero slots).
+    ///
+    /// This process requires a policy ID. If not supplied, this method will
+    /// fill it in as "JSON policy".
+    pub fn try_into_ast_policy_or_template(
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
@@ -406,7 +426,7 @@ mod test {
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn ast_roundtrip_template(est: Policy) -> Policy {
         let ast = est
-            .try_into_ast_template(None)
+            .try_into_ast_policy_or_template(None)
             .expect("Failed to convert to AST");
         ast.into()
     }
@@ -429,7 +449,7 @@ mod test {
     /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn circular_roundtrip_template(est: Policy) -> Policy {
         let ast = est
-            .try_into_ast_template(None)
+            .try_into_ast_policy_or_template(None)
             .expect("Failed to convert to AST");
         let text = ast.to_string();
         let cst = parser::text_to_cst::parse_policy(&text)
@@ -2904,8 +2924,8 @@ mod test {
         assert_matches!(
             ast,
             Err(FromJsonError::TemplateToPolicy(
-                ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s.id, ast::SlotId::principal())
+                parse_errors::ExpectedStaticPolicy { slot }
+            )) => assert_eq!(slot.id, ast::SlotId::principal())
         );
     }
 
