@@ -23,7 +23,7 @@ use cedar_policy_core::{
     extensions::Extensions,
     parser::{Loc, Node},
 };
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
@@ -136,21 +136,19 @@ fn cedar_type_to_entity_attr_type(
 ) -> Result<json_schema::EntityAttributeTypeInternal<RawName>, EAMapError> {
     match &ty.node {
         Type::Record(decls) => {
-            let ea_map_decls = decls
-                .iter()
-                .filter_map(|decl| match &decl.node {
-                    AttrDecl::EAMap { value_ty } => Some((&decl.loc, value_ty)),
-                    _ => None,
-                })
-                .collect::<Vec<(&Loc, &Node<Type>)>>();
-            match (decls.len(), ea_map_decls.len()) {
-                (_, 0) => {
+            let (ea_map_decls, non_ea_map_decls): (Vec<(&Loc, &Node<Type>)>, Vec<&Node<AttrDecl>>) =
+                decls.iter().partition_map(|decl| match &decl.node {
+                    AttrDecl::EAMap { value_ty } => Either::Left((&decl.loc, value_ty)),
+                    _ => Either::Right(decl),
+                });
+            match (ea_map_decls.len(), non_ea_map_decls.len()) {
+                (0, _) => {
                     // no `EAMap` decls
                     Ok(json_schema::EntityAttributeTypeInternal::Type(
                         cedar_type_to_json_type(ty)?,
                     ))
                 }
-                (1, 1) => {
+                (1, 0) => {
                     // exactly one decl, and it's an `EAMap` decl like `?: String`.
                     // Convert to an `EAMap`.
                     // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
@@ -160,8 +158,9 @@ fn cedar_type_to_entity_attr_type(
                         value_type: cedar_type_to_json_type(value_type.clone())?,
                     })
                 }
-                (2.., 1) => {
-                    // one `EAMap` decl, but more than one decl total. This is an error.
+                (1, 1..) => {
+                    // one `EAMap` decl, but also at least one non-`EAMap` decl.
+                    // This is an error.
                     // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
                     #[allow(clippy::indexing_slicing)]
                     let (source_loc, _) = ea_map_decls[0];
@@ -170,8 +169,8 @@ fn cedar_type_to_entity_attr_type(
                     }
                     .into())
                 }
-                (2.., 2..) => {
-                    // multiple `EAMap` decls, this is an error
+                (2.., _) => {
+                    // multiple `EAMap` decls. This is an error.
                     // PANIC SAFETY: already determined `ea_map_decls.len()` is at least 2
                     #[allow(clippy::indexing_slicing)]
                     let (source_loc_1, _) = ea_map_decls[0];
@@ -183,14 +182,6 @@ fn cedar_type_to_entity_attr_type(
                         source_loc_2: source_loc_2.clone(),
                     }
                     .into())
-                }
-                (0, 1..) | (1, 2..) => {
-                    // impossible: more `EAMap` decls than total decls
-                    // PANIC SAFETY: see above
-                    #[allow(clippy::unreachable)]
-                    {
-                        unreachable!("can't have more `EAMap` decls than total decls")
-                    }
                 }
             }
         }
