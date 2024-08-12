@@ -297,7 +297,7 @@ pub mod extension_function_lookup_errors {
     }
 
     impl Diagnostic for FuncDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 }
 

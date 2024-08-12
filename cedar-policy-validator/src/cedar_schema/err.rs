@@ -17,18 +17,24 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    iter::{Chain, Once},
+    vec,
 };
 
-use cedar_policy_core::parser::{
-    err::{expected_to_string, ExpectedTokenConfig},
-    unescape::UnescapeError,
-    Loc, Node,
+use cedar_policy_core::{
+    impl_diagnostic_from_source_loc_field, impl_diagnostic_from_source_loc_fields,
+    impl_diagnostic_from_source_loc_opt_fields,
+    parser::{
+        err::{expected_to_string, ExpectedTokenConfig},
+        unescape::UnescapeError,
+        Loc, Node,
+    },
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use super::ast::PR;
@@ -178,11 +184,11 @@ impl Diagnostic for ParseError {
 pub struct ParseErrors(Box<NonEmpty<ParseError>>);
 
 impl ParseErrors {
-    pub fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
-        let mut nv = NonEmpty::singleton(first);
-        let mut v = rest.into_iter().collect::<Vec<_>>();
-        nv.append(&mut v);
-        Self(Box::new(nv))
+    pub fn new(first: ParseError, tail: impl IntoIterator<Item = ParseError>) -> Self {
+        Self(Box::new(NonEmpty {
+            head: first,
+            tail: tail.into_iter().collect(),
+        }))
     }
 
     pub fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
@@ -190,6 +196,7 @@ impl ParseErrors {
         Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
 
+    /// Borrowed Iterator over reported errors
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter()
     }
@@ -198,6 +205,15 @@ impl ParseErrors {
 impl Display for ParseErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.first())
+    }
+}
+
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = Chain<Once<ParseError>, vec::IntoIter<ParseError>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -250,14 +266,18 @@ impl Diagnostic for ParseErrors {
     }
 }
 
+/// Non-empty collection of [`ToJsonSchemaError`]
+// WARNING: This type is publicly exported from [`cedar-policy`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
 
 impl ToJsonSchemaErrors {
+    /// Constructor. Guaranteed to have at least one error by construction.
     pub fn new(errs: NonEmpty<ToJsonSchemaError>) -> Self {
         Self(errs)
     }
 
+    /// (Borrowed) iterator
     pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
         self.0.iter()
     }
@@ -343,87 +363,262 @@ impl Diagnostic for ToJsonSchemaErrors {
     }
 }
 
+// WARNING: This error type is publicly exported in `cedar-policy`, so it is part of the public interface
 /// For errors during schema format conversion
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Diagnostic)]
 pub enum ToJsonSchemaError {
-    /// Error raised when there are duplicate keys
-    #[error("duplicate keys: {key}")]
-    DuplicateKeys { key: SmolStr, loc1: Loc, loc2: Loc },
     /// Error raised when there are duplicate declarations
-    #[error("duplicate declarations: {decl}")]
-    DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
-    #[error("duplicate context declaration. Action may have at most one context declaration")]
-    DuplicateContext { loc1: Loc, loc2: Loc },
-    #[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
-    DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
-    #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
-    NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
-
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateDeclarations(DuplicateDeclarations),
+    /// Error raised when an action has multiple context declarations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateContext(DuplicateContext),
+    /// Error raised when a `principal` or `resource` is declared multiple times
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicatePrincipalOrResource(DuplicatePrincipalOrResource),
+    /// Error raised when an action does not define either `principal` or `resource`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoPrincipalOrResource(NoPrincipalOrResource),
     /// Error raised when there are duplicate namespace IDs
-    #[error("Duplicate namespace IDs: `{namespace_id}`")]
-    DuplicateNameSpaces {
-        namespace_id: SmolStr,
-        loc1: Option<Loc>,
-        loc2: Option<Loc>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateNamespaces(DuplicateNamespace),
+    /// Error raised when a type name is unknown
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownTypeName(UnknownTypeName),
     /// Invalid type name
-    #[error("Unknown type name: `{}`", .0.node)]
-    UnknownTypeName(Node<SmolStr>),
-    /// Invalid type name
-    #[error("this uses a reserved namespace or typename: {}", .0.node)]
-    ReservedName(Node<SmolStr>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedName(ReservedName),
+    /// Use reserved schema keywords
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedSchemaKeyword(ReservedSchemaKeyword),
 }
 
 impl ToJsonSchemaError {
-    pub fn duplicate_keys(key: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateKeys { key, loc1, loc2 }
+    pub(crate) fn duplicate_context(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateContext(DuplicateContext {
+            name: name.to_smolstr(),
+            loc1,
+            loc2,
+        })
     }
-    pub fn duplicate_decls(decl: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateDeclarations { decl, loc1, loc2 }
+
+    pub(crate) fn duplicate_decls(decl: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateDeclarations(DuplicateDeclarations {
+            decl: decl.to_smolstr(),
+            loc1,
+            loc2,
+        })
     }
-    pub fn duplicate_namespace(namespace_id: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateNameSpaces {
-            namespace_id,
-            loc1: Some(loc1),
-            loc2: Some(loc2),
-        }
+
+    pub(crate) fn duplicate_namespace(
+        namespace_id: impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
+        Self::DuplicateNamespaces(DuplicateNamespace {
+            namespace_id: namespace_id.to_smolstr(),
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn duplicate_principal(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            name: name.to_smolstr(),
+            kind: PR::Principal,
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn duplicate_resource(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            name: name.to_smolstr(),
+            kind: PR::Resource,
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn no_principal(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Principal,
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn no_resource(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Resource,
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn reserved_name(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::ReservedName(ReservedName {
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn reserved_keyword(keyword: impl ToSmolStr, loc: Loc) -> Self {
+        Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
+            keyword: keyword.to_smolstr(),
+            loc,
+        })
     }
 }
 
-impl Diagnostic for ToJsonSchemaError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match self {
-            ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
-            | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
-                vec![
-                    LabeledSpan::underline(loc1.span),
-                    LabeledSpan::underline(loc2.span),
-                ]
-                .into_iter(),
-            )),
-            ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
-                Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
-                    Some(LabeledSpan::underline(loc.as_ref()?.span))
-                })))
-            }
-            ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(node.loc.span),
-            ))),
-            ToJsonSchemaError::ReservedName(node) => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(node.loc.span),
-            ))),
-            ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
-                Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
-            }
-        }
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("this uses a reserved schema keyword: `{keyword}`")]
+pub struct ReservedSchemaKeyword {
+    keyword: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for ReservedSchemaKeyword {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("Keywords such as `entity`, `extension`, `set` and `record` cannot be used as common type names"))
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("use of the reserved `__cedar` namespace")]
+pub struct ReservedName {
+    name: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for ReservedName {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "Names containing `__cedar` (for example: `__cedar::A`, `A::__cedar`, or `A::__cedar::B`) are reserved",
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("unknown type name: `{name}`")]
+pub struct UnknownTypeName {
+    name: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for UnknownTypeName {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        let msg = format!(
+            "Did you mean to define `{}` as an entity type or common type?",
+            self.name
+        );
+        Some(Box::new(msg))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("duplicate `{kind}` declaration in action `{name}`")]
+pub struct DuplicatePrincipalOrResource {
+    name: SmolStr,
+    kind: PR,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl DuplicatePrincipalOrResource {
+    #[cfg(test)]
+    pub(crate) fn kind(&self) -> PR {
+        self.kind
+    }
+}
+
+impl Diagnostic for DuplicatePrincipalOrResource {
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        let msg = format!("Actions may only have a single {} declaration. If you need it to apply to multiple types, try creating a parent type and using the `in` keyword", self.kind);
+        Some(Box::new(msg))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("duplicate context declaration in action `{name}`")]
+pub struct DuplicateContext {
+    name: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl Diagnostic for DuplicateContext {
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "Try either deleting one of the declarations, or merging into a single declaration",
+        ))
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("`{decl}` is declared twice")]
+pub struct DuplicateDeclarations {
+    decl: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl Diagnostic for DuplicateDeclarations {
+    impl_diagnostic_from_source_loc_fields!(loc1, loc2);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("missing `{kind}` declaration for `{name}`")]
+pub struct NoPrincipalOrResource {
+    kind: PR,
+    name: SmolStr,
+    loc: Loc,
+}
+
+pub const NO_PR_HELP_MSG: &str =
+    "Every action must define both `principal` and `resource` targets.";
+
+impl Diagnostic for NoPrincipalOrResource {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(NO_PR_HELP_MSG))
+    }
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("duplicate namespace id: `{namespace_id}`")]
+pub struct DuplicateNamespace {
+    namespace_id: SmolStr,
+    // `Loc`s are optional here as the implicit empty namespace has no location
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
+}
+
+impl Diagnostic for DuplicateNamespace {
+    impl_diagnostic_from_source_loc_opt_fields!(loc1, loc2);
 }
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::parser::Loc;
+    use cedar_policy_core::{impl_diagnostic_from_source_loc_field, parser::Loc};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -441,11 +636,7 @@ pub mod schema_warnings {
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-                self.loc.span,
-            ))))
-        }
+        impl_diagnostic_from_source_loc_field!(loc);
 
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)
@@ -474,6 +665,13 @@ pub mod schema_warnings {
             ))
         }
 
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            // just have to pick one; we assume `entity_loc` and `common_loc`
+            // have the same source code.
+            // if that isn't true we'll have a confusing underline.
+            Some(&self.entity_loc.src as _)
+        }
+
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)
         }
@@ -486,6 +684,7 @@ pub mod schema_warnings {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum SchemaWarning {
     /// Warning when a declaration shadows a builtin type
     #[error(transparent)]

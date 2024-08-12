@@ -2729,6 +2729,7 @@ pub(crate) mod test {
         });
     }
 
+    // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070.
     #[test]
     fn test_common_type_name_conflicts() {
         let src: serde_json::Value = json!({
@@ -2759,7 +2760,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
             "": {
@@ -2789,7 +2790,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
             "": {
@@ -2819,7 +2820,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
             "": {
@@ -2849,7 +2850,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
             "": {

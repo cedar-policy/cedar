@@ -27,7 +27,7 @@ macro_rules! impl_diagnostic_warning {
     };
 }
 
-use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_field, parser::Loc};
+use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_opt_field, parser::Loc};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -44,7 +44,7 @@ pub struct MixedScriptString {
 }
 
 impl Diagnostic for MixedScriptString {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
 
@@ -61,7 +61,7 @@ pub struct BidiCharsInString {
 }
 
 impl Diagnostic for BidiCharsInString {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
 
@@ -78,7 +78,7 @@ pub struct BidiCharsInIdentifier {
 }
 
 impl Diagnostic for BidiCharsInIdentifier {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
 
@@ -94,7 +94,7 @@ pub struct MixedScriptIdentifier {
     pub id: String,
 }
 impl Diagnostic for MixedScriptIdentifier {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
 
@@ -111,7 +111,7 @@ pub struct ConfusableIdentifier {
 }
 
 impl Diagnostic for ConfusableIdentifier {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
 
@@ -126,6 +126,6 @@ pub struct ImpossiblePolicy {
 }
 
 impl Diagnostic for ImpossiblePolicy {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }

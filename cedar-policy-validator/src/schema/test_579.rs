@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//! Tests described in https://github.com/cedar-policy/cedar/issues/579
+//! Tests described in <https://github.com/cedar-policy/cedar/issues/579>
 //!
 //! We test all possible (position, scenario) pairs where:
 //!

@@ -628,6 +628,7 @@ pub enum RestrictedExpressionError {
 /// Error subtypes for [`RestrictedExpressionError`]
 pub mod restricted_expr_errors {
     use super::Expr;
+    use crate::impl_diagnostic_from_expr_field;
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -650,18 +651,7 @@ pub mod restricted_expr_errors {
 
     // custom impl of `Diagnostic`: take source location from the `expr` field
     impl Diagnostic for InvalidRestrictedExpressionError {
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.expr.source_loc().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-        }
-
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.expr
-                .source_loc()
-                .map(|loc| &loc.src as &dyn miette::SourceCode)
-        }
+        impl_diagnostic_from_expr_field!(expr);
     }
 }
 

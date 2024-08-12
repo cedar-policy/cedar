@@ -29,7 +29,11 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        cedar_schema::{self, ast::PR, err::ToJsonSchemaError},
+        cedar_schema::{
+            self,
+            ast::PR,
+            err::{ToJsonSchemaError, NO_PR_HELP_MSG},
+        },
         json_schema,
         schema::test::collect_warnings,
         CedarSchemaError, RawName,
@@ -66,8 +70,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -84,8 +89,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -101,8 +107,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -120,8 +127,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -140,8 +148,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -159,8 +168,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -179,8 +189,9 @@ mod demo_tests {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`. Actions must define both a `principals` and `resources` field")
+                &ExpectedErrorMessageBuilder::error("error parsing schema: missing `resource` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
+                    .help(NO_PR_HELP_MSG)
                     .build(),
             );
         });
@@ -279,16 +290,13 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Principal,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Principal
                         )
                     })
                 );
@@ -309,16 +317,13 @@ mod demo_tests {
             };
         "#;
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
+            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
                 assert!(json_errs
                     .iter()
                     .any(|err| {
                         matches!(
                             err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource {
-                                kind: PR::Resource,
-                                ..
-                            }
+                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Resource
                         )
                     }));
             });
@@ -489,7 +494,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )), Err(err) => {
             assert_matches!(err, CedarSchemaError::Parsing(err) => {
-                assert_matches!(err.inner(), cedar_schema::parser::CedarSchemaParseErrors::SyntaxError(errs) => {
+                assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::SyntaxError(errs) => {
                     assert!(errs.to_smolstr().contains("Invalid escape codes"));
                 });
             });
@@ -1156,7 +1161,10 @@ mod translator_tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        cedar_schema::{parser::parse_schema, to_json_schema::cedar_schema_to_json_schema},
+        cedar_schema::{
+            err::ToJsonSchemaError, parser::parse_schema,
+            to_json_schema::cedar_schema_to_json_schema,
+        },
         json_schema,
         schema::test::collect_warnings,
         types::{EntityLUB, Type},
@@ -1858,6 +1866,116 @@ mod translator_tests {
         )
         .map(|_| ());
         assert_matches!(schema, Err(_));
+    }
+
+    #[test]
+    fn reserved_json_schema_keyword_empty_namespace() {
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Entity = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Extension = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Set = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+               type Record = Long;
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+    }
+
+    #[test]
+    fn reserved_json_schema_keyword_nonempty_namespace() {
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+                namespace NS {
+               type Entity = Long;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+                namespace NS {
+               type Extension = Long;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+                namespace NS {
+               type Set = Long;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
+
+        let schema = cedar_schema_to_json_schema(
+            parse_schema(
+                r#"
+                namespace NS {
+               type Record = Long;
+            }
+        "#,
+            )
+            .unwrap(),
+            Extensions::none(),
+        )
+        .map(|_| ());
+        assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
     }
 }
 

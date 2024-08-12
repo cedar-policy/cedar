@@ -330,17 +330,7 @@ pub mod evaluation_errors {
     // Or, we could have separate fields for source code and label instead of
     // combining them into `Loc`, which would work around the issue.
     impl Diagnostic for EntityDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     /// Tried to get an attribute, but the specified entity didn't have that
@@ -365,7 +355,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for EntityAttrDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
@@ -382,13 +372,6 @@ pub mod evaluation_errors {
                     self.total_attrs - self.available_attrs.len()
                 )))
             }
-        }
-
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
         }
     }
 
@@ -412,7 +395,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for RecordAttrDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             if self.available_attrs.is_empty() {
@@ -429,12 +412,6 @@ pub mod evaluation_errors {
                     self.total_attrs - self.available_attrs.len()
                 )))
             }
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
         }
     }
 
@@ -457,16 +434,10 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for TypeError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             self.advice.as_ref().map(|advice| Box::new(advice) as _)
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
         }
     }
 
@@ -509,17 +480,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for WrongNumArgumentsError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     /// Overflow during an integer operation
@@ -575,17 +536,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for BinaryOpOverflowError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     /// Overflow during a unary operation
@@ -605,17 +556,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for UnaryOpOverflowError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     /// Not all template slots were linked
@@ -633,17 +574,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for UnlinkedSlotError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     /// Evaluation error thrown by an extension function
@@ -663,17 +594,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for ExtensionFunctionExecutionError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
     impl ExtensionFunctionExecutionError {
@@ -700,16 +621,10 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for NonValueError {
-        impl_diagnostic_from_source_loc_field!();
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
             Some(Box::new("consider using the partial evaluation APIs"))
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
         }
     }
 
@@ -726,17 +641,7 @@ pub mod evaluation_errors {
     }
 
     impl Diagnostic for RecursionLimitError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 }
 

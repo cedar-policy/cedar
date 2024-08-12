@@ -1072,20 +1072,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
     }
 }
 
-// PANIC SAFETY `Set`, `Record`, `Entity`, and `Extension` are valid `Name`s
-#[allow(clippy::expect_used)]
-pub(crate) mod static_names {
-    use crate::RawName;
-
-    lazy_static::lazy_static! {
-        pub(crate) static ref SET_NAME : RawName = RawName::parse_unqualified_name("Set").expect("valid identifier");
-        pub(crate) static ref RECORD_NAME : RawName = RawName::parse_unqualified_name("Record").expect("valid identifier");
-        pub(crate) static ref ENTITY_NAME : RawName = RawName::parse_unqualified_name("Entity").expect("valid identifier");
-        pub(crate) static ref ENTITY_OR_COMMON_NAME : RawName = RawName::parse_unqualified_name("EntityOrCommon").expect("valid identifier");
-        pub(crate) static ref EXTENSION_NAME : RawName = RawName::parse_unqualified_name("Extension").expect("valid identifier");
-    }
-}
-
 impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     /// Construct a schema type given the name of the type and its fields.
     /// Fields which were not present are `None`. It is an error for a field
@@ -1101,7 +1087,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     where
         M: MapAccess<'de>,
     {
-        use static_names::*;
         use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
         // Fields that remain to be parsed
         let mut remaining_fields = [
@@ -1149,138 +1134,112 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                         Ok(Type::Type(TypeVariant::Boolean))
                     }
                     "Set" => {
-                        if remaining_fields.is_empty() {
-                            // must be referring to a common type named `Set`
-                            Ok(Type::CommonTypeRef {
-                                type_name: N::from(SET_NAME.clone()),
-                            })
-                        } else {
-                            error_if_fields(
-                                &[Attributes, AdditionalAttributes, Name],
-                                &[type_field_name!(Element)],
-                            )?;
+                        error_if_fields(
+                            &[Attributes, AdditionalAttributes, Name],
+                            &[type_field_name!(Element)],
+                        )?;
 
-                            Ok(Type::Type(TypeVariant::Set {
-                                element: {
-                                    // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them, ensuring `element` exists
-                                    #[allow(clippy::unwrap_used)]
-                                    let element: Type<N> = element.unwrap()?;
-                                    Box::new(element)
-                                },
-                            }))
+                        match element {
+                            Some(element) => Ok(Type::Type(TypeVariant::Set {
+                                element: Box::new(element?),
+                            })),
+                            None => Err(serde::de::Error::missing_field(Element.as_str())),
                         }
                     }
                     "Record" => {
-                        if remaining_fields.is_empty() {
-                            // must be referring to a common type named `Record`
-                            Ok(Type::CommonTypeRef {
-                                type_name: N::from(RECORD_NAME.clone()),
-                            })
-                        } else {
-                            error_if_fields(
-                                &[Element, Name],
-                                &[
-                                    type_field_name!(Attributes),
-                                    type_field_name!(AdditionalAttributes),
-                                ],
-                            )?;
+                        error_if_fields(
+                            &[Element, Name],
+                            &[
+                                type_field_name!(Attributes),
+                                type_field_name!(AdditionalAttributes),
+                            ],
+                        )?;
 
-                            if let Some(attributes) = attributes {
-                                let additional_attributes =
-                                    additional_attributes.unwrap_or(Ok(partial_schema_default()));
-                                Ok(Type::Type(TypeVariant::Record(RecordType {
-                                    attributes: attributes?
-                                        .0
-                                        .into_iter()
-                                        .map(|(k, TypeOfAttribute { ty, required })| {
-                                            (
-                                                k,
-                                                TypeOfAttribute {
-                                                    ty: ty.into_n(),
-                                                    required,
-                                                },
-                                            )
-                                        })
-                                        .collect(),
-                                    additional_attributes: additional_attributes?,
-                                })))
-                            } else {
-                                Err(serde::de::Error::missing_field(Attributes.as_str()))
-                            }
+                        if let Some(attributes) = attributes {
+                            let additional_attributes =
+                                additional_attributes.unwrap_or(Ok(partial_schema_default()));
+                            Ok(Type::Type(TypeVariant::Record(RecordType {
+                                attributes: attributes?
+                                    .0
+                                    .into_iter()
+                                    .map(|(k, TypeOfAttribute { ty, required })| {
+                                        (
+                                            k,
+                                            TypeOfAttribute {
+                                                ty: ty.into_n(),
+                                                required,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                                additional_attributes: additional_attributes?,
+                            })))
+                        } else {
+                            Err(serde::de::Error::missing_field(Attributes.as_str()))
                         }
                     }
                     "Entity" => {
-                        if remaining_fields.is_empty() {
-                            // must be referring to a common type named `Entity`
-                            Ok(Type::CommonTypeRef {
-                                type_name: N::from(ENTITY_NAME.clone()),
-                            })
-                        } else {
-                            error_if_fields(
-                                &[Element, Attributes, AdditionalAttributes],
-                                &[type_field_name!(Name)],
-                            )?;
-                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
-                            #[allow(clippy::unwrap_used)]
-                            let name = name.unwrap()?;
-                            Ok(Type::Type(TypeVariant::Entity {
-                                name: RawName::from_normalized_str(&name)
-                                    .map_err(|err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid entity type `{name}`: {err}"
-                                        ))
-                                    })?
-                                    .into(),
-                            }))
+                        error_if_fields(
+                            &[Element, Attributes, AdditionalAttributes],
+                            &[type_field_name!(Name)],
+                        )?;
+                        match name {
+                            Some(name) => {
+                                let name = name?;
+                                Ok(Type::Type(TypeVariant::Entity {
+                                    name: RawName::from_normalized_str(&name)
+                                        .map_err(|err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid entity type `{name}`: {err}"
+                                            ))
+                                        })?
+                                        .into(),
+                                }))
+                            }
+                            None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     "EntityOrCommon" => {
-                        if remaining_fields.is_empty() {
-                            // must be referring to a common type named `EntityOrCommon`
-                            Ok(Type::CommonTypeRef {
-                                type_name: N::from(ENTITY_OR_COMMON_NAME.clone()),
-                            })
-                        } else {
-                            error_if_fields(
-                                &[Element, Attributes, AdditionalAttributes],
-                                &[type_field_name!(Name)],
-                            )?;
-                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
-                            #[allow(clippy::unwrap_used)]
-                            let name = name.unwrap()?;
-                            Ok(Type::Type(TypeVariant::EntityOrCommon {
-                                type_name: RawName::from_normalized_str(&name)
-                                    .map_err(|err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid entity or common type `{name}`: {err}"
-                                        ))
-                                    })?
-                                    .into(),
-                            }))
+                        error_if_fields(
+                            &[Element, Attributes, AdditionalAttributes],
+                            &[type_field_name!(Name)],
+                        )?;
+                        match name {
+                            Some(name) => {
+                                let name = name?;
+                                Ok(Type::Type(TypeVariant::EntityOrCommon {
+                                    type_name: RawName::from_normalized_str(&name)
+                                        .map_err(|err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid entity or common type `{name}`: {err}"
+                                            ))
+                                        })?
+                                        .into(),
+                                }))
+                            }
+                            None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     "Extension" => {
-                        if remaining_fields.is_empty() {
-                            // must be referring to a common type named `Extension`
-                            Ok(Type::CommonTypeRef {
-                                type_name: N::from(EXTENSION_NAME.clone()),
-                            })
-                        } else {
-                            error_if_fields(
-                                &[Element, Attributes, AdditionalAttributes],
-                                &[type_field_name!(Name)],
-                            )?;
+                        error_if_fields(
+                            &[Element, Attributes, AdditionalAttributes],
+                            &[type_field_name!(Name)],
+                        )?;
 
-                            // PANIC SAFETY: There are four fields allowed and the previous function rules out three of them ensuring `name` exists
-                            #[allow(clippy::unwrap_used)]
-                            let name = name.unwrap()?;
-                            Ok(Type::Type(TypeVariant::Extension {
-                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
-                                    serde::de::Error::custom(format!(
-                                        "invalid extension type `{name}`: {err}"
-                                    ))
-                                })?,
-                            }))
+                        match name {
+                            Some(name) => {
+                                let name = name?;
+                                Ok(Type::Type(TypeVariant::Extension {
+                                    name: UnreservedId::from_normalized_str(&name).map_err(
+                                        |err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid extension type `{name}`: {err}"
+                                            ))
+                                        },
+                                    )?,
+                                }))
+                            }
+                            None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     type_name => {
@@ -2015,9 +1974,7 @@ mod test {
             expect_err(
                 &src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Entity"#)
-                    // TODO(#1094): this help message could suggest that the user needs to add a `name` field
-                    .help("`Entity` has not been declared as a common type")
+                &ExpectedErrorMessageBuilder::error(r#"missing field `name`"#)
                     .build());
         });
     }

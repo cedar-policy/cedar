@@ -110,8 +110,10 @@ impl<T: std::error::Error> std::error::Error for Node<T> {
     }
 }
 
-// impl Diagnostic by taking `labels()` from .loc and everything else from .node
+// impl Diagnostic by taking `labels()` and `source_code()` from .loc and everything else from .node
 impl<T: Diagnostic> Diagnostic for Node<T> {
+    impl_diagnostic_from_source_loc_field!(loc);
+
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.node.code()
     }
@@ -126,16 +128,6 @@ impl<T: Diagnostic> Diagnostic for Node<T> {
 
     fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.node.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.node.source_code()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-            self.loc.span,
-        ))))
     }
 
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
