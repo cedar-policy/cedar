@@ -34,8 +34,9 @@ use super::{
         QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
     err::{
-        schema_warnings, EAMapError, EAMapNotAllowedHereError, EAMapWithConcreteAttributesError,
-        MultipleEAMapDeclarationsError, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors,
+        schema_warnings, EAMapError, EAMapNotAllowedHereError, EAMapNotAllowedHereHelp,
+        EAMapWithConcreteAttributesError, MultipleEAMapDeclarationsError, SchemaWarning,
+        ToJsonSchemaError, ToJsonSchemaErrors,
     },
 };
 use crate::{cedar_schema, json_schema, RawName};
@@ -505,6 +506,7 @@ fn convert_attr_decl_for_record(
         )),
         AttrDecl::EAMap { .. } => Err(EAMapNotAllowedHereError {
             source_loc: attr.loc,
+            help: None,
         }),
     }
 }
@@ -529,6 +531,7 @@ fn convert_attr_decl_for_entity(
             // That is, as `ty` in `AttrDecl::Concrete`.
             Err(EAMapNotAllowedHereError {
                 source_loc: attr.loc,
+                help: Some(EAMapNotAllowedHereHelp::TopLevelEAMap),
             }
             .into())
         }

@@ -527,10 +527,22 @@ impl Diagnostic for ReservedName {
 pub struct EAMapNotAllowedHereError {
     /// Source location of the `EAMap`
     pub(crate) source_loc: Loc,
+    /// Context-dependent help text
+    pub(crate) help: Option<EAMapNotAllowedHereHelp>,
 }
 
 impl Diagnostic for EAMapNotAllowedHereError {
     impl_diagnostic_from_source_loc_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.help.as_ref().map(|help| Box::new(help) as _)
+    }
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub(crate) enum EAMapNotAllowedHereHelp {
+    #[error("Embedded attribute maps are not allowed as the top-level descriptor of all attributes of an entity. Try making an entity attribute to hold the embedded attribute map. E.g., `attributes: {{ ?: someType }}`.")]
+    TopLevelEAMap,
 }
 
 /// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.

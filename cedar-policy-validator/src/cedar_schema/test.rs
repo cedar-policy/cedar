@@ -2382,6 +2382,7 @@ mod ea_maps {
                 src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
+                    .help("Embedded attribute maps are not allowed as the top-level descriptor of all attributes of an entity. Try making an entity attribute to hold the embedded attribute map. E.g., `attributes: { ?: someType }`.")
                     .exactly_one_underline("?: Set<String>")
                     .build(),
             );
