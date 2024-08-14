@@ -1781,6 +1781,7 @@ pub enum TypeVariant<N> {
         element: Box<Type<N>>,
     },
     /// Record
+    #[tsify(type = r#"{ type: "Record"; attributes: Record<SmolStr, Type<N> & { required?: boolean }>, additionalAttributes?: boolean }"#)]
     Record(RecordType<RecordAttributeType<N>>),
     /// Entity
     Entity {
@@ -2197,8 +2198,10 @@ impl EntityAttributeType<ConditionalName> {
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+// no tsify derive because, as of this writing, tsify produces a declaration
+// `export interface RecordAttributeType<N> extends Type<N> { required?: boolean; }`
+// which `tsc` fails with `error TS2312: An interface can only extend an object
+// type or intersection of object types with statically known members.`
 pub struct RecordAttributeType<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
