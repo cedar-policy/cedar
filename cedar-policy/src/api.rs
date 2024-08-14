@@ -1432,6 +1432,27 @@ impl Schema {
     /// Returns an iterator over every entity type that can be a principal for any action in this schema
     ///
     /// Note: this iterator may contain duplicates.
+    ///
+    /// # Examples
+    /// Here's an example of using a [`std::collections::HashSet`] to get a de-duplicated set of principals
+    /// ```
+    /// use std::collections::HashSet;
+    /// use cedar_policy::Schema;
+    /// let schema : Schema = r#"
+    ///     entity User;
+    ///     entity Folder;
+    ///     action Access appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    ///     action Delete appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    /// "#.parse().unwrap();
+    /// let principals = schema.principals().collect::<HashSet<_>>();
+    /// assert_eq!(principals, HashSet::from([&"User".parse().unwrap()]));
+    /// ```
     pub fn principals(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0.principals().map(RefCast::ref_cast)
     }
@@ -1439,6 +1460,26 @@ impl Schema {
     /// Returns an iterator over every entity type that can be a resource for any action in this schema
     ///
     /// Note: this iterator may contain duplicates.
+    /// # Examples
+    /// Here's an example of using a [`std::collections::HashSet`] to get a de-duplicated set of resources
+    /// ```
+    /// use std::collections::HashSet;
+    /// use cedar_policy::Schema;
+    /// let schema : Schema = r#"
+    ///     entity User;
+    ///     entity Folder;
+    ///     action Access appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    ///     action Delete appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    /// "#.parse().unwrap();
+    /// let resources = schema.resources().collect::<HashSet<_>>();
+    /// assert_eq!(resources, HashSet::from([&"Folder".parse().unwrap()]));
+    /// ```
     pub fn resources(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0.resources().map(RefCast::ref_cast)
     }
@@ -1471,17 +1512,17 @@ impl Schema {
             .map(|iter| iter.map(RefCast::ref_cast))
     }
 
-    /// Returns an iterator over all the entity types that can be a parent of `ty`
+    /// Returns an iterator over all the entity types that can be an ancestor of `ty`
     ///
     /// # Errors
     ///
     /// Returns [`None`] if the `ty` is not found in the schema
-    pub fn parents<'a>(
+    pub fn ancestors<'a>(
         &'a self,
         ty: &'a EntityTypeName,
     ) -> Option<impl Iterator<Item = &EntityTypeName> + 'a> {
         self.0
-            .parents(&ty.0)
+            .ancestors(&ty.0)
             .map(|iter| iter.map(RefCast::ref_cast))
     }
 
@@ -1498,8 +1539,8 @@ impl Schema {
     }
 
     /// Returns an iterator over all actions defined in this schema
-    pub fn action_euids(&self) -> impl Iterator<Item = &EntityUid> {
-        self.0.action_euids().map(RefCast::ref_cast)
+    pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0.actions().map(RefCast::ref_cast)
     }
 }
 
@@ -3944,22 +3985,22 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let user: EntityTypeName = "User".parse().unwrap();
         let parents = schema
-            .parents(&user)
+            .ancestors(&user)
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         let parents = schema
-            .parents(&"List".parse().unwrap())
+            .ancestors(&"List".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
-        assert!(schema.parents(&"Foo".parse().unwrap()).is_none());
+        assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
         let parents = schema
-            .parents(&"CoolList".parse().unwrap())
+            .ancestors(&"CoolList".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -3981,7 +4022,7 @@ action CreateList in Create appliesTo {
     #[test]
     fn actions() {
         let schema = schema();
-        let actions = schema.action_euids().cloned().collect::<HashSet<_>>();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
         let expected = [
             "Read",
             "Write",
@@ -4157,7 +4198,7 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let user: EntityTypeName = "Foo::User".parse().unwrap();
         let parents = schema
-            .parents(&user)
+            .ancestors(&user)
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -4167,15 +4208,15 @@ action CreateList in Create appliesTo {
         ]);
         assert_eq!(parents, expected);
         let parents = schema
-            .parents(&"Foo::List".parse().unwrap())
+            .ancestors(&"Foo::List".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Foo::Application".parse().unwrap()]);
         assert_eq!(parents, expected);
-        assert!(schema.parents(&"Foo::Foo".parse().unwrap()).is_none());
+        assert!(schema.ancestors(&"Foo::Foo".parse().unwrap()).is_none());
         let parents = schema
-            .parents(&"Foo::CoolList".parse().unwrap())
+            .ancestors(&"Foo::CoolList".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -4197,7 +4238,7 @@ action CreateList in Create appliesTo {
     #[test]
     fn actions() {
         let schema = schema();
-        let actions = schema.action_euids().cloned().collect::<HashSet<_>>();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
         let expected = [
             "Read",
             "Write",

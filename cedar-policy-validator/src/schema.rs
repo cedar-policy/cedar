@@ -254,7 +254,7 @@ impl ValidatorSchema {
     /// # Errors
     ///
     /// Returns [`None`] if the `ty` is not found in the schema
-    pub fn parents<'a>(
+    pub fn ancestors<'a>(
         &'a self,
         ty: &'a EntityType,
     ) -> Option<impl Iterator<Item = &EntityType> + 'a> {
@@ -283,7 +283,7 @@ impl ValidatorSchema {
     }
 
     /// Returns an iterator over all actions defined in this schema
-    pub fn action_euids(&self) -> impl Iterator<Item = &EntityUID> {
+    pub fn actions(&self) -> impl Iterator<Item = &EntityUID> {
         self.action_ids.keys()
     }
 
@@ -3597,22 +3597,22 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let user: EntityType = "User".parse().unwrap();
         let parents = schema
-            .parents(&user)
+            .ancestors(&user)
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         let parents = schema
-            .parents(&"List".parse().unwrap())
+            .ancestors(&"List".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
-        assert!(schema.parents(&"Foo".parse().unwrap()).is_none());
+        assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
         let parents = schema
-            .parents(&"CoolList".parse().unwrap())
+            .ancestors(&"CoolList".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -3634,7 +3634,7 @@ action CreateList in Create appliesTo {
     #[test]
     fn actions() {
         let schema = schema();
-        let actions = schema.action_euids().cloned().collect::<HashSet<_>>();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
         let expected = [
             "Read",
             "Write",
@@ -3814,7 +3814,7 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let user: EntityType = "Foo::User".parse().unwrap();
         let parents = schema
-            .parents(&user)
+            .ancestors(&user)
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -3824,15 +3824,15 @@ action CreateList in Create appliesTo {
         ]);
         assert_eq!(parents, expected);
         let parents = schema
-            .parents(&"Foo::List".parse().unwrap())
+            .ancestors(&"Foo::List".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
         let expected = HashSet::from(["Foo::Application".parse().unwrap()]);
         assert_eq!(parents, expected);
-        assert!(schema.parents(&"Foo::Foo".parse().unwrap()).is_none());
+        assert!(schema.ancestors(&"Foo::Foo".parse().unwrap()).is_none());
         let parents = schema
-            .parents(&"Foo::CoolList".parse().unwrap())
+            .ancestors(&"Foo::CoolList".parse().unwrap())
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
@@ -3854,7 +3854,7 @@ action CreateList in Create appliesTo {
     #[test]
     fn actions() {
         let schema = schema();
-        let actions = schema.action_euids().cloned().collect::<HashSet<_>>();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
         let expected = [
             "Read",
             "Write",
