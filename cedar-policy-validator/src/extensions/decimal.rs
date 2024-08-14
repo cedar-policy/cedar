@@ -20,10 +20,11 @@
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
-use cedar_policy_core::ast::{Expr, ExprKind, Literal, RestrictedExpr};
-use cedar_policy_core::evaluator::RestrictedEvaluator;
-use cedar_policy_core::extensions::{decimal, Extensions};
-use std::str::FromStr;
+use cedar_policy_core::ast::{Expr, ExprKind, Literal, Name};
+use cedar_policy_core::extensions::decimal;
+use itertools::Itertools;
+
+use super::eval_extension_constructor;
 
 /// Note on safety:
 /// This module depends on the Cedar parser only constructing AST with valid extension calls
@@ -32,8 +33,11 @@ use std::str::FromStr;
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
-    match fname {
+fn get_argument_types(fname: &Name, decimal_ty: &Type) -> Vec<types::Type> {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
         "decimal" => vec![Type::primitive_string()],
         "lessThan" | "lessThanOrEqual" | "greaterThan" | "greaterThanOrEqual" => {
             vec![decimal_ty.clone(), decimal_ty.clone()]
@@ -44,8 +48,11 @@ fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
-    match fname {
+fn get_return_type(fname: &Name, decimal_ty: &Type) -> Type {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
         "decimal" => decimal_ty.clone(),
         "lessThan" | "lessThanOrEqual" | "greaterThan" | "greaterThanOrEqual" => {
             Type::primitive_boolean()
@@ -56,9 +63,17 @@ fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
-fn get_argument_check(fname: &str) -> Option<ArgumentCheckFn> {
-    match fname {
-        "decimal" => Some(Box::new(validate_decimal_string)),
+fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
+    if !fname.is_unqualified() {
+        panic!("unexpected decimal extension function name: {fname}")
+    }
+    match fname.basename().as_ref() {
+        "decimal" => {
+            let fname = fname.clone();
+            Some(Box::new(move |args| {
+                validate_decimal_string(fname.clone(), args)
+            }))
+        }
         "lessThan" | "lessThanOrEqual" | "greaterThan" | "greaterThanOrEqual" => None,
         _ => panic!("unexpected decimal extension function name: {fname}"),
     }
@@ -72,18 +87,16 @@ pub fn extension_schema() -> ExtensionSchema {
     let fun_tys: Vec<ExtensionFunctionType> = decimal_ext
         .funcs()
         .map(|f| {
-            let fname = f.name();
-            let fstring = fname.to_string();
-            let return_type = get_return_type(&fstring, &decimal_ty);
+            let return_type = get_return_type(f.name(), &decimal_ty);
             debug_assert!(f
                 .return_type()
                 .map(|ty| return_type.is_consistent_with(ty))
                 .unwrap_or_else(|| return_type == Type::Never));
             ExtensionFunctionType::new(
-                fname.clone(),
-                get_argument_types(&fstring, &decimal_ty),
+                f.name().clone(),
+                get_argument_types(f.name(), &decimal_ty),
                 return_type,
-                get_argument_check(&fstring),
+                get_argument_check(f.name()),
             )
         })
         .collect();
@@ -91,19 +104,14 @@ pub fn extension_schema() -> ExtensionSchema {
 }
 
 /// Extra validation step for the `decimal` function.
-/// Note that `exprs` will have already been checked to contain the correct number of arguments.
-fn validate_decimal_string(exprs: &[Expr]) -> Result<(), String> {
-    match exprs.first() {
-        Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
-            let exts = Extensions::all_available();
-            let evaluator = RestrictedEvaluator::new(&exts);
-            match RestrictedExpr::from_str(&format!("decimal({arg})")) {
-                Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
-                    Ok(_) => Ok(()),
-                    Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
-                },
-                Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
-            }
+/// Note we already checked that `exprs` contains correct number of arguments,
+/// these arguments have the correct types, and that they are all literals.
+fn validate_decimal_string(decimal_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+    match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
+        Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
+            eval_extension_constructor(decimal_constructor_name, s.clone())
+                .map(|_| ())
+                .map_err(|_| format!("Failed to parse as a decimal value: `{lit_arg}`"))
         }
         _ => Ok(()),
     }

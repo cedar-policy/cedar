@@ -16,6 +16,13 @@
 
 //! This module contains type information for all of the standard Cedar extensions.
 
+use cedar_policy_core::{
+    ast::{Name, RestrictedExpr, Value},
+    evaluator::{EvaluationError, RestrictedEvaluator},
+    extensions::Extensions,
+};
+use smol_str::SmolStr;
+
 use crate::extension_schema::ExtensionSchema;
 
 #[cfg(feature = "ipaddr")]
@@ -36,4 +43,17 @@ pub fn all_available_extension_schemas() -> Vec<ExtensionSchema> {
         #[cfg(feature = "partial-eval")]
         partial_evaluation::extension_schema(),
     ]
+}
+
+/// Evaluates ane extension function on a single string literal argument. Used
+/// to validate arguments to extension constructor functions.
+fn eval_extension_constructor(
+    constructor_name: Name,
+    lit_str_arg: SmolStr,
+) -> Result<Value, EvaluationError> {
+    let exts = Extensions::all_available();
+    let evaluator = RestrictedEvaluator::new(&exts);
+    let constructor_call_expr =
+        RestrictedExpr::call_extension_fn(constructor_name, [RestrictedExpr::val(lit_str_arg)]);
+    evaluator.interpret(constructor_call_expr.as_borrowed())
 }
