@@ -485,6 +485,7 @@ pub struct EntityAttributesInternal<N> {
     #[serde(rename = "type")]
     #[serde(serialize_with = "record_string")]
     #[serde(deserialize_with = "require_record_string")]
+    #[cfg_attr(feature = "wasm", tsify(type = "\"Record\""))]
     type_placeholder_hack: (),
     /// Entity attribute types, as a [`RecordType`]. These may include `EAMap`s.
     #[serde(flatten)]
@@ -1781,9 +1782,6 @@ pub enum TypeVariant<N> {
         element: Box<Type<N>>,
     },
     /// Record
-    #[tsify(
-        type = r#"{ type: "Record"; attributes: Record<SmolStr, Type<N> & { required?: boolean }>, additionalAttributes?: boolean }"#
-    )]
     Record(RecordType<RecordAttributeType<N>>),
     /// Entity
     Entity {
@@ -2138,6 +2136,11 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de>
 pub struct EntityAttributeType<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
+    // without this explicit `tsify` type, as of this writing, tsify produces a declaration
+    // `export interface EntityAttributeType<N> extends EntityAttributeTypeInternal<N> { required?: boolean; }`
+    // which `tsc` fails with `error TS2312: An interface can only extend an object
+    // type or intersection of object types with statically known members.`
+    #[cfg_attr(feature = "wasm", tsify(type = "EntityAttributeTypeInternal<N>"))]
     pub ty: EntityAttributeTypeInternal<N>,
     /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
@@ -2200,13 +2203,16 @@ impl EntityAttributeType<ConditionalName> {
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-// no tsify derive because, as of this writing, tsify produces a declaration
-// `export interface RecordAttributeType<N> extends Type<N> { required?: boolean; }`
-// which `tsc` fails with `error TS2312: An interface can only extend an object
-// type or intersection of object types with statically known members.`
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RecordAttributeType<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
+    // without this explicit `tsify` type, as of this writing, tsify produces a declaration
+    // `export interface RecordAttributeType<N> extends Type<N> { required?: boolean; }`
+    // which `tsc` fails with `error TS2312: An interface can only extend an object
+    // type or intersection of object types with statically known members.`
+    #[cfg_attr(feature = "wasm", tsify(type = "Type<N>"))]
     pub ty: Type<N>,
     /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
