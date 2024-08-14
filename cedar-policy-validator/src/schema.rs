@@ -149,7 +149,85 @@ impl TryFrom<SchemaFragment> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
-    // Create a ValidatorSchema without any entity types or actions ids.
+    /// Returns an iterator over every entity type that can be a principal for any action in this schema
+    pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
+        self.action_ids
+            .values()
+            .flat_map(ValidatorActionId::principals)
+    }
+
+    /// Returns an iterator over every entity type that can be a resource for any action in this schema
+    pub fn resources(&self) -> impl Iterator<Item = &EntityType> {
+        self.action_ids
+            .values()
+            .flat_map(ValidatorActionId::resources)
+    }
+
+    /// Returns an iterator over every entity type that can be a principal for `action` in this schema
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if `action` is not found in the schema
+    pub fn principals_for_action(
+        &self,
+        action: &EntityUID,
+    ) -> Option<impl Iterator<Item = &EntityType>> {
+        self.action_ids
+            .get(action)
+            .map(ValidatorActionId::principals)
+    }
+
+    /// Returns an iterator over every entity type that can be a resource for `action` in this schema
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if `action` is not found in the schema
+    pub fn resources_for_action(
+        &self,
+        action: &EntityUID,
+    ) -> Option<impl Iterator<Item = &EntityType>> {
+        self.action_ids
+            .get(action)
+            .map(ValidatorActionId::resources)
+    }
+
+    /// Returns an iterator over all the entity types that can be a parent of `ty`
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if the `ty` is not found in the schema
+    pub fn ancestors<'a>(&'a self, ty: &'a Name) -> Option<impl Iterator<Item = &Name> + 'a> {
+        if self.entity_types.contains_key(ty) {
+            Some(self.entity_types.values().filter_map(|ety| {
+                if ety.descendants.contains(ty) {
+                    Some(&ety.name)
+                } else {
+                    None
+                }
+            }))
+        } else {
+            None
+        }
+    }
+
+    /// Returns an iterator over all the action groups defined in this schema
+    pub fn action_groups(&self) -> impl Iterator<Item = &EntityUID> {
+        self.action_ids.values().filter_map(|action| {
+            if action.descendants.is_empty() {
+                None
+            } else {
+                Some(&action.name)
+            }
+        })
+    }
+
+    /// Returns an iterator over all actions defined in this schema
+    pub fn actions(&self) -> impl Iterator<Item = &EntityUID> {
+        self.action_ids.keys()
+    }
+
+    /// Create a [`ValidatorSchema`] without any definitions (of entity types,
+    /// common types, or actions).
     pub fn empty() -> ValidatorSchema {
         Self {
             entity_types: HashMap::new(),
@@ -2529,5 +2607,468 @@ mod test_resolver {
         .unwrap();
         let res = resolve(schema);
         assert_matches!(res, Err(SchemaError::CycleInCommonTypeReferences(_)));
+    }
+}
+
+#[cfg(test)]
+mod test_access {
+    use super::*;
+
+    fn schema() -> ValidatorSchema {
+        let src = r#"
+        type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application;
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+
+entity CoolList;
+
+entity Team in [Team, Application];
+
+action Read, Write, Create;
+
+action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+    principal: [User],
+    resource : [List]
+};
+
+action GetList in Read appliesTo {
+    principal : [User],
+    resource : [List, CoolList]
+};
+
+action GetLists in Read appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+action CreateList in Create appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+        "#;
+
+        ValidatorSchema::from_str_natural(src, Extensions::all_available())
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn principals() {
+        let schema = schema();
+        let principals = schema.principals().collect::<HashSet<_>>();
+        assert_eq!(principals.len(), 1);
+        let user: EntityType = EntityType::Specified("User".parse().unwrap());
+        assert!(principals.contains(&user));
+        let principals = schema.principals().collect::<Vec<_>>();
+        assert!(principals.len() > 1);
+        assert!(principals.iter().all(|ety| **ety == user));
+    }
+
+    #[test]
+    fn empty_schema_principals_and_resources() {
+        let empty: ValidatorSchema =
+            ValidatorSchema::from_str_natural("", Extensions::all_available())
+                .unwrap()
+                .0;
+        assert!(empty.principals().collect::<Vec<_>>().is_empty());
+        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn resources() {
+        let schema = schema();
+        let resources = schema.resources().cloned().collect::<HashSet<_>>();
+        let expected: HashSet<EntityType> = HashSet::from([
+            EntityType::Specified("List".parse().unwrap()),
+            EntityType::Specified("Application".parse().unwrap()),
+            EntityType::Specified("CoolList".parse().unwrap()),
+        ]);
+        assert_eq!(resources, expected);
+    }
+
+    #[test]
+    fn principals_for_action() {
+        let schema = schema();
+        let delete_list: EntityUID = r#"Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUID = r#"Action::"DeleteUser""#.parse().unwrap();
+        let got = schema
+            .principals_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec![EntityType::Specified("User".parse().unwrap())]);
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn resources_for_action() {
+        let schema = schema();
+        let delete_list: EntityUID = r#"Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUID = r#"Action::"DeleteUser""#.parse().unwrap();
+        let create_list: EntityUID = r#"Action::"CreateList""#.parse().unwrap();
+        let get_list: EntityUID = r#"Action::"GetList""#.parse().unwrap();
+        let got = schema
+            .resources_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec![EntityType::Specified("List".parse().unwrap())]);
+        let got = schema
+            .resources_for_action(&create_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            got,
+            vec![EntityType::Specified("Application".parse().unwrap())]
+        );
+        let got = schema
+            .resources_for_action(&get_list)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            got,
+            HashSet::from([
+                EntityType::Specified("List".parse().unwrap()),
+                EntityType::Specified("CoolList".parse().unwrap())
+            ])
+        );
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn principal_parents() {
+        let schema = schema();
+        let user: Name = "User".parse().unwrap();
+        let parents = schema
+            .ancestors(&user)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        let parents = schema
+            .ancestors(&"List".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
+        let parents = schema
+            .ancestors(&"CoolList".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([]);
+        assert_eq!(parents, expected);
+    }
+
+    #[test]
+    fn action_groups() {
+        let schema = schema();
+        let groups = schema.action_groups().cloned().collect::<HashSet<_>>();
+        let expected = ["Read", "Write", "Create"]
+            .into_iter()
+            .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(groups, expected);
+    }
+
+    #[test]
+    fn actions() {
+        let schema = schema();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
+        let expected = [
+            "Read",
+            "Write",
+            "Create",
+            "DeleteList",
+            "EditShare",
+            "UpdateList",
+            "CreateTask",
+            "UpdateTask",
+            "DeleteTask",
+            "GetList",
+            "GetLists",
+            "CreateList",
+        ]
+        .into_iter()
+        .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+        .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn entities() {
+        let schema = schema();
+        let entities = schema
+            .entity_types()
+            .map(|(ty, _)| ty)
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = ["List", "Application", "User", "CoolList", "Team"]
+            .into_iter()
+            .map(|ty| ty.parse().unwrap())
+            .collect::<HashSet<Name>>();
+        assert_eq!(entities, expected);
+    }
+}
+
+#[cfg(test)]
+mod test_access_namespace {
+    use super::*;
+
+    fn schema() -> ValidatorSchema {
+        let src = r#"
+        namespace Foo {
+        type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application;
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+
+entity CoolList;
+
+entity Team in [Team, Application];
+
+action Read, Write, Create;
+
+action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+    principal: [User],
+    resource : [List]
+};
+
+action GetList in Read appliesTo {
+    principal : [User],
+    resource : [List, CoolList]
+};
+
+action GetLists in Read appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+action CreateList in Create appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+    }
+
+        "#;
+
+        ValidatorSchema::from_str_natural(src, Extensions::all_available())
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn principals() {
+        let schema = schema();
+        let principals = schema.principals().collect::<HashSet<_>>();
+        assert_eq!(principals.len(), 1);
+        let user: EntityType = EntityType::Specified("Foo::User".parse().unwrap());
+        assert!(principals.contains(&user));
+        let principals = schema.principals().collect::<Vec<_>>();
+        assert!(principals.len() > 1);
+        assert!(principals.iter().all(|ety| **ety == user));
+    }
+
+    #[test]
+    fn empty_schema_principals_and_resources() {
+        let empty: ValidatorSchema =
+            ValidatorSchema::from_str_natural("", Extensions::all_available())
+                .unwrap()
+                .0;
+        assert!(empty.principals().collect::<Vec<_>>().is_empty());
+        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn resources() {
+        let schema = schema();
+        let resources = schema.resources().cloned().collect::<HashSet<_>>();
+        let expected: HashSet<EntityType> = HashSet::from([
+            EntityType::Specified("Foo::List".parse().unwrap()),
+            EntityType::Specified("Foo::Application".parse().unwrap()),
+            EntityType::Specified("Foo::CoolList".parse().unwrap()),
+        ]);
+        assert_eq!(resources, expected);
+    }
+
+    #[test]
+    fn principals_for_action() {
+        let schema = schema();
+        let delete_list: EntityUID = r#"Foo::Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUID = r#"Foo::Action::"DeleteUser""#.parse().unwrap();
+        let got = schema
+            .principals_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            got,
+            vec![EntityType::Specified("Foo::User".parse().unwrap())]
+        );
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn resources_for_action() {
+        let schema = schema();
+        let delete_list: EntityUID = r#"Foo::Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUID = r#"Foo::Action::"DeleteUser""#.parse().unwrap();
+        let create_list: EntityUID = r#"Foo::Action::"CreateList""#.parse().unwrap();
+        let get_list: EntityUID = r#"Foo::Action::"GetList""#.parse().unwrap();
+        let got = schema
+            .resources_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            got,
+            vec![EntityType::Specified("Foo::List".parse().unwrap())]
+        );
+        let got = schema
+            .resources_for_action(&create_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            got,
+            vec![EntityType::Specified("Foo::Application".parse().unwrap())]
+        );
+        let got = schema
+            .resources_for_action(&get_list)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            got,
+            HashSet::from([
+                EntityType::Specified("Foo::List".parse().unwrap()),
+                EntityType::Specified("Foo::CoolList".parse().unwrap())
+            ])
+        );
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn principal_parents() {
+        let schema = schema();
+        let user: Name = "Foo::User".parse().unwrap();
+        let parents = schema
+            .ancestors(&user)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([
+            "Foo::Team".parse().unwrap(),
+            "Foo::Application".parse().unwrap(),
+        ]);
+        assert_eq!(parents, expected);
+        let parents = schema
+            .ancestors(&"Foo::List".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Foo::Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        assert!(schema.ancestors(&"Foo::Foo".parse().unwrap()).is_none());
+        let parents = schema
+            .ancestors(&"Foo::CoolList".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([]);
+        assert_eq!(parents, expected);
+    }
+
+    #[test]
+    fn action_groups() {
+        let schema = schema();
+        let groups = schema.action_groups().cloned().collect::<HashSet<_>>();
+        let expected = ["Read", "Write", "Create"]
+            .into_iter()
+            .map(|ty| format!("Foo::Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(groups, expected);
+    }
+
+    #[test]
+    fn actions() {
+        let schema = schema();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
+        let expected = [
+            "Read",
+            "Write",
+            "Create",
+            "DeleteList",
+            "EditShare",
+            "UpdateList",
+            "CreateTask",
+            "UpdateTask",
+            "DeleteTask",
+            "GetList",
+            "GetLists",
+            "CreateList",
+        ]
+        .into_iter()
+        .map(|ty| format!("Foo::Action::\"{ty}\"").parse().unwrap())
+        .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn entities() {
+        let schema = schema();
+        let entities = schema
+            .entity_types()
+            .map(|(ty, _)| ty)
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = [
+            "Foo::List",
+            "Foo::Application",
+            "Foo::User",
+            "Foo::CoolList",
+            "Foo::Team",
+        ]
+        .into_iter()
+        .map(|ty| ty.parse().unwrap())
+        .collect::<HashSet<Name>>();
+        assert_eq!(entities, expected);
     }
 }
