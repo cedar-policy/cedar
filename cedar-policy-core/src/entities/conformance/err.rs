@@ -23,6 +23,7 @@ use thiserror::Error;
 
 /// Errors raised when entities do not conform to the schema
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum EntitySchemaConformanceError {
     /// Encountered attribute that shouldn't exist on entities of this type
     #[error(transparent)]

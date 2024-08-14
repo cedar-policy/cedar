@@ -1323,11 +1323,10 @@ impl TryInto<Schema> for SchemaFragment {
 impl FromStr for SchemaFragment {
     type Err = CedarSchemaError;
     /// Construct [`SchemaFragment`] from a string containing a schema formatted
-    /// in the Cedar schema format. This can fail if the string is not valid
-    /// JSON, or if the JSON structure does not form a valid schema. This
-    /// function does not check for consistency in the schema (e.g., references
-    /// to undefined entities) because this is not required until a `Schema` is
-    /// constructed.
+    /// in the Cedar schema format. This can fail if the string is not a valid
+    /// schema. This function does not check for consistency in the schema
+    /// (e.g., references to undefined entities) because this is not required
+    /// until a `Schema` is constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
         Self::from_cedarschema_str(src).map(|(frag, _)| frag)
     }
@@ -1343,7 +1342,7 @@ impl FromStr for Schema {
 
     /// Construct a [`Schema`] from a string containing a schema formatted in
     /// the Cedar schema format. This can fail if it is not possible to parse a
-    /// schema from the strings, or if errors in values in the schema are
+    /// schema from the string, or if errors in values in the schema are
     /// uncovered after parsing. For instance, when an entity attribute name is
     /// found to not be a valid attribute name according to the Cedar
     /// grammar.
@@ -1913,7 +1912,7 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
-    pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<&'a str> {
+    pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
@@ -1921,15 +1920,11 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
-    //
-    // TODO: unfortunate that this method returns `Option<String>` and the corresponding method
-    // for policies (`.annotation()`) above returns `Option<&str>`, but this can't be changed
-    // without a semver break
-    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
+    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get_template(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(|annot| annot.val.to_string())
+            .map(AsRef::as_ref)
     }
 
     /// Returns true iff the `PolicySet` is empty

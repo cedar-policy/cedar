@@ -771,6 +771,7 @@ pub mod schema_warnings {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum SchemaWarning {
     /// Warning when a declaration shadows a builtin type
     #[error(transparent)]
