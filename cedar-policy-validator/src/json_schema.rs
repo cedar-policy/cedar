@@ -1781,7 +1781,9 @@ pub enum TypeVariant<N> {
         element: Box<Type<N>>,
     },
     /// Record
-    #[tsify(type = r#"{ type: "Record"; attributes: Record<SmolStr, Type<N> & { required?: boolean }>, additionalAttributes?: boolean }"#)]
+    #[tsify(
+        type = r#"{ type: "Record"; attributes: Record<SmolStr, Type<N> & { required?: boolean }>, additionalAttributes?: boolean }"#
+    )]
     Record(RecordType<RecordAttributeType<N>>),
     /// Entity
     Entity {
