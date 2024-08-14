@@ -2197,7 +2197,8 @@ impl EntityAttributeType<ConditionalName> {
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-// no tsify derive because handled specially in build-wasm.sh due to the serde(flatten)
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RecordAttributeType<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]

@@ -87,7 +87,6 @@ process_types_file() {
     ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
-    echo "export type RecordAttributeType<N> = Type<N> & { required?: boolean };" >> "$types_file"
 }
 
 check_types_file() {
