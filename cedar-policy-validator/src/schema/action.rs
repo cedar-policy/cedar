@@ -60,6 +60,16 @@ pub struct ValidatorActionId {
 }
 
 impl ValidatorActionId {
+    /// Returns an iterator over all the principals that this action applies to
+    pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.principal_apply_spec.iter()
+    }
+
+    /// Returns an iterator over all the resources that this action applies to
+    pub fn resources(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to.resource_apply_spec.iter()
+    }
+
     /// The `Type` that this action requires for its context.
     ///
     /// This always returns a closed record type.
@@ -145,5 +155,50 @@ impl ValidatorApplySpec {
     /// Get the applicable resource types for this spec.
     pub fn applicable_resource_types(&self) -> impl Iterator<Item = &EntityType> {
         self.resource_apply_spec.iter()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn make_action() -> ValidatorActionId {
+        ValidatorActionId {
+            name: r#"Action::"foo""#.parse().unwrap(),
+            applies_to: ValidatorApplySpec {
+                principal_apply_spec: HashSet::from([
+                    // Make sure duplicates are handled as expected
+                    EntityType::Specified("User".parse().unwrap()),
+                    EntityType::Specified("User".parse().unwrap()),
+                ]),
+                resource_apply_spec: HashSet::from([
+                    EntityType::Specified("App".parse().unwrap()),
+                    EntityType::Specified("File".parse().unwrap()),
+                ]),
+            },
+            descendants: HashSet::new(),
+            context: Type::any_record(),
+            attribute_types: Attributes::default(),
+            attributes: BTreeMap::default(),
+        }
+    }
+
+    #[test]
+    fn test_resources() {
+        let a = make_action();
+        let got = a.resources().cloned().collect::<HashSet<EntityType>>();
+        let expected = HashSet::from([
+            EntityType::Specified("App".parse().unwrap()),
+            EntityType::Specified("File".parse().unwrap()),
+        ]);
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn test_principals() {
+        let a = make_action();
+        let got = a.principals().cloned().collect::<Vec<EntityType>>();
+        let expected: [EntityType; 1] = [EntityType::Specified("User".parse().unwrap())];
+        assert_eq!(got, &expected);
     }
 }
