@@ -264,9 +264,14 @@ impl FromNormalizedStr for InternalName {
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for InternalName {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let path_size = u.int_in_range(0..=8)?;
         Ok(Self {
             id: u.arbitrary()?,
-            path: u.arbitrary()?,
+            path: Arc::new(
+                (0..path_size)
+                    .map(|_| u.arbitrary())
+                    .collect::<Result<Vec<Id>, _>>()?,
+            ),
             loc: None,
         })
     }
