@@ -55,20 +55,20 @@ where
     K: Clone + Eq + Hash + Debug + Display,
     V: TCNode<K>,
 {
-    let res = compute_tc_internal::<K, V>(nodes);
-    if res.is_ok() && enforce_dag {
+    compute_tc_internal::<K, V>(nodes);
+    if enforce_dag {
         return enforce_dag_from_tc(nodes);
     }
-    res
+    Ok(())
 }
 
 /// Given graph as a map from keys with type `K` to implementations of `TCNode`
 /// with type `V`, compute the transitive closure of the hierarchy. In case of
 /// error, the result contains an error structure `Err<K>` which contains the
 /// keys (with type `K`) for the nodes in the graph which caused the error.
-fn compute_tc_internal<K, V>(nodes: &mut HashMap<K, V>) -> Result<(), K>
+fn compute_tc_internal<K, V>(nodes: &mut HashMap<K, V>)
 where
-    K: Clone + Eq + Hash + Debug + Display,
+    K: Clone + Eq + Hash,
     V: TCNode<K>,
 {
     // To avoid needing both immutable and mutable borrows of `nodes`,
@@ -78,7 +78,7 @@ where
     let mut ancestors: HashMap<K, HashSet<K>> = HashMap::new();
     for node in nodes.values() {
         let this_node_ancestors: &mut HashSet<K> = ancestors.entry(node.get_key()).or_default();
-        add_ancestors_to_set(node, nodes, this_node_ancestors)?;
+        add_ancestors_to_set(node, nodes, this_node_ancestors);
     }
     for node in nodes.values_mut() {
         // PANIC SAFETY All nodes in `ancestors` came from `nodes`
@@ -90,7 +90,6 @@ where
             node.add_edge_to(ancestor_uid.clone());
         }
     }
-    Ok(())
 }
 
 /// Given a graph (as a map from keys to `TCNode`), enforce that
@@ -140,13 +139,9 @@ where
 /// For the given `node` in the given `hierarchy`, add all of the `node`'s
 /// transitive ancestors to the given set. Assume that any nodes already in
 /// `ancestors` don't need to be searched -- they have been already handled.
-fn add_ancestors_to_set<K, V>(
-    node: &V,
-    hierarchy: &HashMap<K, V>,
-    ancestors: &mut HashSet<K>,
-) -> Result<(), K>
+fn add_ancestors_to_set<K, V>(node: &V, hierarchy: &HashMap<K, V>, ancestors: &mut HashSet<K>)
 where
-    K: Clone + Eq + Hash + Debug + Display,
+    K: Clone + Eq + Hash,
     V: TCNode<K>,
 {
     for ancestor_uid in node.out_edges() {
@@ -154,11 +149,10 @@ where
             // discovered a new ancestor, so add the ancestors of `ancestor` as
             // well
             if let Some(ancestor) = hierarchy.get(ancestor_uid) {
-                add_ancestors_to_set(ancestor, hierarchy, ancestors)?;
+                add_ancestors_to_set(ancestor, hierarchy, ancestors);
             }
         }
     }
-    Ok(())
 }
 
 /// Once the transitive closure (as defined above) is computed/enforced for the graph, we have:
@@ -206,7 +200,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
@@ -238,7 +232,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
@@ -275,7 +269,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
@@ -318,7 +312,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let foo = &entities[&EntityUID::with_eid("foo")];
         let bar = &entities[&EntityUID::with_eid("bar")];
         let baz = &entities[&EntityUID::with_eid("baz")];
@@ -362,7 +356,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let d = &entities[&EntityUID::with_eid("D")];
@@ -417,7 +411,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let f = &entities[&EntityUID::with_eid("F")];
@@ -477,7 +471,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
@@ -529,7 +523,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let d = &entities[&EntityUID::with_eid("D")];
@@ -568,7 +562,7 @@ mod tests {
         b.add_ancestor(EntityUID::with_eid("B"));
         let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
@@ -619,7 +613,7 @@ mod tests {
             (d.uid().clone(), d),
         ]);
         // computing TC should succeed without panicking, infinitely recursing, etc
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
@@ -693,7 +687,7 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         // now it should pass TC enforcement
         assert!(enforce_tc(&entities).is_ok());
         // still fails cycle check
@@ -749,7 +743,7 @@ mod tests {
         // fails TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        assert!(compute_tc_internal(&mut entities).is_ok());
+        compute_tc_internal(&mut entities);
         // now it should pass TC enforcement
         assert!(enforce_tc(&entities).is_ok());
         // but still fail cycle check
