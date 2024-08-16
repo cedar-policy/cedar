@@ -42,7 +42,7 @@ Cedar Language Version: 4.0
 - (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
   Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
   `A::__cedar::B`) are now invalid. (#969)
-- Replace uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
+- Replaced uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
   APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
   now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
@@ -91,6 +91,8 @@ Cedar Language Version: 3.4
 - `Context::into_iter` to get the contents of a `Context` and `Context::merge`
   to combine `Context`s, returning an error on duplicate keys (#1027,
   resolving #1013)
+- Several new APIs for schemas to allow accessing principal and resource
+  types, action entity uids, etc. (#1141, resolving #1134)
 
 ### Changed
 

@@ -905,7 +905,7 @@ impl EntityLUB {
 
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize, Default)]
 pub struct Attributes {
     /// Attributes map
     pub attrs: BTreeMap<SmolStr, AttributeType>,

@@ -95,7 +95,7 @@ impl AsRef<str> for EntityId {
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityTypeName(ast::EntityType);
+pub struct EntityTypeName(pub(crate) ast::EntityType);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
@@ -176,7 +176,7 @@ impl From<ast::EntityType> for EntityTypeName {
 // INVARIANT: this can never be an `ast::EntityType::Unspecified`
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityUid(ast::EntityUID);
+pub struct EntityUid(pub(crate) ast::EntityUID);
 
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
