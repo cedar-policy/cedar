@@ -34,7 +34,6 @@ impl From<&proto::expr::expr_kind::PatternElem> for PatternElem {
     fn from(v: &proto::expr::expr_kind::PatternElem) -> Self {
         let pty = proto::expr::expr_kind::pattern_elem::PatternElemType::try_from(v.ty).unwrap();
         match pty {
-            proto::expr::expr_kind::pattern_elem::PatternElemType::NaPat => panic!("Expected PatternElem type"),
             proto::expr::expr_kind::pattern_elem::PatternElemType::Char => PatternElem::Char(v.c.chars().next().unwrap()),
             proto::expr::expr_kind::pattern_elem::PatternElemType::Wildcard => PatternElem::Wildcard
         }
