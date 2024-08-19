@@ -102,3 +102,8 @@ message AttributeType {
     Type attr_type = 1;
     bool is_required = 2;
 }
+
+enum ValidationMode {
+    Strict = 0;
+    Permissive = 1;
+}

@@ -33,6 +33,6 @@ fn generate_parsers() {
 
 // Reads protobuf schema files (.proto) and generates Rust modules
 fn generate_schemas() {
-    prost_build::compile_protos(&["./schema/Request.proto"], &["./schema"])
+    prost_build::compile_protos(&["./schema/AST.proto"], &["./schema"])
         .expect("Prost protobuf compilation error;");
 }

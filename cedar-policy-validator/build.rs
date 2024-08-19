@@ -32,6 +32,6 @@ fn generate_parsers() {
 fn generate_schemas() {
     let mut config = prost_build::Config::new();
     config.extern_path(".cedar_policy_core", "cedar_policy-core::ast::proto");
-    config.compile_protos(&["./schema/ValidationRequest.proto"], &["./schema", "../cedar-policy-core/schema"])
+    config.compile_protos(&["./schema/Validator.proto"], &["./schema", "../cedar-policy-core/schema"])
         .expect("Prost protobuf compilation error;");
 }
