@@ -31,6 +31,7 @@ use std::{
 };
 
 use cedar_policy_core::{
+    ast,
     ast::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
@@ -38,7 +39,7 @@ use cedar_policy_core::{
     extensions::Extensions,
 };
 
-use crate::{validation_errors::LubHelp, ValidationMode};
+use crate::{validation_errors::LubHelp, ValidationMode, proto};
 
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
@@ -707,6 +708,68 @@ impl Display for Type {
     }
 }
 
+impl From<&proto::Type> for Type {
+    fn from(v: &proto::Type) -> Self {
+        match proto::r#type::TypeTy::try_from(v.ty).unwrap() {
+            proto::r#type::TypeTy::Never => Type::Never,
+            proto::r#type::TypeTy::True => Type::True,
+            proto::r#type::TypeTy::False => Type::False,
+            proto::r#type::TypeTy::PrimitiveTy => {
+                Type::Primitive { primitive_type: Primitive::from(&proto::r#type::Primitive::try_from(v.primitive_type).unwrap()) }
+            },
+            proto::r#type::TypeTy::Set => {
+                Type::Set { element_type: v.t.as_ref().map(|v| Box::new(Type::from(v.as_ref()))) }
+            },
+            proto::r#type::TypeTy::EntityOrRecord => {
+                Type::EntityOrRecord(EntityRecordKind::from(v.er.as_ref().unwrap()))
+            },
+            proto::r#type::TypeTy::ExtensionType => {
+                Type::ExtensionType { name: ast::Name::from(v.name.as_ref().unwrap()) }
+            }
+        }
+    }
+}
+
+impl From<&Type> for proto::Type {
+    fn from(v: &Type) -> Self {
+        let mut result = proto::Type {
+            ty: 0, primitive_type: 0, t: None, er: None, name: None
+        };
+        match v {
+            Type::Never => {
+                result.ty = proto::r#type::TypeTy::Never.into();
+            }
+            Type::True => {
+                result.ty = proto::r#type::TypeTy::True.into();
+            }
+            Type::False => {
+                result.ty = proto::r#type::TypeTy::False.into();
+            }
+            Type::Primitive { primitive_type } => {
+                result.ty = proto::r#type::TypeTy::PrimitiveTy.into();
+                result.primitive_type = proto::r#type::Primitive::from(primitive_type).into();
+            }
+            Type::Set { element_type } => {
+                result.ty = proto::r#type::TypeTy::Set.into();
+                result.t = match element_type {
+                    Some(ti) => Some(Box::new(proto::Type::from(ti.as_ref()))),
+                    None => None
+                }
+            }
+            Type::EntityOrRecord(er) => {
+                result.ty = proto::r#type::TypeTy::EntityOrRecord.into();
+                result.er = Some(proto::EntityRecordKind::from(er));
+            }
+            Type::ExtensionType { name } => {
+                result.ty = proto::r#type::TypeTy::ExtensionType.into();
+                result.name = Some(ast::proto::Name::from(name));
+            }
+        }
+        result
+    }
+}
+
+
 impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
     type Error = String;
     fn try_from(ty: Type) -> Result<cedar_policy_core::entities::SchemaType, String> {
@@ -897,6 +960,28 @@ impl EntityLUB {
     }
 }
 
+impl From<&proto::EntityLub> for EntityLUB {
+    fn from(v: &proto::EntityLub) -> Self {
+        Self {
+            lub_elements : v.lub_elements
+                .iter()
+                .map(|v| ast::EntityType::from(v))
+                .collect()
+        }
+    }
+}
+
+impl From<&EntityLUB> for proto::EntityLub {
+    fn from(v: &EntityLUB) -> Self {
+        Self {
+            lub_elements: v.lub_elements
+                .iter()
+                .map(|v| ast::proto::EntityType::from(v))
+                .collect()
+        }
+    }
+}
+
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
@@ -1049,6 +1134,28 @@ impl IntoIterator for Attributes {
     }
 }
 
+impl From<&proto::Attributes> for Attributes {
+    fn from(v: &proto::Attributes) -> Self {
+        Self::with_attributes(
+            v.attrs
+                .iter()
+                .map(|(k, v)| (k.into(), AttributeType::from(v)))
+        )
+    }
+}
+
+impl From<&Attributes> for proto::Attributes {
+    fn from(v: &Attributes) -> Self {
+        Self {
+            attrs : v
+                .iter()
+                .map(|(k, v) | (k.to_string(), proto::AttributeType::from(v)))
+                .collect()
+        }
+    }
+}
+
+
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
@@ -1069,6 +1176,25 @@ impl OpenTag {
         }
     }
 }
+
+impl From<&proto::OpenTag> for OpenTag {
+    fn from(v: &proto::OpenTag) -> Self {
+        match v {
+            proto::OpenTag::OpenAttributes => OpenTag::OpenAttributes,
+            proto::OpenTag::ClosedAttributes => OpenTag::ClosedAttributes
+        }
+    }
+}
+
+impl From<&OpenTag> for proto::OpenTag {
+    fn from(v: &OpenTag) -> Self {
+        match v {
+            OpenTag::OpenAttributes => proto::OpenTag::OpenAttributes,
+            OpenTag::ClosedAttributes => proto::OpenTag::ClosedAttributes
+        }
+    }
+}
+
 
 /// Represents whether a type is an entity type, record type, or could be either
 ///
@@ -1353,6 +1479,57 @@ impl EntityRecordKind {
     }
 }
 
+impl From<&proto::EntityRecordKind> for EntityRecordKind {
+    fn from(v: &proto::EntityRecordKind) -> Self {
+        match proto::entity_record_kind::ErkTy::try_from(v.ty).unwrap() {
+            proto::entity_record_kind::ErkTy::Record => {
+                EntityRecordKind::Record{
+                attrs : Attributes::from(v.attrs.as_ref().unwrap()),
+                open_attributes : OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap())
+            }
+            },
+            proto::entity_record_kind::ErkTy::AnyEntity => EntityRecordKind::AnyEntity,
+            proto::entity_record_kind::ErkTy::Entity => EntityRecordKind::Entity(
+                EntityLUB::from(v.e.as_ref().unwrap())
+            ),
+            proto::entity_record_kind::ErkTy::ActionEntity => EntityRecordKind::ActionEntity{
+                name : ast::EntityType::from(v.name.as_ref().unwrap()),
+                attrs : Attributes::from(v.attrs.as_ref().unwrap())
+            }
+        }
+    }
+}
+
+impl From<&EntityRecordKind> for proto::EntityRecordKind {
+    fn from(v: &EntityRecordKind) -> Self {
+        let mut result = Self {
+            ty : 0, attrs: None, open_attributes: 0, e: None, name: None
+        };
+        match v {
+            EntityRecordKind::Record{ attrs, open_attributes} => {
+                result.ty = proto::entity_record_kind::ErkTy::Record.into();
+                result.attrs = Some(proto::Attributes::from(attrs));
+                result.open_attributes = proto::OpenTag::from(open_attributes).into();
+            }
+            EntityRecordKind::AnyEntity => {
+                result.ty = proto::entity_record_kind::ErkTy::AnyEntity.into();
+            }
+            EntityRecordKind::Entity(e) => {
+                result.ty = proto::entity_record_kind::ErkTy::Entity.into();
+                result.e = Some(proto::EntityLub::from(e));
+            }
+            EntityRecordKind::ActionEntity{name, attrs} => {
+                result.ty = proto::entity_record_kind::ErkTy::ActionEntity.into();
+                result.name = Some(ast::proto::EntityType::from(name));
+                result.attrs = Some(proto::Attributes::from(attrs));
+            }
+        };
+        result
+
+    }
+}
+
+
 /// Contains the type of a record attribute and if the attribute is required.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1382,6 +1559,24 @@ impl AttributeType {
     }
 }
 
+impl From<&proto::AttributeType> for AttributeType {
+    fn from(v: &proto::AttributeType) -> Self {
+        Self {
+            attr_type : Type::from(v.attr_type.as_ref().unwrap()),
+            is_required : v.is_required
+        }
+    }
+}
+
+impl From<&AttributeType> for proto::AttributeType {
+    fn from(v: &AttributeType) -> Self {
+        Self {
+            attr_type : Some(proto::Type::from(&v.attr_type)),
+            is_required : v.is_required
+        }
+    }
+}
+
 /// Represent the possible primitive types.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum Primitive {
@@ -1391,6 +1586,26 @@ pub enum Primitive {
     Long,
     /// Primitive string type.
     String,
+}
+
+impl From<&proto::r#type::Primitive> for Primitive {
+    fn from(v: &proto::r#type::Primitive) -> Self {
+        match v {
+            proto::r#type::Primitive::Bool => Primitive::Bool,
+            proto::r#type::Primitive::Long => Primitive::Long,
+            proto::r#type::Primitive::String => Primitive::String,
+        }
+    }
+}
+
+impl From<&Primitive> for proto::r#type::Primitive {
+    fn from(v: &Primitive) -> Self {
+        match v {
+            Primitive::Bool => proto::r#type::Primitive::Bool,
+            Primitive::Long => proto::r#type::Primitive::Long,
+            Primitive::String => proto::r#type::Primitive::String,
+        }
+    }
 }
 
 // PANIC SAFETY unit tests

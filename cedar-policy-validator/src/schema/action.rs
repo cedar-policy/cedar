@@ -17,14 +17,17 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
+    ast,
     ast::{EntityType, EntityUID, PartialValueSerializedAsExpr},
+    extensions::Extensions,
+    evaluator::RestrictedEvaluator,
     transitive_closure::TCNode,
 };
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
-use crate::types::{Attributes, Type};
+use crate::{proto, types::{Attributes, Type}};
 
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -96,6 +99,41 @@ impl TCNode<EntityUID> for ValidatorActionId {
     }
 }
 
+impl From<&ValidatorActionId> for proto::ValidatorActionId {
+    fn from(v: &ValidatorActionId) -> Self {
+        Self {
+            name: Some(ast::proto::EntityUid::from(&v.name)),
+            applies_to: Some(proto::ValidatorApplySpec::from(&v.applies_to)),
+            descendants: v.descendants.iter().map(ast::proto::EntityUid::from).collect(),
+            context: Some(proto::Type::from(&v.context)),
+            attribute_types: Some(proto::Attributes::from(&v.attribute_types)),
+            attributes: v.attributes.iter().map(|(s, v)| {
+                let key = s.to_string();
+                let value = ast::proto::Expr::from(&ast::Expr::from(ast::PartialValue::from(v.to_owned())));
+                (key, value)
+            }).collect()
+        }
+    }
+}
+
+impl From<&proto::ValidatorActionId> for ValidatorActionId {
+    fn from(v: &proto::ValidatorActionId) -> Self {
+        let extensions_none = Extensions::none();
+        let eval = RestrictedEvaluator::new(&extensions_none);
+        Self {
+            name: ast::EntityUID::from(v.name.as_ref().unwrap()),
+            applies_to: ValidatorApplySpec::from(v.applies_to.as_ref().unwrap()),
+            descendants: v.descendants.iter().map(ast::EntityUID::from).collect(),
+            context: Type::from(v.context.as_ref().unwrap()),
+            attribute_types: Attributes::from(v.attribute_types.as_ref().unwrap()),
+            attributes: v.attributes.iter().map(|(k,v)| {
+                let pval = eval.partial_interpret(ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v)).unwrap()).unwrap();
+                (k.into(), pval.into())
+            }).collect()
+        }
+    }
+}
+
 /// The principals and resources that an action can be applied to.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +143,24 @@ pub(crate) struct ValidatorApplySpec {
 
     /// The resource entity types the action can be applied to.
     resource_apply_spec: HashSet<EntityType>,
+}
+
+impl From<&ValidatorApplySpec> for proto::ValidatorApplySpec {
+    fn from(v: &ValidatorApplySpec) -> Self {
+        Self {
+            principal_apply_spec: v.principal_apply_spec.iter().map(ast::proto::EntityType::from).collect(),
+            resource_apply_spec: v.resource_apply_spec.iter().map(ast::proto::EntityType::from).collect()
+        }
+    }
+}
+
+impl From<&proto::ValidatorApplySpec> for ValidatorApplySpec {
+    fn from(v: &proto::ValidatorApplySpec) -> Self {
+        Self {
+            principal_apply_spec: v.principal_apply_spec.iter().map(ast::EntityType::from).collect(),
+            resource_apply_spec: v.resource_apply_spec.iter().map(ast::EntityType::from).collect()
+        }
+    }
 }
 
 impl ValidatorApplySpec {

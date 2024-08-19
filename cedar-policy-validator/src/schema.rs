@@ -23,6 +23,7 @@
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cedar_policy_core::{
+    ast,
     ast::{Entity, EntityType, EntityUID, Name},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
@@ -37,6 +38,7 @@ use crate::{
     err::schema_errors::*,
     err::*,
     human_schema::SchemaWarning,
+    proto,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
@@ -644,6 +646,38 @@ impl ValidatorSchema {
             extensions,
         )
         .map_err(Into::into)
+    }
+}
+
+impl From<&ValidatorSchema> for proto::ValidatorSchema {
+    fn from(v: &ValidatorSchema) -> Self {
+        Self {
+            entity_types: v.entity_types.iter().map(|(k, v)| proto::EntityTypeWithTypesMap {
+                key: Some(ast::proto::EntityType::from(k)),
+                value: Some(proto::ValidatorEntityType::from(v))
+            }).collect(),
+            action_ids: v.action_ids.iter().map(|(k, v)| proto::EntityUidWithActionIdsMap {
+                key: Some(ast::proto::EntityUid::from(k)),
+                value: Some(proto::ValidatorActionId::from(v))
+            }).collect()
+        }
+    }
+}
+
+impl From<&proto::ValidatorSchema> for ValidatorSchema {
+    fn from(v: &proto::ValidatorSchema) -> Self {
+        Self {
+            entity_types: v.entity_types.iter().map(|kvp| {
+                let k = ast::EntityType::from(kvp.key.as_ref().unwrap());
+                let v = ValidatorEntityType::from(kvp.value.as_ref().unwrap());
+                (k, v)
+            }).collect(),
+            action_ids: v.action_ids.iter().map(|kvp| {
+                let k = ast::EntityUID::from(kvp.key.as_ref().unwrap());
+                let v = ValidatorActionId::from(kvp.value.as_ref().unwrap());
+                (k, v)
+            }).collect()
+        }
     }
 }
 

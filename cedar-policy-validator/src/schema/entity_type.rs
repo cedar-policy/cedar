@@ -20,9 +20,9 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
+use cedar_policy_core::{ast, ast::EntityType, transitive_closure::TCNode};
 
-use crate::types::{AttributeType, Attributes, OpenTag};
+use crate::{proto, types::{AttributeType, Attributes, OpenTag}};
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -83,5 +83,27 @@ impl TCNode<EntityType> for ValidatorEntityType {
 
     fn has_edge_to(&self, e: &EntityType) -> bool {
         self.descendants.contains(e)
+    }
+}
+
+impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
+    fn from(v: &ValidatorEntityType) -> Self {
+        Self {
+            name: Some(ast::proto::EntityType::from(&v.name)),
+            descendants: v.descendants.iter().map(ast::proto::EntityType::from).collect(),
+            attributes: Some(proto::Attributes::from(&v.attributes)),
+            open_attributes: proto::OpenTag::from(&v.open_attributes).into()
+        }
+    }
+}
+
+impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
+    fn from(v: &proto::ValidatorEntityType) -> Self {
+        Self {
+            name: ast::EntityType::from(v.name.as_ref().unwrap()),
+            descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
+            attributes: Attributes::from(v.attributes.as_ref().unwrap()),
+            open_attributes: OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap())
+        }
     }
 }

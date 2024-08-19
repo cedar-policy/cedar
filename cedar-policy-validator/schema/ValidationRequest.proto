@@ -1,0 +1,104 @@
+syntax = "proto3";
+package cedar_policy_validator;
+
+import "Request.proto";
+
+message ValidatorSchema {
+    repeated EntityTypeWithTypesMap entity_types = 1;
+    repeated EntityUidWithActionIdsMap action_ids = 2;
+}
+
+// Workaround since messages can't be dictionary keys
+message EntityTypeWithTypesMap {
+    cedar_policy_core.EntityType key = 1;
+    ValidatorEntityType value = 2;
+}
+
+message EntityUidWithActionIdsMap {
+    cedar_policy_core.EntityUid key = 1;
+    ValidatorActionId value = 2;
+}
+
+message ValidatorEntityType {
+    cedar_policy_core.EntityType name = 1;
+    repeated cedar_policy_core.EntityType descendants = 2;
+    Attributes attributes = 3;
+    OpenTag open_attributes = 4;
+}
+
+message ValidatorActionId {
+    cedar_policy_core.EntityUid name = 1;
+    ValidatorApplySpec applies_to = 2;
+    repeated cedar_policy_core.EntityUid descendants = 3;
+    Type context = 4;
+    Attributes attribute_types = 5;
+    // Deserialize Expr as Value
+    map<string, cedar_policy_core.Expr> attributes = 6;
+}
+
+message ValidatorApplySpec {
+    repeated cedar_policy_core.EntityType principal_apply_spec = 1;
+    repeated cedar_policy_core.EntityType resource_apply_spec = 2;
+}
+
+message Type {
+    TypeTy ty = 1;
+    Primitive primitive_type = 2;
+    Type t = 3; // No record means none
+    EntityRecordKind er = 4;
+    cedar_policy_core.Name name = 5;
+
+
+    enum TypeTy {
+        Never = 0;
+        True = 1;
+        False = 2;
+        PrimitiveTy = 3; // Expects (primitive_type: Primitive)
+        Set = 4; // Expects t: Type
+        EntityOrRecord = 5; // Expects EntityRecordKind
+        ExtensionType = 6; // Expects Name
+    }
+
+    enum Primitive {
+        Bool = 0;
+        String = 1;
+        Long = 2;
+    }
+
+}
+
+message EntityRecordKind {
+    ERKTy ty = 1;
+    Attributes attrs = 2;
+    OpenTag open_attributes = 3;
+    EntityLUB e = 4;
+    cedar_policy_core.EntityType name = 5;
+
+    enum ERKTy {
+        Record = 0; // Expects (attrs: Attributes) (open_attributes: OpenTag)
+        AnyEntity = 1;
+        Entity = 2; // Expects (e: EntityLUB)
+        ActionEntity = 3; // Expects (name: EntityType) (attrs: Attributes)
+    }
+
+
+}
+
+message EntityLUB {
+    // INVARIANT: Must be non-empty
+    repeated cedar_policy_core.EntityType lub_elements = 1;
+}
+
+enum OpenTag {
+        OpenAttributes = 0;
+        ClosedAttributes = 1;
+}
+
+message Attributes {
+    map<string, AttributeType> attrs = 1;
+}
+
+message AttributeType {
+    Type attr_type = 1;
+    bool is_required = 2;
+}
