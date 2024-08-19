@@ -1,7 +1,7 @@
 syntax = "proto3";
 package cedar_policy_validator;
 
-import "Request.proto";
+import "AST.proto";
 
 message ValidatorSchema {
     repeated EntityTypeWithTypesMap entity_types = 1;
