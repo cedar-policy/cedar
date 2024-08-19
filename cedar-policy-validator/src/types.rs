@@ -710,62 +710,60 @@ impl Display for Type {
 
 impl From<&proto::Type> for Type {
     fn from(v: &proto::Type) -> Self {
-        match proto::r#type::TypeTy::try_from(v.ty).unwrap() {
-            proto::r#type::TypeTy::Never => Type::Never,
-            proto::r#type::TypeTy::True => Type::True,
-            proto::r#type::TypeTy::False => Type::False,
-            proto::r#type::TypeTy::PrimitiveTy => {
-                Type::Primitive { primitive_type: Primitive::from(&proto::r#type::Primitive::try_from(v.primitive_type).unwrap()) }
+
+        match v.data.as_ref().unwrap() {
+            proto::r#type::Data::Ty(vt) => match proto::r#type::Ty::try_from(vt.to_owned()).unwrap() {
+                proto::r#type::Ty::Never => Type::Never,
+                proto::r#type::Ty::True => Type::True,
+                proto::r#type::Ty::False => Type::False,
+                proto::r#type::Ty::EmptySetType => Type::Set { element_type: None },
+                proto::r#type::Ty::Bool => Type::Primitive { primitive_type: Primitive::Bool },
+                proto::r#type::Ty::String => Type::Primitive { primitive_type: Primitive::String },
+                proto::r#type::Ty::Long => Type::Primitive { primitive_type: Primitive::Long }
             },
-            proto::r#type::TypeTy::Set => {
-                Type::Set { element_type: v.t.as_ref().map(|v| Box::new(Type::from(v.as_ref()))) }
-            },
-            proto::r#type::TypeTy::EntityOrRecord => {
-                Type::EntityOrRecord(EntityRecordKind::from(v.er.as_ref().unwrap()))
-            },
-            proto::r#type::TypeTy::ExtensionType => {
-                Type::ExtensionType { name: ast::Name::from(v.name.as_ref().unwrap()) }
-            }
+            proto::r#type::Data::SetType(tt) => Type::Set { element_type: Some(Box::new(Type::from(tt.as_ref()))) },
+            proto::r#type::Data::Er(er) => Type::EntityOrRecord(EntityRecordKind::from(er)),
+            proto::r#type::Data::Name(name) =>  Type::ExtensionType { name: ast::Name::from(name) }
+
         }
     }
 }
 
 impl From<&Type> for proto::Type {
     fn from(v: &Type) -> Self {
-        let mut result = proto::Type {
-            ty: 0, primitive_type: 0, t: None, er: None, name: None
-        };
+
         match v {
-            Type::Never => {
-                result.ty = proto::r#type::TypeTy::Never.into();
-            }
-            Type::True => {
-                result.ty = proto::r#type::TypeTy::True.into();
-            }
-            Type::False => {
-                result.ty = proto::r#type::TypeTy::False.into();
-            }
-            Type::Primitive { primitive_type } => {
-                result.ty = proto::r#type::TypeTy::PrimitiveTy.into();
-                result.primitive_type = proto::r#type::Primitive::from(primitive_type).into();
-            }
-            Type::Set { element_type } => {
-                result.ty = proto::r#type::TypeTy::Set.into();
-                result.t = match element_type {
-                    Some(ti) => Some(Box::new(proto::Type::from(ti.as_ref()))),
-                    None => None
+            Type::Never => Self {
+                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Never.into()))
+            },
+            Type::True => Self {
+                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::True.into()))
+            },
+
+            Type::False => Self {
+                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::False.into()))
+            },
+            Type::Primitive { primitive_type } => match primitive_type {
+                Primitive::Bool => Self {
+                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Bool.into()))
+                },
+                Primitive::Long => Self {
+                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Long.into()))
+                },
+                Primitive::String => Self {
+                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::String.into()))
                 }
-            }
-            Type::EntityOrRecord(er) => {
-                result.ty = proto::r#type::TypeTy::EntityOrRecord.into();
-                result.er = Some(proto::EntityRecordKind::from(er));
-            }
-            Type::ExtensionType { name } => {
-                result.ty = proto::r#type::TypeTy::ExtensionType.into();
-                result.name = Some(ast::proto::Name::from(name));
+            },
+            Type::Set { element_type } => Self {
+                data : Some(proto::r#type::Data::SetType(Box::new(proto::Type::from(element_type.as_ref().unwrap().as_ref()))))
+            },
+            Type::EntityOrRecord(er) => Self {
+                data: Some(proto::r#type::Data::Er(proto::EntityRecordKind::from(er)))
+            },
+            Type::ExtensionType { name } => Self {
+                data: Some(proto::r#type::Data::Name(ast::proto::Name::from(name)))
             }
         }
-        result
     }
 }
 
@@ -1586,26 +1584,6 @@ pub enum Primitive {
     Long,
     /// Primitive string type.
     String,
-}
-
-impl From<&proto::r#type::Primitive> for Primitive {
-    fn from(v: &proto::r#type::Primitive) -> Self {
-        match v {
-            proto::r#type::Primitive::Bool => Primitive::Bool,
-            proto::r#type::Primitive::Long => Primitive::Long,
-            proto::r#type::Primitive::String => Primitive::String,
-        }
-    }
-}
-
-impl From<&Primitive> for proto::r#type::Primitive {
-    fn from(v: &Primitive) -> Self {
-        match v {
-            Primitive::Bool => proto::r#type::Primitive::Bool,
-            Primitive::Long => proto::r#type::Primitive::Long,
-            Primitive::String => proto::r#type::Primitive::String,
-        }
-    }
 }
 
 // PANIC SAFETY unit tests

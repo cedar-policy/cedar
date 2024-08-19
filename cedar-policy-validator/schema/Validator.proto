@@ -42,29 +42,22 @@ message ValidatorApplySpec {
 }
 
 message Type {
-    TypeTy ty = 1;
-    Primitive primitive_type = 2;
-    Type t = 3; // No record means none
-    EntityRecordKind er = 4;
-    cedar_policy_core.Name name = 5;
+    oneof data {
+        Ty ty = 1;
+        Type set_type = 2;
+        EntityRecordKind er = 3;
+        cedar_policy_core.Name name = 4;
+    }
 
-
-    enum TypeTy {
+    enum Ty {
         Never = 0;
         True = 1;
         False = 2;
-        PrimitiveTy = 3; // Expects (primitive_type: Primitive)
-        Set = 4; // Expects t: Type
-        EntityOrRecord = 5; // Expects EntityRecordKind
-        ExtensionType = 6; // Expects Name
+        EmptySetType = 3;
+        Bool = 4;
+        String = 5;
+        Long = 6;
     }
-
-    enum Primitive {
-        Bool = 0;
-        String = 1;
-        Long = 2;
-    }
-
 }
 
 message EntityRecordKind {
