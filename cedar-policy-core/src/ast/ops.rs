@@ -34,6 +34,7 @@ pub enum UnaryOp {
 impl From<&proto::expr::expr_kind::UnaryOp> for UnaryOp {
     fn from(v: &proto::expr::expr_kind::UnaryOp) -> Self {
         match v {
+            proto::expr::expr_kind::UnaryOp::NaUop => panic!("Expected UnaryOp Type"),
             proto::expr::expr_kind::UnaryOp::Not => UnaryOp::Not,
             proto::expr::expr_kind::UnaryOp::Neg => UnaryOp::Neg
         }
@@ -138,6 +139,7 @@ impl std::fmt::Display for BinaryOp {
 impl From<&proto::expr::expr_kind::BinaryOp> for BinaryOp {
     fn from(v: &proto::expr::expr_kind::BinaryOp) -> Self {
         match v {
+            proto::expr::expr_kind::BinaryOp::NaBop => panic!("Expected BinaryOp type"),
             proto::expr::expr_kind::BinaryOp::Eq => BinaryOp::Eq,
             proto::expr::expr_kind::BinaryOp::Less => BinaryOp::Less,
             proto::expr::expr_kind::BinaryOp::LessEq => BinaryOp::LessEq,

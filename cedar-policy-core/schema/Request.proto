@@ -117,8 +117,8 @@ message EntityReference {
     EntityUid euid = 2;
 
     enum EntityReferenceType {
-        Euid = 0; // Expects EntityUid
-        Slot = 1;
+        Slot = 0;
+        Euid = 1; // Expects EntityUid
     }
 }
 
@@ -164,19 +164,10 @@ message Expr {
         Var var = 3;
         SlotId slot = 4;
         Unknown unknown = 5;
-        Expr test_expr = 6;
-        Expr then_expr = 7;
-        Expr else_expr = 8;
-        Expr left = 9;
-        Expr right = 10;
         UnaryOp uop = 11;
-        Expr arg = 12;
         BinaryOp bop = 13;
-        Expr arg1 = 14;
-        Expr arg2 = 15;
         Name fn_name = 16;
         repeated Expr args = 17;
-        Expr expr = 18;
         string attr = 19;
         // alias Patterns = repeated PatternElem
         repeated PatternElem pattern = 20;
@@ -184,36 +175,31 @@ message Expr {
         map<string, Expr> record = 22;
 
         enum ExprKindType {
-            Lit = 0; // Expects (lit: Literal)
-            VarTy = 1; // Expects (var: Var)
-            Slot = 2; // Expects (slot: SlotId)
-            UnknownTy = 3; // Expects (unknown: Unknown)
-            If = 4; // Expects (test_expr: Expr, then_expr: Expr, else_expr: Expr)
-            And = 5; // Expects (left: Expr, right: Expr)
-            Or = 6; // Expects (left: Expr, right: Expr)
-            UnaryApp = 7; // Expects (op: UnaryOp, arg: Expr)
-            BinaryApp = 8; // Expects (op: BinaryOp, arg1: Expr, arg2: Expr)
-            ExtensionFunctionApp = 9; // Expects (fn_name: Name, args: repeated Expr)
-            GetAttr = 10; // Expects (expr: Expr, attr: string)
-            HasAttr = 11; // Expects (expr: Expr, attr: string)
-            Like = 12; // Expects (expr: Expr, pattern: Pattern)
-            Is = 13; // Expects (expr: Expr, entity_type: EntityType)
-            Set = 14; // Expects (args: repeated Expr)
-            Record = 15; // Expects (record: map<string, Expr>)
+            na_ekt = 0;
+            Lit = 1; // Expects (lit: Literal)
+            VarTy = 2; // Expects (var: Var)
+            Slot = 3; // Expects (slot: SlotId)
+            UnknownTy = 4; // Expects (unknown: Unknown)
+            If = 5; // Expects (args: repeated Expr)
+            And = 6; // Expects (args: repeated Expr)
+            Or = 7; // Expects (args: repeated Expr)
+            UnaryApp = 8; // Expects (op: UnaryOp, args: repeated Expr)
+            BinaryApp = 9; // Expects (op: BinaryOp, args: repeated Expr)
+            ExtensionFunctionApp = 10; // Expects (fn_name: Name, args: repeated Expr)
+            GetAttr = 11; // Expects (args: repeated Expr, attr: string)
+            HasAttr = 12; // Expects (args: repeated Expr, attr: string)
+            Like = 13; // Expects (args: repeated Expr, pattern: Pattern)
+            Is = 14; // Expects (args: repeated Expr, entity_type: EntityType)
+            Set = 15; // Expects (args: repeated Expr)
+            Record = 16; // Expects (record: map<string, Expr>)
         }
 
         message Literal {
-            LiteralType ty = 1;
-            bool b = 2;
-            int64 i = 3;
-            string s = 4;
-            EntityUid euid = 5;
-
-            enum LiteralType {
-                Bool = 0; // Expects (b: bool)
-                Long = 1; // Expects (i: long signed integer)
-                String = 2; // Expects (s: string)
-                EntityUid = 3; // Expects (euid : EntityUid)
+            oneof lit {
+                bool b = 2;
+                int64 i = 3;
+                string s = 4;
+                EntityUid euid = 5;
             }
         }
 
@@ -246,21 +232,23 @@ message Expr {
         }
 
         enum UnaryOp {
-            Not = 0;
-            Neg = 1;
+            na_uop = 0;
+            Not = 1;
+            Neg = 2;
         }
 
         enum BinaryOp {
-            Eq = 0;
-            Less = 1;
-            LessEq = 2;
-            Add = 3;
-            Sub = 4;
-            Mul = 5;
-            In = 6;
-            Contains = 7;
-            ContainsAll = 8;
-            ContainsAny = 9;
+            na_bop = 0;
+            Eq = 1;
+            Less = 2;
+            LessEq = 3;
+            Add = 4;
+            Sub = 5;
+            Mul = 6;
+            In = 7;
+            Contains = 8;
+            ContainsAll = 9;
+            ContainsAny = 10;
         }
 
         message PatternElem {
@@ -268,8 +256,8 @@ message Expr {
             string c = 2;
 
             enum PatternElemType {
-                Char = 0; // Expects (c: char)
-                Wildcard = 1;
+                Wildcard = 0;
+                Char = 1; // Expects (c: char)
             }
         }
     } // END ExprKind

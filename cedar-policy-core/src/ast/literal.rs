@@ -127,13 +127,12 @@ impl From<Arc<EntityUID>> for Literal {
 
 impl From<&proto::expr::expr_kind::Literal> for Literal {
     fn from(v: &proto::expr::expr_kind::Literal) -> Self {
-        let pty = proto::expr::expr_kind::literal::LiteralType::try_from(v.ty).unwrap();
-        match pty {
-            proto::expr::expr_kind::literal::LiteralType::Bool => Literal::Bool(v.b),
-            proto::expr::expr_kind::literal::LiteralType::Long => Literal::Long(v.i),
-            proto::expr::expr_kind::literal::LiteralType::String => Literal::String(v.s.clone().into()),
-            proto::expr::expr_kind::literal::LiteralType::EntityUid => {
-                Literal::EntityUID(EntityUID::from(v.euid.as_ref().unwrap()).into())
+        match v.lit.as_ref().unwrap() {
+            proto::expr::expr_kind::literal::Lit::B(b) => Literal::Bool(b.clone()),
+            proto::expr::expr_kind::literal::Lit::I(l) => Literal::Long(l.clone()),
+            proto::expr::expr_kind::literal::Lit::S(s) => Literal::String(s.clone().into()),
+            proto::expr::expr_kind::literal::Lit::Euid(e) => {
+                Literal::EntityUID(EntityUID::from(e).into())
             }
         }
     }
@@ -141,29 +140,28 @@ impl From<&proto::expr::expr_kind::Literal> for Literal {
 
 impl From<&Literal> for proto::expr::expr_kind::Literal {
     fn from(v: &Literal) -> Self {
-        let mut result = Self {
-            ty: 0, b: false, i: 0, s: "".to_string(),
-            euid: None
-        };
         match v {
             Literal::Bool(b) => {
-                result.ty = proto::expr::expr_kind::literal::LiteralType::Bool.into();
-                result.b = *b;
+                Self {
+                    lit : Some(proto::expr::expr_kind::literal::Lit::B(b.clone()))
+                }
             }
             Literal::Long(l) => {
-                result.ty = proto::expr::expr_kind::literal::LiteralType::Long.into();
-                result.i = *l;
+                Self {
+                    lit : Some(proto::expr::expr_kind::literal::Lit::I(l.clone()))
+                }
             }
             Literal::String(s) => {
-                result.ty = proto::expr::expr_kind::literal::LiteralType::String.into();
-                result.s = s.to_string();
+                Self {
+                    lit : Some(proto::expr::expr_kind::literal::Lit::S(s.to_string()))
+                }
             }
             Literal::EntityUID(euid) => {
-                result.ty = proto::expr::expr_kind::literal::LiteralType::EntityUid.into();
-                result.euid = Some(proto::EntityUid::from(euid.as_ref()));
+                Self {
+                    lit : Some(proto::expr::expr_kind::literal::Lit::Euid(proto::EntityUid::from(euid.as_ref())))
+                }
             }
         }
-        result
     }
 }
 

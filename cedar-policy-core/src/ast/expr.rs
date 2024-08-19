@@ -741,10 +741,14 @@ impl From<&Unknown> for proto::expr::expr_kind::Unknown {
 impl From<&proto::Expr> for Expr {
     fn from(v: &proto::Expr) -> Self {
         let source_loc : Option<Loc> = v.source_loc.as_ref().map(Loc::from);
-        let pdata = v.expr_kind.as_ref().unwrap().as_ref();
+        let pdata = v.expr_kind.as_ref().unwrap();
         let ety = proto::expr::expr_kind::ExprKindType::try_from(pdata.ty).unwrap();
 
         match ety {
+
+            proto::expr::expr_kind::ExprKindType::NaEkt => {
+                panic!("Expected expression type");
+            }
 
             proto::expr::expr_kind::ExprKindType::Lit => {
                 Expr::val(Literal::from(pdata.lit.as_ref().unwrap()))
@@ -769,41 +773,56 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::ExprKindType::If => {
+                assert!(pdata.args.len() == 3);
+                let test_expr = pdata.args.get(0).unwrap();
+                let then_expr = pdata.args.get(1).unwrap();
+                let else_expr = pdata.args.get(2).unwrap();
                 Expr::ite(
-                    Expr::from(pdata.test_expr.as_ref().unwrap().as_ref()),
-                    Expr::from(pdata.then_expr.as_ref().unwrap().as_ref()),
-                    Expr::from(pdata.else_expr.as_ref().unwrap().as_ref())
+                    Expr::from(test_expr),
+                    Expr::from(then_expr),
+                    Expr::from(else_expr)
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::And => {
+                assert!(pdata.args.len() == 2);
+                let left = pdata.args.get(0).unwrap();
+                let right = pdata.args.get(1).unwrap();
                 Expr::and(
-                    Expr::from(pdata.left.as_ref().unwrap().as_ref()),
-                    Expr::from(pdata.right.as_ref().unwrap().as_ref())
+                    Expr::from(left),
+                    Expr::from(right)
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::Or => {
+                assert!(pdata.args.len() == 2);
+                let left = pdata.args.get(0).unwrap();
+                let right = pdata.args.get(1).unwrap();
                 Expr::or(
-                    Expr::from(pdata.left.as_ref().unwrap().as_ref()),
-                    Expr::from(pdata.right.as_ref().unwrap().as_ref())
+                    Expr::from(left),
+                    Expr::from(right)
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::UnaryApp => {
+                assert!(pdata.args.len() == 1);
+                let arg = pdata.args.get(0).unwrap();
                 let puop = proto::expr::expr_kind::UnaryOp::try_from(pdata.uop).unwrap();
                 Expr::unary_app(
                     UnaryOp::from(&puop),
-                    Expr::from(pdata.arg.as_ref().unwrap().as_ref())
+                    Expr::from(arg)
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::BinaryApp => {
                 let pbop = proto::expr::expr_kind::BinaryOp::try_from(pdata.bop).unwrap();
+                assert!(pdata.args.len() == 2);
+                let left = pdata.args.get(0).unwrap();
+                let right = pdata.args.get(1).unwrap();
                 Expr::binary_app(
                     BinaryOp::from(&pbop),
-                    Expr::from(pdata.arg1.as_ref().unwrap().as_ref()),
-                    Expr::from(pdata.arg2.as_ref().unwrap().as_ref())
+                    Expr::from(left),
+                    Expr::from(right)
                 ).with_maybe_source_loc(source_loc)
             }
 
@@ -818,22 +837,28 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::ExprKindType::GetAttr => {
+                assert!(pdata.args.len() == 1);
+                let arg = pdata.args.get(0).unwrap();
                 Expr::get_attr(
-                    Expr::from(pdata.expr.as_ref().unwrap().as_ref()),
+                    Expr::from(arg),
                     pdata.attr.clone().into()
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::HasAttr => {
+                assert!(pdata.args.len() == 1);
+                let arg = pdata.args.get(0).unwrap();
                 Expr::has_attr(
-                    Expr::from(pdata.expr.as_ref().unwrap().as_ref()),
+                    Expr::from(arg),
                     pdata.attr.clone().into()
                 ).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::ExprKindType::Like => {
+                assert!(pdata.args.len() == 1);
+                let arg = pdata.args.get(0).unwrap();
                 Expr::like(
-                    Expr::from(pdata.expr.as_ref().unwrap().as_ref()),
+                    Expr::from(arg),
                     pdata.pattern
                         .iter()
                         .map(PatternElem::from)
@@ -842,8 +867,10 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::ExprKindType::Is => {
+                assert!(pdata.args.len() == 1);
+                let arg = pdata.args.get(0).unwrap();
                 Expr::is_entity_type(
-                    Expr::from(pdata.expr.as_ref().unwrap().as_ref()),
+                    Expr::from(arg),
                     EntityType::from(pdata.entity_type.as_ref().unwrap())
                 ).with_maybe_source_loc(source_loc)
             }
@@ -872,10 +899,9 @@ impl From<&Expr> for proto::Expr {
     fn from(v: &Expr) -> Self {
         let source_loc : Option<proto::Loc> = v.source_loc.as_ref().map(proto::Loc::from);
         let mut expr_kind : proto::expr::ExprKind = proto::expr::ExprKind {
-            ty: 0, lit: None, var: 0, slot: 0, unknown: None, test_expr: None,
-            then_expr: None, else_expr: None, left: None, right: None, uop: 0,
-            arg: None, bop: 0, arg1: None, arg2: None, fn_name: None,
-            args: Vec::<proto::Expr>::new(), expr: None, attr: "".to_string(),
+            ty: 0, lit: None, var: 0, slot: 0, unknown: None,
+            uop: 0, bop: 0,fn_name: None,
+            args: Vec::<proto::Expr>::new(), attr: "".to_string(),
             pattern: Vec::<proto::expr::expr_kind::PatternElem>::new(), entity_type: None,
             record: HashMap::<String, proto::Expr>::new()
         };
@@ -898,30 +924,40 @@ impl From<&Expr> for proto::Expr {
             }
             ExprKind::If { test_expr, then_expr, else_expr } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::If.into();
-                expr_kind.test_expr = Some(Box::new(proto::Expr::from(test_expr.as_ref())));
-                expr_kind.then_expr = Some(Box::new(proto::Expr::from(then_expr.as_ref())));
-                expr_kind.else_expr = Some(Box::new(proto::Expr::from(else_expr.as_ref())));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(3);
+                pargs.push(proto::Expr::from(test_expr.as_ref()));
+                pargs.push(proto::Expr::from(then_expr.as_ref()));
+                pargs.push(proto::Expr::from(else_expr.as_ref()));
+                expr_kind.args = pargs;
             }
             ExprKind::And { left, right } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::And.into();
-                expr_kind.left = Some(Box::new(proto::Expr::from(left.as_ref())));
-                expr_kind.right = Some(Box::new(proto::Expr::from(right.as_ref())));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(2);
+                pargs.push(proto::Expr::from(left.as_ref()));
+                pargs.push(proto::Expr::from(right.as_ref()));
+                expr_kind.args = pargs;
             }
             ExprKind::Or { left, right } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Or.into();
-                expr_kind.left = Some(Box::new(proto::Expr::from(left.as_ref())));
-                expr_kind.right = Some(Box::new(proto::Expr::from(right.as_ref())));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(2);
+                pargs.push(proto::Expr::from(left.as_ref()));
+                pargs.push(proto::Expr::from(right.as_ref()));
+                expr_kind.args = pargs;
             }
             ExprKind::UnaryApp { op, arg } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::UnaryApp.into();
                 expr_kind.uop = proto::expr::expr_kind::UnaryOp::from(op).into();
-                expr_kind.arg = Some(Box::new(proto::Expr::from(arg.as_ref())));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(1);
+                pargs.push(proto::Expr::from(arg.as_ref()));
+                expr_kind.args = pargs;            
             }
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::BinaryApp.into();
                 expr_kind.bop = proto::expr::expr_kind::BinaryOp::from(op).into();
-                expr_kind.arg1 = Some(Box::new(proto::Expr::from(arg1.as_ref())));
-                expr_kind.arg2 = Some(Box::new(proto::Expr::from(arg2.as_ref())));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(2);
+                pargs.push(proto::Expr::from(arg1.as_ref()));
+                pargs.push(proto::Expr::from(arg2.as_ref()));
+                expr_kind.args = pargs;
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::ExtensionFunctionApp.into();
@@ -934,27 +970,35 @@ impl From<&Expr> for proto::Expr {
             }
             ExprKind::GetAttr { expr, attr } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::GetAttr.into();
-                expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
                 expr_kind.attr = attr.to_string();
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(1);
+                pargs.push(proto::Expr::from(expr.as_ref()));
+                expr_kind.args = pargs;   
             }
             ExprKind::HasAttr { expr, attr } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::HasAttr.into();
-                expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
                 expr_kind.attr = attr.to_string();
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(1);
+                pargs.push(proto::Expr::from(expr.as_ref()));
+                expr_kind.args = pargs; 
             }
             ExprKind::Like { expr, pattern } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Like.into();
-                expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
                 let mut ppattern: Vec<proto::expr::expr_kind::PatternElem> = Vec::with_capacity(pattern.len());
                 for value in pattern.iter() {
                     ppattern.push(proto::expr::expr_kind::PatternElem::from(value));
                 }
                 expr_kind.pattern = ppattern;
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(1);
+                pargs.push(proto::Expr::from(expr.as_ref()));
+                expr_kind.args = pargs; 
             }
             ExprKind::Is { expr, entity_type } => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Is.into();
-                expr_kind.expr = Some(Box::new(proto::Expr::from(expr.as_ref())));
-                expr_kind.entity_type = Some(proto::EntityType::from(entity_type))
+                expr_kind.entity_type = Some(proto::EntityType::from(entity_type));
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(1);
+                pargs.push(proto::Expr::from(expr.as_ref()));
+                expr_kind.args = pargs; 
             }
             ExprKind::Set(args) => {
                 expr_kind.ty = proto::expr::expr_kind::ExprKindType::Set.into();
@@ -973,7 +1017,7 @@ impl From<&Expr> for proto::Expr {
             }
         }
         Self {
-            expr_kind: Some(Box::new(expr_kind)),
+            expr_kind: Some(expr_kind),
             source_loc: source_loc
         }
     }
