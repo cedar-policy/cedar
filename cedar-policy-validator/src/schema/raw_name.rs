@@ -180,9 +180,9 @@ impl std::str::FromStr for RawName {
 /// the same order), which in practice means they must be in the same
 /// current/active namespace. In particular:
 /// - two [`ConditionalName`]s which end up resolving to the same fully-qualified
-/// name may nonetheless not be `==` in their [`ConditionalName`] forms; and
+///   name may nonetheless not be `==` in their [`ConditionalName`] forms; and
 /// - two [`ConditionalName`]s which are written the same way in the original
-/// schema may nonetheless not be `==` in their [`ConditionalName`] forms
+///   schema may nonetheless not be `==` in their [`ConditionalName`] forms
 ///
 /// This type has only one (trivial) public constructor; it is normally
 /// constructed using [`RawName::conditionally_qualify_with()`].

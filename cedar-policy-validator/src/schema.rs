@@ -49,6 +49,7 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
+use namespace_def::try_entity_attributes_into_validator_type;
 pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
@@ -82,7 +83,7 @@ impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
         ValidatorSchemaFragment::from_schema_fragment(
             self,
             ActionBehavior::default(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
     }
 }
@@ -193,7 +194,7 @@ impl TryFrom<json_schema::NamespaceDefinition<RawName>> for ValidatorSchema {
     fn try_from(nsd: json_schema::NamespaceDefinition<RawName>) -> Result<ValidatorSchema> {
         ValidatorSchema::from_schema_fragments(
             [ValidatorSchemaFragment::from_namespaces([nsd.try_into()?])],
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
     }
 }
@@ -202,7 +203,7 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
     type Error = SchemaError;
 
     fn try_from(frag: json_schema::Fragment<RawName>) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([frag.try_into()?], &Extensions::all_available())
+        ValidatorSchema::from_schema_fragments([frag.try_into()?], Extensions::all_available())
     }
 }
 
@@ -486,7 +487,7 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_types = resolver.resolve(&extensions)?;
+        let common_types = resolver.resolve(extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -514,8 +515,8 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = {
-                    let unresolved = try_jsonschema_type_into_validator_type(
-                        entity_type.attributes.0,
+                    let unresolved = try_entity_attributes_into_validator_type(
+                        entity_type.attributes,
                         extensions,
                     )?;
                     Self::record_attributes_or_none(
@@ -685,9 +686,9 @@ impl ValidatorSchema {
         }
     }
 
-    // Check that all entity types appearing inside a type are in the set of
-    // declared entity types, adding any undeclared entity types to the
-    // `undeclared_types` set.
+    /// Check that all entity types appearing inside a type are in the set of
+    /// declared entity types, adding any undeclared entity types to the
+    /// `undeclared_types` set.
     fn check_undeclared_in_type(
         ty: &Type,
         entity_types: &HashMap<EntityType, ValidatorEntityType>,
@@ -879,10 +880,10 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
                     None,
                     self.0,
                     crate::ActionBehavior::PermitAttributes,
-                    &Extensions::all_available(),
+                    Extensions::all_available(),
                 )?,
             ])],
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
     }
 }
@@ -1146,7 +1147,7 @@ impl<'a> CommonTypeResolver<'a> {
                             .map(|(attr, attr_ty)| {
                                 Ok((
                                     attr,
-                                    json_schema::TypeOfAttribute {
+                                    json_schema::RecordAttributeType {
                                         required: attr_ty.required,
                                         ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
                                     },
@@ -1651,8 +1652,7 @@ pub(crate) mod test {
             .expect("Expected attribute name")
             .attr_type
             .clone();
-        let expected_name_type = Type::named_entity_reference(foo_name);
-        assert_eq!(name_type, expected_name_type);
+        assert_eq!(name_type, Type::named_entity_reference(foo_name));
     }
 
     #[test]
@@ -1714,7 +1714,7 @@ pub(crate) mod test {
         let schema = ValidatorSchemaFragment::from_schema_fragment(
             schema_json,
             ActionBehavior::ProhibitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         );
         match schema {
             Err(e) => {
@@ -1751,7 +1751,7 @@ pub(crate) mod test {
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
         let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
@@ -1779,7 +1779,7 @@ pub(crate) mod test {
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
         let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
@@ -1812,7 +1812,7 @@ pub(crate) mod test {
             .fully_qualify_type_references(&HashSet::new(), &all_entity_defs)
             .unwrap();
         let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, &Extensions::all_available())
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
@@ -1856,7 +1856,7 @@ pub(crate) mod test {
     #[test]
     fn schema_no_fragments() {
         let schema =
-            ValidatorSchema::from_schema_fragments([], &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_schema_fragments([], Extensions::all_available()).unwrap();
         assert!(schema.entity_types.is_empty());
         assert!(schema.action_ids.is_empty());
     }
@@ -2155,7 +2155,7 @@ pub(crate) mod test {
             .unwrap();
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
 
@@ -2196,7 +2196,7 @@ pub(crate) mod test {
 
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
-            &Extensions::all_available(),
+            Extensions::all_available(),
         );
 
         // should error because schema fragments have duplicate types
@@ -2547,7 +2547,7 @@ pub(crate) mod test {
               }
         );
         let schema =
-            ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_json_value(src.clone(), Extensions::all_available()).unwrap();
         let mut attributes = schema
             .get_entity_type(&"Demo::User".parse().unwrap())
             .unwrap()
@@ -2587,7 +2587,7 @@ pub(crate) mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2614,7 +2614,7 @@ pub(crate) mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2646,7 +2646,7 @@ pub(crate) mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2676,7 +2676,7 @@ pub(crate) mod test {
                 }
               }
         );
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2708,7 +2708,7 @@ pub(crate) mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2744,7 +2744,7 @@ pub(crate) mod test {
                 }
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2771,7 +2771,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2798,7 +2798,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2839,7 +2839,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
@@ -2869,7 +2869,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
@@ -2899,7 +2899,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
@@ -2929,7 +2929,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(_));
 
         let src: serde_json::Value = json!({
@@ -2959,7 +2959,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -2989,7 +2989,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Ok(_));
 
         let src: serde_json::Value = json!({
@@ -3019,7 +3019,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Ok(_));
     }
 
@@ -3032,7 +3032,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3042,7 +3042,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3056,7 +3056,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3070,7 +3070,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3084,7 +3084,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -3140,7 +3140,7 @@ mod test_resolver {
         }
         let resolver = CommonTypeResolver::new(&defs);
         resolver
-            .resolve(&Extensions::all_available())
+            .resolve(Extensions::all_available())
             .map(|map| map.into_iter().map(|(k, v)| (k.clone(), v)).collect())
     }
 

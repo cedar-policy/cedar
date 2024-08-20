@@ -890,8 +890,7 @@ impl<'a> Typechecker<'a> {
                     Some(typ_actual) => {
                         match Type::lookup_attribute_type(self.schema, typ_actual, attr) {
                             Some(AttributeType {
-                                attr_type: _,
-                                is_required: true,
+                                is_required: true, ..
                             }) => {
                                 // Since an entity doesn't always have to exist
                                 // in the entity store, and `has` evaluates to
@@ -925,8 +924,7 @@ impl<'a> Typechecker<'a> {
                             // that attribute, so we add an entry to the capability
                             // set.
                             Some(AttributeType {
-                                attr_type: _,
-                                is_required: false,
+                                is_required: false, ..
                             }) => TypecheckAnswer::success_with_capability(
                                 ExprBuilder::with_data(Some(
                                     // The optional attribute `HasAttr` can have

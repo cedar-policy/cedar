@@ -21,7 +21,7 @@ pub use ast::Path;
 mod err;
 pub mod fmt;
 pub mod parser;
-mod test;
+pub(crate) mod test;
 pub mod to_json_schema;
 pub use err::ParseError;
 pub use err::{schema_warnings, SchemaWarning};

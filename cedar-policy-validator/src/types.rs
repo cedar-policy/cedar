@@ -34,7 +34,10 @@ use cedar_policy_core::{
     ast::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
-    entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
+    entities::{
+        conformance::typecheck_restricted_expr_against_schematype,
+        AttributeType as CoreAttributeType, GetSchemaTypeError, SchemaType as CoreSchemaType,
+    },
     extensions::Extensions,
 };
 
@@ -386,11 +389,7 @@ impl Type {
     /// Is this validator type "consistent with" the given Core `SchemaType`.
     /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
-    pub(crate) fn is_consistent_with(
-        &self,
-        core_type: &cedar_policy_core::entities::SchemaType,
-    ) -> bool {
-        use cedar_policy_core::entities::SchemaType as CoreSchemaType;
+    pub(crate) fn is_consistent_with(&self, core_type: &CoreSchemaType) -> bool {
         match core_type {
             CoreSchemaType::Bool => matches!(
                 self,
@@ -616,9 +615,7 @@ impl Type {
                 Some((fn_name, args)) => {
                     let func = extensions.func(fn_name)?;
                     match func.return_type() {
-                        Some(cedar_policy_core::entities::SchemaType::Extension {
-                            name: actual_name,
-                        }) => {
+                        Some(CoreSchemaType::Extension { name: actual_name }) => {
                             if actual_name != name {
                                 return Ok(false);
                             }
@@ -704,11 +701,9 @@ impl Display for Type {
     }
 }
 
-impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
+impl TryFrom<Type> for CoreSchemaType {
     type Error = String;
-    fn try_from(ty: Type) -> Result<cedar_policy_core::entities::SchemaType, String> {
-        use cedar_policy_core::entities::AttributeType as CoreAttributeType;
-        use cedar_policy_core::entities::SchemaType as CoreSchemaType;
+    fn try_from(ty: Type) -> Result<CoreSchemaType, String> {
         match ty {
             Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
             Type::True | Type::False => Ok(CoreSchemaType::Bool),
