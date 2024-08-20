@@ -722,7 +722,7 @@ impl From<&proto::Type> for Type {
                 proto::r#type::Ty::Long => Type::Primitive { primitive_type: Primitive::Long }
             },
             proto::r#type::Data::SetType(tt) => Type::Set { element_type: Some(Box::new(Type::from(tt.as_ref()))) },
-            proto::r#type::Data::Er(er) => Type::EntityOrRecord(EntityRecordKind::from(er)),
+            proto::r#type::Data::EntityOrRecord(er) => Type::EntityOrRecord(EntityRecordKind::from(er)),
             proto::r#type::Data::Name(name) =>  Type::ExtensionType { name: ast::Name::from(name) }
 
         }
@@ -758,7 +758,7 @@ impl From<&Type> for proto::Type {
                 data : Some(proto::r#type::Data::SetType(Box::new(proto::Type::from(element_type.as_ref().unwrap().as_ref()))))
             },
             Type::EntityOrRecord(er) => Self {
-                data: Some(proto::r#type::Data::Er(proto::EntityRecordKind::from(er)))
+                data: Some(proto::r#type::Data::EntityOrRecord(proto::EntityRecordKind::from(er)))
             },
             Type::ExtensionType { name } => Self {
                 data: Some(proto::r#type::Data::Name(ast::proto::Name::from(name)))
@@ -1479,20 +1479,21 @@ impl EntityRecordKind {
 
 impl From<&proto::EntityRecordKind> for EntityRecordKind {
     fn from(v: &proto::EntityRecordKind) -> Self {
-        match proto::entity_record_kind::ErkTy::try_from(v.ty).unwrap() {
-            proto::entity_record_kind::ErkTy::Record => {
-                EntityRecordKind::Record{
-                attrs : Attributes::from(v.attrs.as_ref().unwrap()),
-                open_attributes : OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap())
-            }
+        match v.data.as_ref().unwrap() {
+            proto::entity_record_kind::Data::Ty(ty) => match proto::entity_record_kind::Ty::try_from(ty.to_owned()) {
+                Ok(proto::entity_record_kind::Ty::Any) => Self::AnyEntity,
+                _ => panic!("Unexpected Entity Type")
             },
-            proto::entity_record_kind::ErkTy::AnyEntity => EntityRecordKind::AnyEntity,
-            proto::entity_record_kind::ErkTy::Entity => EntityRecordKind::Entity(
-                EntityLUB::from(v.e.as_ref().unwrap())
+            proto::entity_record_kind::Data::Record(pRecord) => Self::Record { 
+                attrs: Attributes::from(pRecord.attrs.as_ref().unwrap()),
+                open_attributes: OpenTag::from(&proto::OpenTag::try_from(pRecord.open_attributes).unwrap()) 
+            },
+            proto::entity_record_kind::Data::Entity(pEntity) => Self::Entity(
+                EntityLUB::from(pEntity.e.as_ref().unwrap())
             ),
-            proto::entity_record_kind::ErkTy::ActionEntity => EntityRecordKind::ActionEntity{
-                name : ast::EntityType::from(v.name.as_ref().unwrap()),
-                attrs : Attributes::from(v.attrs.as_ref().unwrap())
+            proto::entity_record_kind::Data::ActionEntity(pActionEntity) => Self::ActionEntity { 
+                name: ast::EntityType::from(pActionEntity.name.as_ref().unwrap()), 
+                attrs: Attributes::from(pActionEntity.attrs.as_ref().unwrap())
             }
         }
     }
@@ -1500,30 +1501,32 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
 
 impl From<&EntityRecordKind> for proto::EntityRecordKind {
     fn from(v: &EntityRecordKind) -> Self {
-        let mut result = Self {
-            ty : 0, attrs: None, open_attributes: 0, e: None, name: None
-        };
-        match v {
+        let data = match v {
             EntityRecordKind::Record{ attrs, open_attributes} => {
-                result.ty = proto::entity_record_kind::ErkTy::Record.into();
-                result.attrs = Some(proto::Attributes::from(attrs));
-                result.open_attributes = proto::OpenTag::from(open_attributes).into();
+                proto::entity_record_kind::Data::Record(proto::entity_record_kind::Record{
+                    attrs: Some(proto::Attributes::from(attrs)),
+                    open_attributes: proto::OpenTag::from(open_attributes).into()
+                })
             }
             EntityRecordKind::AnyEntity => {
-                result.ty = proto::entity_record_kind::ErkTy::AnyEntity.into();
+                proto::entity_record_kind::Data::Ty(proto::entity_record_kind::Ty::Any.into())
             }
             EntityRecordKind::Entity(e) => {
-                result.ty = proto::entity_record_kind::ErkTy::Entity.into();
-                result.e = Some(proto::EntityLub::from(e));
+                proto::entity_record_kind::Data::Entity(proto::entity_record_kind::Entity{
+                    e: Some(proto::EntityLub::from(e))
+                })
             }
             EntityRecordKind::ActionEntity{name, attrs} => {
-                result.ty = proto::entity_record_kind::ErkTy::ActionEntity.into();
-                result.name = Some(ast::proto::EntityType::from(name));
-                result.attrs = Some(proto::Attributes::from(attrs));
+                proto::entity_record_kind::Data::ActionEntity(proto::entity_record_kind::ActionEntity{
+                    name: Some(ast::proto::EntityType::from(name)),
+                    attrs: Some(proto::Attributes::from(attrs))
+                })
+
             }
         };
-        result
-
+        Self {
+            data: Some(data)
+        }
     }
 }
 

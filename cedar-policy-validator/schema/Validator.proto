@@ -45,7 +45,7 @@ message Type {
     oneof data {
         Ty ty = 1;
         Type set_type = 2;
-        EntityRecordKind er = 3;
+        EntityRecordKind entityOrRecord = 3;
         cedar_policy_core.Name name = 4;
     }
 
@@ -61,20 +61,27 @@ message Type {
 }
 
 message EntityRecordKind {
-    ERKTy ty = 1;
-    Attributes attrs = 2;
-    OpenTag open_attributes = 3;
-    EntityLUB e = 4;
-    cedar_policy_core.EntityType name = 5;
-
-    enum ERKTy {
-        Record = 0; // Expects (attrs: Attributes) (open_attributes: OpenTag)
-        AnyEntity = 1;
-        Entity = 2; // Expects (e: EntityLUB)
-        ActionEntity = 3; // Expects (name: EntityType) (attrs: Attributes)
+    oneof data {
+        Ty ty = 1;
+        Record record = 2;
+        Entity entity = 3;
+        ActionEntity actionEntity = 4;
     }
 
-
+    enum Ty {
+        AnyEntity = 0; // AnyEntity
+    }
+    message Record {
+        Attributes attrs = 1;
+        OpenTag open_attributes = 2;
+    }
+    message Entity {
+        EntityLUB e = 1;
+    }
+    message ActionEntity {
+        cedar_policy_core.EntityType name = 1;
+        Attributes attrs = 2;
+    }
 }
 
 message EntityLUB {
