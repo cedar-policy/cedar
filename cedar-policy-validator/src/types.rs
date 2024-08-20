@@ -958,28 +958,6 @@ impl EntityLUB {
     }
 }
 
-impl From<&proto::EntityLub> for EntityLUB {
-    fn from(v: &proto::EntityLub) -> Self {
-        Self {
-            lub_elements : v.lub_elements
-                .iter()
-                .map(|v| ast::EntityType::from(v))
-                .collect()
-        }
-    }
-}
-
-impl From<&EntityLUB> for proto::EntityLub {
-    fn from(v: &EntityLUB) -> Self {
-        Self {
-            lub_elements: v.lub_elements
-                .iter()
-                .map(|v| ast::proto::EntityType::from(v))
-                .collect()
-        }
-    }
-}
-
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
@@ -1481,7 +1459,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
     fn from(v: &proto::EntityRecordKind) -> Self {
         match v.data.as_ref().unwrap() {
             proto::entity_record_kind::Data::Ty(ty) => match proto::entity_record_kind::Ty::try_from(ty.to_owned()) {
-                Ok(proto::entity_record_kind::Ty::Any) => Self::AnyEntity,
+                Ok(proto::entity_record_kind::Ty::AnyEntity) => Self::AnyEntity,
                 _ => panic!("Unexpected Entity Type")
             },
             proto::entity_record_kind::Data::Record(pRecord) => Self::Record { 
@@ -1489,7 +1467,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
                 open_attributes: OpenTag::from(&proto::OpenTag::try_from(pRecord.open_attributes).unwrap()) 
             },
             proto::entity_record_kind::Data::Entity(pEntity) => Self::Entity(
-                EntityLUB::from(pEntity.e.as_ref().unwrap())
+                EntityLUB::single_entity(ast::EntityType::from(pEntity.e.as_ref().unwrap()))
             ),
             proto::entity_record_kind::Data::ActionEntity(pActionEntity) => Self::ActionEntity { 
                 name: ast::EntityType::from(pActionEntity.name.as_ref().unwrap()), 
@@ -1509,11 +1487,11 @@ impl From<&EntityRecordKind> for proto::EntityRecordKind {
                 })
             }
             EntityRecordKind::AnyEntity => {
-                proto::entity_record_kind::Data::Ty(proto::entity_record_kind::Ty::Any.into())
+                proto::entity_record_kind::Data::Ty(proto::entity_record_kind::Ty::AnyEntity.into())
             }
             EntityRecordKind::Entity(e) => {
                 proto::entity_record_kind::Data::Entity(proto::entity_record_kind::Entity{
-                    e: Some(proto::EntityLub::from(e))
+                    e: Some(ast::proto::EntityType::from(&e.clone().into_single_entity().unwrap()))
                 })
             }
             EntityRecordKind::ActionEntity{name, attrs} => {

@@ -76,17 +76,12 @@ message EntityRecordKind {
         OpenTag open_attributes = 2;
     }
     message Entity {
-        EntityLUB e = 1;
+        cedar_policy_core.EntityType e = 1;
     }
     message ActionEntity {
         cedar_policy_core.EntityType name = 1;
         Attributes attrs = 2;
     }
-}
-
-message EntityLUB {
-    // INVARIANT: Must be non-empty
-    repeated cedar_policy_core.EntityType lub_elements = 1;
 }
 
 enum OpenTag {
