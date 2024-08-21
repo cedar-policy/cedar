@@ -34,11 +34,6 @@ message EntityUidEntry {
     EntityUidEntryType ty = 1;
     EntityUid euid = 2;
     Loc loc = 3;
-
-    enum EntityUidEntryType {
-        Unknown = 0; // Expects Option<Loc>
-        Known = 1; // Expects EntityUid and Option<Loc>
-    }
 }
 
 message EntityUid {

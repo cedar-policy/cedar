@@ -103,28 +103,15 @@ impl EntityUIDEntry {
 impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     fn from(v: &proto::EntityUidEntry) -> Self {
         let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
-        let ety = proto::entity_uid_entry::EntityUidEntryType::try_from(v.ty).unwrap();
-
-        match ety {
-            proto::entity_uid_entry::EntityUidEntryType::Unknown => {
-                Self::Unknown { loc: loc }
-            }
-            proto::entity_uid_entry::EntityUidEntryType::Known => {
-                EntityUIDEntry::known(EntityUID::from(v.euid.as_ref().unwrap()), loc)
-            }
-        }
+        EntityUIDEntry::known(EntityUID::from(v.euid.as_ref().unwrap()), loc)
     }
 }
 
 impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
-            EntityUIDEntry::Unknown { loc } => {
-                Self {
-                    ty: proto::entity_uid_entry::EntityUidEntryType::Unknown.into(),
-                    euid: None,
-                    loc: loc.as_ref().map(proto::Loc::from)
-                }
+            EntityUIDEntry::Unknown { loc: _ } => {
+                panic!("Unknown EntityUID is not currently supported by the Protobuf interface");
             }
             EntityUIDEntry::Known { euid, loc } => {
                 Self {
