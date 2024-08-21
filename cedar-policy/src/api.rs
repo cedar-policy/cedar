@@ -4356,3 +4356,78 @@ pub fn compute_entity_manifest(
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
 }
+
+/// Functions to make manipulating policies easier. Includes things like listing entity literals in policies.
+pub mod policy_manipulation_functions {
+    use super::EntityUid;
+    use super::Policy;
+
+    /// Get all entity literals occuring in a `Policy`
+    pub fn get_entity_literals(p: Policy) -> Vec<EntityUid> {
+        get_entity_literals_expr(&p.ast.condition())
+    }
+
+    fn get_entity_literals_expr(e: &cedar_policy_core::ast::Expr) -> Vec<EntityUid> {
+        use cedar_policy_core::ast::ExprKind;
+        match e.expr_kind() {
+            ExprKind::Lit(l) => {
+                use cedar_policy_core::ast::Literal;
+                match l {
+                    Literal::Bool(_) | Literal::Long(_) | Literal::String(_) => vec![],
+                    Literal::EntityUID(euid) => vec![EntityUid((*euid).as_ref().clone())],
+                }
+            }
+            ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => return vec![],
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                let mut g_lits = get_entity_literals_expr(test_expr);
+                let mut t_lits = get_entity_literals_expr(then_expr);
+                let mut e_lits = get_entity_literals_expr(else_expr);
+                g_lits.append(&mut t_lits);
+                g_lits.append(&mut e_lits);
+                return g_lits;
+            }
+            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
+                let mut l_lits = get_entity_literals_expr(left);
+                let mut r_lits = get_entity_literals_expr(right);
+                l_lits.append(&mut r_lits);
+                return l_lits;
+            }
+            ExprKind::UnaryApp { arg, .. } => get_entity_literals_expr(arg),
+            ExprKind::BinaryApp { arg1, arg2, .. } => {
+                let mut l_lits = get_entity_literals_expr(arg1);
+                let mut r_lits = get_entity_literals_expr(arg2);
+                l_lits.append(&mut r_lits);
+                return l_lits;
+            }
+            ExprKind::ExtensionFunctionApp { args, .. } => {
+                let mut l = vec![];
+                for e in args.as_ref() {
+                    l.append(&mut get_entity_literals_expr(e));
+                }
+                return l;
+            }
+            ExprKind::GetAttr { expr, .. }
+            | ExprKind::HasAttr { expr, .. }
+            | ExprKind::Like { expr, .. }
+            | ExprKind::Is { expr, .. } => get_entity_literals_expr(expr),
+            ExprKind::Set(elems) => {
+                let mut l = vec![];
+                for e in elems.as_ref() {
+                    l.append(&mut get_entity_literals_expr(e));
+                }
+                return l;
+            }
+            ExprKind::Record(map) => {
+                let mut l = vec![];
+                for e in map.values() {
+                    l.append(&mut get_entity_literals_expr(e));
+                }
+                return l;
+            }
+        }
+    }
+}
