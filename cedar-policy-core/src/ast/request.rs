@@ -115,7 +115,6 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
             }
             EntityUIDEntry::Known { euid, loc } => {
                 Self {
-                    ty: proto::entity_uid_entry::EntityUidEntryType::Known.into(),
                     euid: Some(proto::EntityUid::from(euid.as_ref())),
                     loc: loc.as_ref().map(proto::Loc::from)
                 }

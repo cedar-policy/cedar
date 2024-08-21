@@ -31,7 +31,6 @@ message Context {
 // BEGIN REQUEST MESSAGES
 
 message EntityUidEntry {
-    EntityUidEntryType ty = 1;
     EntityUid euid = 2;
     Loc loc = 3;
 }
@@ -108,26 +107,44 @@ message ResourceConstraint {
 }
 
 message EntityReference {
-    EntityReferenceType ty = 1;
-    EntityUid euid = 2;
+    oneof data {
+        Ty ty = 1;
+        EntityUid euid = 2;
+    }
 
-    enum EntityReferenceType {
+    // Zero-Arity constructors
+    enum Ty {
         Slot = 0;
-        Euid = 1; // Expects EntityUid
     }
 }
 
 message PrincipalOrResourceConstraint {
-    PrincipalOrResourceConstraintType ty = 1;
-    EntityReference er = 2;
-    EntityType na = 3;
 
-    enum PrincipalOrResourceConstraintType {
+    oneof data {
+        Ty ty = 1;
+        InMessage in = 2;
+        EqMessage eq = 3;
+        IsMessage is = 4;
+        IsInMessage isIn = 5;
+    }
+
+    // Zero-arity constructors
+    enum Ty {
         Any = 0;
-        In = 1; // Expects EntityReference
-        Eq = 2; // Expects EntityReference
-        Is = 3; // Expects EntityType
-        IsIn = 4; // Expects EntityType and EntityReference
+    }
+
+    message InMessage {
+        EntityReference er = 1;
+    }
+    message EqMessage {
+        EntityReference er = 1;
+    }
+    message IsMessage {
+        EntityType et = 1;
+    }
+    message IsInMessage {
+        EntityReference er = 1;
+        EntityType et = 2;
     }
 }
 

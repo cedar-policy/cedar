@@ -1605,13 +1605,12 @@ impl EntityReference {
 
 impl From<&proto::EntityReference> for EntityReference {
     fn from(v: &proto::EntityReference) -> Self {
-        let pty = proto::entity_reference::EntityReferenceType::try_from(v.ty).unwrap();
-        match pty {
-            proto::entity_reference::EntityReferenceType::Euid => {
-                EntityReference::euid(EntityUID::from(v.euid.as_ref().unwrap()).into())
-            }
-            proto::entity_reference::EntityReferenceType::Slot => {
-                EntityReference::Slot
+        match v.data.as_ref().unwrap() {
+            proto::entity_reference::Data::Ty(ty) => match proto::entity_reference::Ty::try_from(ty.to_owned()).unwrap() {
+                proto::entity_reference::Ty::Slot => EntityReference::Slot
+            },
+            proto::entity_reference::Data::Euid(euid) => {
+                EntityReference::euid(EntityUID::from(euid).into())
             }
         }
     }
@@ -1622,14 +1621,12 @@ impl From<&EntityReference> for proto::EntityReference {
         match v {
             EntityReference::EUID(euid) => {
                 Self {
-                    ty: proto::entity_reference::EntityReferenceType::Euid.into(),
-                    euid: Some(proto::EntityUid::from(euid.as_ref()))
+                    data: Some(proto::entity_reference::Data::Euid(proto::EntityUid::from(euid.as_ref())))
                 }
             }
             EntityReference::Slot => {
                 Self {
-                    ty: proto::entity_reference::EntityReferenceType::Slot.into(),
-                    euid: None
+                    data: Some(proto::entity_reference::Data::Ty(proto::entity_reference::Ty::Slot.into()))
                 }
             }
         }
@@ -1820,51 +1817,76 @@ impl PrincipalOrResourceConstraint {
 
 impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
     fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
-        let pty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::try_from(v.ty).unwrap();
-        match pty {
-            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Any =>
-                PrincipalOrResourceConstraint::Any,
-            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::In =>
-                PrincipalOrResourceConstraint::In(EntityReference::from(v.er.as_ref().unwrap())),
-            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Eq =>
-                PrincipalOrResourceConstraint::Eq(EntityReference::from(v.er.as_ref().unwrap())),
-            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is =>
-                PrincipalOrResourceConstraint::Is(EntityType::from(v.na.as_ref().unwrap()).into()),
-            proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn =>
-                PrincipalOrResourceConstraint::IsIn(
-                    EntityType::from(v.na.as_ref().unwrap()).into(),
-                    EntityReference::from(v.er.as_ref().unwrap())
-                )
+        match v.data.as_ref().unwrap() {
+            proto::principal_or_resource_constraint::Data::Ty(ty) => match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned()).unwrap() {
+                proto::principal_or_resource_constraint::Ty::Any => PrincipalOrResourceConstraint::Any
+            },
+            proto::principal_or_resource_constraint::Data::In(msg) => PrincipalOrResourceConstraint::In(
+                EntityReference::from(msg.er.as_ref().unwrap())
+            ),
+            proto::principal_or_resource_constraint::Data::Eq(msg) => PrincipalOrResourceConstraint::Eq(
+                EntityReference::from(msg.er.as_ref().unwrap())
+            ),
+            proto::principal_or_resource_constraint::Data::Is(msg) => PrincipalOrResourceConstraint::Is(
+                EntityType::from(msg.et.as_ref().unwrap()).into()
+            ),
+            proto::principal_or_resource_constraint::Data::IsIn(msg) => PrincipalOrResourceConstraint::IsIn(
+                EntityType::from(msg.et.as_ref().unwrap()).into(),
+                EntityReference::from(msg.er.as_ref().unwrap())
+            )
         }
     }
 }
 
 impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstraint {
     fn from(v: &PrincipalOrResourceConstraint) -> Self {
-        let mut result = Self { ty: 0, er: None, na: None};
         match v {
             PrincipalOrResourceConstraint::Any => {
-                result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Any.into();
+                Self {
+                    data: Some(proto::principal_or_resource_constraint::Data::Ty(
+                        proto::principal_or_resource_constraint::Ty::Any.into()
+                    ))
+                }
             }
             PrincipalOrResourceConstraint::In(er) => {
-                result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::In.into();
-                result.er = Some(proto::EntityReference::from(er));
+                Self {
+                    data: Some(proto::principal_or_resource_constraint::Data::In(
+                        proto::principal_or_resource_constraint::InMessage {
+                            er: Some(proto::EntityReference::from(er))
+                        }
+                    ))
+                }                
             }
+            // LEFT OFF HERE
             PrincipalOrResourceConstraint::Eq(er) => {
-                result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Eq.into();
-                result.er = Some(proto::EntityReference::from(er))
+                Self {
+                    data: Some(proto::principal_or_resource_constraint::Data::Eq(
+                        proto::principal_or_resource_constraint::EqMessage {
+                            er: Some(proto::EntityReference::from(er))
+                        }
+                    ))
+                }
             }
             PrincipalOrResourceConstraint::Is(na) => {
-                result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::Is.into();
-                result.na = Some(proto::EntityType::from(na.as_ref()));
+                Self {
+                    data: Some(proto::principal_or_resource_constraint::Data::Is(
+                        proto::principal_or_resource_constraint::IsMessage {
+                            et: Some(proto::EntityType::from(na.as_ref()))
+                        }
+                    ))
+                }
             }
             PrincipalOrResourceConstraint::IsIn(na, er) => {
-                result.ty = proto::principal_or_resource_constraint::PrincipalOrResourceConstraintType::IsIn.into();
-                result.er = Some(proto::EntityReference::from(er));
-                result.na = Some(proto::EntityType::from(na.as_ref()));
+                Self {
+                    data: Some(proto::principal_or_resource_constraint::Data::IsIn(
+                        proto::principal_or_resource_constraint::IsInMessage {
+                            er: Some(proto::EntityReference::from(er)),
+                            et: Some(proto::EntityType::from(na.as_ref()))
+                        }
+                    ))
+                }
             }
         }
-        result
     }
 }
 
