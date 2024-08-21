@@ -944,11 +944,11 @@ fn internal_name_to_entity_type(
 #[derive(Debug)]
 pub struct AllDefs {
     /// All entity type definitions, in all fragments, as fully-qualified names.
-    all_entity_defs: HashSet<TypeDefinitionInfo>,
+    entity_defs: HashSet<TypeDefinitionInfo>,
     /// All common type definitions, in all fragments, as fully-qualified names.
-    all_common_defs: HashSet<TypeDefinitionInfo>,
+    common_defs: HashSet<TypeDefinitionInfo>,
     /// All action definitions, in all fragments, with fully-qualified typenames.
-    all_action_defs: HashSet<EntityUID>,
+    action_defs: HashSet<EntityUID>,
 }
 
 impl AllDefs {
@@ -959,7 +959,7 @@ impl AllDefs {
         I: Iterator<Item = &'a ValidatorSchemaFragment<N, A>>,
     {
         Self {
-            all_entity_defs: fragments()
+            entity_defs: fragments()
                 .flat_map(|f| f.0.iter())
                 .flat_map(|ns_def| ns_def.all_declared_entity_type_names().cloned())
                 .map(|name| TypeDefinitionInfo {
@@ -967,7 +967,7 @@ impl AllDefs {
                     user_def: true,
                 })
                 .collect(),
-            all_common_defs: fragments()
+            common_defs: fragments()
                 .flat_map(|f| f.0.iter())
                 .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
                 .map(|name| TypeDefinitionInfo {
@@ -975,7 +975,7 @@ impl AllDefs {
                     user_def: true,
                 })
                 .collect(),
-            all_action_defs: fragments()
+            action_defs: fragments()
                 .flat_map(|f| f.0.iter())
                 .flat_map(|ns_def| ns_def.all_declared_action_names().cloned())
                 .collect(),
@@ -994,25 +994,25 @@ impl AllDefs {
     /// Get the [`TypeDefinitionInfo`] for the given entity type name, or `None`
     /// if it is not defined in any fragment
     pub fn get_entity_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
-        self.all_entity_defs.iter().find(|tdi| &tdi.name == name)
+        self.entity_defs.iter().find(|tdi| &tdi.name == name)
     }
 
     /// Get the [`TypeDefinitionInfo`] for the given common type name, or `None`
     /// if it is not defined in any fragment
     pub fn get_common_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
-        self.all_common_defs.iter().find(|tdi| &tdi.name == name)
+        self.common_defs.iter().find(|tdi| &tdi.name == name)
     }
 
     /// Is the given (fully-qualified) [`EntityUID`] defined as an action in any
     /// fragment?
     pub fn is_defined_as_action(&self, euid: &EntityUID) -> bool {
-        self.all_action_defs.contains(euid)
+        self.action_defs.contains(euid)
     }
 
     /// Mark the given [`InternalName`] as defined as an implicitly-defined
     /// common type. See notes on [`CommonTypeDefinitionInfo`].
     pub fn mark_as_implicitly_defined_common_type(&mut self, name: InternalName) {
-        self.all_common_defs.insert(TypeDefinitionInfo {
+        self.common_defs.insert(TypeDefinitionInfo {
             name,
             user_def: false,
         });
@@ -1024,15 +1024,15 @@ impl AllDefs {
     #[cfg(test)]
     pub(crate) fn from_entity_defs(names: impl IntoIterator<Item = InternalName>) -> Self {
         Self {
-            all_entity_defs: names
+            entity_defs: names
                 .into_iter()
                 .map(|name| TypeDefinitionInfo {
                     name,
                     user_def: true,
                 })
                 .collect(),
-            all_common_defs: HashSet::new(),
-            all_action_defs: HashSet::new(),
+            common_defs: HashSet::new(),
+            action_defs: HashSet::new(),
         }
     }
 }
