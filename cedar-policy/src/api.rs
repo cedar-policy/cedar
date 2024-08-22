@@ -4357,13 +4357,12 @@ pub fn compute_entity_manifest(
     entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
 }
 
-/// Functions to make manipulating policies easier. Includes things like listing entity literals in policies.
+/// Functions to make manipulating policies easier.
 pub mod policy_manipulation_functions {
     use super::EntityUid;
     use super::Policy;
 
-    /// Visitor
-    pub trait ExprVisitor {
+    trait ExprVisitor {
         /// Called when each subexpr is visited for the first time
         fn visit(&mut self, e: &cedar_policy_core::ast::Expr) -> ();
     }
