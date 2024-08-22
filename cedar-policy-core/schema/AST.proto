@@ -119,7 +119,6 @@ message EntityReference {
 }
 
 message PrincipalOrResourceConstraint {
-
     oneof data {
         Ty ty = 1;
         InMessage in = 2;
@@ -154,14 +153,20 @@ enum SlotId {
 }
 
 message ActionConstraint {
-    ActionConstraintType ty = 1;
-    repeated EntityUid euids = 2;
-    EntityUid euid = 3;
+    oneof data {
+        Ty ty = 1;
+        InMessage in = 2;
+        EqMessage eq = 3;
+    }
 
-    enum ActionConstraintType {
+    enum Ty {
         Any = 0;
-        In = 1; // Expects repeated EntityUid
-        Eq = 2; // Expects EntityUid
+    }
+    message InMessage {
+        repeated EntityUid euids = 1;
+    }
+    message EqMessage {
+        EntityUid euid = 1;
     }
 }
 

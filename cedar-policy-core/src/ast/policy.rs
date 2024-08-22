@@ -1993,42 +1993,50 @@ impl ActionConstraint {
 
 impl From<&proto::ActionConstraint> for ActionConstraint {
     fn from(v: &proto::ActionConstraint) -> Self {
-        let pty = proto::action_constraint::ActionConstraintType::try_from(v.ty).unwrap();
-        match pty {
-            proto::action_constraint::ActionConstraintType::Any =>
-                ActionConstraint::Any,
-            proto::action_constraint::ActionConstraintType::In =>
-                ActionConstraint::In(v.euids
+        match v.data.as_ref().unwrap() {
+            proto::action_constraint::Data::Ty(ty) => match proto::action_constraint::Ty::try_from(ty.to_owned()).unwrap() {
+                proto::action_constraint::Ty::Any => ActionConstraint::Any
+            },
+            proto::action_constraint::Data::In(msg) => ActionConstraint::In(
+                msg.euids
                     .iter()
                     .map(|value| EntityUID::from(value).into())
-                    .collect()),
-            proto::action_constraint::ActionConstraintType::Eq => 
-                ActionConstraint::Eq(EntityUID::from(v.euid.as_ref().unwrap()).into())   
+                    .collect()
+            ),
+            proto::action_constraint::Data::Eq(msg) => ActionConstraint::Eq(
+                EntityUID::from(msg.euid.as_ref().unwrap()).into()
+            )
         }
     }
 }
 
 impl From<&ActionConstraint> for proto::ActionConstraint {
     fn from(v: &ActionConstraint) -> Self {
-        let mut result = Self { ty: 0, euids: Vec::<proto::EntityUid>::new(), euid: None };
         match v {
             ActionConstraint::Any => {
-                result.ty = proto::action_constraint::ActionConstraintType::Any.into();
+                 Self {
+                    data: Some(proto::action_constraint::Data::Ty(proto::action_constraint::Ty::Any.into()))
+                 }
             }
             ActionConstraint::In(euids) => {
-                result.ty = proto::action_constraint::ActionConstraintType::In.into();
                 let mut peuids: Vec<proto::EntityUid> = Vec::with_capacity(euids.len());
                 for value in euids {
                     peuids.push(proto::EntityUid::from(value.as_ref()));
                 }
-                result.euids = peuids;
+                Self {
+                    data: Some(proto::action_constraint::Data::In(proto::action_constraint::InMessage{
+                        euids : peuids
+                    }))
+                }
             }
             ActionConstraint::Eq(euid) => {
-                result.ty = proto::action_constraint::ActionConstraintType::Eq.into();
-                result.euid = Some(proto::EntityUid::from(euid.as_ref()));
+                Self {
+                    data: Some(proto::action_constraint::Data::Eq(proto::action_constraint::EqMessage {
+                        euid : Some(proto::EntityUid::from(euid.as_ref()))
+                    }))
+                }
             }
         }
-        result
     }
 }
 
