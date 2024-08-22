@@ -4362,71 +4362,88 @@ pub mod policy_manipulation_functions {
     use super::EntityUid;
     use super::Policy;
 
-    /// Get all entity literals occuring in a `Policy`
-    pub fn get_entity_literals(p: Policy) -> Vec<EntityUid> {
-        get_entity_literals_expr(&p.ast.condition())
+    /// Visitor
+    pub trait ExprVisitor {
+        /// Called when each subexpr is visited for the first time
+        fn visit(&mut self, e: &cedar_policy_core::ast::Expr) -> ();
     }
 
-    fn get_entity_literals_expr(e: &cedar_policy_core::ast::Expr) -> Vec<EntityUid> {
-        use cedar_policy_core::ast::ExprKind;
-        match e.expr_kind() {
-            ExprKind::Lit(l) => {
-                use cedar_policy_core::ast::Literal;
-                match l {
-                    Literal::Bool(_) | Literal::Long(_) | Literal::String(_) => vec![],
-                    Literal::EntityUID(euid) => vec![EntityUid((*euid).as_ref().clone())],
-                }
+    struct EntityLiteralCollector {
+        pub v: Vec<EntityUid>,
+    }
+
+    impl ExprVisitor for EntityLiteralCollector {
+        fn visit(&mut self, e: &cedar_policy_core::ast::Expr) {
+            use cedar_policy_core::ast::ExprKind;
+            match e.expr_kind() {
+                ExprKind::Lit(l) => match l {
+                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
+                        self.v.push(EntityUid((*euid).as_ref().clone()))
+                    }
+                    _ => (),
+                },
+                _ => (),
             }
-            ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => return vec![],
+        }
+    }
+
+    impl EntityLiteralCollector {
+        fn new() -> Self {
+            EntityLiteralCollector { v: Vec::new() }
+        }
+    }
+
+    /// Get all entity literals occuring in a `Policy`
+    pub fn get_entity_literals(p: Policy) -> Vec<EntityUid> {
+        let mut entity_lits = EntityLiteralCollector::new();
+        preorder_traverse_subexprs(&p.ast.condition(), &mut entity_lits);
+        entity_lits.v
+    }
+
+    fn preorder_traverse_subexprs(
+        e: &cedar_policy_core::ast::Expr,
+        visitor: &mut impl ExprVisitor,
+    ) {
+        use cedar_policy_core::ast::ExprKind;
+        visitor.visit(e);
+        match e.expr_kind() {
+            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => (),
             ExprKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
             } => {
-                let mut g_lits = get_entity_literals_expr(test_expr);
-                let mut t_lits = get_entity_literals_expr(then_expr);
-                let mut e_lits = get_entity_literals_expr(else_expr);
-                g_lits.append(&mut t_lits);
-                g_lits.append(&mut e_lits);
-                return g_lits;
+                preorder_traverse_subexprs(test_expr, visitor);
+                preorder_traverse_subexprs(then_expr, visitor);
+                preorder_traverse_subexprs(else_expr, visitor);
             }
             ExprKind::And { left, right } | ExprKind::Or { left, right } => {
-                let mut l_lits = get_entity_literals_expr(left);
-                let mut r_lits = get_entity_literals_expr(right);
-                l_lits.append(&mut r_lits);
-                return l_lits;
+                preorder_traverse_subexprs(left, visitor);
+                preorder_traverse_subexprs(right, visitor);
             }
-            ExprKind::UnaryApp { arg, .. } => get_entity_literals_expr(arg),
+            ExprKind::UnaryApp { arg, .. } => preorder_traverse_subexprs(arg, visitor),
             ExprKind::BinaryApp { arg1, arg2, .. } => {
-                let mut l_lits = get_entity_literals_expr(arg1);
-                let mut r_lits = get_entity_literals_expr(arg2);
-                l_lits.append(&mut r_lits);
-                return l_lits;
+                preorder_traverse_subexprs(arg1, visitor);
+                preorder_traverse_subexprs(arg2, visitor);
             }
             ExprKind::ExtensionFunctionApp { args, .. } => {
-                let mut l = vec![];
                 for e in args.as_ref() {
-                    l.append(&mut get_entity_literals_expr(e));
+                    preorder_traverse_subexprs(e, visitor);
                 }
-                return l;
             }
             ExprKind::GetAttr { expr, .. }
             | ExprKind::HasAttr { expr, .. }
             | ExprKind::Like { expr, .. }
-            | ExprKind::Is { expr, .. } => get_entity_literals_expr(expr),
+            | ExprKind::Is { expr, .. } => preorder_traverse_subexprs(expr, visitor),
             ExprKind::Set(elems) => {
-                let mut l = vec![];
                 for e in elems.as_ref() {
-                    l.append(&mut get_entity_literals_expr(e));
+                    preorder_traverse_subexprs(e, visitor);
                 }
-                return l;
             }
             ExprKind::Record(map) => {
-                let mut l = vec![];
                 for e in map.values() {
-                    l.append(&mut get_entity_literals_expr(e));
+                    preorder_traverse_subexprs(e, visitor);
                 }
-                return l;
             }
         }
     }
