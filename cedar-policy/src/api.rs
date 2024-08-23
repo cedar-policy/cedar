@@ -4362,88 +4362,20 @@ pub mod policy_manipulation_functions {
     use super::EntityUid;
     use super::Policy;
 
-    trait ExprVisitor {
-        /// Called when each subexpr is visited for the first time
-        fn visit(&mut self, e: &cedar_policy_core::ast::Expr) -> ();
-    }
-
-    struct EntityLiteralCollector {
-        pub v: Vec<EntityUid>,
-    }
-
-    impl ExprVisitor for EntityLiteralCollector {
-        fn visit(&mut self, e: &cedar_policy_core::ast::Expr) {
-            use cedar_policy_core::ast::ExprKind;
-            match e.expr_kind() {
-                ExprKind::Lit(l) => match l {
-                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
-                        self.v.push(EntityUid((*euid).as_ref().clone()))
-                    }
-                    _ => (),
-                },
-                _ => (),
-            }
-        }
-    }
-
-    impl EntityLiteralCollector {
-        fn new() -> Self {
-            EntityLiteralCollector { v: Vec::new() }
-        }
-    }
-
     /// Get all entity literals occuring in a `Policy`
     pub fn get_entity_literals(p: Policy) -> Vec<EntityUid> {
-        let mut entity_lits = EntityLiteralCollector::new();
-        preorder_traverse_subexprs(&p.ast.condition(), &mut entity_lits);
-        entity_lits.v
-    }
-
-    fn preorder_traverse_subexprs(
-        e: &cedar_policy_core::ast::Expr,
-        visitor: &mut impl ExprVisitor,
-    ) {
-        use cedar_policy_core::ast::ExprKind;
-        visitor.visit(e);
-        match e.expr_kind() {
-            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => (),
-            ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => {
-                preorder_traverse_subexprs(test_expr, visitor);
-                preorder_traverse_subexprs(then_expr, visitor);
-                preorder_traverse_subexprs(else_expr, visitor);
-            }
-            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
-                preorder_traverse_subexprs(left, visitor);
-                preorder_traverse_subexprs(right, visitor);
-            }
-            ExprKind::UnaryApp { arg, .. } => preorder_traverse_subexprs(arg, visitor),
-            ExprKind::BinaryApp { arg1, arg2, .. } => {
-                preorder_traverse_subexprs(arg1, visitor);
-                preorder_traverse_subexprs(arg2, visitor);
-            }
-            ExprKind::ExtensionFunctionApp { args, .. } => {
-                for e in args.as_ref() {
-                    preorder_traverse_subexprs(e, visitor);
-                }
-            }
-            ExprKind::GetAttr { expr, .. }
-            | ExprKind::HasAttr { expr, .. }
-            | ExprKind::Like { expr, .. }
-            | ExprKind::Is { expr, .. } => preorder_traverse_subexprs(expr, visitor),
-            ExprKind::Set(elems) => {
-                for e in elems.as_ref() {
-                    preorder_traverse_subexprs(e, visitor);
-                }
-            }
-            ExprKind::Record(map) => {
-                for e in map.values() {
-                    preorder_traverse_subexprs(e, visitor);
-                }
-            }
-        }
+        p.ast
+            .condition()
+            .subexpressions()
+            .filter_map(|e| match e.expr_kind() {
+                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
+                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
+                        Some(EntityUid((*euid).as_ref().clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
     }
 }
