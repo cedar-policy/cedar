@@ -27,7 +27,7 @@ mod id;
 use cedar_policy_validator::entity_manifest;
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_manifest::{
-    AccessTrie, EntityManifest, EntityManifestError, EntityRoot, Fields, RootAccessTrie,
+    AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;

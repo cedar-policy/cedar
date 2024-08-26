@@ -39,6 +39,9 @@ pub mod entities_errors {
     pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
 }
 
+/// Entity manifest errors
+pub use cedar_policy_validator::entity_manifest::EntityManifestError;
+
 /// Errors related to serializing/deserializing entities or contexts to/from JSON
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
