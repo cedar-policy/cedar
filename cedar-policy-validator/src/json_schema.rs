@@ -175,7 +175,9 @@ impl<N: Display> Fragment<N> {
 /// An [`UnreservedId`] that cannot be reserved JSON schema keywords
 /// like `Set`, `Long`, and etc.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct CommonTypeId(UnreservedId);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
 
 impl From<CommonTypeId> for UnreservedId {
     fn from(value: CommonTypeId) -> Self {
