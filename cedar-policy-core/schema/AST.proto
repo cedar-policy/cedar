@@ -296,7 +296,7 @@ message Expr {
     }
 
     message Record {
-        map<string, Expr> items = 2;
+        map<string, Expr> items = 1;
     }
 }
 
