@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use crate::cedar_schema;
 use cedar_policy_core::{
     ast::{EntityUID, ReservedNameError},
     transitive_closure,
@@ -23,6 +22,8 @@ use itertools::{Either, Itertools};
 use miette::Diagnostic;
 use nonempty::NonEmpty;
 use thiserror::Error;
+
+use crate::cedar_schema;
 
 /// Error creating a schema from the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]
