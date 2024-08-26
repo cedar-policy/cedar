@@ -376,6 +376,16 @@ impl ValidatorSchema {
         // (fully-qualified names) in all fragments.
         let mut all_defs = AllDefs::new(|| fragments.iter());
 
+        // Now we have enough information to do the checks required by RFC 70.
+        // We do not need all _references_ to types/actions to be fully resolved yet,
+        // because RFC 70 does not actually say anything about references, and can be
+        // enforced knowing only about the _definitions_.
+        // Furthermore, doing these checks before adding the builtin common-type aliases
+        // in the empty namespace is convenient, because at this point the only
+        // definitions in the empty namespace are the ones the user has put there, which
+        // are thus subject to RFC 70 shadowing rules.
+        all_defs.rfc_70_checks()?;
+
         // Add aliases for primitive and extension typenames in the empty namespace,
         // so that they can be accessed without `__cedar`.
         // (Only add each alias if it doesn't conflict with a user declaration --
@@ -387,8 +397,8 @@ impl ValidatorSchema {
             .map(|(id, _)| Name::unqualified_name(id))
             .chain(extensions.ext_types().cloned().map(Into::into))
         {
-            if all_defs.get_entity_type(tyname.as_ref()).is_none()
-                && all_defs.get_common_type(tyname.as_ref()).is_none()
+            if !all_defs.is_defined_as_entity(tyname.as_ref())
+                && !all_defs.is_defined_as_common(tyname.as_ref())
             {
                 assert!(
                     tyname.is_unqualified(),
@@ -944,9 +954,9 @@ fn internal_name_to_entity_type(
 #[derive(Debug)]
 pub struct AllDefs {
     /// All entity type definitions, in all fragments, as fully-qualified names.
-    entity_defs: HashSet<TypeDefinitionInfo>,
+    entity_defs: HashSet<InternalName>,
     /// All common type definitions, in all fragments, as fully-qualified names.
-    common_defs: HashSet<TypeDefinitionInfo>,
+    common_defs: HashSet<InternalName>,
     /// All action definitions, in all fragments, with fully-qualified typenames.
     action_defs: HashSet<EntityUID>,
 }
@@ -962,18 +972,10 @@ impl AllDefs {
             entity_defs: fragments()
                 .flat_map(|f| f.0.iter())
                 .flat_map(|ns_def| ns_def.all_declared_entity_type_names().cloned())
-                .map(|name| TypeDefinitionInfo {
-                    name,
-                    user_def: true,
-                })
                 .collect(),
             common_defs: fragments()
                 .flat_map(|f| f.0.iter())
                 .flat_map(|ns_def| ns_def.all_declared_common_type_names().cloned())
-                .map(|name| TypeDefinitionInfo {
-                    name,
-                    user_def: true,
-                })
                 .collect(),
             action_defs: fragments()
                 .flat_map(|f| f.0.iter())
@@ -991,16 +993,16 @@ impl AllDefs {
         Self::new(|| std::iter::once(fragment))
     }
 
-    /// Get the [`TypeDefinitionInfo`] for the given entity type name, or `None`
-    /// if it is not defined in any fragment
-    pub fn get_entity_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
-        self.entity_defs.iter().find(|tdi| &tdi.name == name)
+    /// Is the given (fully-qualified) [`InternalName`] defined as an entity
+    /// type in any fragment?
+    pub fn is_defined_as_entity(&self, name: &InternalName) -> bool {
+        self.entity_defs.contains(name)
     }
 
-    /// Get the [`TypeDefinitionInfo`] for the given common type name, or `None`
-    /// if it is not defined in any fragment
-    pub fn get_common_type(&self, name: &InternalName) -> Option<&TypeDefinitionInfo> {
-        self.common_defs.iter().find(|tdi| &tdi.name == name)
+    /// Is the given (fully-qualified) [`InternalName`] defined as a common type
+    /// in any fragment?
+    pub fn is_defined_as_common(&self, name: &InternalName) -> bool {
+        self.common_defs.contains(name)
     }
 
     /// Is the given (fully-qualified) [`EntityUID`] defined as an action in any
@@ -1009,13 +1011,57 @@ impl AllDefs {
         self.action_defs.contains(euid)
     }
 
-    /// Mark the given [`InternalName`] as defined as an implicitly-defined
-    /// common type. See notes on [`CommonTypeDefinitionInfo`].
+    /// Mark the given [`InternalName`] as defined as a common type
     pub fn mark_as_implicitly_defined_common_type(&mut self, name: InternalName) {
-        self.common_defs.insert(TypeDefinitionInfo {
-            name,
-            user_def: false,
-        });
+        self.common_defs.insert(name);
+    }
+
+    /// Return an error if the definitions in this [`AllDefs`] violate the
+    /// restrictions specified in
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md)
+    pub fn rfc_70_checks(&self) -> Result<()> {
+        for unqualified_name in self
+            .entity_and_common_names()
+            .filter(|name| name.is_unqualified())
+        {
+            // `unqualified_name` is a definition in the empty namespace
+            if let Some(name) = self.entity_and_common_names().find(|name| {
+                !name.is_unqualified() // RFC 70 specifies that shadowing an entity typename with a common typename is OK, including in the empty namespace
+                && !name.is_reserved() // do not throw an error if the shadowing name is something like `__cedar::String` "shadowing" an empty-namespace declaration of `String`
+                && name.basename() == unqualified_name.basename()
+            }) {
+                return Err(TypeShadowingError {
+                    shadowed_def: unqualified_name.clone(),
+                    shadowing_def: name.clone(),
+                }
+                .into());
+            }
+        }
+        for unqualified_action in self
+            .action_defs
+            .iter()
+            .filter(|euid| euid.entity_type().as_ref().is_unqualified())
+        {
+            // `unqualified_action` is a definition in the empty namespace
+            if let Some(action) = self.action_defs.iter().find(|euid| {
+                !euid.entity_type().as_ref().is_unqualified() // do not throw an error for an action "shadowing" itself
+                // we do not need to check that the basenames are the same, because we assume they are both `Action`
+                && euid.eid() == unqualified_action.eid()
+            }) {
+                return Err(ActionShadowingError {
+                    shadowed_def: unqualified_action.clone(),
+                    shadowing_def: action.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Iterate over all (fully-qualified) entity and common-type names defined
+    /// in the [`AllDefs`].
+    fn entity_and_common_names(&self) -> impl Iterator<Item = &InternalName> {
+        self.entity_defs.iter().chain(self.common_defs.iter())
     }
 
     /// Build an [`AllDefs`] that assumes the given fully-qualified
@@ -1024,36 +1070,11 @@ impl AllDefs {
     #[cfg(test)]
     pub(crate) fn from_entity_defs(names: impl IntoIterator<Item = InternalName>) -> Self {
         Self {
-            entity_defs: names
-                .into_iter()
-                .map(|name| TypeDefinitionInfo {
-                    name,
-                    user_def: true,
-                })
-                .collect(),
+            entity_defs: names.into_iter().collect(),
             common_defs: HashSet::new(),
             action_defs: HashSet::new(),
         }
     }
-}
-
-/// Used by [`AllDefs`] to record the name of a defined type as well as a flag
-/// indicating whether this definition is from the user or not.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-pub struct TypeDefinitionInfo {
-    /// Fully-qualified type name that is defined
-    pub(crate) name: InternalName,
-    /// `true` if this type definition is from the user.
-    ///
-    /// Some common-type definitions are implicitly added by Cedar -- for
-    /// instance, `String` in the empty namespace is defined as
-    /// `type String = __cedar::String;` unless the user defines a different
-    /// `String` type in the empty namespace.
-    ///
-    /// As of this writing, entity-type definitions are always from the user,
-    /// but we still include this flag for entity-type definitions for
-    /// consistency and future-proofing.
-    pub(crate) user_def: bool,
 }
 
 /// A common type reference resolver.
@@ -3488,7 +3509,9 @@ mod test_rfc70 {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("RFC 70").build(),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
+                    .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace")
+                    .build(),
             );
         });
 
@@ -3500,6 +3523,7 @@ mod test_rfc70 {
                 },
             },
             "NS": {
+                "entityTypes": {},
                 "actions": {
                     "A": {},
                 },
@@ -3509,7 +3533,9 @@ mod test_rfc70 {
             expect_err(
                 &src_json,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("RFC 70").build(),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
+                    .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace")
+                    .build(),
             );
         });
     }

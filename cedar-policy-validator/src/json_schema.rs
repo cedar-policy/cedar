@@ -929,21 +929,17 @@ impl ActionEntityUID<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<ActionEntityUID<InternalName>, ActionResolutionError> {
-        let mut resolved = None;
         for possibility in self.possibilities() {
             // This ignores any possibilities that aren't valid `EntityUID`,
             // because we know that all defined actions are valid `EntityUID`s
             // (because `all_action_defs` has type `&HashSet<EntityUID>`).
             if let Ok(euid) = EntityUID::try_from(possibility.clone()) {
                 if all_defs.is_defined_as_action(&euid) {
-                    update_resolved_name(&mut resolved, possibility.clone())?;
+                    return Ok(possibility);
                 }
             }
         }
-        match resolved {
-            Some(possibility) => Ok(possibility.clone()),
-            None => Err(ActionNotDefinedError(nonempty!(self)).into()),
-        }
+        Err(ActionNotDefinedError(nonempty!(self)).into())
     }
 
     /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
@@ -1013,50 +1009,6 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
-        }
-    }
-}
-
-/// Very nearly a copy of `update_resolved_name` in `raw_name.rs`, but different
-/// types of `resolved`, `possibility`, and the error that is thrown.
-///
-/// Given that we found a new `possibility` that is defined and we could resolve to,
-/// update the `resolved` for this, and return an error if we're in a situation
-/// disallowed by [RFC 70].
-///
-/// Assumes that we consider possibilities in decreasing order of priority.
-///
-/// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
-fn update_resolved_name(
-    resolved: &mut Option<ActionEntityUID<InternalName>>,
-    possibility: ActionEntityUID<InternalName>,
-) -> std::result::Result<(), ActionShadowingError> {
-    match resolved {
-        Some(accepted_def) => {
-            // We just found a lower-priority definition than the one we already
-            // resolved to, meaning that the new definition is shadowed.
-            //
-            // Don't change `resolved` -- leave the higher-priority definition
-            // there.
-            //
-            // Do check whether this situation is disallowed by RFC 70.
-            // RFC 70 specifies that action definitions in a nonempty namespace
-            // cannot shadow action definitions in the empty namespace.
-            let shadowed_def = possibility;
-            if shadowed_def.ty().is_unqualified() && !accepted_def.ty().is_unqualified() {
-                // This is the situation disallowed by RFC 70
-                Err(ActionShadowingError {
-                    shadowed_def: shadowed_def.clone(),
-                    shadowing_def: accepted_def.clone(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-        None => {
-            // We just found our highest-priority definition.
-            *resolved = Some(possibility);
-            Ok(())
         }
     }
 }

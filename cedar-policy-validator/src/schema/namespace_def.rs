@@ -503,7 +503,7 @@ impl EntityTypeFragment<ConditionalName> {
         let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
             parents
                 .iter()
-                .filter(|ety| all_defs.get_entity_type(ety).is_none())
+                .filter(|ety| !all_defs.is_defined_as_entity(ety))
                 .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
         );
         match (fully_qual_attributes, undeclared_parents) {

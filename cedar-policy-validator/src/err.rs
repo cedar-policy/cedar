@@ -522,13 +522,13 @@ pub mod schema_errors {
         "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
     )]
     #[diagnostic(help(
-        "try renaming one of the definitions, or moving `{shadowed_def}` to a different namespace"
+        "try renaming one of the actions, or moving `{shadowed_def}` to a different namespace"
     ))]
     pub struct ActionShadowingError {
         /// Definition that is being shadowed illegally
-        pub(crate) shadowed_def: crate::json_schema::ActionEntityUID<InternalName>,
+        pub(crate) shadowed_def: EntityUID,
         /// Definition that is responsible for shadowing it illegally
-        pub(crate) shadowing_def: crate::json_schema::ActionEntityUID<InternalName>,
+        pub(crate) shadowing_def: EntityUID,
     }
 
     /// Duplicate entity type error

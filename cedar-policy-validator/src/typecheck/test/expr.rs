@@ -1182,7 +1182,7 @@ fn is_typecheck_fails() {
 fn is_typechecks() {
     let schema = json_schema::Fragment::from_json_value(json!({
             "": { "entityTypes": { "User": {}, "Photo": {} }, "actions": {} },
-            "N::S": { "entityTypes": { "User": {} }, "actions": {} }
+            "N::S": { "entityTypes": { "Foo": {} }, "actions": {} }
     }))
     .unwrap();
     assert_typechecks(
@@ -1197,12 +1197,12 @@ fn is_typechecks() {
     );
     assert_typechecks(
         schema.clone(),
-        r#"N::S::User::"alice" is N::S::User"#.parse().unwrap(),
+        r#"N::S::Foo::"alice" is N::S::Foo"#.parse().unwrap(),
         Type::singleton_boolean(true),
     );
     assert_typechecks(
         schema,
-        r#"N::S::User::"alice" is User"#.parse().unwrap(),
+        r#"N::S::Foo::"alice" is User"#.parse().unwrap(),
         Type::singleton_boolean(false),
     );
 }

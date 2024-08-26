@@ -144,7 +144,7 @@ pub(crate) fn assert_expected_warnings(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl TryInto<ValidatorSchema, Error = impl miette::Diagnostic + Send + Sync + 'static>,
     policy: impl Into<Arc<Template>>,
 ) {
     assert_policy_typechecks_for_mode(schema, policy, ValidationMode::Strict)
@@ -152,12 +152,12 @@ pub(crate) fn assert_policy_typechecks(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl TryInto<ValidatorSchema, Error = impl miette::Diagnostic + Send + Sync + 'static>,
     policy: impl Into<Arc<Template>>,
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    let schema = schema.try_into().expect("Failed to construct schema.");
+    let schema = schema.try_into().map_err(miette::Report::new).unwrap_or_else(|e| panic!("failed to construct schema: {e:?}"));
     let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
