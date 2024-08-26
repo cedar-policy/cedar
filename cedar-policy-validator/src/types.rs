@@ -1462,16 +1462,16 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
                 Ok(proto::entity_record_kind::Ty::AnyEntity) => Self::AnyEntity,
                 _ => panic!("Unexpected Entity Type")
             },
-            proto::entity_record_kind::Data::Record(pRecord) => Self::Record { 
-                attrs: Attributes::from(pRecord.attrs.as_ref().unwrap()),
-                open_attributes: OpenTag::from(&proto::OpenTag::try_from(pRecord.open_attributes).unwrap()) 
+            proto::entity_record_kind::Data::Record(p_record) => Self::Record { 
+                attrs: Attributes::from(p_record.attrs.as_ref().unwrap()),
+                open_attributes: OpenTag::from(&proto::OpenTag::try_from(p_record.open_attributes).unwrap()) 
             },
-            proto::entity_record_kind::Data::Entity(pEntity) => Self::Entity(
-                EntityLUB::single_entity(ast::EntityType::from(pEntity.e.as_ref().unwrap()))
+            proto::entity_record_kind::Data::Entity(p_entity) => Self::Entity(
+                EntityLUB::single_entity(ast::EntityType::from(p_entity.e.as_ref().unwrap()))
             ),
-            proto::entity_record_kind::Data::ActionEntity(pActionEntity) => Self::ActionEntity { 
-                name: ast::EntityType::from(pActionEntity.name.as_ref().unwrap()), 
-                attrs: Attributes::from(pActionEntity.attrs.as_ref().unwrap())
+            proto::entity_record_kind::Data::ActionEntity(p_action_entity) => Self::ActionEntity { 
+                name: ast::EntityType::from(p_action_entity.name.as_ref().unwrap()), 
+                attrs: Attributes::from(p_action_entity.attrs.as_ref().unwrap())
             }
         }
     }
