@@ -988,7 +988,6 @@ impl AllDefs {
     /// fragment that exists.
     /// Any names referring to definitions in other fragments will not resolve
     /// properly.
-    #[cfg(test)]
     pub fn single_fragment<N, A>(fragment: &ValidatorSchemaFragment<N, A>) -> Self {
         Self::new(|| std::iter::once(fragment))
     }
