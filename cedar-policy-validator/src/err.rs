@@ -162,13 +162,13 @@ pub enum SchemaError {
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
     /// This error occurs when we cannot resolve a typename (because it refers
-    /// to an entity type or common type that was not declared).
+    /// to an entity type or common type that was not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeNotDefined(#[from] schema_errors::TypeNotDefinedError),
     /// This error occurs when we cannot resolve an action name used in the
     /// `memberOf` field of an action (because it refers to an action that was
-    /// not declared).
+    /// not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
     ActionNotDefined(#[from] schema_errors::ActionNotDefinedError),
