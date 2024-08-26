@@ -27,9 +27,6 @@ fn generate_parsers() {
     lalrpop::Configuration::new()
         .process_dir("src/parser/")
         .expect("parser synth");
-
-    
-
 }
 
 #[cfg(feature = "protobuffers")]

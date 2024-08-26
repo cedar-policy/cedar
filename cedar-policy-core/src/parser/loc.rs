@@ -109,9 +109,9 @@ impl From<&proto::Loc> for Loc {
         Loc::new(
             miette::SourceSpan::new(
                 miette::SourceOffset::from(offset_usize),
-                v.length.try_into().unwrap()
+                v.length.try_into().unwrap(),
             ),
-            v.src.clone().into()
+            v.src.clone().into(),
         )
     }
 }
@@ -119,12 +119,12 @@ impl From<&proto::Loc> for Loc {
 #[cfg(feature = "protobuffers")]
 impl From<&Loc> for proto::Loc {
     fn from(v: &Loc) -> Self {
-        let offset_u32 : u32 = v.span.offset().try_into().unwrap();
-        let length_u32 : u32 = v.span.len().try_into().unwrap();
+        let offset_u32: u32 = v.span.offset().try_into().unwrap();
+        let length_u32: u32 = v.span.len().try_into().unwrap();
         Self {
             offset: offset_u32,
             length: length_u32,
-            src: v.src.to_string()
+            src: v.src.to_string(),
         }
     }
 }
@@ -136,21 +136,15 @@ pub mod tests {
 
     #[test]
     fn protobuf_roundtrip() {
-        let loc : Loc = Loc::new(
-            miette::SourceSpan::new(
-                miette::SourceOffset::from(0),
-                5
-            ),
-            "test".into()
+        let loc: Loc = Loc::new(
+            miette::SourceSpan::new(miette::SourceOffset::from(0), 5),
+            "test".into(),
         );
         assert_eq!(loc, Loc::from(&proto::Loc::from(&loc)));
 
-        let loc2 : Loc = Loc::new(
-            miette::SourceSpan::new(
-                miette::SourceOffset::from(1000),
-                500000
-            ),
-            "test".into()
+        let loc2: Loc = Loc::new(
+            miette::SourceSpan::new(miette::SourceOffset::from(1000), 500000),
+            "test".into(),
         );
         assert_eq!(loc2, Loc::from(&proto::Loc::from(&loc2)));
     }

@@ -97,9 +97,13 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
-            descendants: v.descendants.iter().map(ast::proto::EntityType::from).collect(),
+            descendants: v
+                .descendants
+                .iter()
+                .map(ast::proto::EntityType::from)
+                .collect(),
             attributes: Some(proto::Attributes::from(&v.attributes)),
-            open_attributes: proto::OpenTag::from(&v.open_attributes).into()
+            open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
         }
     }
 }
@@ -111,7 +115,7 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
             name: ast::EntityType::from(v.name.as_ref().unwrap()),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
             attributes: Attributes::from(v.attributes.as_ref().unwrap()),
-            open_attributes: OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap())
+            open_attributes: OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap()),
         }
     }
 }

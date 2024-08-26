@@ -16,7 +16,7 @@
 
 use super::{
     EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template
+    StaticPolicy, Template,
 };
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -30,7 +30,6 @@ use crate::ast::proto;
 
 #[cfg(feature = "protobuffers")]
 use super::TemplateBody;
-
 
 /// Represents a set of `Policy`s
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,22 +118,26 @@ impl From<PolicySet> for LiteralPolicySet {
 #[cfg(feature = "protobuffers")]
 impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
     fn from(v: &proto::LiteralPolicySet) -> Self {
-        let templates : HashMap<PolicyID, Template> = v.templates
+        let templates: HashMap<PolicyID, Template> = v
+            .templates
             .iter()
-            .map(|(key, value)| (
-                PolicyID::from_string(key),
-                Template::from(TemplateBody::from(value)))
-            )
+            .map(|(key, value)| {
+                (
+                    PolicyID::from_string(key),
+                    Template::from(TemplateBody::from(value)),
+                )
+            })
             .collect();
-        
-        let links : HashMap<PolicyID, LiteralPolicy> = v.links
+
+        let links: HashMap<PolicyID, LiteralPolicy> = v
+            .links
             .iter()
             .map(|(key, value)| (PolicyID::from_string(key), LiteralPolicy::from(value)))
             .collect();
 
         Self {
             templates: templates,
-            links: links
+            links: links,
         }
     }
 }
@@ -142,25 +145,24 @@ impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
 #[cfg(feature = "protobuffers")]
 impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     fn from(v: &LiteralPolicySet) -> Self {
-        let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
+        let mut templates: HashMap<String, proto::TemplateBody> =
+            HashMap::with_capacity(v.templates.len());
         for (key, value) in &v.templates {
-            templates.insert(
-                String::from(key.as_ref()),
-                proto::TemplateBody::from(value)
-            );
+            templates.insert(String::from(key.as_ref()), proto::TemplateBody::from(value));
         }
 
-        let mut links: HashMap<String, proto::LiteralPolicy> = HashMap::with_capacity(v.links.len());
+        let mut links: HashMap<String, proto::LiteralPolicy> =
+            HashMap::with_capacity(v.links.len());
         for (key, value) in &v.links {
             links.insert(
                 String::from(key.as_ref()),
-                proto::LiteralPolicy::from(value)
+                proto::LiteralPolicy::from(value),
             );
         }
 
         Self {
             templates: templates,
-            links: links
+            links: links,
         }
     }
 }
@@ -168,25 +170,27 @@ impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
 #[cfg(feature = "protobuffers")]
 impl From<&PolicySet> for proto::LiteralPolicySet {
     fn from(v: &PolicySet) -> Self {
-        let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
+        let mut templates: HashMap<String, proto::TemplateBody> =
+            HashMap::with_capacity(v.templates.len());
         for (key, value) in &v.templates {
             templates.insert(
                 String::from(key.as_ref()),
-                proto::TemplateBody::from(value.as_ref())
+                proto::TemplateBody::from(value.as_ref()),
             );
         }
 
-        let mut links: HashMap<String, proto::LiteralPolicy> = HashMap::with_capacity(v.links.len());
+        let mut links: HashMap<String, proto::LiteralPolicy> =
+            HashMap::with_capacity(v.links.len());
         for (key, value) in &v.links {
             links.insert(
                 String::from(key.as_ref()),
-                proto::LiteralPolicy::from(value)
+                proto::LiteralPolicy::from(value),
             );
         }
 
         Self {
             templates: templates,
-            links: links
+            links: links,
         }
     }
 }
@@ -592,7 +596,7 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint
+            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
         },
         parser,
     };
@@ -601,8 +605,8 @@ mod test {
 
     #[cfg(feature = "protobuffers")]
     use crate::{
-        ast::{AnyId, Annotation, PrincipalOrResourceConstraint, Name, EntityType},
-        from_normalized_str::FromNormalizedStr
+        ast::{Annotation, AnyId, EntityType, Name, PrincipalOrResourceConstraint},
+        from_normalized_str::FromNormalizedStr,
     };
 
     #[cfg(feature = "protobuffers")]
@@ -1002,10 +1006,18 @@ mod test {
     #[cfg(feature = "protobuffers")]
     #[test]
     fn protobuf_roundtrip() {
-        let annotation1: Annotation = Annotation { val: "".into(), loc: None };
-        let pc: PrincipalConstraint = PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
+        let annotation1: Annotation = Annotation {
+            val: "".into(),
+            loc: None,
+        };
+        let pc: PrincipalConstraint =
+            PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
         let ac: ActionConstraint = ActionConstraint::Eq(EntityUID::with_eid("read").into());
-        let rc: ResourceConstraint = ResourceConstraint { constraint: PrincipalOrResourceConstraint::is_entity_type(EntityType::from(Name::from_normalized_str("photo").unwrap()).into()) };
+        let rc: ResourceConstraint = ResourceConstraint {
+            constraint: PrincipalOrResourceConstraint::is_entity_type(
+                EntityType::from(Name::from_normalized_str("photo").unwrap()).into(),
+            ),
+        };
 
         let tb: TemplateBody = TemplateBody::new(
             PolicyID::from_string("template"),
@@ -1015,17 +1027,24 @@ mod test {
             pc,
             ac,
             rc,
-            Expr::val(true)
+            Expr::val(true),
         );
 
-        let policy: Policy = Policy::from_when_clause(Effect::Permit, Expr::val(true), PolicyID::from_string("alice"), None);
+        let policy: Policy = Policy::from_when_clause(
+            Effect::Permit,
+            Expr::val(true),
+            PolicyID::from_string("alice"),
+            None,
+        );
 
         let mut ps: PolicySet = PolicySet::new();
-        ps.add_template(Template::from(tb)).expect("Failed to add template to policy set.");
+        ps.add_template(Template::from(tb))
+            .expect("Failed to add template to policy set.");
         ps.add(policy).expect("Failed to add policy to policy set.");
-        let lps : LiteralPolicySet = LiteralPolicySet::from(ps);
-        let lps_roundtrip : LiteralPolicySet = LiteralPolicySet::from(&proto::LiteralPolicySet::from(&lps));
-        
+        let lps: LiteralPolicySet = LiteralPolicySet::from(ps);
+        let lps_roundtrip: LiteralPolicySet =
+            LiteralPolicySet::from(&proto::LiteralPolicySet::from(&lps));
+
         // Can't compare LiteralPolicySets directly, so we compare their fields
         assert_eq!(lps.templates, lps_roundtrip.templates);
         assert_eq!(lps.links, lps_roundtrip.links);

@@ -104,7 +104,7 @@ impl From<&ValidationMode> for proto::ValidationMode {
     fn from(v: &ValidationMode) -> Self {
         match v {
             ValidationMode::Strict => proto::ValidationMode::Strict,
-            ValidationMode::Permissive => proto::ValidationMode::Permissive
+            ValidationMode::Permissive => proto::ValidationMode::Permissive,
         }
     }
 }
@@ -114,7 +114,7 @@ impl From<&proto::ValidationMode> for ValidationMode {
     fn from(v: &proto::ValidationMode) -> Self {
         match v {
             proto::ValidationMode::Strict => ValidationMode::Strict,
-            proto::ValidationMode::Permissive => ValidationMode::Permissive
+            proto::ValidationMode::Permissive => ValidationMode::Permissive,
         }
     }
 }

@@ -39,7 +39,7 @@ impl From<&proto::expr::unary_app::Op> for UnaryOp {
     fn from(v: &proto::expr::unary_app::Op) -> Self {
         match v {
             proto::expr::unary_app::Op::Not => UnaryOp::Not,
-            proto::expr::unary_app::Op::Neg => UnaryOp::Neg
+            proto::expr::unary_app::Op::Neg => UnaryOp::Neg,
         }
     }
 }
@@ -49,7 +49,7 @@ impl From<&UnaryOp> for proto::expr::unary_app::Op {
     fn from(v: &UnaryOp) -> Self {
         match v {
             UnaryOp::Not => proto::expr::unary_app::Op::Not,
-            UnaryOp::Neg => proto::expr::unary_app::Op::Neg
+            UnaryOp::Neg => proto::expr::unary_app::Op::Neg,
         }
     }
 }
@@ -153,7 +153,7 @@ impl From<&proto::expr::binary_app::Op> for BinaryOp {
             proto::expr::binary_app::Op::In => BinaryOp::In,
             proto::expr::binary_app::Op::Contains => BinaryOp::Contains,
             proto::expr::binary_app::Op::ContainsAll => BinaryOp::ContainsAll,
-            proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny
+            proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny,
         }
     }
 }
@@ -171,7 +171,7 @@ impl From<&BinaryOp> for proto::expr::binary_app::Op {
             BinaryOp::In => proto::expr::binary_app::Op::In,
             BinaryOp::Contains => proto::expr::binary_app::Op::Contains,
             BinaryOp::ContainsAll => proto::expr::binary_app::Op::ContainsAll,
-            BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny
+            BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny,
         }
     }
 }

@@ -244,17 +244,13 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
 #[cfg(feature = "protobuffers")]
 impl From<&proto::Name> for Name {
     fn from(v: &proto::Name) -> Self {
-        let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
-        let path : Arc<Vec<Id>> = Arc::new(v.path
-            .iter()
-            .map(Id::new_unchecked)
-            .collect()
-        );
+        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
+        let path: Arc<Vec<Id>> = Arc::new(v.path.iter().map(Id::new_unchecked).collect());
 
         Self {
             id: Id::new_unchecked(&v.id),
             path: path,
-            loc: loc
+            loc: loc,
         }
     }
 }
@@ -270,7 +266,7 @@ impl From<&Name> for proto::Name {
         Self {
             id: String::from(v.id.as_ref()),
             path: path,
-            loc: v.loc.as_ref().map(proto::Loc::from)
+            loc: v.loc.as_ref().map(proto::Loc::from),
         }
     }
 }
@@ -354,7 +350,7 @@ impl From<&proto::SlotId> for SlotId {
     fn from(v: &proto::SlotId) -> Self {
         match v {
             proto::SlotId::Principal => SlotId::principal(),
-            proto::SlotId::Resource => SlotId::resource()
+            proto::SlotId::Resource => SlotId::resource(),
         }
     }
 }
@@ -364,11 +360,10 @@ impl From<&SlotId> for proto::SlotId {
     fn from(v: &SlotId) -> Self {
         match v {
             SlotId(ValidSlotId::Principal) => proto::SlotId::Principal,
-            SlotId(ValidSlotId::Resource) => proto::SlotId::Resource
+            SlotId(ValidSlotId::Resource) => proto::SlotId::Resource,
         }
     }
 }
-
 
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

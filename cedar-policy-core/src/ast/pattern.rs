@@ -35,13 +35,15 @@ pub enum PatternElem {
 impl From<&proto::expr::like::PatternElem> for PatternElem {
     fn from(v: &proto::expr::like::PatternElem) -> Self {
         match v.data.as_ref().unwrap() {
-            proto::expr::like::pattern_elem::Data::C(c) => 
-                PatternElem::Char(c.chars().next().unwrap()),
-            
-            proto::expr::like::pattern_elem::Data::Ty(ty) =>
+            proto::expr::like::pattern_elem::Data::C(c) => {
+                PatternElem::Char(c.chars().next().unwrap())
+            }
+
+            proto::expr::like::pattern_elem::Data::Ty(ty) => {
                 match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned()).unwrap() {
-                    proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard
+                    proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard,
                 }
+            }
         }
     }
 }
@@ -50,20 +52,17 @@ impl From<&proto::expr::like::PatternElem> for PatternElem {
 impl From<&PatternElem> for proto::expr::like::PatternElem {
     fn from(v: &PatternElem) -> Self {
         match v {
-            PatternElem::Char(c) => {
-                Self {
-                    data: Some(proto::expr::like::pattern_elem::Data::C(c.to_string()))
-                }
-            }
-            PatternElem::Wildcard => {
-                Self {
-                    data: Some(proto::expr::like::pattern_elem::Data::Ty(proto::expr::like::pattern_elem::Ty::Wildcard.into()))
-                }
-            }
+            PatternElem::Char(c) => Self {
+                data: Some(proto::expr::like::pattern_elem::Data::C(c.to_string())),
+            },
+            PatternElem::Wildcard => Self {
+                data: Some(proto::expr::like::pattern_elem::Data::Ty(
+                    proto::expr::like::pattern_elem::Ty::Wildcard.into(),
+                )),
+            },
         }
     }
 }
-
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.

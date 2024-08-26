@@ -105,7 +105,7 @@ impl EntityUIDEntry {
 #[cfg(feature = "protobuffers")]
 impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     fn from(v: &proto::EntityUidEntry) -> Self {
-        let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
+        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         EntityUIDEntry::known(EntityUID::from(v.euid.as_ref().unwrap()), loc)
     }
 }
@@ -117,17 +117,13 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
             EntityUIDEntry::Unknown { loc: _ } => {
                 panic!("Unknown EntityUID is not currently supported by the Protobuf interface");
             }
-            EntityUIDEntry::Known { euid, loc } => {
-                Self {
-                    euid: Some(proto::EntityUid::from(euid.as_ref())),
-                    loc: loc.as_ref().map(proto::Loc::from)
-                }
-            }
+            EntityUIDEntry::Known { euid, loc } => Self {
+                euid: Some(proto::EntityUid::from(euid.as_ref())),
+                loc: loc.as_ref().map(proto::Loc::from),
+            },
         }
     }
 }
-
-
 
 impl Request {
     /// Default constructor.
@@ -244,7 +240,7 @@ impl From<&proto::Request> for Request {
             EntityUIDEntry::from(v.principal.as_ref().unwrap()),
             EntityUIDEntry::from(v.action.as_ref().unwrap()),
             EntityUIDEntry::from(v.resource.as_ref().unwrap()),
-            v.context.as_ref().map(Context::from)
+            v.context.as_ref().map(Context::from),
         )
     }
 }
@@ -256,7 +252,7 @@ impl From<&Request> for proto::Request {
             principal: Some(proto::EntityUidEntry::from(&v.principal)),
             action: Some(proto::EntityUidEntry::from(&v.action)),
             resource: Some(proto::EntityUidEntry::from(&v.resource)),
-            context: v.context.as_ref().map(proto::Context::from)
+            context: v.context.as_ref().map(proto::Context::from),
         }
     }
 }
@@ -468,8 +464,9 @@ impl From<&proto::Context> for Context {
     fn from(v: &proto::Context) -> Self {
         Context::from_expr(
             BorrowedRestrictedExpr::new(&Expr::from(v.context.as_ref().unwrap())).unwrap(),
-            Extensions::none()
-        ).unwrap()
+            Extensions::none(),
+        )
+        .unwrap()
     }
 }
 
@@ -477,7 +474,9 @@ impl From<&proto::Context> for Context {
 impl From<&Context> for proto::Context {
     fn from(v: &Context) -> Self {
         Self {
-            context: Some(proto::Expr::from(&Expr::from(PartialValue::from(v.context.as_ref().to_owned()))))
+            context: Some(proto::Expr::from(&Expr::from(PartialValue::from(
+                v.context.as_ref().to_owned(),
+            )))),
         }
     }
 }
@@ -598,19 +597,26 @@ mod test {
     #[test]
     fn protobuf_roundtrip() {
         let context: Context = Context::from_expr(
-            RestrictedExpr::record([
-                    ("foo".into(), RestrictedExpr::val(37),)
-                ])
+            RestrictedExpr::record([("foo".into(), RestrictedExpr::val(37))])
                 .expect("Error creating restricted record.")
-                .as_borrowed()
-            ,
-            Extensions::none()
-        ).expect("Error creating context");
+                .as_borrowed(),
+            Extensions::none(),
+        )
+        .expect("Error creating context");
         let request = Request::new_unchecked(
-            EntityUIDEntry::Known{ euid: Arc::new(EntityUID::with_eid("andrew")), loc: None },
-            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("read")), loc: None },
-            EntityUIDEntry::Known { euid: Arc::new(EntityUID::with_eid("book")), loc: None },
-            Some(context.clone())
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("andrew")),
+                loc: None,
+            },
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("read")),
+                loc: None,
+            },
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("book")),
+                loc: None,
+            },
+            Some(context.clone()),
         );
         let request_rt: Request = Request::from(&proto::Request::from(&request));
         assert_eq!(context, Context::from(&proto::Context::from(&context)));
