@@ -91,12 +91,14 @@ impl FromStr for EntityType {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::EntityType> for EntityType {
     fn from(v: &proto::EntityType) -> Self {
         Self(Name::from(v.name.as_ref().unwrap()))
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&EntityType> for proto::EntityType {
     fn from(v: &EntityType) -> Self {
         Self { name : Some(proto::Name::from(v.name())) }
@@ -262,6 +264,7 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::EntityUid> for EntityUID {
     fn from(v: &proto::EntityUid) -> Self {
         let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
@@ -273,6 +276,7 @@ impl From<&proto::EntityUid> for EntityUID {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&EntityUID> for proto::EntityUid {
     fn from(v: &EntityUID) -> Self {
         let loc: Option<proto::Loc> = v.loc.as_ref().map(proto::Loc::from);
@@ -575,6 +579,7 @@ impl std::fmt::Display for Entity {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Entity> for Entity {
     fn from(v: &proto::Entity) -> Self {
         let extensions_none = Extensions::none();
@@ -601,6 +606,7 @@ impl From<&proto::Entity> for Entity {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Entity> for proto::Entity {
     fn from(v: &Entity) -> Self {
         let mut attrs: HashMap<String, proto::Expr> = HashMap::with_capacity(v.attrs.len());
@@ -732,6 +738,7 @@ mod test {
         assert!(!euid.is_action());
     }
 
+    #[cfg(feature = "protobuffers")]
     #[test]
     fn round_trip_protobuf() {
         let name = Name::from_normalized_str("B::C::D").unwrap();

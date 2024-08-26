@@ -15,6 +15,8 @@
  */
 
 use std::sync::Arc;
+
+#[cfg(feature = "protobuffers")]
 use crate::ast::proto;
 
 use serde::{Deserialize, Serialize};
@@ -29,12 +31,13 @@ pub enum PatternElem {
     Wildcard,
 }
 
-
+#[cfg(feature = "protobuffers")]
 impl From<&proto::expr::like::PatternElem> for PatternElem {
     fn from(v: &proto::expr::like::PatternElem) -> Self {
         match v.data.as_ref().unwrap() {
             proto::expr::like::pattern_elem::Data::C(c) => 
                 PatternElem::Char(c.chars().next().unwrap()),
+            
             proto::expr::like::pattern_elem::Data::Ty(ty) =>
                 match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned()).unwrap() {
                     proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard
@@ -43,6 +46,7 @@ impl From<&proto::expr::like::PatternElem> for PatternElem {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&PatternElem> for proto::expr::like::PatternElem {
     fn from(v: &PatternElem) -> Self {
         match v {
@@ -252,20 +256,5 @@ pub mod test {
 
         // Patterns that do not match "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         assert!(!(string_map("y") + star()).wildcard_match("ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"));
-    }
-
-    #[test]
-    fn protobuf_roundtrip() {
-        assert_eq!(
-            PatternElem::Wildcard,
-            PatternElem::from(&proto::expr::like::PatternElem::from(&PatternElem::Wildcard))
-        );
-
-        let pattern_elem1: PatternElem = PatternElem::Char('l');
-        assert_eq!(
-            pattern_elem1,
-            PatternElem::from(&proto::expr::like::PatternElem::from(&pattern_elem1))
-        );
-
     }
 }

@@ -353,6 +353,7 @@ impl std::fmt::Display for Entities {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Entities> for Entities {
     fn from(v: &proto::Entities) -> Self {
         let entities : Vec<Entity> = v.entities
@@ -376,6 +377,7 @@ impl From<&proto::Entities> for Entities {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Entities> for proto::Entities {
     fn from(v: &Entities) -> Self {
         let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
@@ -3306,6 +3308,7 @@ mod schema_based_parsing_tests {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 #[cfg(test)]
 pub mod protobuf_tests {
     use super::*;
@@ -3315,14 +3318,12 @@ pub mod protobuf_tests {
 
     #[test]
     fn roundtrip() {
-
         // Empty Test
         let entities1: Entities = Entities::new();
         assert_eq!(
             entities1,
             Entities::from(&proto::Entities::from(&entities1))
         );
-
 
         // Single Element Test
         let attrs = (1..=7)
@@ -3358,6 +3359,5 @@ pub mod protobuf_tests {
             Extensions::none()
         ).unwrap();
         assert_eq!(entities3, Entities::from(&proto::Entities::from(&entities3)));
-
     }
 }

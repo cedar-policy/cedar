@@ -17,17 +17,20 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast,
     ast::{EntityType, EntityUID, PartialValueSerializedAsExpr},
-    extensions::Extensions,
-    evaluator::RestrictedEvaluator,
     transitive_closure::TCNode,
 };
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
-use crate::{proto, types::{Attributes, Type}};
+use crate::types::{Attributes, Type};
+
+#[cfg(feature = "protobuffers")]
+use crate::proto;
+
+#[cfg(feature = "protobuffers")]
+use cedar_policy_core::{ast, extensions::Extensions, evaluator::RestrictedEvaluator};
 
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -99,6 +102,7 @@ impl TCNode<EntityUID> for ValidatorActionId {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&ValidatorActionId> for proto::ValidatorActionId {
     fn from(v: &ValidatorActionId) -> Self {
         Self {
@@ -116,6 +120,7 @@ impl From<&ValidatorActionId> for proto::ValidatorActionId {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::ValidatorActionId> for ValidatorActionId {
     fn from(v: &proto::ValidatorActionId) -> Self {
         let extensions_none = Extensions::none();
@@ -145,6 +150,7 @@ pub(crate) struct ValidatorApplySpec {
     resource_apply_spec: HashSet<EntityType>,
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&ValidatorApplySpec> for proto::ValidatorApplySpec {
     fn from(v: &ValidatorApplySpec) -> Self {
         Self {
@@ -154,6 +160,7 @@ impl From<&ValidatorApplySpec> for proto::ValidatorApplySpec {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::ValidatorApplySpec> for ValidatorApplySpec {
     fn from(v: &proto::ValidatorApplySpec) -> Self {
         Self {

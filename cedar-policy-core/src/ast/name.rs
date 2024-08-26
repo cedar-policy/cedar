@@ -23,6 +23,8 @@ use std::sync::Arc;
 use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
+
+#[cfg(feature = "protobuffers")]
 use crate::ast::proto;
 
 use super::PrincipalOrResource;
@@ -239,6 +241,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Name> for Name {
     fn from(v: &proto::Name) -> Self {
         let loc : Option<Loc> = v.loc.as_ref().map(Loc::from);
@@ -256,6 +259,7 @@ impl From<&proto::Name> for Name {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Name> for proto::Name {
     fn from(v: &Name) -> Self {
         let mut path: Vec<String> = Vec::with_capacity(v.path.as_ref().len());
@@ -345,6 +349,7 @@ impl std::fmt::Display for SlotId {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::SlotId> for SlotId {
     fn from(v: &proto::SlotId) -> Self {
         match v {
@@ -354,6 +359,7 @@ impl From<&proto::SlotId> for SlotId {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&SlotId> for proto::SlotId {
     fn from(v: &SlotId) -> Self {
         match v {
@@ -479,6 +485,7 @@ mod test {
         )
     }
 
+    #[cfg(feature = "protobuffers")]
     #[test]
     fn protobuf_roundtrip() {
         let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();

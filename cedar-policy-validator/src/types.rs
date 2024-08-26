@@ -31,7 +31,6 @@ use std::{
 };
 
 use cedar_policy_core::{
-    ast,
     ast::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
@@ -39,7 +38,13 @@ use cedar_policy_core::{
     extensions::Extensions,
 };
 
-use crate::{validation_errors::LubHelp, ValidationMode, proto};
+use crate::{validation_errors::LubHelp, ValidationMode};
+
+#[cfg(feature = "protobuffers")]
+use crate::proto;
+
+#[cfg(feature = "protobuffers")]
+use cedar_policy_core::ast;
 
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
@@ -708,6 +713,7 @@ impl Display for Type {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Type> for Type {
     fn from(v: &proto::Type) -> Self {
 
@@ -729,6 +735,7 @@ impl From<&proto::Type> for Type {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Type> for proto::Type {
     fn from(v: &Type) -> Self {
 
@@ -1110,6 +1117,7 @@ impl IntoIterator for Attributes {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Attributes> for Attributes {
     fn from(v: &proto::Attributes) -> Self {
         Self::with_attributes(
@@ -1120,6 +1128,7 @@ impl From<&proto::Attributes> for Attributes {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Attributes> for proto::Attributes {
     fn from(v: &Attributes) -> Self {
         Self {
@@ -1153,6 +1162,7 @@ impl OpenTag {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::OpenTag> for OpenTag {
     fn from(v: &proto::OpenTag) -> Self {
         match v {
@@ -1162,6 +1172,7 @@ impl From<&proto::OpenTag> for OpenTag {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&OpenTag> for proto::OpenTag {
     fn from(v: &OpenTag) -> Self {
         match v {
@@ -1455,12 +1466,12 @@ impl EntityRecordKind {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::EntityRecordKind> for EntityRecordKind {
     fn from(v: &proto::EntityRecordKind) -> Self {
         match v.data.as_ref().unwrap() {
-            proto::entity_record_kind::Data::Ty(ty) => match proto::entity_record_kind::Ty::try_from(ty.to_owned()) {
-                Ok(proto::entity_record_kind::Ty::AnyEntity) => Self::AnyEntity,
-                _ => panic!("Unexpected Entity Type")
+            proto::entity_record_kind::Data::Ty(ty) => match proto::entity_record_kind::Ty::try_from(ty.to_owned()).unwrap() {
+                proto::entity_record_kind::Ty::AnyEntity => Self::AnyEntity,
             },
             proto::entity_record_kind::Data::Record(p_record) => Self::Record { 
                 attrs: Attributes::from(p_record.attrs.as_ref().unwrap()),
@@ -1477,6 +1488,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&EntityRecordKind> for proto::EntityRecordKind {
     fn from(v: &EntityRecordKind) -> Self {
         let data = match v {
@@ -1538,6 +1550,7 @@ impl AttributeType {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::AttributeType> for AttributeType {
     fn from(v: &proto::AttributeType) -> Self {
         Self {
@@ -1547,6 +1560,7 @@ impl From<&proto::AttributeType> for AttributeType {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&AttributeType> for proto::AttributeType {
     fn from(v: &AttributeType) -> Self {
         Self {

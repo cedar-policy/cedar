@@ -16,6 +16,7 @@
 
 fn main() {
     generate_parsers();
+    #[cfg(feature = "protobuffers")]
     generate_schemas();
 }
 
@@ -28,7 +29,8 @@ fn generate_parsers() {
         .expect("parser synth");
 }
 
-// Reads protobuf schema files (.proto) and generates Rust modules
+#[cfg(feature = "protobuffers")]
+/// Reads protobuf schema files (.proto) and generates Rust modules
 fn generate_schemas() {
     let mut config = prost_build::Config::new();
     config.extern_path(".cedar_policy_core", "cedar_policy-core::ast::proto");

@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-use crate::ast::{CallStyle, proto};
+use crate::ast::CallStyle;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "protobuffers")]
+use crate::ast::proto;
 
 /// Built-in operators with exactly one argument
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -31,6 +34,7 @@ pub enum UnaryOp {
     Neg,
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::expr::unary_app::Op> for UnaryOp {
     fn from(v: &proto::expr::unary_app::Op) -> Self {
         match v {
@@ -40,6 +44,7 @@ impl From<&proto::expr::unary_app::Op> for UnaryOp {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&UnaryOp> for proto::expr::unary_app::Op {
     fn from(v: &UnaryOp) -> Self {
         match v {
@@ -135,6 +140,7 @@ impl std::fmt::Display for BinaryOp {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::expr::binary_app::Op> for BinaryOp {
     fn from(v: &proto::expr::binary_app::Op) -> Self {
         match v {
@@ -152,6 +158,7 @@ impl From<&proto::expr::binary_app::Op> for BinaryOp {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&BinaryOp> for proto::expr::binary_app::Op {
     fn from(v: &BinaryOp) -> Self {
         match v {
@@ -175,33 +182,5 @@ impl std::fmt::Display for CallStyle {
             Self::FunctionStyle => write!(f, "function-style"),
             Self::MethodStyle => write!(f, "method-style"),
         }
-    }
-}
-
-#[cfg(test)]
-pub mod test {
-    use super::*;
-
-    #[test]
-    fn protobuf_roundtrip() {
-        assert_eq!(
-            UnaryOp::Neg,
-            UnaryOp::from(&proto::expr::unary_app::Op::from(&UnaryOp::Neg))
-        );
-
-        assert_eq!(
-            UnaryOp::Neg,
-            UnaryOp::from(&proto::expr::unary_app::Op::from(&UnaryOp::Neg))
-        );
-
-        assert_eq!(
-            BinaryOp::Eq,
-            BinaryOp::from(&proto::expr::binary_app::Op::from(&BinaryOp::Eq))
-        );
-
-        assert_eq!(
-            BinaryOp::ContainsAny,
-            BinaryOp::from(&proto::expr::binary_app::Op::from(&BinaryOp::ContainsAny))
-        );
     }
 }

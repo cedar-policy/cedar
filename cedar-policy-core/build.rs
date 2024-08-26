@@ -16,6 +16,7 @@
 
 fn main() {
     generate_parsers();
+    #[cfg(feature = "protobuffers")]
     generate_schemas();
 }
 
@@ -31,7 +32,8 @@ fn generate_parsers() {
 
 }
 
-// Reads protobuf schema files (.proto) and generates Rust modules
+#[cfg(feature = "protobuffers")]
+/// Reads protobuf schema files (.proto) and generates Rust modules
 fn generate_schemas() {
     prost_build::compile_protos(&["./schema/AST.proto"], &["./schema"])
         .expect("Prost protobuf compilation error;");

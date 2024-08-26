@@ -52,6 +52,7 @@ test-util = []
 # Experimental features.
 partial-eval = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobuffers = []
 
 [build-dependencies]
 lalrpop = "0.20.0"

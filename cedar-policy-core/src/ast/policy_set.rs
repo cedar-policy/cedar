@@ -16,15 +16,21 @@
 
 use super::{
     EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template, TemplateBody
+    StaticPolicy, Template
 };
-use crate::ast::proto;
 use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
+
+#[cfg(feature = "protobuffers")]
+use crate::ast::proto;
+
+#[cfg(feature = "protobuffers")]
+use super::TemplateBody;
+
 
 /// Represents a set of `Policy`s
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +116,7 @@ impl From<PolicySet> for LiteralPolicySet {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
     fn from(v: &proto::LiteralPolicySet) -> Self {
         let templates : HashMap<PolicyID, Template> = v.templates
@@ -132,6 +139,7 @@ impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     fn from(v: &LiteralPolicySet) -> Self {
         let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
@@ -157,6 +165,7 @@ impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&PolicySet> for proto::LiteralPolicySet {
     fn from(v: &PolicySet) -> Self {
         let mut templates: HashMap<String, proto::TemplateBody> = HashMap::with_capacity(v.templates.len());
@@ -182,6 +191,7 @@ impl From<&PolicySet> for proto::LiteralPolicySet {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl TryFrom<&proto::LiteralPolicySet> for PolicySet {
     type Error = ReificationError;
     fn try_from(pset: &proto::LiteralPolicySet) -> Result<Self, Self::Error> {
@@ -582,14 +592,20 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
-            AnyId, Annotation, PrincipalOrResourceConstraint, Name, EntityType
+            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint
         },
         parser,
-        from_normalized_str::FromNormalizedStr,
     };
 
     use std::collections::HashMap;
+
+    #[cfg(feature = "protobuffers")]
+    use crate::{
+        ast::{AnyId, Annotation, PrincipalOrResourceConstraint, Name, EntityType},
+        from_normalized_str::FromNormalizedStr
+    };
+
+    #[cfg(feature = "protobuffers")]
     use std::str::FromStr;
 
     #[test]
@@ -983,6 +999,7 @@ mod test {
         assert_eq!(pset.all_templates().count(), 4);
     }
 
+    #[cfg(feature = "protobuffers")]
     #[test]
     fn protobuf_roundtrip() {
         let annotation1: Annotation = Annotation { val: "".into(), loc: None };

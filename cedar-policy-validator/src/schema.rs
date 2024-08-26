@@ -23,7 +23,6 @@
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cedar_policy_core::{
-    ast,
     ast::{Entity, EntityType, EntityUID, Name},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
@@ -38,10 +37,15 @@ use crate::{
     err::schema_errors::*,
     err::*,
     human_schema::SchemaWarning,
-    proto,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
+
+#[cfg(feature = "protobuffers")]
+use crate::proto;
+
+#[cfg(feature = "protobuffers")]
+use cedar_policy_core::ast;
 
 mod action;
 pub use action::ValidatorActionId;
@@ -649,6 +653,7 @@ impl ValidatorSchema {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&ValidatorSchema> for proto::ValidatorSchema {
     fn from(v: &ValidatorSchema) -> Self {
         Self {
@@ -664,6 +669,7 @@ impl From<&ValidatorSchema> for proto::ValidatorSchema {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::ValidatorSchema> for ValidatorSchema {
     fn from(v: &proto::ValidatorSchema) -> Self {
         Self {

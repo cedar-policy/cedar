@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityUID, Integer, StaticallyTyped, Type, proto};
+use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
 use crate::parser;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
+
+#[cfg(feature = "protobuffers")]
+use crate::ast::proto;
 
 /// First-class values which may appear as literals in `Expr::Lit`.
 ///
@@ -125,6 +128,7 @@ impl From<Arc<EntityUID>> for Literal {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::expr::Literal> for Literal {
     fn from(v: &proto::expr::Literal) -> Self {
         match v.lit.as_ref().unwrap() {
@@ -138,6 +142,7 @@ impl From<&proto::expr::Literal> for Literal {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Literal> for proto::expr::Literal {
     fn from(v: &Literal) -> Self {
         match v {
@@ -175,33 +180,33 @@ impl Literal {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 #[cfg(test)]
 mod test {
     use super::*;
-    use proto::expr;
+    use proto;
 
     #[test]
     fn protobuf_roundtrip() {
         let bool_literal_f = Literal::from(false);
-        assert_eq!(bool_literal_f, Literal::from(&expr::Literal::from(&bool_literal_f)));
+        assert_eq!(bool_literal_f, Literal::from(&proto::expr::Literal::from(&bool_literal_f)));
 
         let bool_literal_t = Literal::from(true);
-        assert_eq!(bool_literal_t, Literal::from(&expr::Literal::from(&bool_literal_t)));
+        assert_eq!(bool_literal_t, Literal::from(&proto::expr::Literal::from(&bool_literal_t)));
 
         let long_literal0 = Literal::from(0);
-        assert_eq!(long_literal0, Literal::from(&expr::Literal::from(&long_literal0)));
+        assert_eq!(long_literal0, Literal::from(&proto::expr::Literal::from(&long_literal0)));
 
         let long_literal1 = Literal::from(1);
-        assert_eq!(long_literal1, Literal::from(&expr::Literal::from(&long_literal1)));
+        assert_eq!(long_literal1, Literal::from(&proto::expr::Literal::from(&long_literal1)));
 
         let str_literal0 = Literal::from("");
-        assert_eq!(str_literal0, Literal::from(&expr::Literal::from(&str_literal0)));
+        assert_eq!(str_literal0, Literal::from(&proto::expr::Literal::from(&str_literal0)));
 
         let str_literal1 = Literal::from("foo");
-        assert_eq!(str_literal1, Literal::from(&expr::Literal::from(&str_literal1)));
+        assert_eq!(str_literal1, Literal::from(&proto::expr::Literal::from(&str_literal1)));
 
         let euid_literal = Literal::from(EntityUID::with_eid("foo"));
-        assert_eq!(euid_literal, Literal::from(&expr::Literal::from(&euid_literal)));
+        assert_eq!(euid_literal, Literal::from(&proto::expr::Literal::from(&euid_literal)));
     }
-
 }

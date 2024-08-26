@@ -31,6 +31,7 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
+#[cfg(feature = "protobuffers")]
 pub mod proto {
     #![allow(missing_docs)]
     include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
@@ -98,6 +99,7 @@ impl ValidationMode {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&ValidationMode> for proto::ValidationMode {
     fn from(v: &ValidationMode) -> Self {
         match v {
@@ -107,6 +109,7 @@ impl From<&ValidationMode> for proto::ValidationMode {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::ValidationMode> for ValidationMode {
     fn from(v: &proto::ValidationMode) -> Self {
         match v {

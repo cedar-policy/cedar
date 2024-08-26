@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+#[cfg(feature = "protobuffers")]
 use crate::ast::proto;
 
 /// Represents a source location: index/range, and a reference to the source
@@ -100,6 +102,7 @@ impl miette::SourceCode for &Loc {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::Loc> for Loc {
     fn from(v: &proto::Loc) -> Self {
         let offset_usize: usize = v.offset.try_into().unwrap();
@@ -113,6 +116,7 @@ impl From<&proto::Loc> for Loc {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&Loc> for proto::Loc {
     fn from(v: &Loc) -> Self {
         let offset_u32 : u32 = v.span.offset().try_into().unwrap();
@@ -125,6 +129,7 @@ impl From<&Loc> for proto::Loc {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -149,5 +154,4 @@ pub mod tests {
         );
         assert_eq!(loc2, Loc::from(&proto::Loc::from(&loc2)));
     }
-
 }

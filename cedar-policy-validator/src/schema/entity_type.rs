@@ -20,9 +20,15 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use cedar_policy_core::{ast, ast::EntityType, transitive_closure::TCNode};
+use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
-use crate::{proto, types::{AttributeType, Attributes, OpenTag}};
+use crate::types::{AttributeType, Attributes, OpenTag};
+
+#[cfg(feature = "protobuffers")]
+use crate::proto;
+
+#[cfg(feature = "protobuffers")]
+use cedar_policy_core::ast;
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -86,6 +92,7 @@ impl TCNode<EntityType> for ValidatorEntityType {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
         Self {
@@ -97,6 +104,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     }
 }
 
+#[cfg(feature = "protobuffers")]
 impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     fn from(v: &proto::ValidatorEntityType) -> Self {
         Self {
