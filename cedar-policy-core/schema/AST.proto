@@ -21,7 +21,7 @@ enum Mode {
 
 message Entities {
     repeated Entity entities = 1;
-    Mode mode = 3;
+    Mode mode = 2;
 }
 
 message Context {
@@ -31,8 +31,8 @@ message Context {
 // BEGIN REQUEST MESSAGES
 
 message EntityUidEntry {
-    EntityUid euid = 2;
-    Loc loc = 3;
+    EntityUid euid = 1;
+    Loc loc = 2;
 }
 
 message EntityUid {
@@ -42,7 +42,7 @@ message EntityUid {
 }
 
 message EntityType {
-    Name name = 2;
+    Name name = 1;
 }
 
 // alias Id = string
@@ -90,12 +90,12 @@ message TemplateBody {
     Loc loc = 2;
     // alias AnyId = string
     // alias Annotations = map<AnyId, Annotation>
-    map<string, Annotation> annotations = 4;
-    Effect effect = 5;
-    PrincipalConstraint principal_constraint = 6;
-    ActionConstraint action_constraint = 7;
-    ResourceConstraint resource_constraint = 8;
-    Expr non_scope_constraints = 9;
+    map<string, Annotation> annotations = 3;
+    Effect effect = 4;
+    PrincipalConstraint principal_constraint = 5;
+    ActionConstraint action_constraint = 6;
+    ResourceConstraint resource_constraint = 7;
+    Expr non_scope_constraints = 8;
 }
 
 message PrincipalConstraint {
@@ -195,10 +195,10 @@ message Expr {
     }
     message Literal {
         oneof lit {
-            bool b = 2;
-            int64 i = 3;
-            string s = 4;
-            EntityUid euid = 5;
+            bool b = 1;
+            int64 i = 2;
+            string s = 3;
+            EntityUid euid = 4;
         }
     }
     
