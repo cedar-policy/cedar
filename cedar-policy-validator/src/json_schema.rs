@@ -42,7 +42,7 @@ use crate::{
     cedar_schema::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
-    err::{schema_errors::*, ActionResolutionError, Result, TypeResolutionError},
+    err::{schema_errors::*, Result},
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
 
@@ -256,12 +256,12 @@ impl NamespaceDefinition<ConditionalName> {
                 .common_types
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             entity_types: self
                 .entity_types
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             actions: self
                 .actions
                 .into_iter()
@@ -324,7 +324,7 @@ impl EntityType<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<EntityType<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
         Ok(EntityType {
             member_of_types: self
                 .member_of_types
@@ -403,7 +403,7 @@ impl RecordOrContextAttributes<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordOrContextAttributes<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<RecordOrContextAttributes<InternalName>, TypeNotDefinedError> {
         Ok(RecordOrContextAttributes(
             self.0.fully_qualify_type_references(all_defs)?,
         ))
@@ -584,7 +584,7 @@ impl EntityAttributes<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributes<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<EntityAttributes<InternalName>, TypeNotDefinedError> {
         match self {
             Self::RecordAttributes(attrs) => Ok(EntityAttributes::RecordAttributes(
                 attrs.fully_qualify_type_references(all_defs)?,
@@ -606,7 +606,7 @@ impl EntityAttributesInternal<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributesInternal<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<EntityAttributesInternal<InternalName>, TypeNotDefinedError> {
         Ok(EntityAttributesInternal {
             type_placeholder_hack: self.type_placeholder_hack,
             attrs: self.attrs.fully_qualify_type_references(all_defs)?,
@@ -735,7 +735,7 @@ impl ActionType<ConditionalName> {
                 .map(|v| {
                     v.into_iter()
                         .map(|aeuid| aeuid.fully_qualify_type_references(all_defs))
-                        .collect::<std::result::Result<_, ActionResolutionError>>()
+                        .collect::<std::result::Result<_, ActionNotDefinedError>>()
                 })
                 .transpose()?,
         })
@@ -800,18 +800,18 @@ impl ApplySpec<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<ApplySpec<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<ApplySpec<InternalName>, TypeNotDefinedError> {
         Ok(ApplySpec {
             resource_types: self
                 .resource_types
                 .into_iter()
                 .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             principal_types: self
                 .principal_types
                 .into_iter()
                 .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             context: self.context.fully_qualify_type_references(all_defs)?,
         })
     }
@@ -928,7 +928,7 @@ impl ActionEntityUID<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<ActionEntityUID<InternalName>, ActionResolutionError> {
+    ) -> std::result::Result<ActionEntityUID<InternalName>, ActionNotDefinedError> {
         for possibility in self.possibilities() {
             // This ignores any possibilities that aren't valid `EntityUID`,
             // because we know that all defined actions are valid `EntityUID`s
@@ -1131,7 +1131,7 @@ impl Type<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<Type<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
         match self {
             Self::Type(tv) => Ok(Type::Type(tv.fully_qualify_type_references(all_defs)?)),
             Self::CommonTypeRef { type_name } => Ok(Type::CommonTypeRef {
@@ -1653,14 +1653,14 @@ impl RecordType<RecordAttributeType<ConditionalName>> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordType<RecordAttributeType<InternalName>>, TypeResolutionError>
+    ) -> std::result::Result<RecordType<RecordAttributeType<InternalName>>, TypeNotDefinedError>
     {
         Ok(RecordType {
             attributes: self
                 .attributes
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             additional_attributes: self.additional_attributes,
         })
     }
@@ -1676,14 +1676,14 @@ impl RecordType<EntityAttributeType<ConditionalName>> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordType<EntityAttributeType<InternalName>>, TypeResolutionError>
+    ) -> std::result::Result<RecordType<EntityAttributeType<InternalName>>, TypeNotDefinedError>
     {
         Ok(RecordType {
             attributes: self
                 .attributes
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeResolutionError>>()?,
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             additional_attributes: self.additional_attributes,
         })
     }
@@ -1832,7 +1832,7 @@ impl TypeVariant<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<TypeVariant<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<TypeVariant<InternalName>, TypeNotDefinedError> {
         match self {
             Self::Boolean => Ok(TypeVariant::Boolean),
             Self::Long => Ok(TypeVariant::Long),
@@ -1862,7 +1862,7 @@ impl TypeVariant<ConditionalName> {
                             },
                         ))
                     })
-                    .collect::<std::result::Result<BTreeMap<_, _>, TypeResolutionError>>()?,
+                    .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,
                 additional_attributes,
             })),
         }
@@ -1972,7 +1972,7 @@ impl EntityAttributeTypeInternal<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributeTypeInternal<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<EntityAttributeTypeInternal<InternalName>, TypeNotDefinedError> {
         match self {
             Self::Type(ty) => Ok(EntityAttributeTypeInternal::Type(
                 ty.fully_qualify_type_references(all_defs)?,
@@ -2093,7 +2093,7 @@ impl EntityAttributeType<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributeType<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<EntityAttributeType<InternalName>, TypeNotDefinedError> {
         Ok(EntityAttributeType {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
@@ -2168,7 +2168,7 @@ impl RecordAttributeType<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordAttributeType<InternalName>, TypeResolutionError> {
+    ) -> std::result::Result<RecordAttributeType<InternalName>, TypeNotDefinedError> {
         Ok(RecordAttributeType {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,

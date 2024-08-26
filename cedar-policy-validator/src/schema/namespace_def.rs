@@ -38,7 +38,7 @@ use crate::{
     fuzzy_match::fuzzy_search,
     json_schema,
     types::{AttributeType, Attributes, OpenTag, Type},
-    ActionBehavior, ConditionalName, RawName, ReferenceType, TypeResolutionError,
+    ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
 
 /// A single namespace definition from the schema JSON or Cedar syntax,
@@ -349,13 +349,13 @@ impl CommonTypeDefs<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> Result<CommonTypeDefs<InternalName>, TypeResolutionError> {
+    ) -> Result<CommonTypeDefs<InternalName>, TypeNotDefinedError> {
         Ok(CommonTypeDefs {
             defs: self
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeResolutionError>>()?,
+                .collect::<Result<_, TypeNotDefinedError>>()?,
         })
     }
 }
@@ -422,13 +422,13 @@ impl EntityTypesDef<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> Result<EntityTypesDef<InternalName>, TypeResolutionError> {
+    ) -> Result<EntityTypesDef<InternalName>, TypeNotDefinedError> {
         Ok(EntityTypesDef {
             defs: self
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeResolutionError>>()?,
+                .collect::<Result<_, TypeNotDefinedError>>()?,
         })
     }
 }
@@ -488,7 +488,7 @@ impl EntityTypeFragment<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> Result<EntityTypeFragment<InternalName>, TypeResolutionError> {
+    ) -> Result<EntityTypeFragment<InternalName>, TypeNotDefinedError> {
         // Fully qualify typenames appearing in `attributes`
         let fully_qual_attributes = self.attributes.fully_qualify_type_references(all_defs);
         // Fully qualify typenames appearing in `parents`
@@ -496,7 +496,7 @@ impl EntityTypeFragment<ConditionalName> {
             .parents
             .into_iter()
             .map(|parent| parent.resolve(all_defs))
-            .collect::<Result<_, TypeResolutionError>>()?;
+            .collect::<Result<_, TypeNotDefinedError>>()?;
         // Now is the time to check whether any parents are dangling, i.e.,
         // refer to entity types that are not declared in any fragment (since we
         // now have the set of typenames that are declared in all fragments).
@@ -516,11 +516,8 @@ impl EntityTypeFragment<ConditionalName> {
             }
             (Err(e), None) => Err(e),
             (Err(e), Some(mut undeclared)) => {
-                match e {
-                    TypeResolutionError::TypeNotDefined(e) => undeclared.extend(e.0),
-                    TypeResolutionError::TypeShadowing(_) => (), // swallow this error in order to return a `TypeNotDefined` error for `undeclared` instead
-                }
-                Err(TypeNotDefinedError(undeclared).into())
+                undeclared.extend(e.0);
+                Err(TypeNotDefinedError(undeclared))
             }
         }
     }
@@ -854,7 +851,7 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     /// Be warned that `common_type_defs` should contain all definitions, from
     /// all schema fragments.
     /// If `self` references any type not in `common_type_defs`, this will
-    /// return a `TypeResolutionError`.
+    /// return a `TypeNotDefinedError`.
     pub fn resolve_common_type_refs(
         self,
         common_type_defs: &HashMap<&InternalName, Type>,

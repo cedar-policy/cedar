@@ -310,58 +310,6 @@ impl SchemaError {
 /// Convenience alias
 pub type Result<T> = std::result::Result<T, SchemaError>;
 
-/// Enum containing just the cases of [`SchemaError`] that can be returned when
-/// resolving entity/common type names
-#[derive(Debug, Diagnostic, Error)]
-pub enum TypeResolutionError {
-    /// This error occurs when we cannot resolve a typename (because it refers
-    /// to an entity type or common type that was not declared).
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    TypeNotDefined(#[from] schema_errors::TypeNotDefinedError),
-    /// Entity/common type shadowing error. Some shadowing relationships are not
-    /// allowed for clarity reasons; see
-    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    TypeShadowing(#[from] schema_errors::TypeShadowingError),
-}
-
-impl From<TypeResolutionError> for SchemaError {
-    fn from(e: TypeResolutionError) -> SchemaError {
-        match e {
-            TypeResolutionError::TypeNotDefined(e) => e.into(),
-            TypeResolutionError::TypeShadowing(e) => e.into(),
-        }
-    }
-}
-
-/// Enum containing just the cases of [`SchemaError`] that can be returned when
-/// resolving action names
-#[derive(Debug, Diagnostic, Error)]
-pub enum ActionResolutionError {
-    /// This error occurs when we cannot resolve an action name (because it
-    /// refers to an action that was not declared).
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionNotDefined(#[from] schema_errors::ActionNotDefinedError),
-    /// Action shadowing error. Some shadowing relationships are not allowed for
-    /// clarity reasons; see
-    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ActionShadowing(#[from] schema_errors::ActionShadowingError),
-}
-
-impl From<ActionResolutionError> for SchemaError {
-    fn from(e: ActionResolutionError) -> SchemaError {
-        match e {
-            ActionResolutionError::ActionNotDefined(e) => e.into(),
-            ActionResolutionError::ActionShadowing(e) => e.into(),
-        }
-    }
-}
-
 /// Error subtypes for [`SchemaError`]
 pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};

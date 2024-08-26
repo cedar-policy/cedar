@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use crate::err::TypeResolutionError;
 use crate::schema::AllDefs;
 use crate::schema_errors::TypeNotDefinedError;
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
@@ -252,7 +251,7 @@ impl ConditionalName {
     /// `all_defs` also internally includes [`InternalName`]s, because some
     /// names containing `__cedar` might be internally defined/valid, even
     /// though it is not valid for _end-users_ to define those names.
-    pub fn resolve<'a>(self, all_defs: &AllDefs) -> Result<InternalName, TypeResolutionError> {
+    pub fn resolve<'a>(self, all_defs: &AllDefs) -> Result<InternalName, TypeNotDefinedError> {
         for possibility in &self.possibilities {
             // Per RFC 24, we give priority to trying to resolve to a common
             // type, before trying to resolve to an entity type.
@@ -279,7 +278,7 @@ impl ConditionalName {
                 }
             }
         }
-        Err(TypeNotDefinedError(nonempty![self]).into())
+        Err(TypeNotDefinedError(nonempty![self]))
     }
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve

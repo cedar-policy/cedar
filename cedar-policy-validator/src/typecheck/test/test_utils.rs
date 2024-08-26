@@ -157,7 +157,10 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    let schema = schema.try_into().map_err(miette::Report::new).unwrap_or_else(|e| panic!("failed to construct schema: {e:?}"));
+    let schema = schema
+        .try_into()
+        .map_err(miette::Report::new)
+        .unwrap_or_else(|e| panic!("failed to construct schema: {e:?}"));
     let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
