@@ -31,21 +31,20 @@ pub enum UnaryOp {
     Neg,
 }
 
-impl From<&proto::expr::expr_kind::UnaryOp> for UnaryOp {
-    fn from(v: &proto::expr::expr_kind::UnaryOp) -> Self {
+impl From<&proto::expr::unary_app::Op> for UnaryOp {
+    fn from(v: &proto::expr::unary_app::Op) -> Self {
         match v {
-            proto::expr::expr_kind::UnaryOp::NaUop => panic!("Expected UnaryOp Type"),
-            proto::expr::expr_kind::UnaryOp::Not => UnaryOp::Not,
-            proto::expr::expr_kind::UnaryOp::Neg => UnaryOp::Neg
+            proto::expr::unary_app::Op::Not => UnaryOp::Not,
+            proto::expr::unary_app::Op::Neg => UnaryOp::Neg
         }
     }
 }
 
-impl From<&UnaryOp> for proto::expr::expr_kind::UnaryOp {
+impl From<&UnaryOp> for proto::expr::unary_app::Op {
     fn from(v: &UnaryOp) -> Self {
         match v {
-            UnaryOp::Not => proto::expr::expr_kind::UnaryOp::Not,
-            UnaryOp::Neg => proto::expr::expr_kind::UnaryOp::Neg
+            UnaryOp::Not => proto::expr::unary_app::Op::Not,
+            UnaryOp::Neg => proto::expr::unary_app::Op::Neg
         }
     }
 }
@@ -136,37 +135,36 @@ impl std::fmt::Display for BinaryOp {
     }
 }
 
-impl From<&proto::expr::expr_kind::BinaryOp> for BinaryOp {
-    fn from(v: &proto::expr::expr_kind::BinaryOp) -> Self {
+impl From<&proto::expr::binary_app::Op> for BinaryOp {
+    fn from(v: &proto::expr::binary_app::Op) -> Self {
         match v {
-            proto::expr::expr_kind::BinaryOp::NaBop => panic!("Expected BinaryOp type"),
-            proto::expr::expr_kind::BinaryOp::Eq => BinaryOp::Eq,
-            proto::expr::expr_kind::BinaryOp::Less => BinaryOp::Less,
-            proto::expr::expr_kind::BinaryOp::LessEq => BinaryOp::LessEq,
-            proto::expr::expr_kind::BinaryOp::Add => BinaryOp::Add,
-            proto::expr::expr_kind::BinaryOp::Sub => BinaryOp::Sub,
-            proto::expr::expr_kind::BinaryOp::Mul => BinaryOp::Mul,
-            proto::expr::expr_kind::BinaryOp::In => BinaryOp::In,
-            proto::expr::expr_kind::BinaryOp::Contains => BinaryOp::Contains,
-            proto::expr::expr_kind::BinaryOp::ContainsAll => BinaryOp::ContainsAll,
-            proto::expr::expr_kind::BinaryOp::ContainsAny => BinaryOp::ContainsAny
+            proto::expr::binary_app::Op::Eq => BinaryOp::Eq,
+            proto::expr::binary_app::Op::Less => BinaryOp::Less,
+            proto::expr::binary_app::Op::LessEq => BinaryOp::LessEq,
+            proto::expr::binary_app::Op::Add => BinaryOp::Add,
+            proto::expr::binary_app::Op::Sub => BinaryOp::Sub,
+            proto::expr::binary_app::Op::Mul => BinaryOp::Mul,
+            proto::expr::binary_app::Op::In => BinaryOp::In,
+            proto::expr::binary_app::Op::Contains => BinaryOp::Contains,
+            proto::expr::binary_app::Op::ContainsAll => BinaryOp::ContainsAll,
+            proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny
         }
     }
 }
 
-impl From<&BinaryOp> for proto::expr::expr_kind::BinaryOp {
+impl From<&BinaryOp> for proto::expr::binary_app::Op {
     fn from(v: &BinaryOp) -> Self {
         match v {
-            BinaryOp::Eq => proto::expr::expr_kind::BinaryOp::Eq,
-            BinaryOp::Less => proto::expr::expr_kind::BinaryOp::Less,
-            BinaryOp::LessEq => proto::expr::expr_kind::BinaryOp::LessEq,
-            BinaryOp::Add => proto::expr::expr_kind::BinaryOp::Add,
-            BinaryOp::Sub => proto::expr::expr_kind::BinaryOp::Sub,
-            BinaryOp::Mul => proto::expr::expr_kind::BinaryOp::Mul,
-            BinaryOp::In => proto::expr::expr_kind::BinaryOp::In,
-            BinaryOp::Contains => proto::expr::expr_kind::BinaryOp::Contains,
-            BinaryOp::ContainsAll => proto::expr::expr_kind::BinaryOp::ContainsAll,
-            BinaryOp::ContainsAny => proto::expr::expr_kind::BinaryOp::ContainsAny
+            BinaryOp::Eq => proto::expr::binary_app::Op::Eq,
+            BinaryOp::Less => proto::expr::binary_app::Op::Less,
+            BinaryOp::LessEq => proto::expr::binary_app::Op::LessEq,
+            BinaryOp::Add => proto::expr::binary_app::Op::Add,
+            BinaryOp::Sub => proto::expr::binary_app::Op::Sub,
+            BinaryOp::Mul => proto::expr::binary_app::Op::Mul,
+            BinaryOp::In => proto::expr::binary_app::Op::In,
+            BinaryOp::Contains => proto::expr::binary_app::Op::Contains,
+            BinaryOp::ContainsAll => proto::expr::binary_app::Op::ContainsAll,
+            BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny
         }
     }
 }
@@ -188,22 +186,22 @@ pub mod test {
     fn protobuf_roundtrip() {
         assert_eq!(
             UnaryOp::Neg,
-            UnaryOp::from(&proto::expr::expr_kind::UnaryOp::from(&UnaryOp::Neg))
+            UnaryOp::from(&proto::expr::unary_app::Op::from(&UnaryOp::Neg))
         );
 
         assert_eq!(
             UnaryOp::Neg,
-            UnaryOp::from(&proto::expr::expr_kind::UnaryOp::from(&UnaryOp::Neg))
+            UnaryOp::from(&proto::expr::unary_app::Op::from(&UnaryOp::Neg))
         );
 
         assert_eq!(
             BinaryOp::Eq,
-            BinaryOp::from(&proto::expr::expr_kind::BinaryOp::from(&BinaryOp::Eq))
+            BinaryOp::from(&proto::expr::binary_app::Op::from(&BinaryOp::Eq))
         );
 
         assert_eq!(
             BinaryOp::ContainsAny,
-            BinaryOp::from(&proto::expr::expr_kind::BinaryOp::from(&BinaryOp::ContainsAny))
+            BinaryOp::from(&proto::expr::binary_app::Op::from(&BinaryOp::ContainsAny))
         );
     }
 }

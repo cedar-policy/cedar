@@ -173,112 +173,132 @@ message ActionConstraint {
 message Expr {
     ExprKind expr_kind = 1;
     Loc source_loc = 2;
-    // Ignoring data for now
 
     message ExprKind {
-        ExprKindType ty = 1;
-        Literal lit = 2;
-        Var var = 3;
-        SlotId slot = 4;
-        Unknown unknown = 5;
-        UnaryOp uop = 11;
-        BinaryOp bop = 13;
-        Name fn_name = 16;
-        repeated Expr args = 17;
-        string attr = 19;
-        // alias Patterns = repeated PatternElem
-        repeated PatternElem pattern = 20;
-        EntityType entity_type = 21;
-        map<string, Expr> record = 22;
-
-        enum ExprKindType {
-            na_ekt = 0;
-            Lit = 1; // Expects (lit: Literal)
-            VarTy = 2; // Expects (var: Var)
-            Slot = 3; // Expects (slot: SlotId)
-            UnknownTy = 4; // Expects (unknown: Unknown)
-            If = 5; // Expects (args: repeated Expr)
-            And = 6; // Expects (args: repeated Expr)
-            Or = 7; // Expects (args: repeated Expr)
-            UnaryApp = 8; // Expects (op: UnaryOp, args: repeated Expr)
-            BinaryApp = 9; // Expects (op: BinaryOp, args: repeated Expr)
-            ExtensionFunctionApp = 10; // Expects (fn_name: Name, args: repeated Expr)
-            GetAttr = 11; // Expects (args: repeated Expr, attr: string)
-            HasAttr = 12; // Expects (args: repeated Expr, attr: string)
-            Like = 13; // Expects (args: repeated Expr, pattern: Pattern)
-            Is = 14; // Expects (args: repeated Expr, entity_type: EntityType)
-            Set = 15; // Expects (args: repeated Expr)
-            Record = 16; // Expects (record: map<string, Expr>)
+        oneof data {
+            Literal lit = 1;
+            Var var = 2;
+            SlotId slot = 3;
+            If if = 4;
+            And and = 5;
+            Or or = 6;
+            UnaryApp uApp = 7;
+            BinaryApp bApp = 8;
+            ExtensionFunctionApp extApp = 9;
+            GetAttr getAttr = 10;
+            HasAttr hasAttr = 11;
+            Like like = 12;
+            Is is = 13;
+            Set set = 14;
+            Record record = 15;
         }
-
-        message Literal {
-            oneof lit {
-                bool b = 2;
-                int64 i = 3;
-                string s = 4;
-                EntityUid euid = 5;
-            }
+    }
+    message Literal {
+        oneof lit {
+            bool b = 2;
+            int64 i = 3;
+            string s = 4;
+            EntityUid euid = 5;
         }
+    }
+    
+    enum Var {
+        Principal = 0;
+        Action = 1;
+        Resource = 2;
+        CONTEXT = 3;
+    }
 
-        enum Var {
-            Principal = 0;
-            Action = 1;
-            Resource = 2;
-            CONTEXT = 3;
+    message If {
+        Expr test_expr = 1;
+        Expr then_expr = 2;
+        Expr else_expr = 3;
+    }
+
+    message And {
+        Expr left = 1;
+        Expr right = 2;
+    }
+
+    message Or {
+        Expr left = 1;
+        Expr right = 2;
+    }
+
+    message UnaryApp {
+        Op op = 1;
+        Expr expr = 2;
+
+        enum Op {
+            Not = 0;
+            Neg = 1;
         }
+    }
 
-        message Unknown {
-            string name = 1;
-            Type type_annotation = 2;
+    message BinaryApp {
+        Op op = 1;
+        Expr left = 2;
+        Expr right = 3;
 
-            message Type {
-                TypeType ty = 1;
-                EntityType ety = 2;
-                Name name = 3;
-
-                enum TypeType {
-                    Bool = 0;
-                    Long = 1;
-                    String = 2;
-                    Set = 3;
-                    Record = 4;
-                    Entity = 5; // Expects (ety: EntityType)
-                    Extension = 6; // Expects (name: Name)
-                }
-            }
+        enum Op {
+            Eq = 0;
+            Less = 1;
+            LessEq = 2;
+            Add = 3;
+            Sub = 4;
+            Mul = 5;
+            In = 6;
+            Contains = 7;
+            ContainsAll = 8;
+            ContainsAny = 9;
         }
+    }
 
-        enum UnaryOp {
-            na_uop = 0;
-            Not = 1;
-            Neg = 2;
-        }
+    message ExtensionFunctionApp {
+        Name fn_name = 1;
+        repeated Expr args = 2;
+    }
 
-        enum BinaryOp {
-            na_bop = 0;
-            Eq = 1;
-            Less = 2;
-            LessEq = 3;
-            Add = 4;
-            Sub = 5;
-            Mul = 6;
-            In = 7;
-            Contains = 8;
-            ContainsAll = 9;
-            ContainsAny = 10;
-        }
+    message GetAttr {
+        Expr expr = 1;
+        string attr = 2;
+    }
+
+    message HasAttr {
+        Expr expr = 1;
+        string attr = 2;
+    }
+
+    message Like {
+        Expr expr = 1;
+        repeated PatternElem pattern = 2;
 
         message PatternElem {
-            PatternElemType ty = 1;
-            string c = 2;
+            oneof data {
+                Ty ty = 1;
+                string c = 2;
+            }
 
-            enum PatternElemType {
+            // Zero-arity constructors
+            enum Ty {
                 Wildcard = 0;
-                Char = 1; // Expects (c: char)
             }
         }
-    } // END ExprKind
-} // END Expr
+    }
+
+    message Is {
+        Expr expr = 1;
+        EntityType entity_type = 2;
+    }
+
+    message Set {
+        repeated Expr elements = 1;
+    }
+
+    message Record {
+        map<string, Expr> items = 2;
+    }
+}
 
 // END POLICYSET MESSAGES
 

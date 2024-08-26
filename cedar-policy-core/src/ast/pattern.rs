@@ -30,29 +30,30 @@ pub enum PatternElem {
 }
 
 
-impl From<&proto::expr::expr_kind::PatternElem> for PatternElem {
-    fn from(v: &proto::expr::expr_kind::PatternElem) -> Self {
-        let pty = proto::expr::expr_kind::pattern_elem::PatternElemType::try_from(v.ty).unwrap();
-        match pty {
-            proto::expr::expr_kind::pattern_elem::PatternElemType::Char => PatternElem::Char(v.c.chars().next().unwrap()),
-            proto::expr::expr_kind::pattern_elem::PatternElemType::Wildcard => PatternElem::Wildcard
+impl From<&proto::expr::like::PatternElem> for PatternElem {
+    fn from(v: &proto::expr::like::PatternElem) -> Self {
+        match v.data.as_ref().unwrap() {
+            proto::expr::like::pattern_elem::Data::C(c) => 
+                PatternElem::Char(c.chars().next().unwrap()),
+            proto::expr::like::pattern_elem::Data::Ty(ty) =>
+                match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned()).unwrap() {
+                    proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard
+                }
         }
     }
 }
 
-impl From<&PatternElem> for proto::expr::expr_kind::PatternElem {
+impl From<&PatternElem> for proto::expr::like::PatternElem {
     fn from(v: &PatternElem) -> Self {
         match v {
             PatternElem::Char(c) => {
                 Self {
-                    ty: proto::expr::expr_kind::pattern_elem::PatternElemType::Char.into(),
-                    c: c.to_string()
+                    data: Some(proto::expr::like::pattern_elem::Data::C(c.to_string()))
                 }
             }
             PatternElem::Wildcard => {
                 Self {
-                    ty: proto::expr::expr_kind::pattern_elem::PatternElemType::Wildcard.into(),
-                    c: "".to_string()
+                    data: Some(proto::expr::like::pattern_elem::Data::Ty(proto::expr::like::pattern_elem::Ty::Wildcard.into()))
                 }
             }
         }
@@ -257,13 +258,13 @@ pub mod test {
     fn protobuf_roundtrip() {
         assert_eq!(
             PatternElem::Wildcard,
-            PatternElem::from(&proto::expr::expr_kind::PatternElem::from(&PatternElem::Wildcard))
+            PatternElem::from(&proto::expr::like::PatternElem::from(&PatternElem::Wildcard))
         );
 
         let pattern_elem1: PatternElem = PatternElem::Char('l');
         assert_eq!(
             pattern_elem1,
-            PatternElem::from(&proto::expr::expr_kind::PatternElem::from(&pattern_elem1))
+            PatternElem::from(&proto::expr::like::PatternElem::from(&pattern_elem1))
         );
 
     }

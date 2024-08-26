@@ -125,40 +125,40 @@ impl From<Arc<EntityUID>> for Literal {
     }
 }
 
-impl From<&proto::expr::expr_kind::Literal> for Literal {
-    fn from(v: &proto::expr::expr_kind::Literal) -> Self {
+impl From<&proto::expr::Literal> for Literal {
+    fn from(v: &proto::expr::Literal) -> Self {
         match v.lit.as_ref().unwrap() {
-            proto::expr::expr_kind::literal::Lit::B(b) => Literal::Bool(b.clone()),
-            proto::expr::expr_kind::literal::Lit::I(l) => Literal::Long(l.clone()),
-            proto::expr::expr_kind::literal::Lit::S(s) => Literal::String(s.clone().into()),
-            proto::expr::expr_kind::literal::Lit::Euid(e) => {
+            proto::expr::literal::Lit::B(b) => Literal::Bool(b.clone()),
+            proto::expr::literal::Lit::I(l) => Literal::Long(l.clone()),
+            proto::expr::literal::Lit::S(s) => Literal::String(s.clone().into()),
+            proto::expr::literal::Lit::Euid(e) => {
                 Literal::EntityUID(EntityUID::from(e).into())
             }
         }
     }
 }
 
-impl From<&Literal> for proto::expr::expr_kind::Literal {
+impl From<&Literal> for proto::expr::Literal {
     fn from(v: &Literal) -> Self {
         match v {
             Literal::Bool(b) => {
                 Self {
-                    lit : Some(proto::expr::expr_kind::literal::Lit::B(b.clone()))
+                    lit : Some(proto::expr::literal::Lit::B(b.clone()))
                 }
             }
             Literal::Long(l) => {
                 Self {
-                    lit : Some(proto::expr::expr_kind::literal::Lit::I(l.clone()))
+                    lit : Some(proto::expr::literal::Lit::I(l.clone()))
                 }
             }
             Literal::String(s) => {
                 Self {
-                    lit : Some(proto::expr::expr_kind::literal::Lit::S(s.to_string()))
+                    lit : Some(proto::expr::literal::Lit::S(s.to_string()))
                 }
             }
             Literal::EntityUID(euid) => {
                 Self {
-                    lit : Some(proto::expr::expr_kind::literal::Lit::Euid(proto::EntityUid::from(euid.as_ref())))
+                    lit : Some(proto::expr::literal::Lit::Euid(proto::EntityUid::from(euid.as_ref())))
                 }
             }
         }
@@ -178,30 +178,30 @@ impl Literal {
 #[cfg(test)]
 mod test {
     use super::*;
-    use proto::expr::expr_kind;
+    use proto::expr;
 
     #[test]
     fn protobuf_roundtrip() {
         let bool_literal_f = Literal::from(false);
-        assert_eq!(bool_literal_f, Literal::from(&expr_kind::Literal::from(&bool_literal_f)));
+        assert_eq!(bool_literal_f, Literal::from(&expr::Literal::from(&bool_literal_f)));
 
         let bool_literal_t = Literal::from(true);
-        assert_eq!(bool_literal_t, Literal::from(&expr_kind::Literal::from(&bool_literal_t)));
+        assert_eq!(bool_literal_t, Literal::from(&expr::Literal::from(&bool_literal_t)));
 
         let long_literal0 = Literal::from(0);
-        assert_eq!(long_literal0, Literal::from(&expr_kind::Literal::from(&long_literal0)));
+        assert_eq!(long_literal0, Literal::from(&expr::Literal::from(&long_literal0)));
 
         let long_literal1 = Literal::from(1);
-        assert_eq!(long_literal1, Literal::from(&expr_kind::Literal::from(&long_literal1)));
+        assert_eq!(long_literal1, Literal::from(&expr::Literal::from(&long_literal1)));
 
         let str_literal0 = Literal::from("");
-        assert_eq!(str_literal0, Literal::from(&expr_kind::Literal::from(&str_literal0)));
+        assert_eq!(str_literal0, Literal::from(&expr::Literal::from(&str_literal0)));
 
         let str_literal1 = Literal::from("foo");
-        assert_eq!(str_literal1, Literal::from(&expr_kind::Literal::from(&str_literal1)));
+        assert_eq!(str_literal1, Literal::from(&expr::Literal::from(&str_literal1)));
 
         let euid_literal = Literal::from(EntityUID::with_eid("foo"));
-        assert_eq!(euid_literal, Literal::from(&expr_kind::Literal::from(&euid_literal)));
+        assert_eq!(euid_literal, Literal::from(&expr::Literal::from(&euid_literal)));
     }
 
 }
