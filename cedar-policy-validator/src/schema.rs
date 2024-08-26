@@ -408,7 +408,7 @@ impl ValidatorSchema {
                     tyname.basename().clone(),
                     tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
                 ));
-                all_defs.mark_as_implicitly_defined_common_type(tyname.into());
+                all_defs.mark_as_defined_as_common_type(tyname.into());
             }
         }
 
@@ -1012,7 +1012,7 @@ impl AllDefs {
     }
 
     /// Mark the given [`InternalName`] as defined as a common type
-    pub fn mark_as_implicitly_defined_common_type(&mut self, name: InternalName) {
+    pub fn mark_as_defined_as_common_type(&mut self, name: InternalName) {
         self.common_defs.insert(name);
     }
 
