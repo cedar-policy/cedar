@@ -25,7 +25,7 @@ Cedar Language Version: 4.0
 
 - The API around `Request::new` has changed to remove the `Option`s
   around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Implemented [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+- (*) Implemented [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
   In both the Cedar and JSON schema syntaxes, it is now illegal to define the
   same entity name, common type name, or action name in both the empty namespace
   and a nonempty namespace.
