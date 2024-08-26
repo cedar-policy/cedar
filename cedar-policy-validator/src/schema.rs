@@ -384,7 +384,7 @@ impl ValidatorSchema {
         // in the empty namespace is convenient, because at this point the only
         // definitions in the empty namespace are the ones the user has put there, which
         // are thus subject to RFC 70 shadowing rules.
-        all_defs.rfc_70_checks()?;
+        all_defs.rfc_70_shadowing_checks()?;
 
         // Add aliases for primitive and extension typenames in the empty namespace,
         // so that they can be accessed without `__cedar`.
@@ -1016,9 +1016,14 @@ impl AllDefs {
     }
 
     /// Return an error if the definitions in this [`AllDefs`] violate the
-    /// restrictions specified in
-    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md)
-    pub fn rfc_70_checks(&self) -> Result<()> {
+    /// restrictions specified in [RFC 70].
+    ///
+    /// RFC 70 disallows definitions of entity types, common types, and actions
+    /// that would shadow definitions of other entity types, common types, or
+    /// actions in the empty namespace.
+    ///
+    /// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
+    pub fn rfc_70_shadowing_checks(&self) -> Result<()> {
         for unqualified_name in self
             .entity_and_common_names()
             .filter(|name| name.is_unqualified())
