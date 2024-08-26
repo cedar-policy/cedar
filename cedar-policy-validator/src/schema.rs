@@ -2913,7 +2913,7 @@ pub(crate) mod test {
         });
     }
 
-    // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070.
+    // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070 and #1139.
     #[test]
     fn test_common_type_name_conflicts() {
         let src: serde_json::Value = json!({
@@ -3034,7 +3034,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(_));
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
             "": {
@@ -3064,7 +3064,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
             "": {
@@ -3094,12 +3094,12 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
-            "": {
+            "NS": {
                 "commonTypes": {
-                    "String": {
+                    "Set": {
                         "type": "Record",
                         "attributes": {
                             "a": {
@@ -3114,7 +3114,7 @@ pub(crate) mod test {
                             "type" : "Record",
                             "attributes" : {
                                 "c" : {
-                                    "type" : "String"
+                                    "type" : "Long"
                                 }
                         }
                     }
@@ -3124,7 +3124,7 @@ pub(crate) mod test {
             }
         });
         let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
     }
 
     #[test]
@@ -3206,8 +3206,8 @@ mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
 mod test_rfc70 {
-    use super::test::collect_warnings;
-    use super::ValidatorSchema;
+    use super::{test::collect_warnings, CedarSchemaError};
+    use super::{SchemaError, ValidatorSchema};
     use crate::types::Type;
     use cedar_policy_core::{
         extensions::Extensions,
@@ -3225,10 +3225,28 @@ mod test_rfc70 {
     }
 
     #[track_caller]
+    fn assert_invalid_cedar_schema(src: &str) {
+        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+            Ok(_) => panic!("{src} should be an invalid schema"),
+            Err(CedarSchemaError::Parsing(_)) => {}
+            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+        }
+    }
+
+    #[track_caller]
     fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
         match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
             Ok(schema) => schema,
             Err(e) => panic!("{:?}", miette::Report::new(e)),
+        }
+    }
+
+    #[track_caller]
+    fn assert_invalid_json_schema(json: serde_json::Value) {
+        match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
+            Ok(_) => panic!("{json} should be an invalid schema"),
+            Err(SchemaError::JsonDeserialization(_)) => {}
+            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
         }
     }
 
@@ -3744,7 +3762,7 @@ mod test_rfc70 {
         assert_valid_json_schema(src_json);
     }
 
-    /// Common type shadowing a primitive type is allowed;
+    /// Common type shadowing a JSON schema primitive type is disallowed per #1139;
     /// you can still refer to the primitive type using __cedar
     #[test]
     fn common_shadowing_primitive() {
@@ -3752,6 +3770,25 @@ mod test_rfc70 {
             type String = Long;
             entity E {
                 a: String,
+                b: __cedar::String,
+                c: Long,
+                d: __cedar::Long,
+            };
+            namespace NS {
+                type Bool = Long;
+                entity F {
+                    a: Bool,
+                    b: __cedar::Bool,
+                    c: Long,
+                    d: __cedar::Long,
+                };
+            }
+        ";
+        assert_invalid_cedar_schema(src);
+        let src = "
+            type _String = Long;
+            entity E {
+                a: _String,
                 b: __cedar::String,
                 c: Long,
                 d: __cedar::Long,
@@ -3834,10 +3871,51 @@ mod test_rfc70 {
                 "actions": {}
             }
         });
+        assert_invalid_json_schema(src_json);
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "_String": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "_String" },
+                                "b": { "type": "__cedar::String" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "commonTypes": {
+                    "Bool": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "Bool" },
+                                "b": { "type": "__cedar::Bool" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
         let schema = assert_valid_json_schema(src_json);
         let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string()); // this is arguably a BUG -- the Cedar syntax interprets this as Long due to the common type, but the JSON syntax interprets this as String. However, this schema will be illegal after #1139, so it's moot to fix now
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_string());

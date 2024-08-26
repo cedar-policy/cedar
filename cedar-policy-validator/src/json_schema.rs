@@ -172,6 +172,58 @@ impl<N: Display> Fragment<N> {
     }
 }
 
+/// An [`UnreservedId`] that cannot be reserved JSON schema keywords
+/// like `Set`, `Long`, and etc.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct CommonTypeId(UnreservedId);
+
+impl From<CommonTypeId> for UnreservedId {
+    fn from(value: CommonTypeId) -> Self {
+        value.0
+    }
+}
+
+impl CommonTypeId {
+    pub(crate) fn unchecked(id: UnreservedId) -> Self {
+        Self(id)
+    }
+}
+
+impl Display for CommonTypeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// Test if this id is a reserved JSON schema keyword.
+// Issues:
+// https://github.com/cedar-policy/cedar/issues/1070
+// https://github.com/cedar-policy/cedar/issues/1139
+pub(crate) fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
+    matches!(
+        id.as_ref(),
+        "Set" | "Record" | "Entity" | "Extension" | "Long" | "String" | "Boolean"
+    )
+}
+
+/// Deserialize a [`CommonTypeId`]
+impl<'de> Deserialize<'de> for CommonTypeId {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        UnreservedId::deserialize(deserializer).and_then(|id| {
+            if is_reserved_schema_keyword(&id) {
+                Err(serde::de::Error::custom(format!(
+                    "Used reserved JSON schema keyword: {id} "
+                )))
+            } else {
+                Ok(Self(id))
+            }
+        })
+    }
+}
+
 /// A single namespace definition from a Fragment.
 /// This is composed of common types, entity types, and action definitions.
 ///
@@ -194,7 +246,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<UnreservedId, Type<N>>,
+    pub common_types: HashMap<CommonTypeId, Type<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
