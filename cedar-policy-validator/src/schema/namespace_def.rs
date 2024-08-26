@@ -32,7 +32,7 @@ use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{internal_name_to_entity_type, ValidatorApplySpec};
+use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     fuzzy_match::fuzzy_search,
@@ -186,27 +186,16 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// [`ValidatorNamespaceDef<InternalName>`] by fully-qualifying all
     /// typenames that appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<ValidatorNamespaceDef<InternalName, EntityType>, SchemaError> {
         match (
-            self.common_types
-                .fully_qualify_type_references(all_common_defs, all_entity_defs),
-            self.entity_types
-                .fully_qualify_type_references(all_common_defs, all_entity_defs),
-            self.actions.fully_qualify_type_references(
-                all_common_defs,
-                all_entity_defs,
-                all_action_defs,
-            ),
+            self.common_types.fully_qualify_type_references(all_defs),
+            self.entity_types.fully_qualify_type_references(all_defs),
+            self.actions.fully_qualify_type_references(all_defs),
         ) {
             (Ok(common_types), Ok(entity_types), Ok(actions)) => Ok(ValidatorNamespaceDef {
                 namespace: self.namespace,
@@ -355,25 +344,18 @@ impl CommonTypeDefs<ConditionalName> {
     /// [`CommonTypeDefs<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-    ) -> Result<CommonTypeDefs<InternalName>, TypeResolutionError> {
+        all_defs: &AllDefs,
+    ) -> Result<CommonTypeDefs<InternalName>, TypeNotDefinedError> {
         Ok(CommonTypeDefs {
             defs: self
                 .defs
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
-                .collect::<Result<_, _>>()?,
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<Result<_, TypeNotDefinedError>>()?,
         })
     }
 }
@@ -435,25 +417,18 @@ impl EntityTypesDef<ConditionalName> {
     /// [`EntityTypesDef<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-    ) -> Result<EntityTypesDef<InternalName>, TypeResolutionError> {
+        all_defs: &AllDefs,
+    ) -> Result<EntityTypesDef<InternalName>, TypeNotDefinedError> {
         Ok(EntityTypesDef {
             defs: self
                 .defs
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-                    ))
-                })
-                .collect::<Result<_, _>>()?,
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<Result<_, TypeNotDefinedError>>()?,
         })
     }
 }
@@ -508,31 +483,27 @@ impl EntityTypeFragment<ConditionalName> {
     /// [`EntityTypeFragment<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-    ) -> Result<EntityTypeFragment<InternalName>, TypeResolutionError> {
+        all_defs: &AllDefs,
+    ) -> Result<EntityTypeFragment<InternalName>, TypeNotDefinedError> {
         // Fully qualify typenames appearing in `attributes`
-        let fully_qual_attributes = self
-            .attributes
-            .fully_qualify_type_references(all_common_defs, all_entity_defs);
+        let fully_qual_attributes = self.attributes.fully_qualify_type_references(all_defs);
         // Fully qualify typenames appearing in `parents`
         let parents: HashSet<InternalName> = self
             .parents
             .into_iter()
-            .map(|parent| parent.resolve(all_common_defs, all_entity_defs).cloned())
-            .collect::<Result<_, _>>()?;
+            .map(|parent| parent.resolve(all_defs))
+            .collect::<Result<_, TypeNotDefinedError>>()?;
         // Now is the time to check whether any parents are dangling, i.e.,
         // refer to entity types that are not declared in any fragment (since we
         // now have the set of typenames that are declared in all fragments).
         let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
             parents
                 .iter()
-                .filter(|ety| !all_entity_defs.contains(ety))
+                .filter(|ety| !all_defs.is_defined_as_entity(ety))
                 .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
         );
         match (fully_qual_attributes, undeclared_parents) {
@@ -540,11 +511,13 @@ impl EntityTypeFragment<ConditionalName> {
                 attributes,
                 parents,
             }),
-            (Ok(_), Some(undeclared_parents)) => Err(TypeResolutionError(undeclared_parents)),
+            (Ok(_), Some(undeclared_parents)) => {
+                Err(TypeNotDefinedError(undeclared_parents).into())
+            }
             (Err(e), None) => Err(e),
             (Err(e), Some(mut undeclared)) => {
                 undeclared.extend(e.0);
-                Err(TypeResolutionError(undeclared))
+                Err(TypeNotDefinedError(undeclared))
             }
         }
     }
@@ -612,31 +585,17 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// [`ActionsDef<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<ActionsDef<InternalName, EntityType>, SchemaError> {
         Ok(ActionsDef {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        v.fully_qualify_type_references(
-                            all_common_defs,
-                            all_entity_defs,
-                            all_action_defs,
-                        )?,
-                    ))
-                })
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_, SchemaError>>()?,
         })
     }
@@ -730,30 +689,21 @@ impl ActionFragment<ConditionalName, ConditionalName> {
     /// [`ActionFragment<InternalName>`] by fully-qualifying all typenames that
     /// appear anywhere in any definitions.
     ///
-    /// `all_common_defs` and `all_entity_defs` need to be the full set of all
-    /// fully-qualified typenames (of common and entity types respectively) that
-    /// are defined in the schema (in all schema fragments).
-    /// `all_action_defs` needs to be the full set of all fully-qualified action
-    /// EUIDs that are defined in the schema (in all schema fragments).
+    /// `all_defs` needs to contain the full set of all fully-qualified typenames
+    /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
-        all_common_defs: &HashSet<InternalName>,
-        all_entity_defs: &HashSet<InternalName>,
-        all_action_defs: &HashSet<EntityUID>,
+        all_defs: &AllDefs,
     ) -> Result<ActionFragment<InternalName, EntityType>, SchemaError> {
         Ok(ActionFragment {
-            context: self
-                .context
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
-            applies_to: self
-                .applies_to
-                .fully_qualify_type_references(all_common_defs, all_entity_defs)?,
+            context: self.context.fully_qualify_type_references(all_defs)?,
+            applies_to: self.applies_to.fully_qualify_type_references(all_defs)?,
             parents: self
                 .parents
                 .into_iter()
                 .map(|parent| {
                     parent
-                        .fully_qualify_type_references(all_action_defs)
+                        .fully_qualify_type_references(all_defs)
                         .map_err(Into::into)
                 })
                 .collect::<Result<_, SchemaError>>()?,
@@ -901,7 +851,7 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     /// Be warned that `common_type_defs` should contain all definitions, from
     /// all schema fragments.
     /// If `self` references any type not in `common_type_defs`, this will
-    /// return a `TypeResolutionError`.
+    /// return a `TypeNotDefinedError`.
     pub fn resolve_common_type_refs(
         self,
         common_type_defs: &HashMap<&InternalName, Type>,

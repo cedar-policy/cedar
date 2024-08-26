@@ -383,7 +383,7 @@ fn multiple_namespaces_attributes() {
 
 #[test]
 fn multiple_namespaces_member_of() {
-    let authorization_model = json_schema::Fragment::from_json_value(json!(
+    let schema = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -408,7 +408,6 @@ fn multiple_namespaces_member_of() {
         }
     ))
     .unwrap();
-    let schema: ValidatorSchema = authorization_model.try_into().unwrap();
 
     assert_policy_typechecks(
         schema,
@@ -422,7 +421,7 @@ fn multiple_namespaces_member_of() {
 
 #[test]
 fn multiple_namespaces_applies_to() {
-    let authorization_model = json_schema::Fragment::from_json_value(json!(
+    let schema = json_schema::Fragment::from_json_value(json!(
         {
             "A": {
                 "entityTypes": {
@@ -466,7 +465,6 @@ fn multiple_namespaces_applies_to() {
         }
     ))
     .unwrap();
-    let schema: ValidatorSchema = authorization_model.try_into().unwrap();
 
     assert_policy_typechecks(
         schema.clone(),
@@ -542,15 +540,15 @@ fn namespaced_entity_is_wrong_type_when() {
 fn multi_namespace_action_eq() {
     let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
-            entity E;
-            action "Action" appliesTo { context: {}, principal : [E], resource : [E] };
+            entity E1;
+            action "A" appliesTo { context: {}, principal : [E1], resource : [E1] };
             namespace NS1 {
                 entity E;
-                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+                action "B" appliesTo { context: {}, principal : [E], resource : [E]};
             }
             namespace NS2 {
                 entity E;
-                action "Action" appliesTo { context: {}, principal : [E], resource : [E]};
+                action "B" appliesTo { context: {}, principal : [E], resource : [E]};
             }
         "#,
         Extensions::all_available(),
@@ -561,7 +559,7 @@ fn multi_namespace_action_eq() {
         schema.clone(),
         parse_policy(
             None,
-            r#"permit(principal, action == Action::"Action", resource);"#,
+            r#"permit(principal, action == Action::"A", resource);"#,
         )
         .unwrap(),
     );
@@ -569,14 +567,14 @@ fn multi_namespace_action_eq() {
         schema.clone(),
         parse_policy(
             None,
-            r#"permit(principal, action == NS1::Action::"Action", resource);"#,
+            r#"permit(principal, action == NS1::Action::"B", resource);"#,
         )
         .unwrap(),
     );
 
     let policy = parse_policy(
         None,
-        r#"permit(principal, action, resource) when { NS1::Action::"Action" == NS2::Action::"Action" };"#,
+        r#"permit(principal, action, resource) when { NS1::Action::"B" == NS2::Action::"B" };"#,
     )
     .unwrap();
     assert_policy_typecheck_warns(
@@ -593,7 +591,7 @@ fn multi_namespace_action_eq() {
 fn multi_namespace_action_in() {
     let (schema, _) = json_schema::Fragment::from_cedarschema_str(
         r#"
-            entity E;
+            entity E1;
             namespace NS1 { action "Group"; }
             namespace NS2 { action "Group" in [NS1::Action::"Group"]; }
             namespace NS3 {

@@ -1184,6 +1184,7 @@ mod translator_tests {
 
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cedar_policy_core::FromNormalizedStr;
     use cool_asserts::assert_matches;
 
@@ -1418,8 +1419,7 @@ mod translator_tests {
 
     #[test]
     fn type_name_resolution_empty_namespace() {
-        let (schema, _) = json_schema::Fragment::from_cedarschema_str(
-            r#"
+        let src = r#"
           type id = {
             group: String,
             name: String,
@@ -1438,12 +1438,11 @@ mod translator_tests {
             entity email_address {
               where: String,
             };
-            type id = String;
-          }"#,
-            Extensions::all_available(),
-        )
-        .unwrap();
-        let demo = schema.0.get(&Some("Demo".parse().unwrap())).unwrap();
+            // type id = String; // this would create another shadowing error, common shadowing common
+          }"#;
+        let (frag, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let demo = frag.0.get(&Some("Demo".parse().unwrap())).unwrap();
         let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
         assert_matches!(&user.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
             attributes,
@@ -1462,7 +1461,15 @@ mod translator_tests {
                 })),
             );
         });
-        assert_matches!(ValidatorSchema::try_from(schema), Ok(_));
+        assert_matches!(ValidatorSchema::try_from(frag), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `Demo::email_address` illegally shadows the existing definition of `email_address`")
+                    .help("try renaming one of the definitions, or moving `email_address` to a different namespace")
+                    .build(),
+            );
+        });
     }
 
     // PANIC SAFETY: testing

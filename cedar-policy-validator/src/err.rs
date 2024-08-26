@@ -162,16 +162,28 @@ pub enum SchemaError {
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
     /// This error occurs when we cannot resolve a typename (because it refers
-    /// to an entity type or common type that was not declared).
+    /// to an entity type or common type that was not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
-    TypeResolution(#[from] schema_errors::TypeResolutionError),
+    TypeNotDefined(#[from] schema_errors::TypeNotDefinedError),
     /// This error occurs when we cannot resolve an action name used in the
     /// `memberOf` field of an action (because it refers to an action that was
-    /// not declared).
+    /// not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ActionResolution(#[from] schema_errors::ActionResolutionError),
+    ActionNotDefined(#[from] schema_errors::ActionNotDefinedError),
+    /// Entity/common type shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeShadowing(#[from] schema_errors::TypeShadowingError),
+    /// Action shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionShadowing(#[from] schema_errors::ActionShadowingError),
     /// Duplicate specifications for an entity type
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -263,29 +275,29 @@ impl SchemaError {
     /// Given one or more `SchemaError`, collect them into a single `SchemaError`.
     /// Due to current structures, some errors may have to be dropped in some cases.
     pub fn join_nonempty(errs: NonEmpty<SchemaError>) -> SchemaError {
-        // if we have any `TypeResolutionError`s, we can report all of those at once (but have to drop the others).
-        // Same for `ActionResolutionError`s.
+        // if we have any `TypeNotDefinedError`s, we can report all of those at once (but have to drop the others).
+        // Same for `ActionNotDefinedError`s.
         // Any other error, we can just report the first one and have to drop the others.
-        let (type_res_errors, non_type_res_errors): (Vec<_>, Vec<_>) =
+        let (type_ndef_errors, non_type_ndef_errors): (Vec<_>, Vec<_>) =
             errs.into_iter().partition_map(|e| match e {
-                SchemaError::TypeResolution(e) => Either::Left(e),
+                SchemaError::TypeNotDefined(e) => Either::Left(e),
                 _ => Either::Right(e),
             });
-        if let Some(errs) = NonEmpty::from_vec(type_res_errors) {
-            schema_errors::TypeResolutionError::join_nonempty(errs).into()
+        if let Some(errs) = NonEmpty::from_vec(type_ndef_errors) {
+            schema_errors::TypeNotDefinedError::join_nonempty(errs).into()
         } else {
-            let (action_res_errors, other_errors): (Vec<_>, Vec<_>) =
-                non_type_res_errors.into_iter().partition_map(|e| match e {
-                    SchemaError::ActionResolution(e) => Either::Left(e),
+            let (action_ndef_errors, other_errors): (Vec<_>, Vec<_>) =
+                non_type_ndef_errors.into_iter().partition_map(|e| match e {
+                    SchemaError::ActionNotDefined(e) => Either::Left(e),
                     _ => Either::Right(e),
                 });
-            if let Some(errs) = NonEmpty::from_vec(action_res_errors) {
-                schema_errors::ActionResolutionError::join_nonempty(errs).into()
+            if let Some(errs) = NonEmpty::from_vec(action_ndef_errors) {
+                schema_errors::ActionNotDefinedError::join_nonempty(errs).into()
             } else {
                 // We partitioned a `NonEmpty` (`errs`) into what we now know is an empty vector
-                // (`type_res_errors`) and `non_type_res_errors`, so `non_type_res_errors` cannot
-                // be empty. Then we partitioned `non_type_res_errors` into what we now know is an
-                // empty vector (`action_res_errors`) and `other_errors`, so `other_errors` cannot
+                // (`type_ndef_errors`) and `non_type_ndef_errors`, so `non_type_ndef_errors` cannot
+                // be empty. Then we partitioned `non_type_ndef_errors` into what we now know is an
+                // empty vector (`action_ndef_errors`) and `other_errors`, so `other_errors` cannot
                 // be empty.
                 // PANIC SAFETY: see comments immediately above
                 #[allow(clippy::expect_used)]
@@ -376,14 +388,14 @@ pub mod schema_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error("failed to resolve type{}: {}", if .0.len() > 1 { "s" } else { "" }, .0.iter().map(crate::ConditionalName::raw).join(", "))]
     #[diagnostic(help("{}", .0.first().resolution_failure_help()))] // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
-    pub struct TypeResolutionError(pub(crate) NonEmpty<crate::ConditionalName>);
+    pub struct TypeNotDefinedError(pub(crate) NonEmpty<crate::ConditionalName>);
 
-    impl TypeResolutionError {
-        /// Combine all the errors into a single `TypeResolutionError`.
+    impl TypeNotDefinedError {
+        /// Combine all the errors into a single [`TypeNotDefinedError`].
         ///
         /// This cannot fail, because `NonEmpty` guarantees there is at least
         /// one error to join.
-        pub(crate) fn join_nonempty(errs: NonEmpty<TypeResolutionError>) -> Self {
+        pub(crate) fn join_nonempty(errs: NonEmpty<TypeNotDefinedError>) -> Self {
             Self(errs.flat_map(|err| err.0))
         }
     }
@@ -395,21 +407,21 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
-    pub struct ActionResolutionError(
+    pub struct ActionNotDefinedError(
         pub(crate) NonEmpty<crate::json_schema::ActionEntityUID<crate::ConditionalName>>,
     );
 
-    impl ActionResolutionError {
-        /// Combine all the errors into a single `ActionResolutionError`.
+    impl ActionNotDefinedError {
+        /// Combine all the errors into a single [`ActionNotDefinedError`].
         ///
         /// This cannot fail, because `NonEmpty` guarantees there is at least
         /// one error to join.
-        pub(crate) fn join_nonempty(errs: NonEmpty<ActionResolutionError>) -> Self {
+        pub(crate) fn join_nonempty(errs: NonEmpty<ActionNotDefinedError>) -> Self {
             Self(errs.flat_map(|err| err.0))
         }
     }
 
-    impl Display for ActionResolutionError {
+    impl Display for ActionNotDefinedError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if self.0.len() == 1 {
                 write!(f, "undeclared action: ")?;
@@ -423,6 +435,48 @@ pub mod schema_errors {
                 |f, s| s.fmt(f),
             )
         }
+    }
+
+    /// Entity/common type shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(
+        "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
+    )]
+    #[diagnostic(help(
+        "try renaming one of the definitions, or moving `{shadowed_def}` to a different namespace"
+    ))]
+    pub struct TypeShadowingError {
+        /// Definition that is being shadowed illegally
+        pub(crate) shadowed_def: InternalName,
+        /// Definition that is responsible for shadowing it illegally
+        pub(crate) shadowing_def: InternalName,
+    }
+
+    /// Action shadowing error. Some shadowing relationships are not allowed for
+    /// clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(
+        "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
+    )]
+    #[diagnostic(help(
+        "try renaming one of the actions, or moving `{shadowed_def}` to a different namespace"
+    ))]
+    pub struct ActionShadowingError {
+        /// Definition that is being shadowed illegally
+        pub(crate) shadowed_def: EntityUID,
+        /// Definition that is responsible for shadowing it illegally
+        pub(crate) shadowing_def: EntityUID,
     }
 
     /// Duplicate entity type error

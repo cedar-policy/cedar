@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-use crate::schema_errors::TypeResolutionError;
+use crate::schema::AllDefs;
+use crate::schema_errors::TypeNotDefinedError;
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 /// A newtype which indicates that the contained [`InternalName`] may not yet be
 /// fully-qualified.
@@ -238,26 +238,21 @@ impl ConditionalName {
     }
 
     /// Resolve the [`ConditionalName`] into a fully-qualified [`InternalName`],
-    /// given that `all_defined_common_types` and `all_defined_entity_types`
-    /// represent all fully-qualified [`InternalName`]s defined in all schema
-    /// fragments, as common and entity types respectively.
+    /// given that `all_defs` includes all fully-qualified [`InternalName`]s
+    /// defined in all schema fragments.
     ///
-    /// Note that this returns [`InternalName`], because type references may
-    /// resolve to an internal name like `__cedar::String`.
+    /// Note that this returns [`InternalName`] (as opposed to [`Name`]),
+    /// because type references may resolve to an internal name like
+    /// `__cedar::String`.
     /// In general, as noted on [`InternalName`], [`InternalName`]s are valid
     /// to appear as type _references_, and we generally expect
     /// [`ConditionalName`]s to also represent type _references_.
     ///
-    /// `all_defined_common_types` and `all_defined_entity_types` are also
-    /// defined as [`InternalName`], because some names containing `__cedar`
-    /// might be internally defined/valid, even though it is not valid for
-    /// _end-users_ to define those names.
-    pub fn resolve<'a>(
-        self,
-        all_defined_common_types: &'a HashSet<InternalName>,
-        all_defined_entity_types: &'a HashSet<InternalName>,
-    ) -> Result<&'a InternalName, TypeResolutionError> {
-        for possibility in self.possibilities.iter() {
+    /// `all_defs` also internally includes [`InternalName`]s, because some
+    /// names containing `__cedar` might be internally defined/valid, even
+    /// though it is not valid for _end-users_ to define those names.
+    pub fn resolve<'a>(self, all_defs: &AllDefs) -> Result<InternalName, TypeNotDefinedError> {
+        for possibility in &self.possibilities {
             // Per RFC 24, we give priority to trying to resolve to a common
             // type, before trying to resolve to an entity type.
             // (However, we have an even stronger preference to resolve earlier
@@ -270,20 +265,20 @@ impl ConditionalName {
                 self.reference_type,
                 ReferenceType::Common | ReferenceType::CommonOrEntity
             ) {
-                if let Some(possibility) = all_defined_common_types.get(possibility) {
-                    return Ok(possibility);
+                if all_defs.is_defined_as_common(possibility) {
+                    return Ok(possibility.clone());
                 }
             }
             if matches!(
                 self.reference_type,
                 ReferenceType::Entity | ReferenceType::CommonOrEntity
             ) {
-                if let Some(possibility) = all_defined_entity_types.get(possibility) {
-                    return Ok(possibility);
+                if all_defs.is_defined_as_entity(possibility) {
+                    return Ok(possibility.clone());
                 }
             }
         }
-        Err(TypeResolutionError(nonempty![self]))
+        Err(TypeNotDefinedError(nonempty![self]))
     }
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve
