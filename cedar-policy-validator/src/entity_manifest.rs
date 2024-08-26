@@ -350,9 +350,6 @@ pub fn compute_entity_manifest(
                     Ok(RootAccessTrie::new())
                 }
 
-                // TODO is returning the first error correct?
-                // Also, should we run full validation instead of just
-                // typechecking? Validation does a little more right?
                 PolicyCheck::Fail(errors) => {
                     // PANIC SAFETY: policy check fail should be a non-empty vector.
                     #[allow(clippy::expect_used)]
