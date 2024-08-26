@@ -338,13 +338,13 @@ impl LinkingError {
 
 fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId]) -> String {
     match (unbound_values.len(), extra_values.len()) {
-         // PANIC SAFETY 0,0 case is not an error
-         #[allow(clippy::unreachable)]
-         (0,0) => unreachable!(),
-         (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
-         (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
-         (_unbound, _extra) => format!("the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
-     }
+        // PANIC SAFETY 0,0 case is not an error
+        #[allow(clippy::unreachable)]
+        (0,0) => unreachable!(),
+        (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
+        (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
+        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
+    }
 }
 
 /// A Policy that contains:
