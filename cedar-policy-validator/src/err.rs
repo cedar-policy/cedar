@@ -275,29 +275,29 @@ impl SchemaError {
     /// Given one or more `SchemaError`, collect them into a single `SchemaError`.
     /// Due to current structures, some errors may have to be dropped in some cases.
     pub fn join_nonempty(errs: NonEmpty<SchemaError>) -> SchemaError {
-        // if we have any `TypeResolutionError`s, we can report all of those at once (but have to drop the others).
-        // Same for `ActionResolutionError`s.
+        // if we have any `TypeNotDefinedError`s, we can report all of those at once (but have to drop the others).
+        // Same for `ActionNotDefinedError`s.
         // Any other error, we can just report the first one and have to drop the others.
-        let (type_res_errors, non_type_res_errors): (Vec<_>, Vec<_>) =
+        let (type_ndef_errors, non_type_ndef_errors): (Vec<_>, Vec<_>) =
             errs.into_iter().partition_map(|e| match e {
                 SchemaError::TypeNotDefined(e) => Either::Left(e),
                 _ => Either::Right(e),
             });
-        if let Some(errs) = NonEmpty::from_vec(type_res_errors) {
+        if let Some(errs) = NonEmpty::from_vec(type_ndef_errors) {
             schema_errors::TypeNotDefinedError::join_nonempty(errs).into()
         } else {
-            let (action_res_errors, other_errors): (Vec<_>, Vec<_>) =
-                non_type_res_errors.into_iter().partition_map(|e| match e {
+            let (action_ndef_errors, other_errors): (Vec<_>, Vec<_>) =
+                non_type_ndef_errors.into_iter().partition_map(|e| match e {
                     SchemaError::ActionNotDefined(e) => Either::Left(e),
                     _ => Either::Right(e),
                 });
-            if let Some(errs) = NonEmpty::from_vec(action_res_errors) {
+            if let Some(errs) = NonEmpty::from_vec(action_ndef_errors) {
                 schema_errors::ActionNotDefinedError::join_nonempty(errs).into()
             } else {
                 // We partitioned a `NonEmpty` (`errs`) into what we now know is an empty vector
-                // (`type_res_errors`) and `non_type_res_errors`, so `non_type_res_errors` cannot
-                // be empty. Then we partitioned `non_type_res_errors` into what we now know is an
-                // empty vector (`action_res_errors`) and `other_errors`, so `other_errors` cannot
+                // (`type_ndef_errors`) and `non_type_ndef_errors`, so `non_type_ndef_errors` cannot
+                // be empty. Then we partitioned `non_type_ndef_errors` into what we now know is an
+                // empty vector (`action_ndef_errors`) and `other_errors`, so `other_errors` cannot
                 // be empty.
                 // PANIC SAFETY: see comments immediately above
                 #[allow(clippy::expect_used)]
@@ -391,7 +391,7 @@ pub mod schema_errors {
     pub struct TypeNotDefinedError(pub(crate) NonEmpty<crate::ConditionalName>);
 
     impl TypeNotDefinedError {
-        /// Combine all the errors into a single `TypeResolutionError`.
+        /// Combine all the errors into a single [`TypeNotDefinedError`].
         ///
         /// This cannot fail, because `NonEmpty` guarantees there is at least
         /// one error to join.
@@ -412,7 +412,7 @@ pub mod schema_errors {
     );
 
     impl ActionNotDefinedError {
-        /// Combine all the errors into a single `ActionResolutionError`.
+        /// Combine all the errors into a single [`ActionNotDefinedError`].
         ///
         /// This cannot fail, because `NonEmpty` guarantees there is at least
         /// one error to join.

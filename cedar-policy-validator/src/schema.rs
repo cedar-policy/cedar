@@ -1086,7 +1086,7 @@ impl AllDefs {
 /// common types that appear as keys in `defs`.
 /// This invariant is upheld by callers because the process of converting
 /// references to fully-qualified ensures that the targets exist (else, it
-/// throws `TypeResolutionError`).
+/// throws [`TypeNotDefinedError`]).
 #[derive(Debug)]
 struct CommonTypeResolver<'a> {
     /// Definition of each common type.
@@ -1118,7 +1118,7 @@ impl<'a> CommonTypeResolver<'a> {
     /// to common types that appear as keys in `defs`.
     /// This invariant is upheld by callers because the process of converting
     /// references to fully-qualified ensures that the targets exist (else, it
-    /// throws `TypeResolutionError`).
+    /// throws [`TypeNotDefinedError`]).
     fn new(defs: &'a HashMap<InternalName, json_schema::Type<InternalName>>) -> Self {
         let mut graph = HashMap::new();
         for (name, ty) in defs {
