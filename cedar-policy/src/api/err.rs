@@ -21,6 +21,7 @@ pub use cedar_policy_core::ast::{
     expression_construction_errors, restricted_expr_errors, ContainsUnknown,
     ExpressionConstructionError, PartialValueToValueError, RestrictedExpressionError,
 };
+#[cfg(feature = "entity-manifest")]
 use cedar_policy_core::entities::err::EntitiesError;
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
@@ -28,6 +29,7 @@ pub use cedar_policy_core::extensions::{
 };
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
+#[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_manifest::{
     self, FailedAnalysisError, PartialExpressionError, PartialRequestError,
 };
@@ -38,6 +40,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use to_cedar_syntax_errors::NameCollisionsError;
 
+#[cfg(feature = "entity-manifest")]
 use super::ValidationResult;
 
 /// Errors related to [`crate::Entities`]
