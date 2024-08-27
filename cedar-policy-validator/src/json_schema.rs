@@ -204,7 +204,7 @@ impl Display for CommonTypeId {
 pub(crate) fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
     matches!(
         id.as_ref(),
-        "Set" | "Record" | "Entity" | "Extension" | "Long" | "String" | "Boolean"
+        "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
     )
 }
 

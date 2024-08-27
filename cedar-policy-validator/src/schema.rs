@@ -2913,13 +2913,15 @@ pub(crate) mod test {
         });
     }
 
+    #[track_caller]
+    fn assert_invalid_json_schema(src: serde_json::Value) {
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved schema keyword"));
+    }
+
     // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070 and #1139.
     #[test]
     fn test_common_type_name_conflicts() {
-        let assert_invalid_json_schema = |src: serde_json::Value| {
-            let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-            assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved schema keyword"));
-        };
         // `Record` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
@@ -3323,6 +3325,38 @@ pub(crate) mod test {
                             "attributes" : {
                                 "c" : {
                                     "type" : "String"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // Cedar examines common type name declarations eagerly.
+        // So it throws an error for the following example even though `Record`
+        // is not referenced.
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Record": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Long"
                                 }
                         }
                     }
@@ -4001,9 +4035,9 @@ mod test_rfc70 {
                 d: __cedar::Long,
             };
             namespace NS {
-                type Bool = Long;
+                type _Bool = Long;
                 entity F {
-                    a: Bool,
+                    a: _Bool,
                     b: __cedar::Bool,
                     c: Long,
                     d: __cedar::Long,
@@ -4101,14 +4135,14 @@ mod test_rfc70 {
             },
             "NS": {
                 "commonTypes": {
-                    "Bool": { "type": "Long" },
+                    "_Bool": { "type": "Long" },
                 },
                 "entityTypes": {
                     "F": {
                         "shape": {
                             "type": "Record",
                             "attributes": {
-                                "a": { "type": "Bool" },
+                                "a": { "type": "_Bool" },
                                 "b": { "type": "__cedar::Bool" },
                                 "c": { "type": "Long" },
                                 "d": { "type": "__cedar::Long" },
