@@ -217,7 +217,7 @@ impl<'de> Deserialize<'de> for CommonTypeId {
         UnreservedId::deserialize(deserializer).and_then(|id| {
             if is_reserved_schema_keyword(&id) {
                 Err(serde::de::Error::custom(format!(
-                    "Used reserved JSON schema keyword: {id} "
+                    "Used reserved schema keyword: {id} "
                 )))
             } else {
                 Ok(Self(id))
