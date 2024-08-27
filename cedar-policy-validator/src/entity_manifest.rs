@@ -31,12 +31,12 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use crate::ValidationError;
 use crate::{
     typecheck::{PolicyCheck, Typechecker},
     types::{EntityRecordKind, Type},
     ValidationMode, ValidatorSchema,
 };
-use crate::{ValidationError, ValidationResult};
 
 /// Data structure storing what data is needed
 /// based on the the [`RequestType`].
@@ -229,7 +229,7 @@ pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Validation(#[from] ValidationResult),
+    Validation(#[from] ValidationError),
     /// A entities error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -406,7 +406,15 @@ pub fn compute_entity_manifest(
                     Ok(RootAccessTrie::new())
                 }
 
-                PolicyCheck::Fail(errors) => Err(ValidationResult::new(errors, vec![])),
+                PolicyCheck::Fail(errors) => {
+                    // PANIC SAFETY: policy check fail should be a non-empty vector.
+                    #[allow(clippy::expect_used)]
+                    Err(errors
+                        .first()
+                        .expect("Policy check failed without an error")
+                        .clone()
+                        .into())
+                }
             }?;
 
             let request_type = request_env
