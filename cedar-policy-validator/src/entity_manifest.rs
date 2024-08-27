@@ -51,6 +51,7 @@ use crate::{
 #[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EntityManifest<T = ()>
 where
     T: Clone,
@@ -76,6 +77,7 @@ pub type Fields<T> = HashMap<SmolStr, Box<AccessTrie<T>>>;
 // when adding public methods.
 #[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "camelCase")]
 pub enum EntityRoot {
     /// Literal entity ids
     Literal(EntityUID),
@@ -107,6 +109,7 @@ impl Display for EntityRoot {
 #[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RootAccessTrie<T = ()>
 where
     T: Clone,
@@ -129,6 +132,7 @@ where
 #[doc = include_str!("../../cedar-policy/experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccessTrie<T = ()> {
     /// Child data of this entity slice.
     /// The keys are edges in the trie pointing to sub-trie values.
@@ -249,6 +253,8 @@ pub enum EntityManifestError {
 }
 
 impl<T: Clone> EntityManifest<T> {
+    /// Get the contents of the entity manifest
+    /// indexed by the type of the request.
     pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie<T>> {
         &self.per_action
     }
@@ -297,6 +303,8 @@ impl AccessPath {
 }
 
 impl<T: Clone> RootAccessTrie<T> {
+    /// Get the trie as a hash map from [`EntityRoot`]
+    /// to sub-[`AccessTrie`]s.
     pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie<T>> {
         &self.trie
     }
@@ -343,14 +351,19 @@ impl<T: Clone> AccessTrie<T> {
         }
     }
 
+    /// Get the children of this [`AccessTrie`].
     pub fn children(&self) -> &Fields<T> {
         &self.children
     }
 
+    /// Get a boolean which is true if this trie
+    /// requires all ancestors of the entity to be loaded.
     pub fn ancestors_required(&self) -> bool {
         self.ancestors_required
     }
 
+    /// Get the data associated with this [`AccessTrie`].
+    /// This is usually `()` unless it is annotated by a type.
     pub fn data(&self) -> &T {
         &self.data
     }
@@ -703,7 +716,7 @@ when {
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json! ({
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -717,7 +730,7 @@ when {
                 "trie": [
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -725,11 +738,11 @@ when {
                           "name",
                           {
                             "children": [],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
@@ -753,7 +766,7 @@ when {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -807,7 +820,7 @@ action Read appliesTo {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -821,7 +834,7 @@ action Read appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -829,11 +842,11 @@ action Read appliesTo {
                           "manager",
                           {
                             "children": [],
-                            "ancestors_required": true
+                            "ancestorsRequired": true
                           }
                         ]
                       ],
-                      "ancestors_required": true
+                      "ancestorsRequired": true
                     }
                   ]
                 ]
@@ -884,7 +897,7 @@ action Read appliesTo {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -898,7 +911,7 @@ action Read appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -906,11 +919,11 @@ action Read appliesTo {
                           "name",
                           {
                             "children": [],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
@@ -929,7 +942,7 @@ action Read appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -937,11 +950,11 @@ action Read appliesTo {
                           "name",
                           {
                             "children": [],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
@@ -1013,7 +1026,7 @@ action Read appliesTo {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -1027,7 +1040,7 @@ action Read appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "resource"
+                      "var": "resource"
                     },
                     {
                       "children": [
@@ -1039,22 +1052,22 @@ action Read appliesTo {
                                 "owner",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ]
                             ],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ],
                         [
                           "readers",
                           {
                             "children": [],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
@@ -1109,7 +1122,7 @@ action BeSad appliesTo {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -1123,7 +1136,7 @@ action BeSad appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -1135,22 +1148,22 @@ action BeSad appliesTo {
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ],
                               [
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ]
                             ],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
@@ -1202,7 +1215,7 @@ action Hello appliesTo {
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
-          "per_action": [
+          "perAction": [
             [
               {
                 "principal": "User",
@@ -1216,7 +1229,7 @@ action Hello appliesTo {
                 "trie": [
                   [
                     {
-                      "Var": "resource"
+                      "var": "resource"
                     },
                     {
                       "children": [
@@ -1228,27 +1241,27 @@ action Hello appliesTo {
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ],
                               [
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ]
                             ],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ],
                   [
                     {
-                      "Var": "principal"
+                      "var": "principal"
                     },
                     {
                       "children": [
@@ -1260,22 +1273,22 @@ action Hello appliesTo {
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ],
                               [
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestors_required": false
+                                  "ancestorsRequired": false
                                 }
                               ]
                             ],
-                            "ancestors_required": false
+                            "ancestorsRequired": false
                           }
                         ]
                       ],
-                      "ancestors_required": false
+                      "ancestorsRequired": false
                     }
                   ]
                 ]
