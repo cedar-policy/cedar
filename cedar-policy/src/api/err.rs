@@ -1196,8 +1196,7 @@ pub enum EntityManifestError {
     #[diagnostic(transparent)]
     PartialExpression(#[from] PartialExpressionError),
 
-    /// A policy was not analyzable because it used unsupported operators
-    /// before a [`ExprKind::GetAttr`]
+    /// A policy was not analyzable because it used unsupported operators.
     /// See [`FailedAnalysisError`] for more details.
     #[error(transparent)]
     #[diagnostic(transparent)]
