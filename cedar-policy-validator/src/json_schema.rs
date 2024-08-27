@@ -213,7 +213,7 @@ impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
-        <Id as arbitrary::Arbitrary>::size_hint(depth)
+        <UnreservedId as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 
