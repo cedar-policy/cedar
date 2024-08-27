@@ -40,6 +40,7 @@ pub mod entities_errors {
 }
 
 /// Entity manifest errors
+#[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_manifest::EntityManifestError;
 
 /// Errors related to serializing/deserializing entities or contexts to/from JSON

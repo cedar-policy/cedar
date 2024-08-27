@@ -23,7 +23,7 @@ use cedar_policy_core::ast::{
     BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicyID, PolicySet, RequestType, UnaryOp, Var,
 };
 use cedar_policy_core::entities::err::EntitiesError;
-use cedar_policy_core::impl_diagnostic_from_source_loc_field;
+use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
@@ -186,7 +186,7 @@ pub struct FailedAnalysisError {
 }
 
 impl Diagnostic for FailedAnalysisError {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
