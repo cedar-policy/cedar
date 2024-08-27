@@ -58,7 +58,7 @@ where
     /// A map from request types to [`RootAccessTrie`]s.
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    pub per_action: HashMap<RequestType, RootAccessTrie<T>>,
+    per_action: HashMap<RequestType, RootAccessTrie<T>>,
 }
 
 /// A map of data fields to [`AccessTrie`]s.
@@ -114,7 +114,7 @@ where
     /// The data that needs to be loaded, organized by root.
     #[serde_as(as = "Vec<(_, _)>")]
     #[serde(bound(deserialize = "T: Default"))]
-    pub trie: HashMap<EntityRoot, AccessTrie<T>>,
+    trie: HashMap<EntityRoot, AccessTrie<T>>,
 }
 
 /// A Trie representing a set of data paths to load,
@@ -133,15 +133,15 @@ pub struct AccessTrie<T = ()> {
     /// Child data of this entity slice.
     /// The keys are edges in the trie pointing to sub-trie values.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub children: Fields<T>,
+    children: Fields<T>,
     /// For entity types, this boolean may be `true`
     /// to signal that all the ancestors in the entity hierarchy
     /// are required (transitively).
-    pub ancestors_required: bool,
+    ancestors_required: bool,
     /// Optional data annotation, usually used for type information.
     #[serde(skip_serializing, skip_deserializing)]
     #[serde(bound(deserialize = "T: Default"))]
-    pub data: T,
+    data: T,
 }
 
 /// A data path that may end with requesting the parents of
@@ -175,7 +175,7 @@ struct AccessPath {
 /// This error message tells the user not to use certain operators
 /// before accessing record or entity attributes, breaking this grammar.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("For policy `{policy_id}`, failed to analyze expression while computing entity manifest.`")]
+#[error("for policy `{policy_id}`, failed to analyze expression while computing entity manifest`")]
 pub struct FailedAnalysisError {
     /// Source location
     pub source_loc: Option<Loc>,
@@ -225,20 +225,20 @@ pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ValidationError(#[from] ValidationError),
+    Validation(#[from] ValidationError),
     /// A entities error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
-    EntitiesError(#[from] EntitiesError),
+    Entities(#[from] EntitiesError),
 
     /// The request was partial
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PartialRequestError(#[from] PartialRequestError),
+    PartialRequest(#[from] PartialRequestError),
     /// A policy was partial
     #[error(transparent)]
     #[diagnostic(transparent)]
-    PartialExpressionError(#[from] PartialExpressionError),
+    PartialExpression(#[from] PartialExpressionError),
 
     /// A policy was not analyzable because it used unsupported operators
     /// before a [`ExprKind::GetAttr`]
@@ -246,6 +246,12 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     FailedAnalysis(#[from] FailedAnalysisError),
+}
+
+impl<T: Clone> EntityManifest<T> {
+    pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie<T>> {
+        &self.per_action
+    }
 }
 
 /// Union two tries by combining the fields.
@@ -290,6 +296,12 @@ impl AccessPath {
     }
 }
 
+impl<T: Clone> RootAccessTrie<T> {
+    pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie<T>> {
+        &self.trie
+    }
+}
+
 impl RootAccessTrie {
     /// Create an empty [`RootAccessTrie`] that requests nothing.
     pub fn new() -> Self {
@@ -329,6 +341,18 @@ impl<T: Clone> AccessTrie<T> {
             ancestors_required: self.ancestors_required || other.ancestors_required,
             data: self.data.clone(),
         }
+    }
+
+    pub fn children(&self) -> &Fields<T> {
+        &self.children
+    }
+
+    pub fn ancestors_required(&self) -> bool {
+        self.ancestors_required
+    }
+
+    pub fn data(&self) -> &T {
+        &self.data
     }
 }
 
@@ -678,43 +702,42 @@ when {
         let schema = schema();
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "name",
-                  {
-                    "children": [],
-                    "ancestors_required": false
-                  }
+        let expected = serde_json::json! ({
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestors_required": false
+                          }
+                        ]
+                      ],
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -728,26 +751,26 @@ when {
         let schema = schema();
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                ]
+              }
+            ]
+          ]
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -782,43 +805,43 @@ action Read appliesTo {
         .0;
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "manager",
-                  {
-                    "children": [],
-                    "ancestors_required": true
-                  }
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "manager",
+                          {
+                            "children": [],
+                            "ancestors_required": true
+                          }
+                        ]
+                      ],
+                      "ancestors_required": true
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": true
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -859,74 +882,74 @@ action Read appliesTo {
         .0;
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "name",
-                  {
-                    "children": [],
-                    "ancestors_required": false
-                  }
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestors_required": false
+                          }
+                        ]
+                      ],
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
-          ]
-        ]
-      }
-    ],
-    [
-      {
-        "principal": "OtherUserType",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "name",
-                  {
-                    "children": [],
-                    "ancestors_required": false
-                  }
+              }
+            ],
+            [
+              {
+                "principal": "OtherUserType",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestors_required": false
+                          }
+                        ]
+                      ],
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+            });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -988,58 +1011,58 @@ action Read appliesTo {
         .0;
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Read"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "resource"
-            },
-            {
-              "children": [
-                [
-                  "metadata",
-                  {
-                    "children": [
-                      [
-                        "owner",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
-                      ]
-                    ],
-                    "ancestors_required": false
-                  }
-                ],
-                [
-                  "readers",
-                  {
-                    "children": [],
-                    "ancestors_required": false
-                  }
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "resource"
+                    },
+                    {
+                      "children": [
+                        [
+                          "metadata",
+                          {
+                            "children": [
+                              [
+                                "owner",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ]
+                            ],
+                            "ancestors_required": false
+                          }
+                        ],
+                        [
+                          "readers",
+                          {
+                            "children": [],
+                            "ancestors_required": false
+                          }
+                        ]
+                      ],
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1084,58 +1107,58 @@ action BeSad appliesTo {
         .0;
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "BeSad"
-        },
-        "resource": "Document"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "metadata",
-                  {
-                    "children": [
-                      [
-                        "nickname",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "BeSad"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "metadata",
+                          {
+                            "children": [
+                              [
+                                "nickname",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ],
+                              [
+                                "friends",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ]
+                            ],
+                            "ancestors_required": false
+                          }
+                        ]
                       ],
-                      [
-                        "friends",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
-                      ]
-                    ],
-                    "ancestors_required": false
-                  }
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1177,90 +1200,90 @@ action Hello appliesTo {
         .0;
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
-        let expected = r#"
-{
-  "per_action": [
-    [
-      {
-        "principal": "User",
-        "action": {
-          "ty": "Action",
-          "eid": "Hello"
-        },
-        "resource": "User"
-      },
-      {
-        "trie": [
-          [
-            {
-              "Var": "resource"
-            },
-            {
-              "children": [
-                [
-                  "metadata",
-                  {
-                    "children": [
-                      [
-                        "friends",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
+        let expected = serde_json::json!(
+        {
+          "per_action": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Hello"
+                },
+                "resource": "User"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "Var": "resource"
+                    },
+                    {
+                      "children": [
+                        [
+                          "metadata",
+                          {
+                            "children": [
+                              [
+                                "friends",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ],
+                              [
+                                "nickname",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ]
+                            ],
+                            "ancestors_required": false
+                          }
+                        ]
                       ],
-                      [
-                        "nickname",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
-                      ]
-                    ],
-                    "ancestors_required": false
-                  }
-                ]
-              ],
-              "ancestors_required": false
-            }
-          ],
-          [
-            {
-              "Var": "principal"
-            },
-            {
-              "children": [
-                [
-                  "metadata",
-                  {
-                    "children": [
-                      [
-                        "nickname",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
+                      "ancestors_required": false
+                    }
+                  ],
+                  [
+                    {
+                      "Var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "metadata",
+                          {
+                            "children": [
+                              [
+                                "nickname",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ],
+                              [
+                                "friends",
+                                {
+                                  "children": [],
+                                  "ancestors_required": false
+                                }
+                              ]
+                            ],
+                            "ancestors_required": false
+                          }
+                        ]
                       ],
-                      [
-                        "friends",
-                        {
-                          "children": [],
-                          "ancestors_required": false
-                        }
-                      ]
-                    ],
-                    "ancestors_required": false
-                  }
+                      "ancestors_required": false
+                    }
+                  ]
                 ]
-              ],
-              "ancestors_required": false
-            }
+              }
+            ]
           ]
-        ]
-      }
-    ]
-  ]
-}"#;
-        let expected_manifest = serde_json::from_str(expected).unwrap();
+        });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 }
