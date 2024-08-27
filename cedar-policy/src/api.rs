@@ -4290,5 +4290,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast)
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).into()
 }
