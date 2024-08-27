@@ -2918,7 +2918,7 @@ pub(crate) mod test {
     fn test_common_type_name_conflicts() {
         let assert_invalid_json_schema = |src: serde_json::Value| {
             let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-            assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved JSON schema keyword"));
+            assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved schema keyword"));
         };
         // `Record` cannot be a common type name
         let src: serde_json::Value = json!({
