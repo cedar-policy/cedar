@@ -186,7 +186,9 @@ impl From<CommonTypeId> for UnreservedId {
 }
 
 impl CommonTypeId {
-    pub(crate) fn unchecked(id: UnreservedId) -> Self {
+    /// Create a [`CommonTypeId`] based on an [`UnreservedId`] but do not check
+    /// if the latter is valid or not
+    pub fn unchecked(id: UnreservedId) -> Self {
         Self(id)
     }
 }
@@ -194,6 +196,24 @@ impl CommonTypeId {
 impl Display for CommonTypeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let id: UnreservedId = u.arbitrary()?;
+        if is_reserved_schema_keyword(&id) {
+            // `_Bool`, `_Record`, and etc are valid common type names
+            let new_id = format!("_{id}").parse().unwrap();
+            Ok(CommonTypeId::unchecked(new_id))
+        } else {
+            Ok(CommonTypeId::unchecked(id))
+        }
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <Id as arbitrary::Arbitrary>::size_hint(depth)
     }
 }
 
