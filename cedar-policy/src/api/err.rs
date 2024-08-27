@@ -38,6 +38,8 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use to_cedar_syntax_errors::NameCollisionsError;
 
+use super::ValidationResult;
+
 /// Errors related to [`crate::Entities`]
 pub mod entities_errors {
     pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
@@ -1179,7 +1181,7 @@ pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Validation(#[from] ValidationError),
+    Validation(#[from] ValidationResult),
     /// A entities error was encountered
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -1208,15 +1210,11 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
         match e {
             entity_manifest::EntityManifestError::Validation(e) => Self::Validation(e.into()),
             entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e),
-            entity_manifest::EntityManifestError::PartialRequest(e) => {
-                Self::PartialRequest(e)
-            }
+            entity_manifest::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
             entity_manifest::EntityManifestError::PartialExpression(e) => {
                 Self::PartialExpression(e)
             }
-            entity_manifest::EntityManifestError::FailedAnalysis(e) => {
-                Self::FailedAnalysis(e)
-            }
+            entity_manifest::EntityManifestError::FailedAnalysis(e) => Self::FailedAnalysis(e),
         }
     }
 }
