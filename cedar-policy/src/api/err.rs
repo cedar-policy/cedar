@@ -1174,7 +1174,7 @@ pub mod request_validation_errors {
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
-#[cfg(feature = "entity-slicing")]
+#[cfg(feature = "entity-manifest")]
 pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
@@ -1202,20 +1202,20 @@ pub enum EntityManifestError {
     FailedAnalysis(#[from] FailedAnalysisError),
 }
 
-#[cfg(feature = "entity-slicing")]
+#[cfg(feature = "entity-manifest")]
 impl From<entity_manifest::EntityManifestError> for EntityManifestError {
     fn from(e: entity_manifest::EntityManifestError) -> Self {
         match e {
             entity_manifest::EntityManifestError::Validation(e) => Self::Validation(e.into()),
-            entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e.into()),
+            entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e),
             entity_manifest::EntityManifestError::PartialRequest(e) => {
-                Self::PartialRequest(e.into())
+                Self::PartialRequest(e)
             }
             entity_manifest::EntityManifestError::PartialExpression(e) => {
-                Self::PartialExpression(e.into())
+                Self::PartialExpression(e)
             }
             entity_manifest::EntityManifestError::FailedAnalysis(e) => {
-                Self::FailedAnalysis(e.into())
+                Self::FailedAnalysis(e)
             }
         }
     }

@@ -230,7 +230,6 @@ impl Diagnostic for PartialRequestError {}
 /// See [`FailedAnalysisError`] for details on the fragment
 /// of Cedar handled by entity slicing.
 #[derive(Debug, Error, Diagnostic)]
-#[non_exhaustive]
 pub enum EntityManifestError {
     /// A validation error was encountered
     #[error(transparent)]
