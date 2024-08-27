@@ -204,7 +204,8 @@ impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let id: UnreservedId = u.arbitrary()?;
         if is_reserved_schema_keyword(&id) {
-            // `_Bool`, `_Record`, and etc are valid common type names
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type names as well as valid unreserved names.
+            #[allow(clippy::unwrap_used)]
             let new_id = format!("_{id}").parse().unwrap();
             Ok(CommonTypeId::unchecked(new_id))
         } else {
