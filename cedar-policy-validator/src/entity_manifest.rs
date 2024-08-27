@@ -643,7 +643,7 @@ mod entity_slice_tests {
 
     // Schema for testing in this module
     fn schema() -> ValidatorSchema {
-        ValidatorSchema::from_str_natural(
+        ValidatorSchema::from_cedarschema_str(
             "
 entity User = {
   name: String,
@@ -764,7 +764,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_str_natural(
+        let schema = ValidatorSchema::from_cedarschema_str(
             "
 entity User in [Document] = {
   name: String,
@@ -835,7 +835,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_str_natural(
+        let schema = ValidatorSchema::from_cedarschema_str(
             "
 entity User = {
   name: String,
@@ -963,7 +963,7 @@ when
         pset.add(policy1.into()).expect("should succeed");
         pset.add(policy2.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_str_natural(
+        let schema = ValidatorSchema::from_cedarschema_str(
             "
 entity User;
 
@@ -1061,7 +1061,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_str_natural(
+        let schema = ValidatorSchema::from_cedarschema_str(
             "
 entity User = {
   name: String,
@@ -1154,7 +1154,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_str_natural(
+        let schema = ValidatorSchema::from_cedarschema_str(
             "
 entity User = {
   name: String,
