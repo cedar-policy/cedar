@@ -15,7 +15,6 @@
  */
 
 use cedar_policy_core::ast::{EntityType, EntityUID, RequestType};
-use serde::Serialize;
 
 use crate::ValidatorSchema;
 

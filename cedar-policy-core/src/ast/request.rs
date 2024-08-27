@@ -51,6 +51,7 @@ pub struct Request {
 
 /// Represents the principal type, resource type, and action UID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RequestType {
     /// Principal type
     pub principal: EntityType,
