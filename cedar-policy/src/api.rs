@@ -25,6 +25,7 @@
 mod id;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_manifest;
+// TODO implement wrappers for these structs before they become public
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
