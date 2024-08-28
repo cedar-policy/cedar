@@ -121,14 +121,13 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
 
 /// Assert that every [`ValidationError`] in the expected list of type errors appears
 /// in the expected list of type errors, and that the expected number of
-/// type errors were generated. Equality of types in [`ValidationError`]s is
-/// determined in the same way as in `assert_types_eq`.
+/// type errors were generated.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_expected_type_errors(
     expected: impl IntoIterator<Item = ValidationError>,
     actual: &HashSet<ValidationError>,
 ) {
-    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual,)
+    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual)
 }
 
 /// Assert that every `ValidationWarning` in the expected list of warnings
