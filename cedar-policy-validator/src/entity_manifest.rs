@@ -147,8 +147,9 @@ pub struct AccessTrie<T = ()> {
     pub(crate) data: T,
 }
 
-/// A data path that may end with requesting the parents of
-/// an entity.
+/// An access path represents path of fields, starting with an [`EntityRoot`].
+/// Fields may be record fields or entity fields.
+/// If an access path ends with an entity type, it may also require the ancestors of the entity.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct AccessPath {
     /// The root variable that begins the data path
@@ -283,6 +284,7 @@ impl<T: Clone> RootAccessTrie<T> {
         self
     }
 
+    /// Like [`RootAccessTrie::union`], but modifies the current trie.
     pub fn union_mut(&mut self, other: &Self) {
         for (key, value) in &other.trie {
             self.trie
@@ -307,6 +309,7 @@ impl<T: Clone> AccessTrie<T> {
         self
     }
 
+    /// Like [`AccessTrie::union`], but modifies the current trie.
     pub fn union_mut(&mut self, other: &Self) {
         self.children = union_fields(&self.children, &other.children);
         self.ancestors_required = self.ancestors_required || other.ancestors_required;
@@ -473,7 +476,7 @@ fn entity_manifest_from_expr(
 
             // First, find the data paths for each argument
             let mut arg1_res = entity_manifest_from_expr(arg1)?;
-            let mut arg2_res = entity_manifest_from_expr(arg2)?;
+            let arg2_res = entity_manifest_from_expr(arg2)?;
 
             // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
             #[allow(clippy::expect_used)]
@@ -488,21 +491,13 @@ fn entity_manifest_from_expr(
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
 
-            // For containment operations, we need the ancestors
-            // of entities, since the semantics check them.
-            match op {
-                BinaryOp::ContainsAll | BinaryOp::ContainsAny | BinaryOp::Contains => {
-                    arg2_res = arg2_res.ancestors_required(ty2);
-                }
-                BinaryOp::In => {
-                    arg1_res = arg1_res.ancestors_required(ty1);
-                }
-                _ => (),
+            // For the `in` operator, we need the ancestors of entities.
+            if let BinaryOp::In = op {
+                arg1_res = arg1_res.ancestors_required(ty1);
             }
 
             // Load all fields using `full_type_required`, since
             // these operations do equality checks.
-
             Ok(arg1_res
                 .full_type_required(ty1)
                 .union(&arg2_res.full_type_required(ty2)))
@@ -984,13 +979,17 @@ action Read appliesTo {
                       ],
                       "ancestorsRequired": false
                     }
-                  ]
+                  ],
                 ]
               }
             ]
           ]
         });
         let expected_manifest = serde_json::from_value(expected).unwrap();
+        eprintln!(
+            "Got: {}",
+            serde_json::to_string_pretty(&entity_manifest).unwrap()
+        );
         assert_eq!(entity_manifest, expected_manifest);
     }
 
