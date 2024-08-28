@@ -3342,25 +3342,24 @@ pub(crate) mod test {
             "": {
                 "commonTypes": {
                     "Record": {
-                        "type": "Record",
-                        "attributes": {
-                            "a": {
-                                "type": "Long",
-                            }
+                        "type": "Set",
+                        "element": {
+                            "type": "Long"
                         }
                     }
                 },
                 "entityTypes": {
                     "b": {
-                        "shape" : {
-                            "type" : "Record",
+                        "shape" :
+                        {
+                            "type": "Record",
                             "attributes" : {
                                 "c" : {
-                                    "type" : "Long"
+                                    "type" : "String"
                                 }
+                            }
                         }
                     }
-                }
                 },
                 "actions": { },
             }

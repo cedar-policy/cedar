@@ -56,6 +56,7 @@ Cedar Language Version: 4.0
 - Marked errors/warnings related to parsing and entity/request validation as
   `non_exhaustive`, allowing future variants to be added without a breaking
   change. (#1137)
+- (*) `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`, and `String` cannot be common type names (#1150, resolving #1139)
 
 ### Removed
 
