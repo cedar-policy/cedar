@@ -283,8 +283,6 @@ impl RootAccessTrie {
     }
 }
 
-// TODO move analysis code here
-
 /// Compute the full [`AccessTrie`] required for the type.
 fn type_to_access_trie(ty: &Type) -> AccessTrie {
     match ty {
