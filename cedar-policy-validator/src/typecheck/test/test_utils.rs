@@ -22,6 +22,7 @@ use cool_asserts::assert_matches;
 use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
+use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser::Loc;
 
 use crate::{
@@ -29,7 +30,8 @@ use crate::{
     typecheck::{TypecheckAnswer, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    RawName, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    NamespaceDefinitionWithActionAttributes, RawName, ValidationError, ValidationMode,
+    ValidationWarning, ValidatorSchema,
 };
 
 use similar_asserts::assert_eq;
@@ -142,9 +144,50 @@ pub(crate) fn assert_expected_warnings(
     assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual,)
 }
 
+/// Unifies a bunch of different ways we specify schemas in tests
+pub(crate) trait SchemaProvider {
+    /// Produce the schema, panicking (with a nice error message as appropriate) if it is not a valid schema.
+    fn schema(self) -> ValidatorSchema;
+}
+
+impl SchemaProvider for ValidatorSchema {
+    fn schema(self) -> ValidatorSchema {
+        self
+    }
+}
+
+impl SchemaProvider for json_schema::Fragment<RawName> {
+    fn schema(self) -> ValidatorSchema {
+        self.try_into()
+            .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
+    }
+}
+
+impl SchemaProvider for json_schema::NamespaceDefinition<RawName> {
+    fn schema(self) -> ValidatorSchema {
+        self.try_into()
+            .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
+    }
+}
+
+impl SchemaProvider for NamespaceDefinitionWithActionAttributes<RawName> {
+    fn schema(self) -> ValidatorSchema {
+        self.try_into()
+            .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
+    }
+}
+
+impl<'a> SchemaProvider for &'a str {
+    fn schema(self) -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(self, &Extensions::all_available())
+            .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
+            .0
+    }
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks(
-    schema: impl TryInto<ValidatorSchema, Error = impl miette::Diagnostic + Send + Sync + 'static>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
 ) {
     assert_policy_typechecks_for_mode(schema, policy, ValidationMode::Strict)
@@ -152,15 +195,12 @@ pub(crate) fn assert_policy_typechecks(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl miette::Diagnostic + Send + Sync + 'static>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    let schema = schema
-        .try_into()
-        .map_err(miette::Report::new)
-        .unwrap_or_else(|e| panic!("failed to construct schema: {e:?}"));
+    let schema = schema.schema();
     let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
@@ -186,7 +226,7 @@ pub(crate) fn assert_policy_typechecks_for_mode(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
     expected_type_errors: impl IntoIterator<Item = ValidationError>,
 ) {
@@ -200,7 +240,7 @@ pub(crate) fn assert_policy_typecheck_fails(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_warns(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
     expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
@@ -214,13 +254,13 @@ pub(crate) fn assert_policy_typecheck_warns(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
     expected_type_errors: impl IntoIterator<Item = ValidationError>,
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    let schema = schema.try_into().expect("Failed to construct schema.");
+    let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
@@ -231,13 +271,13 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_warns_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
     expected_warnings: impl IntoIterator<Item = ValidationWarning>,
     mode: ValidationMode,
 ) {
     let policy = policy.into();
-    let schema = schema.try_into().expect("Failed to construct schema.");
+    let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
@@ -252,22 +292,18 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
 /// Assert that expr type checks successfully with a particular type, and
 /// that it does not generate any type errors.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_typechecks(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
-    expr: Expr,
-    expected: Type,
-) {
+pub(crate) fn assert_typechecks(schema: impl SchemaProvider, expr: Expr, expected: Type) {
     assert_typechecks_for_mode(schema, expr, expected, ValidationMode::Strict);
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     expr: Expr,
     expected: Type,
     mode: ValidationMode,
 ) {
-    let schema = schema.try_into().expect("Failed to construct schema.");
+    let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors = HashSet::new();
     let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
@@ -288,7 +324,7 @@ pub(crate) fn assert_typechecks_for_mode(
 /// type for this to pass.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     expr: Expr,
     expected_ty: Option<Type>,
     expected_type_errors: impl IntoIterator<Item = ValidationError>,
@@ -304,13 +340,13 @@ pub(crate) fn assert_typecheck_fails(
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_for_mode(
-    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    schema: impl SchemaProvider,
     expr: Expr,
     expected_ty: Option<Type>,
     expected_type_errors: impl IntoIterator<Item = ValidationError>,
     mode: ValidationMode,
 ) {
-    let schema = schema.try_into().expect("Failed to construct schema.");
+    let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors = HashSet::new();
     let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
