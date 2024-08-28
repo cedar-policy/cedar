@@ -32,7 +32,6 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::entity_manifest_analysis::{EntityManifestAnalysisResult, WrappedAccessPaths};
-use crate::ValidationError;
 use crate::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
@@ -282,21 +281,18 @@ impl AccessPath {
     /// add a full trie as the leaf at the end.
     pub(crate) fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
         let mut current = leaf_trie;
+        // set ancestors required for the leaf trie
+        current.ancestors_required = self.ancestors_required;
+
         // reverse the path, visiting the last access first
-        for (index, field) in self.path.iter().rev().enumerate() {
+        for field in self.path.iter().rev() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
 
             // the first time we build an access trie is the leaf
             // of the path, so set the `ancestors_required` flag
-            let ancestors_required = if index == 0 {
-                self.ancestors_required
-            } else {
-                false
-            };
-
             current = AccessTrie {
-                ancestors_required,
+                ancestors_required: false,
                 children: fields,
                 data: (),
             };
@@ -304,7 +300,7 @@ impl AccessPath {
 
         let mut primary_map = HashMap::new();
 
-        // special case: if the path is empty and ancestors not required,
+        // special case: if the path is completely empty,
         // no need to insert anything
         if current != AccessTrie::new() {
             primary_map.insert(self.root.clone(), current);
@@ -557,6 +553,7 @@ fn entity_manifest_from_expr(
 
             // Load all fields using `full_type_required`, since
             // these operations do equality checks.
+
             Ok(arg1_res
                 .full_type_required(ty1)
                 .union(&arg2_res.full_type_required(ty2)))
@@ -616,56 +613,6 @@ fn entity_manifest_from_expr(
             Ok(entity_manifest_from_expr(expr, policy_id)?.get_attr(attr))
         }
     }
-}
-
-/// Given an expression, get the corresponding data path
-/// starting with a variable.
-/// If the expression is not a `<datapath-expr>`, return an error.
-/// See [`FailedAnalysisError`] for more information.
-fn get_expr_path(
-    expr: &Expr<Option<Type>>,
-    policy_id: &PolicyID,
-) -> Result<AccessPath, EntityManifestError> {
-    Ok(match expr.expr_kind() {
-        ExprKind::Slot(slot_id) => {
-            if slot_id.is_principal() {
-                AccessPath {
-                    root: EntityRoot::Var(Var::Principal),
-                    path: vec![],
-                    ancestors_required: false,
-                }
-            } else {
-                assert!(slot_id.is_resource());
-                AccessPath {
-                    root: EntityRoot::Var(Var::Resource),
-                    path: vec![],
-                    ancestors_required: false,
-                }
-            }
-        }
-        ExprKind::Var(var) => AccessPath {
-            root: EntityRoot::Var(*var),
-            path: vec![],
-            ancestors_required: false,
-        },
-        ExprKind::GetAttr { expr, attr } => {
-            let mut slice = get_expr_path(expr, policy_id)?;
-            slice.path.push(attr.clone());
-            slice
-        }
-        ExprKind::Lit(Literal::EntityUID(literal)) => AccessPath {
-            root: EntityRoot::Literal((**literal).clone()),
-            path: vec![],
-            ancestors_required: false,
-        },
-        ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
-        // all other variants of expressions result in failure to analyze.
-        _ => Err(EntityManifestError::FailedAnalysis(FailedAnalysisError {
-            source_loc: expr.source_loc().cloned(),
-            policy_id: policy_id.clone(),
-            expr_kind: expr.expr_kind().clone(),
-        }))?,
-    })
 }
 
 #[cfg(test)]

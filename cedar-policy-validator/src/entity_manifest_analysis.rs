@@ -147,13 +147,13 @@ impl WrappedAccessPaths {
             ),
         }
     }
+
     /// Add the ancestors required flag to all of the resulting
     /// paths for this path record.
     fn ancestors_required(&mut self, ty: &Type) {
         match self {
             WrappedAccessPaths::AccessPath(path) => {
                 if let Type::EntityOrRecord(EntityRecordKind::Entity { .. }) = ty {
-                    eprintln!("here");
                     path.ancestors_required = true;
                 }
             }
@@ -193,7 +193,8 @@ impl WrappedAccessPaths {
         match self {
             WrappedAccessPaths::AccessPath(path) => {
                 let leaf_trie = type_to_access_trie(ty);
-                path.to_root_access_trie_with_leaf(leaf_trie)
+                let res = path.to_root_access_trie_with_leaf(leaf_trie.clone());
+                res
             }
             WrappedAccessPaths::RecordLiteral(literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
