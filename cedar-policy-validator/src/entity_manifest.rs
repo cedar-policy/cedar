@@ -20,11 +20,9 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use cedar_policy_core::ast::{
-    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicyID, PolicySet, RequestType, UnaryOp, Var,
+    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use cedar_policy_core::entities::err::EntitiesError;
-use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
-use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -161,49 +159,6 @@ pub(crate) struct AccessPath {
     pub ancestors_required: bool,
 }
 
-/// Entity manifest computation does not handle the full
-/// cedar language. In particular, the policies must follow the
-/// following grammar:
-/// ```text
-/// <expr> = <datapath-expr>
-///          <datapath-expr> in <expr>
-///          <expr> + <expr>
-///          if <expr> { <expr> } { <expr> }
-///          ... all other cedar operators not mentioned by datapath-expr
-
-/// <datapath-expr> = <datapath-expr>.<field>
-///                   <datapath-expr> has <field>
-///                   <variable>
-///                   <entity literal>
-/// ```
-/// The `get_expr_path` function handles `datapath-expr` expressions.
-/// This error message tells the user not to use certain operators
-/// before accessing record or entity attributes, breaking this grammar.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("for policy `{policy_id}`, failed to analyze expression while computing entity manifest`")]
-pub struct FailedAnalysisError {
-    /// Source location
-    source_loc: Option<Loc>,
-    /// Policy ID where the error occurred
-    policy_id: PolicyID,
-    /// The kind of the expression that was unexpected
-    expr_kind: ExprKind<Option<Type>>,
-}
-
-impl Diagnostic for FailedAnalysisError {
-    impl_diagnostic_from_source_loc_opt_field!(source_loc);
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!(
-            "failed to compute entity manifest: {} operators are not allowed before accessing record or entity attributes",
-            self.expr_kind.operator_description()
-        )))
-    }
-}
-
 /// Error when expressions are partial during entity
 /// manifest computation
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -244,12 +199,6 @@ pub enum EntityManifestError {
     /// A policy was partial
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
-
-    /// A policy was not analyzable because it used unsupported operators
-    /// before a [`ExprKind::GetAttr`]
-    /// See [`FailedAnalysisError`] for more details.
-    #[error(transparent)]
-    FailedAnalysis(#[from] FailedAnalysisError),
 }
 
 impl<T: Clone> EntityManifest<T> {
@@ -419,8 +368,7 @@ pub fn compute_entity_manifest(
                 PolicyCheck::Success(typechecked_expr) => {
                     // compute the trie from the typechecked expr
                     // using static analysis
-                    entity_manifest_from_expr(&typechecked_expr, policy.id())
-                        .map(|val| val.global_trie)
+                    entity_manifest_from_expr(&typechecked_expr).map(|val| val.global_trie)
                 }
                 PolicyCheck::Irrelevant(_) => {
                     // this policy is irrelevant, so we need no data
@@ -457,7 +405,6 @@ pub fn compute_entity_manifest(
 /// to evaluate the expression.
 fn entity_manifest_from_expr(
     expr: &Expr<Option<Type>>,
-    policy_id: &PolicyID,
 ) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
     match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
@@ -475,9 +422,6 @@ fn entity_manifest_from_expr(
         ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
             *var,
         ))),
-        ExprKind::GetAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr, policy_id)?.get_attr(attr))
-        }
         ExprKind::Lit(Literal::EntityUID(literal)) => Ok(EntityManifestAnalysisResult::from_root(
             EntityRoot::Literal((**literal).clone()),
         )),
@@ -485,30 +429,27 @@ fn entity_manifest_from_expr(
 
         // Non-entity literals need no fields to be loaded.
         ExprKind::Lit(_) => Ok(EntityManifestAnalysisResult::default()),
-        ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
         ExprKind::If {
             test_expr,
             then_expr,
             else_expr,
-        } => Ok(entity_manifest_from_expr(test_expr, policy_id)?
+        } => Ok(entity_manifest_from_expr(test_expr)?
             .empty_paths()
-            .union(&entity_manifest_from_expr(then_expr, policy_id)?)
-            .union(&entity_manifest_from_expr(else_expr, policy_id)?)),
+            .union(&entity_manifest_from_expr(then_expr)?)
+            .union(&entity_manifest_from_expr(else_expr)?)),
         ExprKind::And { left, right }
         | ExprKind::Or { left, right }
         | ExprKind::BinaryApp {
             op: BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul,
             arg1: left,
             arg2: right,
-        } => Ok(entity_manifest_from_expr(left, policy_id)?
+        } => Ok(entity_manifest_from_expr(left)?
             .empty_paths()
-            .union(&entity_manifest_from_expr(right, policy_id)?)),
+            .union(&entity_manifest_from_expr(right)?)),
         ExprKind::UnaryApp { op, arg } => {
             match op {
                 // both unary ops are on booleans, so they are simple
-                UnaryOp::Not | UnaryOp::Neg => {
-                    Ok(entity_manifest_from_expr(arg, policy_id)?.empty_paths())
-                }
+                UnaryOp::Not | UnaryOp::Neg => Ok(entity_manifest_from_expr(arg)?.empty_paths()),
             }
         }
         ExprKind::BinaryApp {
@@ -521,19 +462,25 @@ fn entity_manifest_from_expr(
             arg1,
             arg2,
         } => {
-            // TODO more elegant way to bind op?
+            // TODO Is there more elegant way to bind op using rust pattern matching?
+            // PANIC SAFETY: Matched a binary app above, so expr must still be a binary app.
+            #[allow(clippy::panic)]
             let ExprKind::BinaryApp { op, .. } = expr.expr_kind() else {
                 panic!("Matched above");
             };
 
             // First, find the data paths for each argument
-            let mut arg1_res = entity_manifest_from_expr(arg1, policy_id)?;
-            let mut arg2_res = entity_manifest_from_expr(arg2, policy_id)?;
+            let mut arg1_res = entity_manifest_from_expr(arg1)?;
+            let mut arg2_res = entity_manifest_from_expr(arg2)?;
 
+            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+            #[allow(clippy::expect_used)]
             let ty1 = arg1
                 .data()
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
+            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+            #[allow(clippy::expect_used)]
             let ty2 = arg2
                 .data()
                 .as_ref()
@@ -566,7 +513,7 @@ fn entity_manifest_from_expr(
             let mut res = EntityManifestAnalysisResult::default();
 
             for arg in args.iter() {
-                res = res.union(&entity_manifest_from_expr(arg, policy_id)?);
+                res = res.union(&entity_manifest_from_expr(arg)?);
             }
             Ok(res)
         }
@@ -576,14 +523,14 @@ fn entity_manifest_from_expr(
             entity_type: _,
         } => {
             // drop paths since boolean returned
-            Ok(entity_manifest_from_expr(expr, policy_id)?.empty_paths())
+            Ok(entity_manifest_from_expr(expr)?.empty_paths())
         }
         ExprKind::Set(contents) => {
             let mut res = EntityManifestAnalysisResult::default();
 
             // take union of all of the contents
             for expr in &**contents {
-                let mut content = entity_manifest_from_expr(expr, policy_id)?;
+                let content = entity_manifest_from_expr(expr)?;
 
                 res = res.union(&content);
             }
@@ -598,7 +545,7 @@ fn entity_manifest_from_expr(
             let mut global_trie = RootAccessTrie::default();
 
             for (key, child_expr) in content.iter() {
-                let res = entity_manifest_from_expr(child_expr, policy_id)?;
+                let res = entity_manifest_from_expr(child_expr)?;
                 record_contents.insert(key.clone(), Box::new(res.resulting_paths));
 
                 global_trie = global_trie.union(&res.global_trie);
@@ -610,7 +557,7 @@ fn entity_manifest_from_expr(
             })
         }
         ExprKind::GetAttr { expr, attr } | ExprKind::HasAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr, policy_id)?.get_attr(attr))
+            Ok(entity_manifest_from_expr(expr)?.get_attr(attr))
         }
     }
 }
