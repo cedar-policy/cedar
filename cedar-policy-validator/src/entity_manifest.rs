@@ -986,10 +986,6 @@ action Read appliesTo {
           ]
         });
         let expected_manifest = serde_json::from_value(expected).unwrap();
-        eprintln!(
-            "Got: {}",
-            serde_json::to_string_pretty(&entity_manifest).unwrap()
-        );
         assert_eq!(entity_manifest, expected_manifest);
     }
 
