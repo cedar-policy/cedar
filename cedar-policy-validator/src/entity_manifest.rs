@@ -642,6 +642,29 @@ action Read appliesTo {
         .0
     }
 
+    fn document_fields_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            "
+entity User = {
+name: String,
+};
+
+entity Document = {
+owner: User,
+viewer: User,
+};
+
+action Read appliesTo {
+principal: [User],
+resource: [Document]
+};
+",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
     #[test]
     fn test_simple_entity_manifest() {
         let mut pset = PolicySet::new();
@@ -1239,6 +1262,216 @@ action Hello appliesTo {
             ]
           ]
         });
+        let expected_manifest = serde_json::from_value(expected).unwrap();
+        assert_eq!(entity_manifest, expected_manifest);
+    }
+
+    #[test]
+    fn test_entity_manifest_with_if() {
+        let mut pset = PolicySet::new();
+
+        let schema = document_fields_schema();
+
+        let policy = parse_policy(
+            None,
+            "permit(principal, action, resource)
+when {
+    if principal.name == \"John\"
+    then resource.owner.name == User::\"oliver\".name
+    else resource.viewer == User::\"oliver\"
+};",
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let expected = serde_json::json! ( {
+          "perAction": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestorsRequired": false
+                          }
+                        ]
+                      ],
+                      "ancestorsRequired": false
+                    }
+                  ],
+                  [
+                    {
+                      "literal": {
+                        "ty": "User",
+                        "eid": "oliver"
+                      }
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestorsRequired": false
+                          }
+                        ]
+                      ],
+                      "ancestorsRequired": false
+                    }
+                  ],
+                  [
+                    {
+                      "var": "resource"
+                    },
+                    {
+                      "children": [
+                        [
+                          "viewer",
+                          {
+                            "children": [],
+                            "ancestorsRequired": false
+                          }
+                        ],
+                        [
+                          "owner",
+                          {
+                            "children": [
+                              [
+                                "name",
+                                {
+                                  "children": [],
+                                  "ancestorsRequired": false
+                                }
+                              ]
+                            ],
+                            "ancestorsRequired": false
+                          }
+                        ]
+                      ],
+                      "ancestorsRequired": false
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+        );
+        let expected_manifest = serde_json::from_value(expected).unwrap();
+        assert_eq!(entity_manifest, expected_manifest);
+    }
+
+    #[test]
+    fn test_entity_manifest_if_literal_record() {
+        let mut pset = PolicySet::new();
+
+        let schema = document_fields_schema();
+
+        let policy = parse_policy(
+            None,
+            "permit(principal, action, resource)
+when {
+    {
+      \"myfield\":
+          {
+            \"secondfield\":
+            if principal.name == \"yihong\"
+            then principal
+            else resource.owner,
+            \"ignored but still important due to errors\":
+            resource.viewer
+          }
+    }[\"myfield\"][\"secondfield\"].name == \"pavel\"
+};",
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let expected = serde_json::json! ( {
+          "perAction": [
+            [
+              {
+                "principal": "User",
+                "action": {
+                  "ty": "Action",
+                  "eid": "Read"
+                },
+                "resource": "Document"
+              },
+              {
+                "trie": [
+                  [
+                    {
+                      "var": "principal"
+                    },
+                    {
+                      "children": [
+                        [
+                          "name",
+                          {
+                            "children": [],
+                            "ancestorsRequired": false
+                          }
+                        ]
+                      ],
+                      "ancestorsRequired": false
+                    }
+                  ],
+                  [
+                    {
+                      "var": "resource"
+                    },
+                    {
+                      "children": [
+                        [
+                          "viewer",
+                          {
+                            "children": [],
+                            "ancestorsRequired": false
+                          }
+                        ],
+                        [
+                          "owner",
+                          {
+                            "children": [
+                              [
+                                "name",
+                                {
+                                  "children": [],
+                                  "ancestorsRequired": false
+                                }
+                              ]
+                            ],
+                            "ancestorsRequired": false
+                          }
+                        ]
+                      ],
+                      "ancestorsRequired": false
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+        );
         let expected_manifest = serde_json::from_value(expected).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
