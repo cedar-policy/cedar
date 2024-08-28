@@ -214,7 +214,7 @@ fn union_fields<T: Clone>(first: &Fields<T>, second: &Fields<T>) -> Fields<T> {
     let mut res = first.clone();
     for (key, value) in second {
         res.entry(key.clone())
-            .and_modify(|existing| *existing = Box::new((*existing).union(value)))
+            .and_modify(|existing| existing.union_mut(value))
             .or_insert(value.clone());
     }
     res
@@ -278,15 +278,18 @@ impl RootAccessTrie {
 impl<T: Clone> RootAccessTrie<T> {
     /// Union two [`RootAccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    pub fn union(&self, other: &Self) -> Self {
-        let mut res = self.clone();
+    pub fn union(mut self, other: &Self) -> Self {
+        self.union_mut(other);
+        self
+    }
+
+    pub fn union_mut(&mut self, other: &Self) {
         for (key, value) in &other.trie {
-            res.trie
+            self.trie
                 .entry(key.clone())
-                .and_modify(|existing| *existing = (*existing).union(value))
+                .and_modify(|existing| existing.union_mut(value))
                 .or_insert(value.clone());
         }
-        res
     }
 }
 
@@ -299,12 +302,14 @@ impl Default for RootAccessTrie {
 impl<T: Clone> AccessTrie<T> {
     /// Union two [`AccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    pub fn union(&self, other: &Self) -> Self {
-        Self {
-            children: union_fields(&self.children, &other.children),
-            ancestors_required: self.ancestors_required || other.ancestors_required,
-            data: self.data.clone(),
-        }
+    pub fn union(mut self, other: &Self) -> Self {
+        self.union_mut(other);
+        self
+    }
+
+    pub fn union_mut(&mut self, other: &Self) {
+        self.children = union_fields(&self.children, &other.children);
+        self.ancestors_required = self.ancestors_required || other.ancestors_required;
     }
 
     /// Get the children of this [`AccessTrie`].
@@ -385,12 +390,9 @@ pub fn compute_entity_manifest(
             let request_type = request_env
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
-            // Add to the manifest based on the request type.
             manifest
                 .entry(request_type)
-                .and_modify(|existing| {
-                    *existing = existing.union(&new_primary_slice);
-                })
+                .and_modify(|existing| existing.union_mut(&new_primary_slice))
                 .or_insert(new_primary_slice);
         }
     }

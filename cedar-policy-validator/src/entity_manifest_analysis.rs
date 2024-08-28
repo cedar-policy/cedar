@@ -130,14 +130,17 @@ impl WrappedAccessPaths {
                 WrappedAccessPaths::AccessPath(access_path)
             }
             WrappedAccessPaths::RecordLiteral(mut record) => {
+                // PANIC SAFETY: Record literals should have any attributes accessed after typechecking has occurred.
+                #[allow(clippy::panic)]
                 let Some(field) = record.remove(attr) else {
                     panic!("Record literal lacks dereferenced field, but the typechecker failed to catch it.");
                 };
 
                 *field
             }
+            // PANIC SAFETY: Type checker should prevent using `.` operator on a set type.
+            #[allow(clippy::panic)]
             WrappedAccessPaths::SetLiteral(_) => {
-                // PANIC SAFETY: Type checker should prevent using `.` operator on a set type.
                 panic!("Attempted to dereference a set literal.")
             }
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
@@ -160,6 +163,8 @@ impl WrappedAccessPaths {
             WrappedAccessPaths::RecordLiteral(record) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                     for (field, value) in record.iter_mut() {
+                        // PANIC SAFETY: Record literals must have attributes that match the type.
+                        #[allow(clippy::expect_used)]
                         let field_ty = &attrs
                             .get_attr(field)
                             .expect("Missing field in record type")
@@ -167,14 +172,22 @@ impl WrappedAccessPaths {
                         value.ancestors_required(field_ty);
                     }
                 }
+                // PANIC SAFETY: Typechecking should identity record literals as record types.
+                #[allow(clippy::panic)]
                 _ => {
                     panic!("Found record literal when expected {} type", ty);
                 }
             },
             WrappedAccessPaths::SetLiteral(elements) => {
-                let Type::Set { element_type } = ty else {
+                // PANIC SAFETY: Typechecking should identity set literals as set types.
+                #[allow(clippy::panic)]
+                let Type::Set { element_type } = ty
+                else {
                     panic!("Found set literal when expected {} type", ty);
                 };
+
+                // PANIC SAFETY: Typechecking should give concrete types for set elements.
+                #[allow(clippy::expect_used)]
                 let ele_type = element_type
                     .as_ref()
                     .expect("Expected concrete set type after typechecking");
@@ -193,38 +206,43 @@ impl WrappedAccessPaths {
         match self {
             WrappedAccessPaths::AccessPath(path) => {
                 let leaf_trie = type_to_access_trie(ty);
-                let res = path.to_root_access_trie_with_leaf(leaf_trie.clone());
-                res
+                path.to_root_access_trie_with_leaf(leaf_trie.clone())
             }
-            WrappedAccessPaths::RecordLiteral(literal_fields) => match ty {
+            WrappedAccessPaths::RecordLiteral(mut literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
                     attrs: record_attrs,
                     ..
                 }) => {
                     let mut res = RootAccessTrie::new();
                     for (attr, attr_ty) in &record_attrs.attrs {
-                        // TODO is there a way to avoid this clone?
-                        let field = (*literal_fields
-                            .get(attr)
-                            .unwrap_or_else(|| panic!("Missing field {attr} in record literal")))
-                        .clone();
+                        // PANIC SAFETY: Record literals should have attributes that match the type.
+                        #[allow(clippy::panic)]
+                        let field = literal_fields
+                            .remove(attr)
+                            .unwrap_or_else(|| panic!("Missing field {attr} in record literal"));
 
                         res = res.union(&field.full_type_required(&attr_ty.attr_type));
                     }
 
                     res
                 }
+                // PANIC SAFETY: Typechecking should identity record literals as record types.
+                #[allow(clippy::panic)]
                 _ => {
                     panic!("Found record literal when expected {} type", ty);
                 }
             },
             WrappedAccessPaths::SetLiteral(elements) => match ty {
                 Type::Set { element_type } => {
+                    // PANIC SAFETY: Typechecking should give concrete types for set elements.
+                    #[allow(clippy::expect_used)]
                     let ele_type = element_type
                         .as_ref()
                         .expect("Expected concrete set type after typechecking");
                     elements.full_type_required(ele_type)
                 }
+                // PANIC SAFETY: Typechecking should identity set literals as set types.
+                #[allow(clippy::panic)]
                 _ => {
                     panic!("Found set literal when expected {} type", ty);
                 }
@@ -261,7 +279,7 @@ impl RootAccessTrie {
         // could be more efficient by mutating self
         // instead we use the existing union function.
         let other_trie = access_path.to_root_access_trie_with_leaf(leaf_trie.clone());
-        *self = self.union(&other_trie);
+        self.union_mut(&other_trie)
     }
 }
 
