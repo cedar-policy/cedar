@@ -172,6 +172,81 @@ impl<N: Display> Fragment<N> {
     }
 }
 
+/// An [`UnreservedId`] that cannot be reserved JSON schema keywords
+/// like `Set`, `Long`, and etc.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
+
+impl From<CommonTypeId> for UnreservedId {
+    fn from(value: CommonTypeId) -> Self {
+        value.0
+    }
+}
+
+impl CommonTypeId {
+    /// Create a [`CommonTypeId`] based on an [`UnreservedId`] but do not check
+    /// if the latter is valid or not
+    pub fn unchecked(id: UnreservedId) -> Self {
+        Self(id)
+    }
+}
+
+impl Display for CommonTypeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let id: UnreservedId = u.arbitrary()?;
+        if is_reserved_schema_keyword(&id) {
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type names as well as valid unreserved names.
+            #[allow(clippy::unwrap_used)]
+            let new_id = format!("_{id}").parse().unwrap();
+            Ok(CommonTypeId::unchecked(new_id))
+        } else {
+            Ok(CommonTypeId::unchecked(id))
+        }
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <UnreservedId as arbitrary::Arbitrary>::size_hint(depth)
+    }
+}
+
+// Test if this id is a reserved JSON schema keyword.
+// Issues:
+// https://github.com/cedar-policy/cedar/issues/1070
+// https://github.com/cedar-policy/cedar/issues/1139
+pub(crate) fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
+    matches!(
+        id.as_ref(),
+        "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
+    )
+}
+
+/// Deserialize a [`CommonTypeId`]
+impl<'de> Deserialize<'de> for CommonTypeId {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        UnreservedId::deserialize(deserializer).and_then(|id| {
+            if is_reserved_schema_keyword(&id) {
+                Err(serde::de::Error::custom(format!(
+                    "Used reserved schema keyword: {id} "
+                )))
+            } else {
+                Ok(Self(id))
+            }
+        })
+    }
+}
+
 /// A single namespace definition from a Fragment.
 /// This is composed of common types, entity types, and action definitions.
 ///
@@ -194,7 +269,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<UnreservedId, Type<N>>,
+    pub common_types: HashMap<CommonTypeId, Type<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]

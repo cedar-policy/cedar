@@ -2913,9 +2913,16 @@ pub(crate) mod test {
         });
     }
 
-    // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070.
+    #[track_caller]
+    fn assert_invalid_json_schema(src: serde_json::Value) {
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved schema keyword"));
+    }
+
+    // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070 and #1139.
     #[test]
     fn test_common_type_name_conflicts() {
+        // `Record` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -2943,9 +2950,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Record": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Record"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `Extension` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -2973,9 +3009,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Extension": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Extension"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `Entity` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -3003,9 +3068,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Entity": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Entity"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `Set` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -3033,9 +3127,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Set": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Set"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `Long` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -3063,9 +3186,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Long": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Long"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `Boolean` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -3093,9 +3245,38 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_invalid_json_schema(src);
 
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "Boolean": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "Boolean"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // `String` cannot be a common type name
         let src: serde_json::Value = json!({
             "": {
                 "commonTypes": {
@@ -3123,8 +3304,67 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Ok(_));
+        assert_invalid_json_schema(src);
+
+        let src: serde_json::Value = json!({
+            "NS": {
+                "commonTypes": {
+                    "String": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                            }
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" : {
+                            "type" : "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "String"
+                                }
+                        }
+                    }
+                }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
+
+        // Cedar examines common type name declarations eagerly.
+        // So it throws an error for the following example even though `Record`
+        // is not referenced.
+        let src: serde_json::Value = json!({
+            "": {
+                "commonTypes": {
+                    "Record": {
+                        "type": "Set",
+                        "element": {
+                            "type": "Long"
+                        }
+                    }
+                },
+                "entityTypes": {
+                    "b": {
+                        "shape" :
+                        {
+                            "type": "Record",
+                            "attributes" : {
+                                "c" : {
+                                    "type" : "String"
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": { },
+            }
+        });
+        assert_invalid_json_schema(src);
     }
 
     #[test]
@@ -3206,8 +3446,8 @@ mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
 mod test_rfc70 {
-    use super::test::collect_warnings;
-    use super::ValidatorSchema;
+    use super::{test::collect_warnings, CedarSchemaError};
+    use super::{SchemaError, ValidatorSchema};
     use crate::types::Type;
     use cedar_policy_core::{
         extensions::Extensions,
@@ -3225,10 +3465,28 @@ mod test_rfc70 {
     }
 
     #[track_caller]
+    fn assert_invalid_cedar_schema(src: &str) {
+        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+            Ok(_) => panic!("{src} should be an invalid schema"),
+            Err(CedarSchemaError::Parsing(_)) => {}
+            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+        }
+    }
+
+    #[track_caller]
     fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
         match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
             Ok(schema) => schema,
             Err(e) => panic!("{:?}", miette::Report::new(e)),
+        }
+    }
+
+    #[track_caller]
+    fn assert_invalid_json_schema(json: serde_json::Value) {
+        match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
+            Ok(_) => panic!("{json} should be an invalid schema"),
+            Err(SchemaError::JsonDeserialization(_)) => {}
+            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
         }
     }
 
@@ -3744,7 +4002,7 @@ mod test_rfc70 {
         assert_valid_json_schema(src_json);
     }
 
-    /// Common type shadowing a primitive type is allowed;
+    /// Common type shadowing a JSON schema primitive type is disallowed per #1139;
     /// you can still refer to the primitive type using __cedar
     #[test]
     fn common_shadowing_primitive() {
@@ -3760,6 +4018,25 @@ mod test_rfc70 {
                 type Bool = Long;
                 entity F {
                     a: Bool,
+                    b: __cedar::Bool,
+                    c: Long,
+                    d: __cedar::Long,
+                };
+            }
+        ";
+        assert_invalid_cedar_schema(src);
+        let src = "
+            type _String = Long;
+            entity E {
+                a: _String,
+                b: __cedar::String,
+                c: Long,
+                d: __cedar::Long,
+            };
+            namespace NS {
+                type _Bool = Long;
+                entity F {
+                    a: _Bool,
                     b: __cedar::Bool,
                     c: Long,
                     d: __cedar::Long,
@@ -3834,10 +4111,51 @@ mod test_rfc70 {
                 "actions": {}
             }
         });
+        assert_invalid_json_schema(src_json);
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "_String": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "E": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "_String" },
+                                "b": { "type": "__cedar::String" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            },
+            "NS": {
+                "commonTypes": {
+                    "_Bool": { "type": "Long" },
+                },
+                "entityTypes": {
+                    "F": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": { "type": "_Bool" },
+                                "b": { "type": "__cedar::Bool" },
+                                "c": { "type": "Long" },
+                                "d": { "type": "__cedar::Long" },
+                            }
+                        }
+                    },
+                },
+                "actions": {}
+            }
+        });
         let schema = assert_valid_json_schema(src_json);
         let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string()); // this is arguably a BUG -- the Cedar syntax interprets this as Long due to the common type, but the JSON syntax interprets this as String. However, this schema will be illegal after #1139, so it's moot to fix now
+            assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_string());

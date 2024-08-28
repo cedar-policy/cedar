@@ -36,7 +36,7 @@ use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     fuzzy_match::fuzzy_search,
-    json_schema,
+    json_schema::{self, CommonTypeId},
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -276,12 +276,12 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: HashMap<UnreservedId, json_schema::Type<RawName>>,
+        schema_file_type_def: HashMap<CommonTypeId, json_schema::Type<RawName>>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(schema_file_type_def.len());
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry

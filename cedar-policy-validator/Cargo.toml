@@ -52,6 +52,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 similar-asserts = "1.5.0"
 cool_asserts = "2.0"
 cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["test-util"] }
+miette = { version = "7.1.0", features = ["fancy"] }
 
 [build-dependencies]
 lalrpop = "0.20.0"

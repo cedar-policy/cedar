@@ -39,7 +39,11 @@ use super::{
         ToJsonSchemaError, ToJsonSchemaErrors,
     },
 };
-use crate::{cedar_schema, json_schema, RawName};
+use crate::{
+    cedar_schema,
+    json_schema::{self, is_reserved_schema_keyword, CommonTypeId},
+    RawName,
+};
 
 impl From<cedar_schema::Path> for RawName {
     fn from(p: cedar_schema::Path) -> Self {
@@ -234,12 +238,6 @@ fn convert_namespace(
     Ok((ns_name, def))
 }
 
-// Test if this id is a reserved JSON schema keyword.
-// Issue: https://github.com/cedar-policy/cedar/issues/1070
-fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
-    matches!(id.as_ref(), "Set" | "Record" | "Entity" | "Extension")
-}
-
 impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
     type Error = ToJsonSchemaErrors;
 
@@ -268,7 +266,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                     Err(ToJsonSchemaError::reserved_keyword(id, name_loc))
                 } else {
                     Ok((
-                        id,
+                        CommonTypeId::unchecked(id),
                         cedar_type_to_json_type(decl.def).map_err(EAMapError::from)?,
                     ))
                 }

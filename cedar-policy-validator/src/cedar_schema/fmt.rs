@@ -248,7 +248,7 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
             .common_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone())
+                RawName::new_from_unreserved(ty_name.clone().into())
                     .qualify_with_name(name.as_ref())
                     .to_smolstr()
             })
