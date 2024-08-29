@@ -233,7 +233,7 @@ impl Diagnostic for PartialRequestError {}
 pub enum EntityManifestError {
     /// A validation error was encountered
     // TODO impl Error for ValidationResult (it already is implemented for api::ValidationResult)
-    #[error("A validation error occurred.")]
+    #[error("a validation error occurred")]
     Validation(ValidationResult),
     /// A entities error was encountered
     #[error(transparent)]
