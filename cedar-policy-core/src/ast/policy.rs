@@ -1899,7 +1899,6 @@ impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstrai
                     },
                 )),
             },
-            // LEFT OFF HERE
             PrincipalOrResourceConstraint::Eq(er) => Self {
                 data: Some(proto::principal_or_resource_constraint::Data::Eq(
                     proto::principal_or_resource_constraint::EqMessage {
