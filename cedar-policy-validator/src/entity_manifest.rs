@@ -210,7 +210,7 @@ impl Diagnostic for FailedAnalysisError {
 // when adding public methods.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error(
-    "Entity slicing requires fully concrete policies. Got a policy with an unknown expression."
+    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
 )]
 pub struct PartialExpressionError {}
 
