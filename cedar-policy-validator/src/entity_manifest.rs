@@ -1,5 +1,3 @@
-//! Entity Manifest definition and static analysis.
-
 /*
  * Copyright Cedar Contributors
  *
@@ -15,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! Entity Manifest definition and static analysis.
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
