@@ -209,9 +209,7 @@ impl Diagnostic for FailedAnalysisError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error(
-    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
-)]
+#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
 pub struct PartialExpressionError {}
 
 impl Diagnostic for PartialExpressionError {}
@@ -232,7 +230,7 @@ impl Diagnostic for PartialRequestError {}
 #[derive(Debug, Error)]
 pub enum EntityManifestError {
     /// A validation error was encountered
-    // TODO impl Error for ValidationResult (it already is implemented for api::ValidationResult)
+    // TODO (#1158) impl Error for ValidationResult (it already is implemented for api::ValidationResult)
     #[error("a validation error occurred")]
     Validation(ValidationResult),
     /// A entities error was encountered
