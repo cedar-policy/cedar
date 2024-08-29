@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{ast::EntityUID, transitive_closure};
+use cedar_policy_core::{
+    ast::{EntityUID, ReservedNameError},
+    transitive_closure,
+};
+use itertools::{Either, Itertools};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use thiserror::Error;
 
-use crate::human_schema;
+use crate::cedar_schema;
 
-/// Error creating a schema from human syntax
+/// Error creating a schema from the Cedar syntax
 #[derive(Debug, Error, Diagnostic)]
-pub enum HumanSchemaError {
+pub enum CedarSchemaError {
     /// Errors with the schema content
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -33,21 +38,22 @@ pub enum HumanSchemaError {
     /// Parse error
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parsing(#[from] HumanSyntaxParseError),
+    Parsing(#[from] CedarSchemaParseError),
 }
 
-/// Error parsing a human-syntax schema
+/// Error parsing a Cedar-syntax schema
+// WARNING: this type is publicly exported from `cedar-policy`
 #[derive(Debug, Error)]
 #[error("error parsing schema: {errs}")]
-pub struct HumanSyntaxParseError {
+pub struct CedarSchemaParseError {
     /// Underlying parse error(s)
-    errs: human_schema::parser::HumanSyntaxParseErrors,
+    errs: cedar_schema::parser::CedarSchemaParseErrors,
     /// Did the schema look like it was intended to be JSON format instead of
-    /// human?
+    /// Cedar?
     suspect_json_format: bool,
 }
 
-impl Diagnostic for HumanSyntaxParseError {
+impl Diagnostic for CedarSchemaParseError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let suspect_json_help = if self.suspect_json_format {
             Some(Box::new("this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"))
@@ -87,14 +93,14 @@ impl Diagnostic for HumanSyntaxParseError {
     }
 }
 
-impl HumanSyntaxParseError {
-    /// `errs`: the `human_schema::parser::HumanSyntaxParseErrors` that were thrown
+impl CedarSchemaParseError {
+    /// `errs`: the `cedar_schema::parser::CedarSyntaxParseErrors` that were thrown
     ///
-    /// `src`: the human-syntax text that we were trying to parse
-    pub(crate) fn new(errs: human_schema::parser::HumanSyntaxParseErrors, src: &str) -> Self {
+    /// `src`: the Cedar-syntax text that we were trying to parse
+    pub(crate) fn new(errs: cedar_schema::parser::CedarSchemaParseErrors, src: &str) -> Self {
         // let's see what the first non-whitespace character is
         let suspect_json_format = match src.trim_start().chars().next() {
-            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+            None => false, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
             Some('{') => true, // yes, this looks like it was intended to be a JSON schema
             Some(_) => false, // any character other than '{', not likely it was intended to be a JSON schema
         };
@@ -104,8 +110,16 @@ impl HumanSyntaxParseError {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &human_schema::parser::HumanSyntaxParseErrors {
+    /// Did the schema look like it was JSON data?
+    /// If so, it was probably intended to be parsed as the JSON schema format.
+    /// In that case, the reported errors are probably not super helpful.
+    /// (This check is provided on a best-effort basis)
+    pub fn suspect_json_format(&self) -> bool {
+        self.suspect_json_format
+    }
+
+    /// Get the errors that were encountered while parsing
+    pub fn errors(&self) -> &cedar_schema::parser::CedarSchemaParseErrors {
         &self.errs
     }
 }
@@ -116,6 +130,7 @@ impl HumanSyntaxParseError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during serialization
     #[error(transparent)]
@@ -146,26 +161,38 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
-    /// Undeclared action(s) used in the `memberOf` field of an action.
+    /// This error occurs when we cannot resolve a typename (because it refers
+    /// to an entity type or common type that was not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
-    /// This error occurs when an undeclared common type appears in entity or context
-    /// attributes.
+    TypeNotDefined(#[from] schema_errors::TypeNotDefinedError),
+    /// This error occurs when we cannot resolve an action name used in the
+    /// `memberOf` field of an action (because it refers to an action that was
+    /// not defined).
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredCommonTypes(#[from] schema_errors::UndeclaredCommonTypesError),
-    /// Duplicate specifications for an entity type. Argument is the name of
-    /// the duplicate entity type.
+    ActionNotDefined(#[from] schema_errors::ActionNotDefinedError),
+    /// Entity/common type shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeShadowing(#[from] schema_errors::TypeShadowingError),
+    /// Action shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionShadowing(#[from] schema_errors::ActionShadowingError),
+    /// Duplicate specifications for an entity type
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateEntityType(#[from] schema_errors::DuplicateEntityTypeError),
-    /// Duplicate specifications for an action. Argument is the name of the
-    /// duplicate action.
+    /// Duplicate specifications for an action
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateAction(#[from] schema_errors::DuplicateActionError),
-    /// Duplicate specification for a reusable type declaration.
+    /// Duplicate specification for a common type declaration
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateCommonType(#[from] schema_errors::DuplicateCommonTypeError),
@@ -212,10 +239,20 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownExtensionType(schema_errors::UnknownExtensionTypeError),
-    /// Common type names conflict with primitive types.
+    /// The schema used a reserved namespace or typename (as of this writing, just `__cedar`).
     #[error(transparent)]
     #[diagnostic(transparent)]
-    CommonTypeNameConflict(#[from] schema_errors::CommonTypeNameConflictError),
+    ReservedName(#[from] ReservedNameError),
+    /// Could not find a definition for a common type, at a point in the code
+    /// where internal invariants should guarantee that we would find one.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CommonTypeInvariantViolation(#[from] schema_errors::CommonTypeInvariantViolationError),
+    /// Could not find a definition for an action, at a point in the code where
+    /// internal invariants should guarantee that we would find one.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionInvariantViolation(#[from] schema_errors::ActionInvariantViolationError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -234,6 +271,42 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
     }
 }
 
+impl SchemaError {
+    /// Given one or more `SchemaError`, collect them into a single `SchemaError`.
+    /// Due to current structures, some errors may have to be dropped in some cases.
+    pub fn join_nonempty(errs: NonEmpty<SchemaError>) -> SchemaError {
+        // if we have any `TypeNotDefinedError`s, we can report all of those at once (but have to drop the others).
+        // Same for `ActionNotDefinedError`s.
+        // Any other error, we can just report the first one and have to drop the others.
+        let (type_ndef_errors, non_type_ndef_errors): (Vec<_>, Vec<_>) =
+            errs.into_iter().partition_map(|e| match e {
+                SchemaError::TypeNotDefined(e) => Either::Left(e),
+                _ => Either::Right(e),
+            });
+        if let Some(errs) = NonEmpty::from_vec(type_ndef_errors) {
+            schema_errors::TypeNotDefinedError::join_nonempty(errs).into()
+        } else {
+            let (action_ndef_errors, other_errors): (Vec<_>, Vec<_>) =
+                non_type_ndef_errors.into_iter().partition_map(|e| match e {
+                    SchemaError::ActionNotDefined(e) => Either::Left(e),
+                    _ => Either::Right(e),
+                });
+            if let Some(errs) = NonEmpty::from_vec(action_ndef_errors) {
+                schema_errors::ActionNotDefinedError::join_nonempty(errs).into()
+            } else {
+                // We partitioned a `NonEmpty` (`errs`) into what we now know is an empty vector
+                // (`type_ndef_errors`) and `non_type_ndef_errors`, so `non_type_ndef_errors` cannot
+                // be empty. Then we partitioned `non_type_ndef_errors` into what we now know is an
+                // empty vector (`action_ndef_errors`) and `other_errors`, so `other_errors` cannot
+                // be empty.
+                // PANIC SAFETY: see comments immediately above
+                #[allow(clippy::expect_used)]
+                other_errors.into_iter().next().expect("cannot be empty")
+            }
+        }
+    }
+}
+
 /// Convenience alias
 pub type Result<T> = std::result::Result<T, SchemaError>;
 
@@ -242,12 +315,13 @@ pub mod schema_errors {
     use std::{collections::BTreeSet, fmt::Display};
 
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, Id, Name},
+        ast::{EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name},
         parser::join_with_conjunction,
         transitive_closure,
     };
     use itertools::Itertools;
     use miette::Diagnostic;
+    use nonempty::NonEmpty;
     use smol_str::SmolStr;
     use thiserror::Error;
 
@@ -306,35 +380,104 @@ pub mod schema_errors {
         }
     }
 
-    /// Undeclared actions error
+    /// Type resolution error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
-    pub struct UndeclaredActionsError(pub(crate) BTreeSet<SmolStr>);
+    #[error("failed to resolve type{}: {}", if .0.len() > 1 { "s" } else { "" }, .0.iter().map(crate::ConditionalName::raw).join(", "))]
+    #[diagnostic(help("{}", .0.first().resolution_failure_help()))] // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
+    pub struct TypeNotDefinedError(pub(crate) NonEmpty<crate::ConditionalName>);
 
-    impl Display for UndeclaredActionsError {
+    impl TypeNotDefinedError {
+        /// Combine all the errors into a single [`TypeNotDefinedError`].
+        ///
+        /// This cannot fail, because `NonEmpty` guarantees there is at least
+        /// one error to join.
+        pub(crate) fn join_nonempty(errs: NonEmpty<TypeNotDefinedError>) -> Self {
+            Self(errs.flat_map(|err| err.0))
+        }
+    }
+
+    /// Action resolution error
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[diagnostic(help("any actions appearing as parents need to be declared as actions"))]
+    pub struct ActionNotDefinedError(
+        pub(crate) NonEmpty<crate::json_schema::ActionEntityUID<crate::ConditionalName>>,
+    );
+
+    impl ActionNotDefinedError {
+        /// Combine all the errors into a single [`ActionNotDefinedError`].
+        ///
+        /// This cannot fail, because `NonEmpty` guarantees there is at least
+        /// one error to join.
+        pub(crate) fn join_nonempty(errs: NonEmpty<ActionNotDefinedError>) -> Self {
+            Self(errs.flat_map(|err| err.0))
+        }
+    }
+
+    impl Display for ActionNotDefinedError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if self.0.len() == 1 {
                 write!(f, "undeclared action: ")?;
             } else {
                 write!(f, "undeclared actions: ")?;
             }
-            join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
+            join_with_conjunction(
+                f,
+                "and",
+                self.0.iter().map(|aeuid| aeuid.as_raw()),
+                |f, s| s.fmt(f),
+            )
         }
     }
 
-    /// Undeclared common types error
+    /// Entity/common type shadowing error. Some shadowing relationships are not
+    /// allowed for clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("undeclared common type: {0}")]
-    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
-    pub struct UndeclaredCommonTypesError(pub(crate) Name);
+    #[error(
+        "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
+    )]
+    #[diagnostic(help(
+        "try renaming one of the definitions, or moving `{shadowed_def}` to a different namespace"
+    ))]
+    pub struct TypeShadowingError {
+        /// Definition that is being shadowed illegally
+        pub(crate) shadowed_def: InternalName,
+        /// Definition that is responsible for shadowing it illegally
+        pub(crate) shadowing_def: InternalName,
+    }
+
+    /// Action shadowing error. Some shadowing relationships are not allowed for
+    /// clarity reasons; see
+    /// [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(
+        "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
+    )]
+    #[diagnostic(help(
+        "try renaming one of the actions, or moving `{shadowed_def}` to a different namespace"
+    ))]
+    pub struct ActionShadowingError {
+        /// Definition that is being shadowed illegally
+        pub(crate) shadowed_def: EntityUID,
+        /// Definition that is responsible for shadowing it illegally
+        pub(crate) shadowing_def: EntityUID,
+    }
 
     /// Duplicate entity type error
     //
@@ -361,7 +504,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) Name);
+    pub struct DuplicateCommonTypeError(pub(crate) InternalName);
 
     /// Cycle in action hierarchy error
     //
@@ -379,7 +522,7 @@ pub mod schema_errors {
     // when adding public methods.
     #[derive(Debug, Diagnostic, Error)]
     #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) Name);
+    pub struct CycleInCommonTypeReferencesError(pub(crate) InternalName);
 
     /// Action declared in `entityType` list error
     //
@@ -478,6 +621,10 @@ pub mod schema_errors {
         // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
         #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
         ActionAttributes(Vec<String>),
+        #[error(
+            "Embedded attribute maps (RFC 68) are not fully implemented in this version of Cedar"
+        )]
+        EAMaps,
     }
 
     /// This error is thrown when `serde_json` fails to deserialize the JSON
@@ -486,7 +633,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Error)]
-    #[error("failed to parse schema in JSON format: {err}")]
+    #[error("{err}")]
     pub struct JsonDeserializationError {
         /// Error thrown by the `serde_json` crate
         err: serde_json::Error,
@@ -505,7 +652,7 @@ pub mod schema_errors {
     #[derive(Debug, Error)]
     enum JsonDeserializationAdvice {
         #[error("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?")]
-        HumanFormat,
+        CedarFormat,
         #[error("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{{ \"\": {{..}} }}`")]
         MissingNamespace,
     }
@@ -520,7 +667,7 @@ pub mod schema_errors {
                 Some(src) => {
                     // let's see what the first non-whitespace character is
                     let advice = match src.trim_start().chars().next() {
-                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs human format
+                        None => None, // schema is empty or only whitespace; the problem is unlikely to be JSON vs Cedar format
                         Some('{') => {
                             // This looks like it was intended to be a JSON schema. Check fields of top level JSON object to see
                             // if it looks like it's missing a namespace.
@@ -543,7 +690,7 @@ pub mod schema_errors {
                                 None
                             }
                         }
-                        Some(_) => Some(JsonDeserializationAdvice::HumanFormat), // any character other than '{', we suspect it might be a human-format schema
+                        Some(_) => Some(JsonDeserializationAdvice::CedarFormat), // any character other than '{', we suspect it might be a Cedar-format schema
                     };
                     Self { err, advice }
                 }
@@ -571,13 +718,31 @@ pub mod schema_errors {
         }
     }
 
-    /// This error is thrown when a common type name conflicts with a primitive
-    /// type
+    /// Could not find a definition for a common type, at a point in the code
+    /// where internal invariants should guarantee that we would find one.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Error, Debug, Diagnostic)]
-    #[error("Common type name `{0}` conflicts with primitive type")]
-    pub struct CommonTypeNameConflictError(pub(crate) Id);
+    #[error("internal invariant violated: failed to find a common-type definition for {name}")]
+    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
+    pub struct CommonTypeInvariantViolationError {
+        /// Fully-qualified [`InternalName`] of the common type we failed to find a definition for
+        pub(crate) name: InternalName,
+    }
+
+    /// Could not find a definition for an action, at a point in the code where
+    /// internal invariants should guarantee that we would find one.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Error, Debug, Diagnostic)]
+    #[error("internal invariant violated: failed to find {} for {}", if .euids.len() > 1 { "action definitions" } else { "an action definition" }, .euids.iter().join(", "))]
+    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
+    pub struct ActionInvariantViolationError {
+        /// Fully-qualified [`EntityUID`]s of the action(s) we failed to find a definition for
+        pub(crate) euids: NonEmpty<EntityUID>,
+    }
 }

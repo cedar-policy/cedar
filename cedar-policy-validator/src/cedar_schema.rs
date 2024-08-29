@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-use cedar_policy::ffi;
-use wasm_bindgen::prelude::*;
+//! The Cedar syntax for schemas
 
-#[wasm_bindgen(js_name = "validate")]
-pub fn wasm_validate(call: ffi::ValidationCall) -> ffi::ValidationAnswer {
-    ffi::validate(call)
-}
+mod ast;
+pub use ast::Path;
+mod err;
+pub mod fmt;
+pub mod parser;
+pub(crate) mod test;
+pub mod to_json_schema;
+pub use err::ParseError;
+pub use err::{schema_warnings, SchemaWarning};

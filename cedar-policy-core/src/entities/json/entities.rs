@@ -69,7 +69,7 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 
     /// Whether to compute, enforce, or assume TC for entities parsed using this
     /// parser.
@@ -111,7 +111,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
     /// responsible for ensuring that TC holds before calling this method.
     pub fn new(
         schema: Option<&'s S>,
-        extensions: Extensions<'e>,
+        extensions: &'e Extensions<'e>,
         tc_computation: TCComputation,
     ) -> Self {
         Self {
@@ -282,7 +282,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = schema
-                            .entity_types_with_basename(etype.name().basename())
+                            .entity_types_with_basename(&etype.name().basename())
                             .collect();
                         JsonDeserializationError::EntitySchemaConformance(
                             UnexpectedEntityTypeError {
@@ -430,7 +430,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents, &self.extensions)?)
+        Ok(Entity::new(uid, attrs, parents, self.extensions)?)
     }
 }
 

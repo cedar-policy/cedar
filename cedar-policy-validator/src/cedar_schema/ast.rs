@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::Id,
+    ast::{Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,11 +27,8 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::{RawName, SchemaTypeVariant};
+use crate::json_schema;
 
-const IPADDR_EXTENSION: &str = "ipaddr";
-const DECIMAL_EXTENSION: &str = "decimal";
-pub const EXTENSIONS: [&str; 2] = [IPADDR_EXTENSION, DECIMAL_EXTENSION];
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
@@ -89,35 +86,25 @@ impl Path {
         (self.0.node.namespace, self.0.node.basename)
     }
 
-    /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`) or the unqualified namespace
-    pub fn is_in_unqualified_or_cedar(&self) -> bool {
-        self.0.node.is_in_unqualified_or_cedar()
-    }
-
     /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`)
     pub fn is_in_cedar(&self) -> bool {
         self.0.node.is_in_cedar()
     }
+}
 
-    /// Is this name exactly the cedar namespace?
-    pub fn is_cedar(&self) -> bool {
-        self.0.node.is_cedar()
+impl From<Path> for InternalName {
+    fn from(value: Path) -> Self {
+        InternalName::new(
+            value.0.node.basename,
+            value.0.node.namespace,
+            Some(value.0.loc),
+        )
     }
 }
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.node)
-    }
-}
-
-impl From<Path> for RawName {
-    fn from(value: Path) -> Self {
-        RawName::from_components(
-            value.0.node.basename,
-            value.0.node.namespace,
-            Some(value.0.loc),
-        )
     }
 }
 
@@ -138,21 +125,10 @@ impl PathInternal {
 
     /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`)
     fn is_in_cedar(&self) -> bool {
-        // `0` is the position of the most significant namespace
-        self.namespace
-            .first()
-            .map(|id| id.as_ref() == CEDAR_NAMESPACE)
-            .unwrap_or(false)
-    }
-
-    /// Is this name exactly the cedar namespace?
-    fn is_cedar(&self) -> bool {
-        self.namespace.is_empty() && self.basename.as_ref() == CEDAR_NAMESPACE
-    }
-
-    /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`) or the unqualified namespace
-    fn is_in_unqualified_or_cedar(&self) -> bool {
-        self.namespace.is_empty() || self.is_in_cedar()
+        match self.namespace.as_slice() {
+            [id] => id.as_ref() == CEDAR_NAMESPACE,
+            _ => false,
+        }
     }
 }
 
@@ -199,18 +175,9 @@ pub struct Namespace {
 }
 
 impl Namespace {
-    /// Is this [`Namespace`] unqualfiied?
+    /// Is this [`Namespace`] unqualfied?
     pub fn is_unqualified(&self) -> bool {
         self.name.is_none()
-    }
-
-    /// Get the name of this [`Namespace`] as a fully-qualified [`cedar_policy_core::ast::Name`],
-    /// or `None` for the empty namespace
-    pub fn name(&self) -> Option<cedar_policy_core::ast::Name> {
-        self.name.as_ref().map(|path| {
-            // `.qualify_with(None)` is OK because the `path` is already fully-qualified
-            crate::RawName::from(path.clone().node).qualify_with(None)
-        })
     }
 }
 
@@ -273,29 +240,43 @@ pub enum PrimitiveType {
     Bool,
 }
 
-impl<N> From<PrimitiveType> for SchemaTypeVariant<N> {
+impl<N> From<PrimitiveType> for json_schema::TypeVariant<N> {
     fn from(value: PrimitiveType) -> Self {
         match value {
-            PrimitiveType::Long => SchemaTypeVariant::Long,
-            PrimitiveType::String => SchemaTypeVariant::String,
-            PrimitiveType::Bool => SchemaTypeVariant::Boolean,
+            PrimitiveType::Long => json_schema::TypeVariant::Long,
+            PrimitiveType::String => json_schema::TypeVariant::String,
+            PrimitiveType::Bool => json_schema::TypeVariant::Boolean,
         }
     }
 }
 
-/// Attribute declarations , used in records and entity types
+/// Attribute declarations, used in records and entity types.
+/// One [`AttrDecl`] is one key-value pair, or an embedded attribute map pair `?: value_ty`.
+///
+/// The data structures in this file, and the Cedar schema format parser in
+/// general, permissively allow `EAMap`s to appear anywhere an [`AttrDecl`] is
+/// expected (including inside other `EAMap`s), in order to provide better error
+/// messages when `EAMap`s are encountered in illegal but plausible positions
 #[derive(Debug, Clone)]
-pub struct AttrDecl {
-    /// Name of this attribute
-    pub name: Node<SmolStr>,
-    /// Whether or not it is a required attribute (implicitly `true`)
-    pub required: bool,
-    /// The type of this attribute
-    pub ty: Node<Type>,
+pub enum AttrDecl {
+    /// A normal attribute declaration `name: ty` or `name?: ty`
+    Concrete {
+        /// Name of this attribute
+        name: Node<SmolStr>,
+        /// Whether or not it is a required attribute (default `true`)
+        required: bool,
+        /// The type of this attribute
+        ty: Node<Type>,
+    },
+    /// An `EAMap` declaration `?: ty`
+    EAMap {
+        /// Value type of the `EAMap`
+        value_ty: Node<Type>,
+    },
 }
 
 /// The target of a [`PRAppDecl`]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PR {
     /// Applies to the `principal` variable
     Principal,
@@ -356,70 +337,6 @@ mod test {
 
     fn loc() -> Loc {
         Loc::new((1, 1), Arc::from("foo"))
-    }
-
-    #[test]
-    fn in_unqual() {
-        let p = Path::single("foo".parse().unwrap(), loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn qual() {
-        let p = Path::new("foo".parse().unwrap(), ["bar".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
-        assert!(!p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar() {
-        let p = Path::new("foo".parse().unwrap(), ["__cedar".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(p.is_in_cedar());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar2() {
-        let p = Path::new(
-            "foo".parse().unwrap(),
-            ["__cedar".parse().unwrap(), "bar".parse().unwrap()],
-            loc(),
-        );
-        assert!(!p.is_cedar());
-        assert!(p.is_in_cedar());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn in_cedar3() {
-        let p = Path::new(
-            "foo".parse().unwrap(),
-            ["bar".parse().unwrap(), "__cedar".parse().unwrap()],
-            loc(),
-        );
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
-        assert!(!p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn is_cedar() {
-        let p = Path::new("__cedar".parse().unwrap(), [], loc());
-        assert!(p.is_cedar());
-        assert!(!p.is_in_cedar());
-        assert!(p.is_in_unqualified_or_cedar());
-    }
-
-    #[test]
-    fn is_cedar2() {
-        let p = Path::new("__cedar".parse().unwrap(), ["foo".parse().unwrap()], loc());
-        assert!(!p.is_cedar());
-        assert!(!p.is_in_cedar());
-        assert!(!p.is_in_unqualified_or_cedar());
     }
 
     // Ensure the iterators over [`Path`]s return most significant names first

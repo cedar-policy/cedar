@@ -18,17 +18,23 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
-use crate::ast::{
-    expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
-    ExpressionConstructionError, Literal, Name, RestrictedExpr, Unknown, Value, ValueKind,
-};
-use crate::entities::{
-    conformance::err::EntitySchemaConformanceError,
-    json::err::{EscapeKind, TypeMismatchError},
-    schematype_of_restricted_expr, GetSchemaTypeError,
-};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
+use crate::{
+    ast::{
+        expression_construction_errors, BorrowedRestrictedExpr, Eid, EntityUID, ExprKind,
+        ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
+    },
+    entities::Name,
+};
+use crate::{
+    entities::{
+        conformance::err::EntitySchemaConformanceError,
+        json::err::{EscapeKind, TypeMismatchError},
+        schematype_of_restricted_expr, GetSchemaTypeError,
+    },
+    extensions::ExtensionConstructorSignature,
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -56,7 +62,7 @@ pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown when attempting to parse this
-        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
@@ -425,12 +431,12 @@ impl FnAndArg {
 #[derive(Debug, Clone)]
 pub struct ValueParser<'e> {
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 }
 
 impl<'e> ValueParser<'e> {
     /// Create a new `ValueParser`.
-    pub fn new(extensions: Extensions<'e>) -> Self {
+    pub fn new(extensions: &'e Extensions<'e>) -> Self {
         Self { extensions }
     }
 
@@ -660,21 +666,19 @@ impl<'e> ValueParser<'e> {
                             )
                         }
                     })?;
+                let expected_return_type = SchemaType::Extension {
+                    name: expected_typename,
+                };
                 let func = self
                     .extensions
-                    .lookup_single_arg_constructor(
-                        &SchemaType::Extension {
-                            name: expected_typename.clone(),
-                        },
-                        &argty,
-                    )
-                    .map_err(|err| JsonDeserializationError::extension_function_lookup(ctx(), err))?
+                    .lookup_single_arg_constructor(&ExtensionConstructorSignature {
+                        argument_type: &argty,
+                        return_type: &expected_return_type,
+                    })
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),
-                            SchemaType::Extension {
-                                name: expected_typename,
-                            },
+                            expected_return_type,
                             argty.clone(),
                         )
                     })?;
@@ -717,6 +721,7 @@ pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
+        #[cfg_attr(feature = "wasm", tsify(type = "__skip"))]
         __expr: String,
         /// Phantom value for the `Context` type parameter
         #[serde(skip)]

@@ -20,7 +20,7 @@ use super::Result;
 use crate::{
     ast::{self, EntityReference, EntityUID},
     parser::{
-        cst,
+        cst::{self, Literal},
         err::{self, ParseErrors, ToASTError, ToASTErrorKind},
         Loc, Node,
     },
@@ -34,7 +34,7 @@ use crate::{
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
-    fn create_multiple_refs(es: Vec<EntityUID>, loc: &Loc) -> Result<Self>;
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
     fn create_slot(loc: &Loc) -> Result<Self>;
 }
 
@@ -49,7 +49,7 @@ impl RefKind for SingleEntity {
         Ok(SingleEntity(e))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
@@ -85,7 +85,7 @@ impl RefKind for EntityReference {
         Ok(EntityReference::euid(Arc::new(e)))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, loc: &Loc) -> Result<Self> {
+    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
@@ -126,8 +126,11 @@ impl RefKind for OneOrMultipleRefs {
         Ok(OneOrMultipleRefs::Single(e))
     }
 
-    fn create_multiple_refs(es: Vec<EntityUID>, _loc: &Loc) -> Result<Self> {
-        Ok(OneOrMultipleRefs::Multiple(es))
+    fn create_multiple_refs(_loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+        fn create_multiple_refs(es: Vec<EntityUID>) -> OneOrMultipleRefs {
+            OneOrMultipleRefs::Multiple(es)
+        }
+        Ok(create_multiple_refs)
     }
 }
 
@@ -195,15 +198,16 @@ impl Node<Option<cst::Primary>> {
                 }
             }
             cst::Primary::Literal(lit) => {
-                let found = match lit.as_inner() {
-                    Some(lit) => format!("literal `{lit}`"),
-                    None => "empty node".to_string(),
-                };
+                let lit = lit.try_as_inner()?;
+                let found = format!("literal `{lit}`");
                 Err(self
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
                         found,
-                        None::<String>,
+                        match lit {
+                            Literal::Str(_) => Some("try including the entity type if you intended this string to be an entity uid"),
+                            _ => None,
+                        }
                     ))
                     .into())
             }
@@ -217,14 +221,22 @@ impl Node<Option<cst::Primary>> {
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
                         found,
-                        None::<String>,
+                        if var != ast::Var::Action {
+                            Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
+                        } else {
+                            // We don't allow `is` in the action scope, so we won't suggest trying it.
+                            Some("try including an identifier string if you intended this name to be an entity uid".to_string())
+                        },
                     ))
                     .into())
             }
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
             cst::Primary::EList(lst) => {
+                // Calling `create_multiple_refs` first so that we error
+                // immediately if we see a set when we don't expect one.
+                let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
                 let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
-                T::create_multiple_refs(v, &self.loc)
+                Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
@@ -347,7 +359,7 @@ impl Node<Option<cst::Or>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `||` expression",
-                    None::<String>,
+                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy"),
                 ))
                 .into()),
         }
@@ -364,7 +376,7 @@ impl Node<Option<cst::And>> {
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `&&` expression",
-                    None::<String>,
+                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition"),
                 ))
                 .into()),
         }

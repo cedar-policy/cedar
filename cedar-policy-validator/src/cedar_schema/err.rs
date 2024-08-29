@@ -17,18 +17,24 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    iter::{Chain, Once},
+    vec,
 };
 
-use cedar_policy_core::parser::{
-    err::{expected_to_string, ExpectedTokenConfig},
-    unescape::UnescapeError,
-    Loc, Node,
+use cedar_policy_core::{
+    impl_diagnostic_from_source_loc_field, impl_diagnostic_from_two_source_loc_fields,
+    impl_diagnostic_from_two_source_loc_opt_fields,
+    parser::{
+        err::{expected_to_string, ExpectedTokenConfig},
+        unescape::UnescapeError,
+        Loc, Node,
+    },
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use super::ast::PR;
@@ -178,11 +184,11 @@ impl Diagnostic for ParseError {
 pub struct ParseErrors(Box<NonEmpty<ParseError>>);
 
 impl ParseErrors {
-    pub fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
-        let mut nv = NonEmpty::singleton(first);
-        let mut v = rest.into_iter().collect::<Vec<_>>();
-        nv.append(&mut v);
-        Self(Box::new(nv))
+    pub fn new(first: ParseError, tail: impl IntoIterator<Item = ParseError>) -> Self {
+        Self(Box::new(NonEmpty {
+            head: first,
+            tail: tail.into_iter().collect(),
+        }))
     }
 
     pub fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
@@ -190,6 +196,7 @@ impl ParseErrors {
         Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
 
+    /// Borrowed Iterator over reported errors
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter()
     }
@@ -198,6 +205,15 @@ impl ParseErrors {
 impl Display for ParseErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.first())
+    }
+}
+
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = Chain<Once<ParseError>, vec::IntoIter<ParseError>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -250,14 +266,18 @@ impl Diagnostic for ParseErrors {
     }
 }
 
+/// Non-empty collection of [`ToJsonSchemaError`]
+// WARNING: This type is publicly exported from [`cedar-policy`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
 
 impl ToJsonSchemaErrors {
+    /// Constructor. Guaranteed to have at least one error by construction.
     pub fn new(errs: NonEmpty<ToJsonSchemaError>) -> Self {
         Self(errs)
     }
 
+    /// (Borrowed) iterator
     pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
         self.0.iter()
     }
@@ -275,6 +295,12 @@ impl IntoIterator for ToJsonSchemaErrors {
 impl From<ToJsonSchemaError> for ToJsonSchemaErrors {
     fn from(value: ToJsonSchemaError) -> Self {
         Self(NonEmpty::singleton(value))
+    }
+}
+
+impl From<EAMapError> for ToJsonSchemaErrors {
+    fn from(e: EAMapError) -> Self {
+        Self::from(ToJsonSchemaError::from(e))
     }
 }
 
@@ -343,84 +369,343 @@ impl Diagnostic for ToJsonSchemaErrors {
     }
 }
 
+// WARNING: This error type is publicly exported in `cedar-policy`, so it is part of the public interface
 /// For errors during schema format conversion
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Diagnostic)]
 pub enum ToJsonSchemaError {
-    /// Error raised when there are duplicate keys
-    #[error("duplicate keys: {key}")]
-    DuplicateKeys { key: SmolStr, loc1: Loc, loc2: Loc },
     /// Error raised when there are duplicate declarations
-    #[error("duplicate declarations: {decl}")]
-    DuplicateDeclarations { decl: SmolStr, loc1: Loc, loc2: Loc },
-    #[error("duplicate context declaration. Action may have at most one context declaration")]
-    DuplicateContext { loc1: Loc, loc2: Loc },
-    #[error("duplicate `{kind}` declaration. Action may have at most one {kind} declaration")]
-    DuplicatePrincipalOrResource { kind: PR, loc1: Loc, loc2: Loc },
-    #[error("missing `{kind}` declaration for `{name}`. Actions must define both a `principals` and `resources` field")]
-    NoPrincipalOrResource { kind: PR, name: SmolStr, loc: Loc },
-
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateDeclarations(#[from] DuplicateDeclarations),
+    /// Error raised when an action has multiple context declarations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateContext(#[from] DuplicateContext),
+    /// Error raised when a `principal` or `resource` is declared multiple times
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicatePrincipalOrResource(#[from] DuplicatePrincipalOrResource),
+    /// Error raised when an action does not define either `principal` or `resource`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoPrincipalOrResource(#[from] NoPrincipalOrResource),
     /// Error raised when there are duplicate namespace IDs
-    #[error("Duplicate namespace IDs: `{namespace_id}`")]
-    DuplicateNameSpaces {
-        namespace_id: SmolStr,
-        loc1: Option<Loc>,
-        loc2: Option<Loc>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateNamespaces(#[from] DuplicateNamespace),
+    /// Error raised when a type name is unknown
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownTypeName(#[from] UnknownTypeName),
     /// Invalid type name
-    #[error("Unknown type name: `{}`", .0.node)]
-    UnknownTypeName(Node<SmolStr>),
-    #[error("Use reserved namespace `__cedar`")]
-    UseReservedNamespace(Loc),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedName(#[from] ReservedName),
+    /// Use reserved schema keywords
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedSchemaKeyword(#[from] ReservedSchemaKeyword),
+    /// Errors relating to embedded attribute maps
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EAMap(#[from] EAMapError),
 }
 
 impl ToJsonSchemaError {
-    pub fn duplicate_keys(key: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateKeys { key, loc1, loc2 }
+    pub(crate) fn duplicate_context(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateContext(DuplicateContext {
+            name: name.to_smolstr(),
+            loc1,
+            loc2,
+        })
     }
-    pub fn duplicate_decls(decl: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateDeclarations { decl, loc1, loc2 }
+
+    pub(crate) fn duplicate_decls(decl: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicateDeclarations(DuplicateDeclarations {
+            decl: decl.to_smolstr(),
+            loc1,
+            loc2,
+        })
     }
-    pub fn duplicate_namespace(namespace_id: SmolStr, loc1: Loc, loc2: Loc) -> Self {
-        Self::DuplicateNameSpaces {
-            namespace_id,
-            loc1: Some(loc1),
-            loc2: Some(loc2),
-        }
+
+    pub(crate) fn duplicate_namespace(
+        namespace_id: impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
+        Self::DuplicateNamespaces(DuplicateNamespace {
+            namespace_id: namespace_id.to_smolstr(),
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn duplicate_principal(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            name: name.to_smolstr(),
+            kind: PR::Principal,
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn duplicate_resource(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+        Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
+            name: name.to_smolstr(),
+            kind: PR::Resource,
+            loc1,
+            loc2,
+        })
+    }
+
+    pub(crate) fn no_principal(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Principal,
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn no_resource(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Resource,
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn reserved_name(name: impl ToSmolStr, loc: Loc) -> Self {
+        Self::ReservedName(ReservedName {
+            name: name.to_smolstr(),
+            loc,
+        })
+    }
+
+    pub(crate) fn reserved_keyword(keyword: impl ToSmolStr, loc: Loc) -> Self {
+        Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
+            keyword: keyword.to_smolstr(),
+            loc,
+        })
     }
 }
 
-impl Diagnostic for ToJsonSchemaError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match self {
-            ToJsonSchemaError::DuplicateDeclarations { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateContext { loc1, loc2 }
-            | ToJsonSchemaError::DuplicatePrincipalOrResource { loc1, loc2, .. }
-            | ToJsonSchemaError::DuplicateKeys { loc1, loc2, .. } => Some(Box::new(
-                vec![
-                    LabeledSpan::underline(loc1.span),
-                    LabeledSpan::underline(loc2.span),
-                ]
-                .into_iter(),
-            )),
-            ToJsonSchemaError::DuplicateNameSpaces { loc1, loc2, .. } => {
-                Some(Box::new([loc1, loc2].into_iter().filter_map(|loc| {
-                    Some(LabeledSpan::underline(loc.as_ref()?.span))
-                })))
-            }
-            ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(node.loc.span),
-            ))),
-            ToJsonSchemaError::UseReservedNamespace(loc)
-            | ToJsonSchemaError::NoPrincipalOrResource { loc, .. } => {
-                Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
-            }
-        }
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("this uses a reserved schema keyword: `{keyword}`")]
+pub struct ReservedSchemaKeyword {
+    keyword: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for ReservedSchemaKeyword {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("Keywords such as `entity`, `extension`, `set` and `record` cannot be used as common type names"))
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("use of the reserved `__cedar` namespace")]
+pub struct ReservedName {
+    name: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for ReservedName {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "Names containing `__cedar` (for example: `__cedar::A`, `A::__cedar`, or `A::__cedar::B`) are reserved",
+        ))
+    }
+}
+
+/// An embedded attribute map (RFC 68) was encountered where one is not allowed
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")]
+pub struct EAMapNotAllowedHereError {
+    /// Source location of the `EAMap`
+    pub(crate) source_loc: Loc,
+    /// Context-dependent help text
+    pub(crate) help: Option<EAMapNotAllowedHereHelp>,
+}
+
+impl Diagnostic for EAMapNotAllowedHereError {
+    impl_diagnostic_from_source_loc_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.help.as_ref().map(|help| Box::new(help) as _)
+    }
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub(crate) enum EAMapNotAllowedHereHelp {
+    #[error("Embedded attribute maps are not allowed as the top-level descriptor of all attributes of an entity. Try making an entity attribute to hold the embedded attribute map. E.g., `attributes: {{ ?: someType }}`.")]
+    TopLevelEAMap,
+}
+
+/// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
+/// This is currently not allowed.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("this type contains both concrete attributes and an embedded attribute map (`?:`), which is not allowed")]
+pub struct EAMapWithConcreteAttributesError {
+    /// Source location of the `EAMap` declaration
+    pub(crate) source_loc: Loc,
+}
+
+impl Diagnostic for EAMapWithConcreteAttributesError {
+    impl_diagnostic_from_source_loc_field!(source_loc);
+}
+
+/// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
+/// This is currently not allowed.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("this type contains two or more different embedded attribute map declarations (`?:`), which is not allowed")]
+pub struct MultipleEAMapDeclarationsError {
+    /// Source location of the first `EAMap` declaration
+    pub(crate) source_loc_1: Loc,
+    /// Source location of the second `EAMap` declaration
+    pub(crate) source_loc_2: Loc,
+}
+
+impl Diagnostic for MultipleEAMapDeclarationsError {
+    impl_diagnostic_from_two_source_loc_fields!(source_loc_1, source_loc_2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "try separating this into two different attributes",
+        ))
+    }
+}
+
+/// Errors relating to embedded attribute maps (`EAMap`s)
+#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+pub enum EAMapError {
+    /// An embedded attribute map (RFC 68) was encountered where one is not allowed
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotAllowedHere(#[from] EAMapNotAllowedHereError),
+    /// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
+    /// This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WithConcreteAttributes(#[from] EAMapWithConcreteAttributesError),
+    /// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
+    /// This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultipleEAMapDeclarations(#[from] MultipleEAMapDeclarationsError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("unknown type name: `{name}`")]
+pub struct UnknownTypeName {
+    name: SmolStr,
+    loc: Loc,
+}
+
+impl Diagnostic for UnknownTypeName {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        let msg = format!(
+            "Did you mean to define `{}` as an entity type or common type?",
+            self.name
+        );
+        Some(Box::new(msg))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("duplicate `{kind}` declaration in action `{name}`")]
+pub struct DuplicatePrincipalOrResource {
+    name: SmolStr,
+    kind: PR,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl DuplicatePrincipalOrResource {
+    #[cfg(test)]
+    pub(crate) fn kind(&self) -> PR {
+        self.kind
+    }
+}
+
+impl Diagnostic for DuplicatePrincipalOrResource {
+    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        let msg = format!("Actions may only have a single {} declaration. If you need it to apply to multiple types, try creating a parent type and using the `in` keyword", self.kind);
+        Some(Box::new(msg))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("duplicate context declaration in action `{name}`")]
+pub struct DuplicateContext {
+    name: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl Diagnostic for DuplicateContext {
+    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "Try either deleting one of the declarations, or merging into a single declaration",
+        ))
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("`{decl}` is declared twice")]
+pub struct DuplicateDeclarations {
+    decl: SmolStr,
+    loc1: Loc,
+    loc2: Loc,
+}
+
+impl Diagnostic for DuplicateDeclarations {
+    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("missing `{kind}` declaration for `{name}`")]
+pub struct NoPrincipalOrResource {
+    kind: PR,
+    name: SmolStr,
+    loc: Loc,
+}
+
+pub const NO_PR_HELP_MSG: &str =
+    "Every action must define both `principal` and `resource` targets.";
+
+impl Diagnostic for NoPrincipalOrResource {
+    impl_diagnostic_from_source_loc_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(NO_PR_HELP_MSG))
+    }
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("duplicate namespace id: `{namespace_id}`")]
+pub struct DuplicateNamespace {
+    namespace_id: SmolStr,
+    // `Loc`s are optional here as the implicit empty namespace has no location
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
+}
+
+impl Diagnostic for DuplicateNamespace {
+    impl_diagnostic_from_two_source_loc_opt_fields!(loc1, loc2);
 }
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::parser::Loc;
+    use cedar_policy_core::{impl_diagnostic_from_source_loc_field, parser::Loc};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -438,11 +723,7 @@ pub mod schema_warnings {
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-                self.loc.span,
-            ))))
-        }
+        impl_diagnostic_from_source_loc_field!(loc);
 
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)
@@ -471,6 +752,13 @@ pub mod schema_warnings {
             ))
         }
 
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            // just have to pick one; we assume `entity_loc` and `common_loc`
+            // have the same source code.
+            // if that isn't true we'll have a confusing underline.
+            Some(&self.entity_loc.src as _)
+        }
+
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)
         }
@@ -483,6 +771,7 @@ pub mod schema_warnings {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum SchemaWarning {
     /// Warning when a declaration shadows a builtin type
     #[error(transparent)]

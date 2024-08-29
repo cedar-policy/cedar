@@ -64,13 +64,13 @@ impl<'a> entities::Schema for CoreSchema<'a> {
 
     fn entity_types_with_basename<'b>(
         &'b self,
-        basename: &'b ast::Id,
+        basename: &'b ast::UnreservedId,
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
         Box::new(
             self.schema
                 .entity_types()
                 .filter_map(move |(entity_type, _)| {
-                    if entity_type.name().basename() == basename {
+                    if &entity_type.name().basename() == basename {
                         Some(entity_type.clone())
                     } else {
                         None
@@ -122,17 +122,21 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 
     fn attr_type(&self, attr: &str) -> Option<entities::SchemaType> {
-        let attr_type: &crate::types::Type = &self.validator_type.attr(attr)?.attr_type;
+        let attr_type: &crate::types::AttributeType = self.validator_type.attr(attr)?;
         // This converts a type from a schema into the representation of schema
         // types used by core. `attr_type` is taken from a `ValidatorEntityType`
         // which was constructed from a schema.
         // PANIC SAFETY: see above
         #[allow(clippy::expect_used)]
         let core_schema_type: entities::SchemaType = attr_type
+            .attr_type
             .clone()
             .try_into()
             .expect("failed to convert validator type into Core SchemaType");
-        debug_assert!(attr_type.is_consistent_with(&core_schema_type));
+        debug_assert!(crate::types::Type::is_consistent_with(
+            &attr_type.attr_type,
+            &core_schema_type,
+        ));
         Some(core_schema_type)
     }
 
@@ -160,7 +164,7 @@ impl ast::RequestSchema for ValidatorSchema {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
@@ -197,10 +201,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     euid: principal, ..
                 } = request.principal()
                 {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_principal_type(principal.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
                         return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
@@ -209,10 +210,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
                 if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id
-                        .applies_to
-                        .is_applicable_resource_type(resource.entity_type())
-                    {
+                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
                         return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
@@ -223,7 +221,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
-                        .typecheck_partial_value(context.as_ref(), extensions)
+                        .typecheck_partial_value(&context.clone().into(), extensions)
                         .map_err(RequestValidationError::TypeOfContext)?
                     {
                         return Err(request_validation_errors::InvalidContextError {
@@ -252,7 +250,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         self.schema.validate_request(request, extensions)
     }
@@ -450,7 +448,7 @@ pub fn context_schema_for_action(
     // as their values are representable. The values are representable
     // because they are taken from the context of a `ValidatorActionId`
     // which was constructed directly from a schema.
-    schema.context_type(action).map(ContextSchema)
+    schema.context_type(action).cloned().map(ContextSchema)
 }
 
 #[cfg(test)]
@@ -501,7 +499,7 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src, Extensions::all_available())
+        ValidatorSchema::from_json_value(src, &Extensions::all_available())
             .expect("failed to create ValidatorSchema")
     }
 

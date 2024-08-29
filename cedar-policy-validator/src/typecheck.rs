@@ -18,24 +18,21 @@
 //! the `Typechecker` struct by calling the `typecheck_policy` method given a
 //! policy.
 
-mod test;
+pub(crate) mod test;
 
 mod typecheck_answer;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    iter::zip,
-};
+use std::{borrow::Cow, collections::HashSet, iter::zip};
 
 use crate::{
-    extension_schema::{ExtensionFunctionType, ExtensionSchema},
-    extensions::all_available_extension_schemas,
+    extension_schema::ExtensionFunctionType,
+    extensions::ExtensionSchemas,
     fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
-        AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
+        AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
+        Type,
     },
     validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
@@ -65,7 +62,7 @@ pub enum PolicyCheck {
 #[derive(Debug)]
 pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
-    extensions: HashMap<Name, ExtensionSchema>,
+    extensions: &'static ExtensionSchemas<'static>,
     mode: ValidationMode,
     policy_id: PolicyID,
 }
@@ -78,10 +75,7 @@ impl<'a> Typechecker<'a> {
         policy_id: PolicyID,
     ) -> Typechecker<'a> {
         // Set the extensions using `all_available_extension_schemas`.
-        let extensions = all_available_extension_schemas()
-            .into_iter()
-            .map(|ext| (ext.name().clone(), ext))
-            .collect();
+        let extensions = ExtensionSchemas::all_available();
         Self {
             schema,
             extensions,
@@ -146,10 +140,10 @@ impl<'a> Typechecker<'a> {
     ) -> Vec<(RequestEnv<'_>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, |request, expr| {
             let mut type_errors = Vec::new();
-            let empty_prior_eff = EffectSet::new();
+            let empty_prior_capability = CapabilitySet::new();
             let ty = self.expect_type(
                 request,
-                &empty_prior_eff,
+                &empty_prior_capability,
                 expr,
                 Type::primitive_boolean(),
                 &mut type_errors,
@@ -209,10 +203,10 @@ impl<'a> Typechecker<'a> {
                 let condition_expr = t.condition();
                 for linked_env in self.link_request_env(request.clone(), t) {
                     let mut type_errors = Vec::new();
-                    let empty_prior_eff = EffectSet::new();
+                    let empty_prior_capability = CapabilitySet::new();
                     let ty = self.expect_type(
                         &linked_env,
-                        &empty_prior_eff,
+                        &empty_prior_capability,
                         &condition_expr,
                         Type::primitive_boolean(),
                         &mut type_errors,
@@ -244,22 +238,18 @@ impl<'a> Typechecker<'a> {
         // resource applies_to sets.
         all_actions
             .flat_map(|action| {
-                action
-                    .applies_to
-                    .applicable_principal_types()
-                    .flat_map(|principal| {
-                        action
-                            .applies_to
-                            .applicable_resource_types()
-                            .map(|resource| RequestEnv::DeclaredAction {
-                                principal,
-                                action: &action.name,
-                                resource,
-                                context: &action.context,
-                                principal_slot: None,
-                                resource_slot: None,
-                            })
-                    })
+                action.applies_to_principals().flat_map(|principal| {
+                    action
+                        .applies_to_resources()
+                        .map(|resource| RequestEnv::DeclaredAction {
+                            principal,
+                            action: &action.name,
+                            resource,
+                            context: &action.context,
+                            principal_slot: None,
+                            resource_slot: None,
+                        })
+                })
             })
             .chain(if self.mode.is_partial() {
                 // A partial schema might not list all actions, and may not
@@ -361,16 +351,15 @@ impl<'a> Typechecker<'a> {
     }
 
     /// This method handles the majority of the work. Given an expression,
-    /// the type for the request, and the a prior effect context for the
-    /// expression, return the result of typechecking the expression, and add
-    /// any errors encountered into the `type_errors` list. The result of
-    /// typechecking contains the type of the expression, any current effect of
-    /// the expression, and a flag indicating whether the expression
-    /// successfully typechecked.
+    /// the type for the request, and the prior capability, return the result of
+    /// typechecking the expression, and add any errors encountered into the
+    /// `type_errors` list. The result of typechecking contains the type of the
+    /// expression, any resulting capability after the expression, and a flag
+    /// indicating whether the expression successfully typechecked.
     fn typecheck<'b>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
@@ -499,60 +488,60 @@ impl<'a> Typechecker<'a> {
                 // The guard expression must be boolean.
                 let ans_test = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     test_expr,
                     Type::primitive_boolean(),
                     type_errors,
                     |_| None,
                 );
-                ans_test.then_typecheck(|typ_test, eff_test| {
+                ans_test.then_typecheck(|typ_test, test_capability| {
                     // If the guard has type `true` or `false`, we short circuit,
                     // looking at only the relevant branch.
                     if typ_test.data() == &Some(Type::singleton_boolean(true)) {
                         // The `then` branch needs to be typechecked using the
-                        // prior effect of the `if` and any new effect generated
+                        // prior capability of the `if` and any new capability generated
                         // by `test`. This enables an attribute access
                         // `principal.foo` after a condition `principal has foo`.
                         let ans_then = self.typecheck(
                             request_env,
-                            &prior_eff.union(&eff_test),
+                            &prior_capability.union(&test_capability),
                             then_expr,
                             type_errors,
                         );
 
-                        ans_then.then_typecheck(|typ_then, eff_then| {
-                            TypecheckAnswer::success_with_effect(
+                        ans_then.then_typecheck(|typ_then, then_capability| {
+                            TypecheckAnswer::success_with_capability(
                                 typ_then,
-                                // The output effect of the whole `if` expression also
-                                // needs to contain the effect of the condition.
-                                eff_then.union(&eff_test),
+                                // The output capability of the whole `if` expression also
+                                // needs to contain the capability of the condition.
+                                then_capability.union(&test_capability),
                             )
                         })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
-                        // The `else` branch cannot use the `test` effect since
+                        // The `else` branch cannot use the `test` capability since
                         // we know in the `else` branch that the condition
                         // evaluated to `false`. It still can use the original
-                        // prior effect.
+                        // prior capability.
                         let ans_else =
-                            self.typecheck(request_env, prior_eff, else_expr, type_errors);
+                            self.typecheck(request_env, prior_capability, else_expr, type_errors);
 
-                        ans_else.then_typecheck(|typ_else, eff_else| {
-                            TypecheckAnswer::success_with_effect(typ_else, eff_else)
+                        ans_else.then_typecheck(|typ_else, else_capability| {
+                            TypecheckAnswer::success_with_capability(typ_else, else_capability)
                         })
                     } else {
                         // When we don't short circuit, the `then` and `else`
                         // branches are individually typechecked with the same
-                        // prior effects are in their individual cases.
+                        // prior capability are in their individual cases.
                         let ans_then = self
                             .typecheck(
                                 request_env,
-                                &prior_eff.union(&eff_test),
+                                &prior_capability.union(&test_capability),
                                 then_expr,
                                 type_errors,
                             )
-                            .map_effect(|ef| ef.union(&eff_test));
+                            .map_capability(|capability| capability.union(&test_capability));
                         let ans_else =
-                            self.typecheck(request_env, prior_eff, else_expr, type_errors);
+                            self.typecheck(request_env, prior_capability, else_expr, type_errors);
                         // The type of the if expression is then the least
                         // upper bound of the types of the then and else
                         // branches.  If either of these fails to typecheck, the
@@ -560,8 +549,8 @@ impl<'a> Typechecker<'a> {
                         // may exist in that branch. This failure, in addition
                         // to any failure that may have occurred in the test
                         // expression, will propagate to final TypecheckAnswer.
-                        ans_then.then_typecheck(|typ_then, eff_then| {
-                            ans_else.then_typecheck(|typ_else, eff_else| {
+                        ans_then.then_typecheck(|typ_then, then_capability| {
+                            ans_else.then_typecheck(|typ_else, else_capability| {
                                 let lub_ty = self.least_upper_bound_or_error(
                                     e,
                                     vec![typ_then.data().clone(), typ_else.data().clone()],
@@ -573,16 +562,16 @@ impl<'a> Typechecker<'a> {
                                     .with_same_source_loc(e)
                                     .ite(typ_test, typ_then, typ_else);
                                 if has_lub {
-                                    // Effect is not handled in the LUB computation,
-                                    // so we need to compute the effect here. When
+                                    // Capabilities are not handled in the LUB computation,
+                                    // so we need to compute the resulting capability here. When
                                     // the `||` evaluates to `true`, we know that
                                     // one operand evaluated to true, but we don't
-                                    // know which. This is handled by returning an
-                                    // effect set that is the intersection of the
-                                    // operand effect sets.
-                                    TypecheckAnswer::success_with_effect(
+                                    // know which. This is handled by returning a
+                                    // capability set that is the intersection of the
+                                    // operand capability sets.
+                                    TypecheckAnswer::success_with_capability(
                                         annot_expr,
-                                        eff_else.intersect(&eff_then),
+                                        else_capability.intersect(&then_capability),
                                     )
                                 } else {
                                     TypecheckAnswer::fail(annot_expr)
@@ -596,28 +585,28 @@ impl<'a> Typechecker<'a> {
             ExprKind::And { left, right } => {
                 let ans_left = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     left,
                     Type::primitive_boolean(),
                     type_errors,
                     |_| None,
                 );
-                ans_left.then_typecheck(|typ_left, eff_left| {
+                ans_left.then_typecheck(|typ_left, capability_left| {
                     match typ_left.data() {
                         // First argument is false, so short circuit the `&&` to
                         // false _without_ typechecking the second argument.
                         // Since the type of the `&&` is `false`, it is known to
                         // always evaluate to `false` at run time. The `&&`
-                        // expression typechecks with an empty effect rather
-                        // than the effect of the lhs.
+                        // expression typechecks with an empty capability rather
+                        // than the capability of the lhs.
                         // The right operand is not typechecked, so it is not
                         // included in the type annotated AST.
                         Some(Type::False) => TypecheckAnswer::success(typ_left),
                         _ => {
                             // Similar to the `then` branch of an `if`
                             // expression, the rhs of an `&&` is typechecked
-                            // using an updated prior effect that includes
-                            // effect learned from the lhs to enable
+                            // using an updated prior capability that includes
+                            // the capability from the lhs to enable
                             // typechecking expressions like
                             // `principal has foo && principal.foo`. This is
                             // valid because `&&` short circuits at run time, so
@@ -625,16 +614,16 @@ impl<'a> Typechecker<'a> {
                             // evaluated to `true`.
                             let ans_right = self.expect_type(
                                 request_env,
-                                &prior_eff.union(&eff_left),
+                                &prior_capability.union(&capability_left),
                                 right,
                                 Type::primitive_boolean(),
                                 type_errors,
                                 |_| None,
                             );
-                            ans_right.then_typecheck(|typ_right, eff_right| {
+                            ans_right.then_typecheck(|typ_right, capability_right| {
                                 match (typ_left.data(), typ_right.data()) {
                                     // The second argument is false, so the `&&`
-                                    // is false. The effect is empty for the
+                                    // is false. The capability is empty for the
                                     // same reason as when the first argument
                                     // was false.
                                     (Some(_), Some(Type::False)) => TypecheckAnswer::success(
@@ -646,33 +635,33 @@ impl<'a> Typechecker<'a> {
                                     // When either argument is true, the result type is
                                     // the type of the other argument. Here, and
                                     // in the remaining successful cases, the
-                                    // effect of the `&&` is the union of the
+                                    // capability of the `&&` is the union of the
                                     // lhs and rhs because both operands must be
                                     // true for the whole `&&` to be true.
                                     (Some(_), Some(Type::True)) => {
-                                        TypecheckAnswer::success_with_effect(
+                                        TypecheckAnswer::success_with_capability(
                                             ExprBuilder::with_data(typ_left.data().clone())
                                                 .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
-                                            eff_left.union(&eff_right),
+                                            capability_left.union(&capability_right),
                                         )
                                     }
                                     (Some(Type::True), Some(_)) => {
-                                        TypecheckAnswer::success_with_effect(
+                                        TypecheckAnswer::success_with_capability(
                                             ExprBuilder::with_data(typ_right.data().clone())
                                                 .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
-                                            eff_right.union(&eff_right),
+                                            capability_right.union(&capability_right),
                                         )
                                     }
 
                                     // Neither argument was true or false, so we only
                                     // know the result type is boolean.
-                                    (Some(_), Some(_)) => TypecheckAnswer::success_with_effect(
+                                    (Some(_), Some(_)) => TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                             .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
-                                        eff_left.union(&eff_right),
+                                        capability_left.union(&capability_right),
                                     ),
 
                                     // One or both of the left and the right failed to
@@ -690,83 +679,83 @@ impl<'a> Typechecker<'a> {
             }
 
             // `||` follows the same pattern as `&&`, but with short circuiting
-            // effect propagation adjusted as necessary.
+            // capability propagation adjusted as necessary.
             ExprKind::Or { left, right } => {
                 let ans_left = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     left,
                     Type::primitive_boolean(),
                     type_errors,
                     |_| None,
                 );
-                ans_left.then_typecheck(|ty_expr_left, eff_left| match ty_expr_left.data() {
+                ans_left.then_typecheck(|ty_expr_left, capability_left| match ty_expr_left.data() {
                     // Contrary to `&&` where short circuiting did not permit
-                    // any effect, an effect can be maintained when short
+                    // any capability, a capability can be maintained when short
                     // circuiting `||`. We know the left operand is `true`, so
-                    // its effect is maintained. The right operand is not
-                    // evaluated, so its effect does not need to be considered.
+                    // its capability is maintained. The right operand is not
+                    // evaluated, so its capability does not need to be considered.
                     // The right operand is not typechecked, so it is not
                     // included in the type annotated AST.
                     Some(Type::True) => TypecheckAnswer::success(ty_expr_left),
                     _ => {
                         // The right operand of an `||` cannot be typechecked
-                        // using the effect learned from the left because the
+                        // using the capability learned from the left because the
                         // left could have evaluated to either `true` or `false`
                         // when the left is evaluated.
                         let ans_right = self.expect_type(
                             request_env,
-                            prior_eff,
+                            prior_capability,
                             right,
                             Type::primitive_boolean(),
                             type_errors,
                             |_| None,
                         );
-                        ans_right.then_typecheck(|ty_expr_right, eff_right| {
+                        ans_right.then_typecheck(|ty_expr_right, capability_right| {
                             match (ty_expr_left.data(), ty_expr_right.data()) {
                                 // Now the right operand is always `true`, so we can
-                                // use its effect as the result effect. The left
-                                // operand might have been `true` of `false`, but it
+                                // use its capability as the result capability. The left
+                                // operand might have been `true` or `false`, but it
                                 // does not affect the value of the `||` if the
                                 // right is always `true`.
                                 (Some(_), Some(Type::True)) => {
-                                    TypecheckAnswer::success_with_effect(
+                                    TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(Type::True))
                                             .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
-                                        eff_right,
+                                        capability_right,
                                     )
                                 }
                                 // If the right or left operand is always `false`,
                                 // then the only way the `||` expression can be
                                 // `true` is if the other operand is `true`. This
-                                // lets us pass the effect of the other operand
-                                // through to the effect of the `||`.
+                                // lets us pass the capability of the other operand
+                                // through to the capability of the `||`.
                                 (Some(typ_left), Some(Type::False)) => {
-                                    TypecheckAnswer::success_with_effect(
+                                    TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(typ_left.clone()))
                                             .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
-                                        eff_left,
+                                        capability_left,
                                     )
                                 }
                                 (Some(Type::False), Some(typ_right)) => {
-                                    TypecheckAnswer::success_with_effect(
+                                    TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(typ_right.clone()))
                                             .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
-                                        eff_right,
+                                        capability_right,
                                     )
                                 }
                                 // When neither has a constant value, the `||`
                                 // evaluates to true if one or both is `true`. This
-                                // means we can only keep effects in the
-                                // intersection of their effect sets.
-                                (Some(_), Some(_)) => TypecheckAnswer::success_with_effect(
+                                // means we can only keep capabilities in the
+                                // intersection of their capability sets.
+                                (Some(_), Some(_)) => TypecheckAnswer::success_with_capability(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                         .with_same_source_loc(e)
                                         .or(ty_expr_left, ty_expr_right),
-                                    eff_right.intersect(&eff_left),
+                                    capability_right.intersect(&capability_left),
                                 ),
                                 _ => TypecheckAnswer::fail(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
@@ -781,15 +770,15 @@ impl<'a> Typechecker<'a> {
 
             ExprKind::UnaryApp { .. } => {
                 // INVARIANT: typecheck_unary requires a `UnaryApp`, we've just ensured this
-                self.typecheck_unary(request_env, prior_eff, e, type_errors)
+                self.typecheck_unary(request_env, prior_capability, e, type_errors)
             }
             ExprKind::BinaryApp { .. } => {
                 // INVARIANT: typecheck_binary requires a `BinaryApp`, we've just ensured this
-                self.typecheck_binary(request_env, prior_eff, e, type_errors)
+                self.typecheck_binary(request_env, prior_capability, e, type_errors)
             }
             ExprKind::ExtensionFunctionApp { .. } => {
                 // INVARIANT: typecheck_extension requires a `ExtensionFunctionApp`, we've just ensured this
-                self.typecheck_extension(request_env, prior_eff, e, type_errors)
+                self.typecheck_extension(request_env, prior_capability, e, type_errors)
             }
 
             ExprKind::GetAttr { expr, attr } => {
@@ -797,7 +786,7 @@ impl<'a> Typechecker<'a> {
                 // that has the attribute.
                 let actual = self.expect_one_of_types(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
@@ -818,16 +807,18 @@ impl<'a> Typechecker<'a> {
                                 // A safe access to an attribute requires either
                                 // that the attribute is required (always
                                 // present), or that the attribute is in the
-                                // prior effect set (the current expression is
+                                // prior capability set (the current expression is
                                 // guarded by a condition that will only
                                 // evaluate to `true` when the attribute is
                                 // present).
-                                if ty.is_required || prior_eff.contains(&Effect::new(expr, attr)) {
+                                if ty.is_required
+                                    || prior_capability.contains(&Capability::new(expr, attr))
+                                {
                                     TypecheckAnswer::success(annot_expr)
                                 } else {
                                     type_errors.push(
                                         ValidationError::unsafe_optional_attribute_access(
-                                            e.clone(),
+                                            e.source_loc().cloned(),
                                             self.policy_id.clone(),
                                             AttributeAccess::from_expr(
                                                 request_env,
@@ -857,7 +848,7 @@ impl<'a> Typechecker<'a> {
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(ValidationError::unsafe_attribute_access(
-                                    e.clone(),
+                                    e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     AttributeAccess::from_expr(
                                         request_env,
@@ -883,7 +874,7 @@ impl<'a> Typechecker<'a> {
                 // `has` applies to an entity or a record
                 let actual = self.expect_one_of_types(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
@@ -899,8 +890,7 @@ impl<'a> Typechecker<'a> {
                     Some(typ_actual) => {
                         match Type::lookup_attribute_type(self.schema, typ_actual, attr) {
                             Some(AttributeType {
-                                attr_type: _,
-                                is_required: true,
+                                is_required: true, ..
                             }) => {
                                 // Since an entity doesn't always have to exist
                                 // in the entity store, and `has` evaluates to
@@ -912,36 +902,36 @@ impl<'a> Typechecker<'a> {
                                     Type::EntityOrRecord(EntityRecordKind::Record { .. })
                                 );
                                 // However, we can make an exception when the attribute
-                                // access of the expression is already in the prior effect,
+                                // access of the expression is already in the prior capability,
                                 // which means the entity must exist.
-                                let in_prior_effs = prior_eff.contains(&Effect::new(expr, attr));
-                                let type_of_has = if exists_in_store || in_prior_effs {
+                                let in_prior_capability =
+                                    prior_capability.contains(&Capability::new(expr, attr));
+                                let type_of_has = if exists_in_store || in_prior_capability {
                                     Type::singleton_boolean(true)
                                 } else {
                                     Type::primitive_boolean()
                                 };
-                                TypecheckAnswer::success_with_effect(
+                                TypecheckAnswer::success_with_capability(
                                     ExprBuilder::with_data(Some(type_of_has))
                                         .with_same_source_loc(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
-                                    EffectSet::singleton(Effect::new(expr, attr)),
+                                    CapabilitySet::singleton(Capability::new(expr, attr)),
                                 )
                             }
-                            // This is where effect information is generated. If
+                            // This is where capability information is generated. If
                             // the `HasAttr` for an optional attribute evaluates
                             // to `true`, then we know that it is safe to access
-                            // that attribute, so we add an entry to the effect
+                            // that attribute, so we add an entry to the capability
                             // set.
                             Some(AttributeType {
-                                attr_type: _,
-                                is_required: false,
-                            }) => TypecheckAnswer::success_with_effect(
+                                is_required: false, ..
+                            }) => TypecheckAnswer::success_with_capability(
                                 ExprBuilder::with_data(Some(
                                     // The optional attribute `HasAttr` can have
                                     // type `true` if it occurs after the attribute
                                     // access of the expression is already in the
-                                    // prior effect.
-                                    if prior_eff.contains(&Effect::new(expr, attr)) {
+                                    // prior capability.
+                                    if prior_capability.contains(&Capability::new(expr, attr)) {
                                         Type::singleton_boolean(true)
                                     } else {
                                         Type::primitive_boolean()
@@ -949,7 +939,7 @@ impl<'a> Typechecker<'a> {
                                 ))
                                 .with_same_source_loc(e)
                                 .has_attr(typ_expr_actual, attr.clone()),
-                                EffectSet::singleton(Effect::new(expr, attr)),
+                                CapabilitySet::singleton(Capability::new(expr, attr)),
                             ),
                             None => TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(
@@ -986,7 +976,7 @@ impl<'a> Typechecker<'a> {
                 // `like` applies to a string
                 let actual = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     expr,
                     Type::primitive_string(),
                     type_errors,
@@ -1014,7 +1004,7 @@ impl<'a> Typechecker<'a> {
             ExprKind::Is { expr, entity_type } => {
                 self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     expr,
                     Type::any_entity_reference(),
                     type_errors,
@@ -1087,7 +1077,7 @@ impl<'a> Typechecker<'a> {
             ExprKind::Set(exprs) => {
                 let elem_types = exprs
                     .iter()
-                    .map(|elem| self.typecheck(request_env, prior_eff, elem, type_errors))
+                    .map(|elem| self.typecheck(request_env, prior_capability, elem, type_errors))
                     .collect::<Vec<_>>();
 
                 // If we cannot compute a least upper bound for the element
@@ -1095,9 +1085,9 @@ impl<'a> Typechecker<'a> {
                 // `least_upper_bound_or_error` and TypecheckFail will be
                 // returned. It will also return TypecheckFail if any of the
                 // individual element failed to typecheck (were TypecheckFail).
-                TypecheckAnswer::sequence_all_then_typecheck(elem_types, |elem_types_and_effects| {
+                TypecheckAnswer::sequence_all_then_typecheck(elem_types, |types_and_capabilities| {
                     let (elem_expr_types, _): (Vec<Expr<Option<Type>>>, Vec<_>) =
-                        elem_types_and_effects.into_iter().unzip();
+                        types_and_capabilities.into_iter().unzip();
                     let elem_lub = self.least_upper_bound_or_error(
                         e,
                         elem_expr_types.iter().map(|ety| ety.data().clone()),
@@ -1136,14 +1126,14 @@ impl<'a> Typechecker<'a> {
                 // Typecheck each attribute initializer expression individually.
                 let record_attr_tys = map
                     .values()
-                    .map(|value| self.typecheck(request_env, prior_eff, value, type_errors));
+                    .map(|value| self.typecheck(request_env, prior_capability, value, type_errors));
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
                     record_attr_tys,
-                    |record_attr_tys_and_effects| {
+                    |record_attr_tys_and_capabilities| {
                         let (record_attr_expr_tys, _): (Vec<Expr<Option<Type>>>, Vec<_>) =
-                            record_attr_tys_and_effects.into_iter().unzip();
+                            record_attr_tys_and_capabilities.into_iter().unzip();
                         // If any of the attributes could not be assigned a type
                         // (recall that a expression can fail to typecheck but still
                         // be assigned a type), then we cannot assign any type to
@@ -1187,7 +1177,7 @@ impl<'a> Typechecker<'a> {
     fn typecheck_binary<'b>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         bin_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
@@ -1201,8 +1191,8 @@ impl<'a> Typechecker<'a> {
             // The arguments to `==` may typecheck with any type, but we will
             // return false if the types are disjoint.
             BinaryOp::Eq => {
-                let lhs_ty = self.typecheck(request_env, prior_eff, arg1, type_errors);
-                let rhs_ty = self.typecheck(request_env, prior_eff, arg2, type_errors);
+                let lhs_ty = self.typecheck(request_env, prior_capability, arg1, type_errors);
+                let rhs_ty = self.typecheck(request_env, prior_capability, arg2, type_errors);
                 lhs_ty.then_typecheck(|lhs_ty, _| {
                     rhs_ty.then_typecheck(|rhs_ty, _| {
                         let type_of_eq = self.type_of_equality(
@@ -1239,7 +1229,7 @@ impl<'a> Typechecker<'a> {
             BinaryOp::Less | BinaryOp::LessEq => {
                 let ans_arg1 = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg1,
                     Type::primitive_long(),
                     type_errors,
@@ -1248,7 +1238,7 @@ impl<'a> Typechecker<'a> {
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
                         request_env,
-                        prior_eff,
+                        prior_capability,
                         arg2,
                         Type::primitive_long(),
                         type_errors,
@@ -1277,7 +1267,7 @@ impl<'a> Typechecker<'a> {
                 };
                 let ans_arg1 = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg1,
                     Type::primitive_long(),
                     type_errors,
@@ -1286,7 +1276,7 @@ impl<'a> Typechecker<'a> {
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
                         request_env,
-                        prior_eff,
+                        prior_capability,
                         arg2,
                         Type::primitive_long(),
                         type_errors,
@@ -1302,15 +1292,20 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::In => {
-                self.typecheck_in(request_env, prior_eff, bin_expr, arg1, arg2, type_errors)
-            }
+            BinaryOp::In => self.typecheck_in(
+                request_env,
+                prior_capability,
+                bin_expr,
+                arg1,
+                arg2,
+                type_errors,
+            ),
 
             BinaryOp::Contains => {
                 // The first argument must be a set.
                 self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg1,
                     Type::any_set(),
                     type_errors,
@@ -1331,7 +1326,7 @@ impl<'a> Typechecker<'a> {
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
                     // The second argument may be any type. We do not care if the element type cannot be in the set.
-                    self.typecheck(request_env, prior_eff, arg2, type_errors)
+                    self.typecheck(request_env, prior_capability, arg2, type_errors)
                         .then_typecheck(|expr_ty_arg2, _| {
                             if self.mode.is_strict() {
                                 let annotated_expr =
@@ -1370,7 +1365,7 @@ impl<'a> Typechecker<'a> {
                 // Both arguments to a `containsAll` or `containsAny` must be sets.
                 self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg1,
                     Type::any_set(),
                     type_errors,
@@ -1392,7 +1387,7 @@ impl<'a> Typechecker<'a> {
                 .then_typecheck(|expr_ty_arg1, _| {
                     self.expect_type(
                         request_env,
-                        prior_eff,
+                        prior_capability,
                         arg2,
                         Type::any_set(),
                         type_errors,
@@ -1447,7 +1442,7 @@ impl<'a> Typechecker<'a> {
                         Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                     {
                         type_errors.push(ValidationError::incompatible_types(
-                            unannotated_expr.clone(),
+                            unannotated_expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             [lhs_ty.clone(), rhs_ty.clone()],
                             lub_hint,
@@ -1519,7 +1514,7 @@ impl<'a> Typechecker<'a> {
     fn typecheck_in<'b>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         in_expr: &Expr,
         lhs: &'b Expr,
         rhs: &'b Expr,
@@ -1529,7 +1524,7 @@ impl<'a> Typechecker<'a> {
         // the syntactic special cases that follow.
         let ty_lhs = self.expect_type(
             request_env,
-            prior_eff,
+            prior_capability,
             lhs,
             Type::any_entity_reference(),
             type_errors,
@@ -1537,7 +1532,7 @@ impl<'a> Typechecker<'a> {
         );
         let ty_rhs = self.expect_one_of_types(
             request_env,
-            prior_eff,
+            prior_capability,
             rhs,
             &[
                 Type::set(Type::any_entity_reference()),
@@ -1556,8 +1551,8 @@ impl<'a> Typechecker<'a> {
         let lhs_typechecked = ty_lhs.typechecked();
         let rhs_typechecked = ty_rhs.typechecked();
 
-        ty_lhs.then_typecheck(|lhs_expr, _lhs_effects| {
-            ty_rhs.then_typecheck(|rhs_expr, _rhs_effects| {
+        ty_lhs.then_typecheck(|lhs_expr, _lhs_capabilities| {
+            ty_rhs.then_typecheck(|rhs_expr, _rhs_capabilities| {
                 // If either failed to typecheck, then the whole expression fails to
                 // typecheck.
                 if !lhs_typechecked || !rhs_typechecked {
@@ -1984,7 +1979,7 @@ impl<'a> Typechecker<'a> {
     fn typecheck_unary<'b>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         unary_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
@@ -1997,7 +1992,7 @@ impl<'a> Typechecker<'a> {
             UnaryOp::Not => {
                 let ans_arg = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg,
                     Type::primitive_boolean(),
                     type_errors,
@@ -2029,7 +2024,7 @@ impl<'a> Typechecker<'a> {
             UnaryOp::Neg => {
                 let ans_arg = self.expect_type(
                     request_env,
-                    prior_eff,
+                    prior_capability,
                     arg,
                     Type::primitive_long(),
                     type_errors,
@@ -2052,7 +2047,7 @@ impl<'a> Typechecker<'a> {
     fn expect_one_of_types<'b, F>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         expr: &'b Expr,
         expected: &[Type],
         type_errors: &mut Vec<ValidationError>,
@@ -2061,8 +2056,8 @@ impl<'a> Typechecker<'a> {
     where
         F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
     {
-        let actual = self.typecheck(request_env, prior_eff, expr, type_errors);
-        actual.then_typecheck(|mut typ_actual, eff_actual| match typ_actual.data() {
+        let actual = self.typecheck(request_env, prior_capability, expr, type_errors);
+        actual.then_typecheck(|mut typ_actual, capability| match typ_actual.data() {
             Some(actual_ty) => {
                 if !expected.iter().any(|expected_ty| {
                     // This check uses `ValidationMode::Permissive` even in
@@ -2081,7 +2076,7 @@ impl<'a> Typechecker<'a> {
                     )
                 }) {
                     type_errors.push(ValidationError::expected_one_of_types(
-                        expr.clone(),
+                        expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
@@ -2096,7 +2091,7 @@ impl<'a> Typechecker<'a> {
                     typ_actual.set_data(None);
                     TypecheckAnswer::fail(typ_actual)
                 } else {
-                    TypecheckAnswer::success_with_effect(typ_actual, eff_actual)
+                    TypecheckAnswer::success_with_capability(typ_actual, capability)
                 }
             }
             None => {
@@ -2112,7 +2107,7 @@ impl<'a> Typechecker<'a> {
     fn expect_type<'b, F>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         expr: &'b Expr,
         expected: Type,
         type_errors: &mut Vec<ValidationError>,
@@ -2123,7 +2118,7 @@ impl<'a> Typechecker<'a> {
     {
         self.expect_one_of_types(
             request_env,
-            prior_eff,
+            prior_capability,
             expr,
             &[expected],
             type_errors,
@@ -2134,7 +2129,7 @@ impl<'a> Typechecker<'a> {
     /// Return the least upper bound of all types is the `types` vector. If
     /// there isn't a least upper bound, then a type error is reported and
     /// `TypecheckFail` is returned. Note that this function does not preserve the
-    /// effects of the input [`TypecheckAnswers`].
+    /// capabilities of the input [`TypecheckAnswers`].
     fn least_upper_bound_or_error(
         &self,
         expr: &Expr,
@@ -2158,7 +2153,7 @@ impl<'a> Typechecker<'a> {
                         // will be None, so this function will correctly report this
                         // as a failure.
                         type_errors.push(ValidationError::incompatible_types(
-                            expr.clone(),
+                            expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             typechecked_types,
                             lub_hint,
@@ -2187,37 +2182,19 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Lookup an extension function type by name. If the extension function
-    /// does not exist or if multiple extension function with the same name are
-    /// defined, instead return a closure that will construct an appropriate
-    /// error.  A closure is returned rather than constructing the error in this
-    /// function so that we can use the function in the strict typechecker where
-    /// a different instantiation of the generic expression type is used.
-    fn lookup_extension_function<'b>(
-        &'b self,
-        f: &'b Name,
-    ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> ValidationError + 'b> {
-        let extension_funcs: Vec<&ExtensionFunctionType> = self
-            .extensions
-            .iter()
-            .filter_map(|(_, ext)| ext.get_function_type(f))
-            .collect();
-
-        let fn_name_str = f.to_string();
-        match extension_funcs.first() {
-            Some(e) if extension_funcs.len() == 1 => Ok(e),
-            _ => Err(move |e| {
-                if extension_funcs.is_empty() {
-                    ValidationError::undefined_extension(e, self.policy_id.clone(), fn_name_str)
-                } else {
-                    ValidationError::multiply_defined_extension(
-                        e,
-                        self.policy_id.clone(),
-                        fn_name_str,
-                    )
-                }
-            }),
-        }
+    /// Lookup an extension function type by name.
+    fn lookup_extension_function(
+        &self,
+        f: &Name,
+        e: &Expr,
+    ) -> Result<&ExtensionFunctionType, ValidationError> {
+        self.extensions.func_type(f).ok_or_else(|| {
+            ValidationError::undefined_extension(
+                e.source_loc().cloned(),
+                self.policy_id.clone(),
+                f.to_string(),
+            )
+        })
     }
 
     /// Utility called by the main typecheck method to handle extension function
@@ -2226,7 +2203,7 @@ impl<'a> Typechecker<'a> {
     fn typecheck_extension<'b>(
         &self,
         request_env: &RequestEnv<'_>,
-        prior_eff: &EffectSet<'b>,
+        prior_capability: &CapabilitySet<'b>,
         ext_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
@@ -2239,20 +2216,20 @@ impl<'a> Typechecker<'a> {
         let typed_arg_exprs = |type_errors: &mut Vec<ValidationError>| {
             args.iter()
                 .map(|arg| {
-                    self.typecheck(request_env, prior_eff, arg, type_errors)
+                    self.typecheck(request_env, prior_capability, arg, type_errors)
                         .into_typed_expr()
                 })
                 .collect::<Option<Vec<_>>>()
         };
 
-        match self.lookup_extension_function(fn_name) {
+        match self.lookup_extension_function(fn_name, ext_expr) {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(
-                        ext_expr.clone(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         arg_tys.len(),
                         args.len(),
@@ -2261,7 +2238,7 @@ impl<'a> Typechecker<'a> {
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
                     type_errors.push(ValidationError::function_argument_validation(
-                        ext_expr.clone(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         msg,
                     ));
@@ -2294,7 +2271,7 @@ impl<'a> Typechecker<'a> {
                     let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
                         self.expect_type(
                             request_env,
-                            prior_eff,
+                            prior_capability,
                             arg,
                             ty.clone(),
                             type_errors,
@@ -2303,9 +2280,9 @@ impl<'a> Typechecker<'a> {
                     });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,
-                        |arg_exprs_effects| {
+                        |arg_exprs_capabilities| {
                             let (typed_arg_exprs, _): (Vec<Expr<Option<Type>>>, Vec<_>) =
-                                arg_exprs_effects.into_iter().unzip();
+                                arg_exprs_capabilities.into_iter().unzip();
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(ret_ty.clone()))
                                     .with_same_source_loc(ext_expr)
@@ -2316,7 +2293,7 @@ impl<'a> Typechecker<'a> {
                 }
             }
             Err(typ_err) => {
-                type_errors.push(typ_err(ext_expr.clone()));
+                type_errors.push(typ_err);
                 match typed_arg_exprs(type_errors) {
                     Some(typed_args) => TypecheckAnswer::fail(
                         ExprBuilder::with_data(None)

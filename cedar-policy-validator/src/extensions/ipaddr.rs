@@ -34,7 +34,7 @@ use super::eval_extension_constructor;
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -48,7 +48,7 @@ fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -63,7 +63,7 @@ fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
-    if !fname.is_unqualified() {
+    if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
     }
     match fname.basename().as_ref() {
@@ -83,22 +83,19 @@ pub fn extension_schema() -> ExtensionSchema {
     let ipaddr_ext = ipaddr::extension();
     let ipaddr_ty = Type::extension(ipaddr_ext.name().clone());
 
-    let fun_tys: Vec<ExtensionFunctionType> = ipaddr_ext
-        .funcs()
-        .map(|f| {
-            let return_type = get_return_type(f.name(), &ipaddr_ty);
-            debug_assert!(f
-                .return_type()
-                .map(|ty| return_type.is_consistent_with(ty))
-                .unwrap_or_else(|| return_type == Type::Never));
-            ExtensionFunctionType::new(
-                f.name().clone(),
-                get_argument_types(f.name(), &ipaddr_ty),
-                return_type,
-                get_argument_check(f.name()),
-            )
-        })
-        .collect();
+    let fun_tys = ipaddr_ext.funcs().map(|f| {
+        let return_type = get_return_type(f.name(), &ipaddr_ty);
+        debug_assert!(f
+            .return_type()
+            .map(|ty| return_type.is_consistent_with(ty))
+            .unwrap_or_else(|| return_type == Type::Never));
+        ExtensionFunctionType::new(
+            f.name().clone(),
+            get_argument_types(f.name(), &ipaddr_ty),
+            return_type,
+            get_argument_check(f.name()),
+        )
+    });
     ExtensionSchema::new(ipaddr_ext.name().clone(), fun_tys)
 }
 

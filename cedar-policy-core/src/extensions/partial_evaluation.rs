@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#![cfg(feature = "partial-eval")]
 
 //! This module contains the extension for including unknown values
 use crate::{
@@ -34,11 +35,11 @@ fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
 pub fn extension() -> Extension {
     Extension::new(
         "partial_evaluation".parse().unwrap(),
-        vec![ExtensionFunction::unary_never(
+        vec![ExtensionFunction::partial_eval_unknown(
             "unknown".parse().unwrap(),
             CallStyle::FunctionStyle,
             Box::new(create_new_unknown),
-            Some(SchemaType::String),
+            SchemaType::String,
         )],
     )
 }

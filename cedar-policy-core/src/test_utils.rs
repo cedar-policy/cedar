@@ -121,6 +121,17 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
         }
     }
 
+    /// Add expected underlined text. The error message will be expected to have
+    /// exactly two miette labels, and the underlined portions should be `snippet1`
+    /// and `snippet2`, in that order.
+    /// Both labels should have no associated label text.
+    pub fn exactly_two_underlines(self, snippet1: &'a str, snippet2: &'a str) -> Self {
+        Self {
+            underlines: vec![(snippet1, None), (snippet2, None)],
+            ..self
+        }
+    }
+
     /// Add expected contents of `source()`, or expected prefix of `source()` if
     /// this builder was originally constructed with `error_starts_with()`
     pub fn source(self, msg: &'a str) -> Self {

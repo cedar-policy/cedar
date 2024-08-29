@@ -40,7 +40,8 @@ struct Decimal {
 // PANIC SAFETY The `Name`s and `Regex` here are valid
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
-    use super::{Name, EXTENSION_NAME};
+    use super::EXTENSION_NAME;
+    use crate::ast::Name;
     use regex::Regex;
 
     // PANIC SAFETY all of the names here are valid names
@@ -268,35 +269,35 @@ pub fn extension() -> Extension {
                 CallStyle::FunctionStyle,
                 Box::new(decimal_from_str),
                 decimal_type.clone(),
-                Some(SchemaType::String),
+                SchemaType::String,
             ),
             ExtensionFunction::binary(
                 constants::LESS_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_lt),
                 SchemaType::Bool,
-                (Some(decimal_type.clone()), Some(decimal_type.clone())),
+                (decimal_type.clone(), decimal_type.clone()),
             ),
             ExtensionFunction::binary(
                 constants::LESS_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_le),
                 SchemaType::Bool,
-                (Some(decimal_type.clone()), Some(decimal_type.clone())),
+                (decimal_type.clone(), decimal_type.clone()),
             ),
             ExtensionFunction::binary(
                 constants::GREATER_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_gt),
                 SchemaType::Bool,
-                (Some(decimal_type.clone()), Some(decimal_type.clone())),
+                (decimal_type.clone(), decimal_type.clone()),
             ),
             ExtensionFunction::binary(
                 constants::GREATER_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_ge),
                 SchemaType::Bool,
-                (Some(decimal_type.clone()), Some(decimal_type)),
+                (decimal_type.clone(), decimal_type),
             ),
         ],
     )
@@ -381,7 +382,7 @@ mod tests {
     #[test]
     fn decimal_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -477,7 +478,7 @@ mod tests {
     #[test]
     fn decimal_equality() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -541,7 +542,7 @@ mod tests {
 
     fn decimal_ops_helper(op: &str, tests: Vec<((Expr, Expr), bool)>) {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -608,7 +609,7 @@ mod tests {
         // evaluation errors
 
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);

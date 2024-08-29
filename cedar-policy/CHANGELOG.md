@@ -7,40 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The "Cedar Language Version" refers to the language version as documented in the [Cedar Policy Language Guide](https://docs.cedarpolicy.com/other/doc-history.html). The language version may differ from the Rust crate version because a breaking change for the Cedar Rust API may or may not be a breaking change for the Cedar language.
 
+Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
+
 ## [Unreleased]
 Cedar Language Version: 4.0
 
 ### Added
-- JSON representation for Policy Sets, along with methods like
-  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
-  resolving #549)
-- Added methods for reading and writing individual `Entity`s as JSON
-  (resolving #807)
-- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
-  to combine `Context`s, returning an error on duplicate keys (#1027,
-  resolving #1013)
+
+- Additional functionality to the JSON FFI including parsing utilities (#1079)
+  and conversion between the Cedar and JSON formats (#1087)
+- (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a
+  typename that can resolve to either an entity or common type, matching the
+  behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
+  part of resolving #579)
 
 ### Changed
 
-- The API around `Request::new` has changed to remove the `Option`s 
-  around the entity type arguments.
+- The API around `Request::new` has changed to remove the `Option`s
+  around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
+- (*) Implemented [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
+  In both the Cedar and JSON schema syntaxes, it is now illegal to define the
+  same entity name, common type name, or action name in both the empty namespace
+  and a nonempty namespace.
 - Significantly reworked all public-facing error types to address some issues
   and improve consistency. See issue #745.
-- Finalized the `ffi` module which was preview-released in 3.2.0.
-  This involved a few additional API breaking changes in `ffi`. See #757.
+- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
+  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Removed unnecessary lifetimes from some validation related structs (#715)
-- Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional.
-- Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
-  can be common type names; updated the error message when common type names
-  conflict with built-in primitive type names (#974, partially resolving #973)
+- (*) Changed policy validation to reject comparisons and conditionals between
+  record types that differ in whether an attribute is required or optional. (#769)
+- Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
+- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
+  instead of `Option<String>` to set the policy id (#1055, resolving #1049)
+- (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
+  Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
+  `A::__cedar::B`) are now invalid. (#969)
+- Replaced uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
+  APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
+  Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
+  now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
+  to parse strings in the JSON schema format.
+- `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
+  `Option<String>` in the previous version (#1131, resolving #1116)
+- Marked errors/warnings related to parsing and entity/request validation as
+  `non_exhaustive`, allowing future variants to be added without a breaking
+  change. (#1137)
+- (*) Improved consistency between JSON and Cedar schema formats. Both now
+  forbid using `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`,
+  and `String` as common type names. (#1150, resolving #1139)
 
 ### Removed
 
-- Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
-- Reduced precision of partial evaluation for `||`, `&&`,  and conditional expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now evaluates to `if <unknown> then 1 + "hi" else false`
-- Removed the `error` extension function, which was previously used during partial evaluation.
+- (*) Removed unspecified entity type. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Removed integration testing harness from the `cedar-policy` crate. It is now
   in an internal crate, allowing us to make semver incompatible changes. (#857)
 - Removed the (deprecated) `frontend` module in favor of the new `ffi` module
@@ -58,13 +77,58 @@ Cedar Language Version: 4.0
 
 ### Fixed
 
-- JSON format Cedar schemas will now fail to parse if they reference an unknown
+- (*) JSON format Cedar schemas will now fail to parse if they reference an unknown
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
-- JSON format Cedar policies will now fail to parse if the action scope
+- (*) Schemas can now reference entity and common types defined in the empty namespace,
+  even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+
+## [3.3.0] - 2024-08-19
+Cedar Language Version: 3.4
+
+### Added
+
+- JSON representation for Policy Sets, along with methods like
+  `::from_json_value/file/str` and `::to_json` for `PolicySet`. (#783,
+  resolving #549)
+- Methods for reading and writing individual `Entity`s as JSON (#924,
+  resolving #807)
+- `Context::into_iter` to get the contents of a `Context` and `Context::merge`
+  to combine `Context`s, returning an error on duplicate keys (#1027,
+  resolving #1013)
+- Several new APIs for schemas to allow accessing principal and resource
+  types, action entity uids, etc. (#1141, resolving #1134)
+
+### Changed
+
+- Added deprecation warnings to APIs that will be removed in the upcoming 4.0
+  release, as well as wrapper methods with the new names, where appropriate.
+  See the notes under that release for more details. (#1128)
+- Reduced precision of partial evaluation for `||`, `&&`,  and conditional
+  expressions. `if { foo : <unknown> }.foo then 1 + "hi" else false` now
+  evaluates to `if <unknown> then 1 + "hi" else false`. (#874)
+- Removed the `error` extension function, which was previously used during
+  partial evaluation. (#874)
+
+### Fixed
+
+- (*) JSON format Cedar policies will now fail to parse if the action scope
   constraint contains a non-action entity type, matching the behavior for
   human-readable Cedar policies. (#943, resolving #925)
-- JSON format Cedar policies will now fail to parse if any annotations are not
+- `Template` parsing functions (e.g., `Template::parse()`) will now fail when
+  passed a static policy as input. Use the `Policy` parsing functions instead.
+  (#1108, resolving #1095)
+
+## [3.2.4] - 2024-08-07
+Cedar Language Version: 3.3
+
+_Note:_ 3.2.2 and 3.2.3 skipped to maintain consistency with the `cedar-wasm` package
+
+### Fixed
+
+- (*) JSON format Cedar policies will now fail to parse if any annotations are not
   valid Cedar identifiers. (#1004, resolving #994)
+- (*) `unknown()` is no longer a valid extension function if `partial-eval`
+  is not enabled as a feature. (#1101, resolving #1096)
 
 ## [3.2.1] - 2024-05-31
 Cedar Language Version: 3.3
@@ -600,7 +664,9 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.2.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.3.0...main
+[3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
+[3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/cedar-policy/cedar/compare/v3.1.4...v3.2.0
 [3.1.4]: https://github.com/cedar-policy/cedar/compare/v3.1.3...v3.1.4

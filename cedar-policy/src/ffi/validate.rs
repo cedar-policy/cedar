@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-//! This module contains the validator entry points that other language FFIs can
-//! call
+//! JSON FFI entry points for the Cedar validator. The Cedar Wasm validator is
+//! generated from the [`validate()`] function in this file.
+
 #![allow(clippy::module_name_repetitions)]
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -28,20 +31,13 @@ extern crate tsify;
 ///
 /// This is the basic validator interface, using [`ValidationCall`] and
 /// [`ValidationAnswer`] types
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "validate"))]
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
             t: Ok((policies, schema, settings)),
             warnings,
         } => {
-            // if validation is not enabled, stop here
-            if !settings.enabled {
-                return ValidationAnswer::Success {
-                    validation_errors: Vec::new(),
-                    validation_warnings: Vec::new(),
-                    other_warnings: warnings.into_iter().map(Into::into).collect(),
-                };
-            }
             // otherwise, call `Validator::validate`
             let validator = Validator::new(schema);
             let (validation_errors, validation_warnings) = validator
@@ -104,6 +100,7 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationCall {
     /// Validation settings
     #[serde(default)]
@@ -122,7 +119,7 @@ impl ValidationCall {
         Result<(crate::PolicySet, crate::Schema, ValidationSettings), Vec<miette::Report>>,
     > {
         let mut errs = vec![];
-        let policies = match self.policies.parse(None) {
+        let policies = match self.policies.parse() {
             Ok(policies) => policies,
             Err(e) => {
                 errs.extend(e);
@@ -150,25 +147,14 @@ impl ValidationCall {
 }
 
 /// Configuration for the validation call
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationSettings {
-    /// Whether validation is enabled. If this flag is set to `false`, then
-    /// only parsing is performed. The default value is `true`.
-    enabled: bool,
     /// Used to control how a policy is validated. See comments on [`ValidationMode`].
     mode: ValidationMode,
-}
-
-impl Default for ValidationSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            mode: ValidationMode::default(),
-        }
-    }
 }
 
 /// Error (or warning) for a specified policy after validation
@@ -176,6 +162,7 @@ impl Default for ValidationSettings {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ValidationError {
     /// Id of the policy where the error (or warning) occurred
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -215,15 +202,17 @@ pub enum ValidationAnswer {
 }
 
 // PANIC SAFETY unit tests
-#[allow(clippy::panic)]
+#[allow(clippy::panic, clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use crate::ffi::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
-    use std::collections::HashMap;
 
-    /// Assert that [`validate_json()`] returns Success with no errors
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Success`]
+    /// with no errors
     #[track_caller]
     fn assert_validates_without_errors(json: serde_json::Value) {
         let ans_val = validate_json(json).unwrap();
@@ -233,33 +222,36 @@ mod test {
         });
     }
 
-    /// Assert that [`validate_json()`] returns Success with exactly
-    /// `expected_num_errors` errors
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Success`]
+    /// and return the enclosed errors
     #[track_caller]
-    fn assert_validates_with_errors(json: serde_json::Value, expected_num_errors: usize) {
+    fn assert_validates_with_errors(json: serde_json::Value) -> Vec<ValidationError> {
         let ans_val = validate_json(json).unwrap();
         assert_matches!(ans_val.get("validationErrors"), Some(_)); // should be present, with this camelCased name
         assert_matches!(ans_val.get("validationWarnings"), Some(_)); // should be present, with this camelCased name
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
         assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings: _, other_warnings: _ }) => {
-            assert_eq!(validation_errors.len(), expected_num_errors, "actual validation errors were: {validation_errors:?}");
+            validation_errors
+        })
+    }
+
+    /// Assert that [`validate_json_str()`] returns a `serde_json::Error`
+    /// error with a message that matches `msg`
+    #[track_caller]
+    fn assert_validate_json_str_is_failure(call: &str, msg: &str) {
+        assert_matches!(validate_json_str(call), Err(e) => {
+            assert_eq!(e.to_string(), msg);
         });
     }
 
-    /// Assert that [`validate_json()`] returns `ValidationAnswer::Failure`
-    /// where some error contains the expected error string `err` (in its main
-    /// error message)
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Failure`]
+    /// and return the enclosed errors
     #[track_caller]
-    fn assert_is_failure(json: serde_json::Value, err: &str) {
+    fn assert_is_failure(json: serde_json::Value) -> Vec<DetailedError> {
         let ans_val =
             validate_json(json).expect("expected it to at least parse into ValidationCall");
         let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
-        assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => {
-            assert!(
-                errors.iter().any(|e| e.message.contains(err)),
-                "Expected to see error(s) containing `{err}`, but saw {errors:?}",
-            );
-        });
+        assert_matches!(result, Ok(ValidationAnswer::Failure { errors, .. }) => errors)
     }
 
     #[test]
@@ -267,21 +259,21 @@ mod test {
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
             schema: Schema::Json(json!({}).into()),
-            policies: PolicySet::Map(HashMap::new()),
+            policies: PolicySet::new(),
         };
 
         assert_validates_without_errors(serde_json::to_value(&call).unwrap());
 
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
-            schema: Schema::Human(String::new()),
-            policies: PolicySet::Map(HashMap::new()),
+            schema: Schema::Cedar(String::new()),
+            policies: PolicySet::new(),
         };
 
         assert_validates_without_errors(serde_json::to_value(&call).unwrap());
 
         let call = json!({
-            "schema": { "json": {} },
+            "schema": {},
             "policies": {}
         });
 
@@ -291,7 +283,7 @@ mod test {
     #[test]
     fn test_nontrivial_correct_policy_validates_without_errors() {
         let json = json!({
-        "schema": { "json": { "": {
+        "schema": { "": {
           "entityTypes": {
             "User": {
               "memberOfTypes": [ "UserGroup" ]
@@ -333,9 +325,11 @@ mod test {
               }
             }
           }
-        }}},
+        }},
         "policies": {
-          "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
+          "staticPolicies": {
+            "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
+          }
         }});
 
         assert_validates_without_errors(json);
@@ -344,25 +338,29 @@ mod test {
     #[test]
     fn test_policy_with_parse_error_fails_passing_on_errors() {
         let json = json!({
-            "schema": { "json": { "": {
+            "schema": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }}},
+            }},
             "policies": {
-                "policy0": "azfghbjknnhbud"
+                "staticPolicies": {
+                  "policy0": "azfghbjknnhbud"
+                }
             }
         });
 
-        assert_is_failure(
-            json,
-            "failed to parse policy with id `policy0`: unexpected end of input",
+        let errs = assert_is_failure(json);
+        assert_exactly_one_error(
+            &errs,
+            "failed to parse policy with id `policy0` from string: unexpected end of input",
+            None,
         );
     }
 
     #[test]
     fn test_semantically_incorrect_policy_fails_with_errors() {
         let json = json!({
-        "schema": { "json": { "": {
+        "schema": { "": {
           "entityTypes": {
             "User": {
               "memberOfTypes": [ ]
@@ -379,19 +377,39 @@ mod test {
               }
             }
           }
-        }}},
+        }},
         "policies": {
-          "policy0": "permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");",
-          "policy1": "permit(principal == Photo::\"photo2.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice2\");"
+          "staticPolicies": {
+            "policy0": "permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");",
+            "policy1": "permit(principal == Photo::\"photo2.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice2\");"
+          }
         }});
 
-        assert_validates_with_errors(json, 2);
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 2);
+        for err in errs {
+            if err.policy_id == PolicyId::new("policy0") {
+                assert_error_matches(
+                    &err.error,
+                    "for policy `policy0`, unable to find an applicable action given the policy scope constraints",
+                    None
+                );
+            } else if err.policy_id == PolicyId::new("policy1") {
+                assert_error_matches(
+                    &err.error,
+                    "for policy `policy1`, unable to find an applicable action given the policy scope constraints",
+                    None
+                );
+            } else {
+                panic!("unexpected validation error: {err:?}");
+            }
+        }
     }
 
     #[test]
     fn test_nontrivial_correct_policy_validates_without_errors_concatenated_policies() {
         let json = json!({
-        "schema": { "json": { "": {
+        "schema": { "": {
           "entityTypes": {
             "User": {
               "memberOfTypes": [ "UserGroup" ]
@@ -433,9 +451,11 @@ mod test {
               }
             }
           }
-        }}},
+        }},
         "policies": {
-          "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
+          "staticPolicies": {
+            "policy0": "permit(principal in UserGroup::\"alice_friends\", action == Action::\"viewPhoto\", resource);"
+          }
         }
         });
 
@@ -445,23 +465,27 @@ mod test {
     #[test]
     fn test_policy_with_parse_error_fails_passing_on_errors_concatenated_policies() {
         let json = json!({
-            "schema": { "json": { "": {
+            "schema": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }}},
-            "policies": "azfghbjknnhbud"
+            }},
+            "policies": {
+              "staticPolicies": "azfghbjknnhbud"
+            }
         });
 
-        assert_is_failure(
-            json,
+        let errs = assert_is_failure(json);
+        assert_exactly_one_error(
+            &errs,
             "failed to parse policies from string: unexpected end of input",
+            None,
         );
     }
 
     #[test]
     fn test_semantically_incorrect_policy_fails_with_errors_concatenated_policies() {
         let json = json!({
-          "schema": { "json": { "": {
+          "schema": { "": {
             "entityTypes": {
               "User": {
                 "memberOfTypes": [ ]
@@ -478,26 +502,39 @@ mod test {
                 }
               }
             }
-          }}},
-          "policies": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
+          }},
+          "policies": {
+            "staticPolicies": "forbid(principal, action, resource);permit(principal == Photo::\"photo.jpg\", action == Action::\"viewPhoto\", resource == User::\"alice\");"
+          }
         });
 
-        assert_validates_with_errors(json, 1);
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("policy1"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `policy1`, unable to find an applicable action given the policy scope constraints",
+            None
+        );
     }
 
     #[test]
     fn test_policy_with_parse_error_fails_concatenated_policies() {
         let json = json!({
-            "schema": { "json": { "": {
+            "schema": { "": {
                 "entityTypes": {},
                 "actions": {}
-            }}},
-            "policies": "permit(principal, action, resource);forbid"
+            }},
+            "policies": {
+              "staticPolicies": "permit(principal, action, resource);forbid"
+            }
         });
 
-        assert_is_failure(
-            json,
+        let errs = assert_is_failure(json);
+        assert_exactly_one_error(
+            &errs,
             "failed to parse policies from string: unexpected end of input",
+            None,
         );
     }
 
@@ -510,31 +547,134 @@ mod test {
 
     #[test]
     fn test_validate_fails_on_duplicate_namespace() {
-        let json = r#"{
-            "schema": { "json": {
+        let text = r#"{
+            "schema": {
               "foo": { "entityTypes": {}, "actions": {} },
               "foo": { "entityTypes": {}, "actions": {} }
-            }},
-            "policies": ""
+            },
+            "policies": {}
         }"#;
 
-        assert_matches!(validate_json_str(json), Err(e) => {
-          assert!(e.to_string().contains("the key `foo` occurs two or more times in the same JSON object"), "actual error message was {e}");
-        });
+        assert_validate_json_str_is_failure(
+            text,
+            "expected a schema in the Cedar or JSON policy format (with no duplicate keys) at line 5 column 13",
+        );
     }
 
     #[test]
     fn test_validate_fails_on_duplicate_policy_id() {
-        let json = r#"{
-            "schema": { "json": { "": { "entityTypes": {}, "actions": {} } } },
+        let text = r#"{
+            "schema": { "": { "entityTypes": {}, "actions": {} } },
             "policies": {
-              "ID0": "permit(principal, action, resource);",
-              "ID0": "permit(principal, action, resource);"
+              "staticPolicies": {
+                "ID0": "permit(principal, action, resource);",
+                "ID0": "permit(principal, action, resource);"
+              }
             }
         }"#;
 
-        assert_matches!(validate_json_str(json), Err(e) => {
-          assert!(e.to_string().contains("policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"), "actual error message was {e}");
+        assert_validate_json_str_is_failure(
+            text,
+            "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys) at line 8 column 13",
+        );
+    }
+
+    #[test]
+    fn test_validate_with_templates() {
+        // Successful validation with templates and template links
+        let json = json!({
+            "schema": "entity User, Photo; action viewPhoto appliesTo { principal: User, resource: Photo };",
+            "policies": {
+              "staticPolicies": {
+                "ID0": "permit(principal == User::\"alice\", action, resource);"
+              },
+              "templates": {
+                "ID1": "permit(principal == ?principal, action, resource);"
+              },
+              "templateLinks": [{
+                "templateId": "ID1",
+                "newId": "ID2",
+                "values": {
+                    "?principal": { "type": "User", "id": "bob" }
+                }
+              }]
+            }
         });
+        assert_validates_without_errors(json);
+
+        // Validation fails due to bad template
+        let json = json!({
+            "schema": "entity User, Photo; action viewPhoto appliesTo { principal: User, resource: Photo };",
+            "policies": {
+              "staticPolicies": {
+                "ID0": "permit(principal == User::\"alice\", action, resource);"
+              },
+              "templates": {
+                "ID1": "permit(principal == ?principal, action == Action::\"foo\", resource);"
+              },
+              "templateLinks": [{
+                "templateId": "ID1",
+                "newId": "ID2",
+                "values": {
+                    "?principal": { "type": "User", "id": "bob" }
+                }
+              }]
+            }
+        });
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 3);
+        for err in errs {
+            if err.policy_id == PolicyId::new("ID1") {
+                if err.error.message.contains("unrecognized action") {
+                    assert_error_matches(
+                        &err.error,
+                        "for policy `ID1`, unrecognized action `Action::\"foo\"`",
+                        Some("did you mean `Action::\"viewPhoto\"`?"),
+                    );
+                } else {
+                    assert_error_matches(
+                        &err.error,
+                        "for policy `ID1`, unable to find an applicable action given the policy scope constraints",
+                        None,
+                    );
+                }
+            } else if err.policy_id == PolicyId::new("ID2") {
+                assert_error_matches(
+                    &err.error,
+                    "for policy `ID2`, unable to find an applicable action given the policy scope constraints",
+                    None,
+                );
+            } else {
+                panic!("unexpected validation error: {err:?}");
+            }
+        }
+
+        // Validation fails due to bad link
+        let json = json!({
+            "schema": "entity User, Photo; action viewPhoto appliesTo { principal: User, resource: Photo };",
+            "policies": {
+              "staticPolicies": {
+                "ID0": "permit(principal == User::\"alice\", action, resource);"
+              },
+              "templates": {
+                "ID1": "permit(principal == ?principal, action, resource);"
+              },
+              "templateLinks": [{
+                "templateId": "ID1",
+                "newId": "ID2",
+                "values": {
+                    "?principal": { "type": "Photo", "id": "bob" }
+                }
+              }]
+            }
+        });
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("ID2"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `ID2`, unable to find an applicable action given the policy scope constraints",
+            None
+        );
     }
 }

@@ -95,12 +95,17 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
-    /// Translate natural policy syntax to JSON (except comments)
+    /// Translate Cedar policy syntax to JSON policy syntax (except comments)
     TranslatePolicy(TranslatePolicyArgs),
-    /// Translate JSON schema to natural schema syntax and vice versa (except comments)
+    /// Translate Cedar schema syntax to JSON schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
+    /// Visualize a set of JSON entities to the graphviz format.
+    /// Warning: Entity visualization is best-effort and not well tested.
+    Visualize(VisualizeArgs),
     /// Create a Cedar project
     New(NewArgs),
+    /// Partially evaluate an authorization request
+    PartiallyAuthorize(PartiallyAuthorizeArgs),
 }
 
 #[derive(Args, Debug)]
@@ -117,8 +122,8 @@ pub struct TranslatePolicyArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum PolicyTranslationDirection {
-    /// Human policy syntax -> JSON
-    HumanToJson,
+    /// Cedar policy syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Args, Debug)]
@@ -135,23 +140,23 @@ pub struct TranslateSchemaArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaTranslationDirection {
-    /// JSON -> Human schema syntax
-    JsonToHuman,
-    /// Human schema syntax -> JSON
-    HumanToJson,
+    /// JSON -> Cedar schema syntax
+    JsonToCedar,
+    /// Cedar schema syntax -> JSON
+    CedarToJson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaFormat {
-    /// Human-readable format
-    Human,
+    /// the Cedar format
+    Cedar,
     /// JSON format
     Json,
 }
 
 impl Default for SchemaFormat {
     fn default() -> Self {
-        Self::Human
+        Self::Cedar
     }
 }
 
@@ -176,8 +181,8 @@ pub struct ValidateArgs {
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
-    /// Schema format (Human-readable or json)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// Validate the policy using this mode.
     /// The options `permissive` and `partial` are experimental
@@ -220,6 +225,31 @@ pub struct RequestArgs {
     /// not provided.
     #[arg(long = "request-validation", action = ArgAction::Set, default_value_t = true)]
     pub request_validation: bool,
+}
+
+#[cfg(feature = "partial-eval")]
+/// This struct contains the arguments that together specify a request.
+#[derive(Args, Debug)]
+pub struct PartialRequestArgs {
+    /// Principal for the request, e.g., User::"alice"
+    #[arg(short = 'l', long)]
+    pub principal: Option<String>,
+    /// Action for the request, e.g., Action::"view"
+    #[arg(short, long)]
+    pub action: Option<String>,
+    /// Resource for the request, e.g., File::"myfile.txt"
+    #[arg(short, long)]
+    pub resource: Option<String>,
+    /// File containing a JSON object representing the context for the request.
+    /// Should be a (possibly empty) map from keys to values.
+    #[arg(short, long = "context", value_name = "FILE")]
+    pub context_json_file: Option<String>,
+    /// File containing a JSON object representing the entire request. Must have
+    /// fields "principal", "action", "resource", and "context", where "context"
+    /// is a (possibly empty) map from keys to values. This option replaces
+    /// --principal, --action, etc.
+    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context_json_file"])]
+    pub request_json_file: Option<String>,
 }
 
 impl RequestArgs {
@@ -323,6 +353,90 @@ impl RequestArgs {
     }
 }
 
+#[cfg(feature = "partial-eval")]
+impl PartialRequestArgs {
+    fn get_request(&self) -> Result<Request> {
+        let mut builder = RequestBuilder::default();
+        let qjson: PartialRequestJSON = match self.request_json_file.as_ref() {
+            Some(jsonfile) => {
+                let jsonstring = std::fs::read_to_string(jsonfile)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("failed to open request-json file {jsonfile}"))?;
+                serde_json::from_str(&jsonstring)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?
+            }
+            None => PartialRequestJSON {
+                principal: self.principal.clone(),
+                action: self.action.clone(),
+                resource: self.resource.clone(),
+                context: self
+                    .context_json_file
+                    .as_ref()
+                    .map(|jsonfile| {
+                        let jsonstring = std::fs::read_to_string(jsonfile)
+                            .into_diagnostic()
+                            .wrap_err_with(|| {
+                                format!("failed to open context-json file {jsonfile}")
+                            })?;
+                        serde_json::from_str(&jsonstring)
+                            .into_diagnostic()
+                            .wrap_err_with(|| {
+                                format!("failed to parse context-json file {jsonfile}")
+                            })
+                    })
+                    .transpose()?,
+            },
+        };
+
+        if let Some(principal) = qjson
+            .principal
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse principal {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.principal(principal);
+        }
+
+        if let Some(action) = qjson
+            .action
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.action(action);
+        }
+
+        if let Some(resource) = qjson
+            .resource
+            .map(|s| {
+                s.parse()
+                    .wrap_err_with(|| format!("failed to parse resource {s} as entity Uid"))
+            })
+            .transpose()?
+        {
+            builder = builder.resource(resource);
+        }
+
+        if let Some(context) = qjson
+            .context
+            .map(|json| {
+                Context::from_json_value(json.clone(), None)
+                    .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
+            })
+            .transpose()?
+        {
+            builder = builder.context(context);
+        }
+
+        Ok(builder.build())
+    }
+}
+
 /// This struct contains the arguments that together specify an input policy or policy set.
 #[derive(Args, Debug)]
 pub struct PoliciesArgs {
@@ -341,8 +455,8 @@ impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
         let mut pset = match self.policy_format {
-            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
-            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
         }?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
             add_template_links_to_set(links_filename, &mut pset)?;
@@ -365,8 +479,8 @@ pub struct AuthorizeArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -379,11 +493,38 @@ pub struct AuthorizeArgs {
     pub timing: bool,
 }
 
+#[cfg(feature = "partial-eval")]
+#[derive(Args, Debug)]
+pub struct PartiallyAuthorizeArgs {
+    /// Request args (incorporated by reference)
+    #[command(flatten)]
+    pub request: PartialRequestArgs,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// File containing JSON representation of the Cedar entity hierarchy
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
+    /// Time authorization and report timing information
+    #[arg(short, long)]
+    pub timing: bool,
+}
+
+#[cfg(not(feature = "partial-eval"))]
+#[derive(Debug, Args)]
+pub struct PartiallyAuthorizeArgs;
+
+#[derive(Args, Debug)]
+pub struct VisualizeArgs {
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum PolicyFormat {
-    /// The standard human-readable Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    /// The standard Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     #[default]
-    Human,
+    Cedar,
     /// Cedar's JSON policy format, documented at <https://docs.cedarpolicy.com/policies/json-format.html>
     Json,
 }
@@ -478,6 +619,20 @@ struct RequestJSON {
     context: serde_json::Value,
 }
 
+#[cfg(feature = "partial-eval")]
+/// This struct is the serde structure expected for --request-json
+#[derive(Deserialize)]
+pub(self) struct PartialRequestJSON {
+    /// Principal for the request
+    pub(self) principal: Option<String>,
+    /// Action for the request
+    pub(self) action: Option<String>,
+    /// Resource for the request
+    pub(self) resource: Option<String>,
+    /// Context for the request
+    pub(self) context: Option<serde_json::Value>,
+}
+
 #[derive(Args, Debug)]
 pub struct EvaluateArgs {
     /// Request args (incorporated by reference)
@@ -488,8 +643,8 @@ pub struct EvaluateArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
-    /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
+    /// Schema format (Cedar or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
@@ -513,6 +668,10 @@ pub enum CedarExitCode {
     // The command completed successfully, but it detected a validation failure
     // in the given schema and policies.
     ValidationFailure,
+    #[cfg(feature = "partial-eval")]
+    // The command completed successfully with an incomplete result, e.g.,
+    // partial authorization result is not determining.
+    Unknown,
 }
 
 impl Termination for CedarExitCode {
@@ -522,6 +681,8 @@ impl Termination for CedarExitCode {
             CedarExitCode::Failure => ExitCode::FAILURE,
             CedarExitCode::AuthorizeDeny => ExitCode::from(2),
             CedarExitCode::ValidationFailure => ExitCode::from(3),
+            #[cfg(feature = "partial-eval")]
+            CedarExitCode::Unknown => ExitCode::SUCCESS,
         }
     }
 }
@@ -656,6 +817,19 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
     }
 }
 
+pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
+    match load_entities(&args.entities_file, None) {
+        Ok(entities) => {
+            println!("{}", entities.to_dot_str());
+            CedarExitCode::Success
+        }
+        Err(report) => {
+            eprintln!("{report:?}");
+            CedarExitCode::Failure
+        }
+    }
+}
+
 /// Format the policies in the given file or stdin.
 ///
 /// Returns a boolean indicating whether the formatted policies are the same as the original
@@ -699,15 +873,15 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_policy_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let policy_set = PolicySet::from_str(natural_src.as_ref())?;
+fn translate_policy_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let policy_set = PolicySet::from_str(cedar_src.as_ref())?;
     let output = policy_set.to_json()?.to_string();
     Ok(output)
 }
 
 fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
-        PolicyTranslationDirection::HumanToJson => translate_policy_to_json,
+        PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
 }
@@ -725,26 +899,26 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
     }
 }
 
-fn translate_schema_to_human(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
-    let output = fragment.as_natural()?;
+    let output = fragment.to_cedarschema()?;
     Ok(output)
 }
 
-fn translate_schema_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
+    let (fragment, warnings) = SchemaFragment::from_cedarschema_str(cedar_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
         eprintln!("{:?}", report);
     }
-    let output = fragment.as_json_string()?;
+    let output = fragment.to_json_string()?;
     Ok(output)
 }
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        SchemaTranslationDirection::JsonToHuman => translate_schema_to_human,
-        SchemaTranslationDirection::HumanToJson => translate_schema_to_json,
+        SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
+        SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
@@ -846,7 +1020,7 @@ fn new_inner(args: &NewArgs) -> Result<()> {
     std::fs::create_dir(dir).into_diagnostic()?;
     let schema_path = dir.join("schema.cedarschema.json");
     let policy_path = dir.join("policy.cedar");
-    let entities_path = dir.join("entities.jon");
+    let entities_path = dir.join("entities.json");
     generate_schema(&schema_path)?;
     generate_policy(&policy_path)?;
     generate_entities(&entities_path)
@@ -1059,6 +1233,54 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     }
 }
 
+#[cfg(not(feature = "partial-eval"))]
+pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
+    {
+        eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
+        return CedarExitCode::Failure;
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
+    println!();
+    let ans = execute_partial_request(
+        &args.request,
+        &args.policies,
+        &args.entities_file,
+        args.timing,
+    );
+    match ans {
+        Ok(ans) => {
+            let status = match ans.decision() {
+                Some(Decision::Allow) => {
+                    println!("ALLOW");
+                    CedarExitCode::Success
+                }
+                Some(Decision::Deny) => {
+                    println!("DENY");
+                    CedarExitCode::AuthorizeDeny
+                }
+                None => {
+                    println!("UNKNOWN");
+                    println!("All policy residuals:");
+                    for p in ans.nontrivial_residuals() {
+                        println!("{p}");
+                    }
+                    CedarExitCode::Unknown
+                }
+            };
+            status
+        }
+        Err(errs) => {
+            for err in errs {
+                println!("{err:?}");
+            }
+            CedarExitCode::Failure
+        }
+    }
+}
+
 /// Load an `Entities` object from the given JSON filename and optional schema.
 fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<Entities> {
     match std::fs::OpenOptions::new()
@@ -1136,9 +1358,11 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
-/// Read a policy set, in Cedar human syntax, from the file given in `filename`,
+/// Read a policy set, in Cedar syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_cedar_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
@@ -1153,32 +1377,64 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
     rename_from_id_annotation(ps)
 }
 
-/// Read a policy or template, in Cedar JSON (EST) syntax, from the file given
+/// Read a policy set, static policy or policy template, in Cedar JSON (EST) syntax, from the file given
 /// in `filename`, or from stdin if `filename` is `None`.
-fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_json_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<PolicySet> {
     let context = "JSON policy";
     let json_source = read_from_file_or_stdin(filename, context)?;
-    let json: serde_json::Value = serde_json::from_str(&json_source).into_diagnostic()?;
-    let err_to_report = |err| {
+    let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
+    let policy_type = get_json_policy_type(&json)?;
+
+    let add_json_source = |report: Report| {
         let name = filename.map_or_else(
             || "<stdin>".to_owned(),
             |n| n.as_ref().display().to_string(),
         );
-        Report::new(err).with_source_code(NamedSource::new(name, json_source.clone()))
+        report.with_source_code(NamedSource::new(name, json_source.clone()))
     };
 
-    match Policy::from_json(None, json.clone()).map_err(err_to_report) {
-        Ok(policy) => PolicySet::from_policies([policy])
-            .wrap_err_with(|| format!("failed to create policy set from {context}")),
-        Err(_) => match Template::from_json(None, json).map_err(err_to_report) {
-            Ok(template) => {
-                let mut ps = PolicySet::new();
-                ps.add_template(template)?;
-                Ok(ps)
-            }
-            Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
+    match policy_type {
+        JsonPolicyType::SinglePolicy => match Policy::from_json(None, json.clone()) {
+            Ok(policy) => PolicySet::from_policies([policy])
+                .wrap_err_with(|| format!("failed to create policy set from {context}")),
+            Err(_) => match Template::from_json(None, json)
+                .map_err(|err| add_json_source(Report::new(err)))
+            {
+                Ok(template) => {
+                    let mut ps = PolicySet::new();
+                    ps.add_template(template)?;
+                    Ok(ps)
+                }
+                Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
+            },
         },
+        JsonPolicyType::PolicySet => PolicySet::from_json_value(json)
+            .map_err(|err| add_json_source(Report::new(err)))
+            .wrap_err_with(|| format!("failed to create policy set from {context}")),
     }
+}
+
+fn get_json_policy_type(json: &serde_json::Value) -> Result<JsonPolicyType> {
+    let policy_set_properties = ["staticPolicies", "templates", "templateLinks"];
+    let policy_properties = ["action", "effect", "principal", "resource", "conditions"];
+
+    let json_has_property = |p| json.get(p).is_some();
+    let has_any_policy_set_property = policy_set_properties.iter().any(json_has_property);
+    let has_any_policy_property = policy_properties.iter().any(json_has_property);
+
+    match (has_any_policy_set_property, has_any_policy_property) {
+        (false, false) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found no matching properties from either format")),
+        (true, true) => Err(miette!("cannot determine if json policy is a single policy or a policy set. Found matching properties from both formats")),
+        (true, _) => Ok(JsonPolicyType::PolicySet),
+        (_, true) => Ok(JsonPolicyType::SinglePolicy),
+    }
+}
+
+enum JsonPolicyType {
+    SinglePolicy,
+    PolicySet,
 }
 
 fn read_schema_file(
@@ -1187,14 +1443,14 @@ fn read_schema_file(
 ) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
     match format {
-        SchemaFormat::Json => Schema::from_str(&schema_src).wrap_err_with(|| {
+        SchemaFormat::Json => Schema::from_json_str(&schema_src).wrap_err_with(|| {
             format!(
                 "failed to parse schema from file {}",
                 filename.as_ref().display()
             )
         }),
-        SchemaFormat::Human => {
-            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+        SchemaFormat::Cedar => {
+            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
                 eprintln!("{:?}", report);
@@ -1241,6 +1497,50 @@ fn execute_request(
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();
             let ans = authorizer.is_authorized(&request, &policies, &entities);
+            let auth_dur = auth_start.elapsed();
+            if compute_duration {
+                println!(
+                    "Authorization Time (micro seconds) : {}",
+                    auth_dur.as_micros()
+                );
+            }
+            Ok(ans)
+        }
+        Ok(_) => Err(errs),
+        Err(e) => {
+            errs.push(e.wrap_err("failed to parse request"));
+            Err(errs)
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+fn execute_partial_request(
+    request: &PartialRequestArgs,
+    policies: &PoliciesArgs,
+    entities_filename: impl AsRef<Path>,
+    compute_duration: bool,
+) -> Result<PartialResponse, Vec<Report>> {
+    let mut errs = vec![];
+    let policies = match policies.get_policy_set() {
+        Ok(pset) => pset,
+        Err(e) => {
+            errs.push(e);
+            PolicySet::new()
+        }
+    };
+    let entities = match load_entities(entities_filename, None) {
+        Ok(entities) => entities,
+        Err(e) => {
+            errs.push(e);
+            Entities::empty()
+        }
+    };
+    match request.get_request() {
+        Ok(request) if errs.is_empty() => {
+            let authorizer = Authorizer::new();
+            let auth_start = Instant::now();
+            let ans = authorizer.is_authorized_partial(&request, &policies, &entities);
             let auth_dur = auth_start.elapsed();
             if compute_duration {
                 println!(

@@ -2,17 +2,32 @@
 
 ## Unreleased
 
-### Added
-
-- Added command `translate-policy` that translates a policy set in its human-readable format to the JSON format (except comments).
-
 ### Changed
 
 - The default `--schema-format` is now `human` for all subcommands that take
-  `--schema-format`.
+  `--schema-format`. (#750)
 - The `--partial-validate` option has been replaced with `--validation-mode`,
   taking the values `strict`, `permissive` (new) and `partial`.
-  The latter two are kept behind their respective feature flags.
+  The latter two are kept behind their respective feature flags. (#915)
+- CLI arguments `--policy-format` and `--schema-format` now take options
+  `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
+  takes `cedar-to-json` or `json-to-cedar`. (#1114)
+
+## 3.3.0
+
+### Added
+
+- `translate-policy` command that translates a policy set in its Cedar format
+  to the JSON format (except comments). (#987)
+- `visualize` command that allows entity JSON files to be visualized using the
+  graphviz format. (#960)
+- All commands that read policies in JSON format now accept a policy set in
+  addition to a single policy or a policy template. (#1057)
+- experimental `partially-authorize` command (#1082)
+
+## 3.2.4
+
+## 3.2.1
 
 ## 3.2.0
 

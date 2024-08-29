@@ -36,11 +36,11 @@ use super::TemplateBody;
 #[serde(try_from = "LiteralPolicySet")]
 #[serde(into = "LiteralPolicySet")]
 pub struct PolicySet {
-    /// `templates` contains all bodies of policies in the `PolicySet`
+    /// `templates` contains all bodies of policies in the `PolicySet`.
     /// A body is either:
-    ///    - A Body of a `Template`, which has slots that need to be filled in
-    ///    - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots
-    /// The static policy's [`PolicyID`] is the same in both `templates` and `links`
+    /// - A Body of a `Template`, which has slots that need to be filled in
+    /// - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots.
+    ///   The static policy's [`PolicyID`] is the same in both `templates` and `links`.
     templates: HashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
     /// A `StaticPolicy` must have exactly one `Policy` in `links`
@@ -473,11 +473,11 @@ impl PolicySet {
         new_id: PolicyID,
         values: HashMap<SlotId, EntityUID>,
     ) -> Result<&Policy, LinkingError> {
-        let t = self
-            .get_template(&template_id)
-            .ok_or_else(|| LinkingError::NoSuchTemplate {
-                id: template_id.clone(),
-            })?;
+        let t =
+            self.get_template_arc(&template_id)
+                .ok_or_else(|| LinkingError::NoSuchTemplate {
+                    id: template_id.clone(),
+                })?;
         let r = Template::link(t, new_id.clone(), values)?;
 
         // Both maps must not contain the `new_id`
@@ -551,9 +551,14 @@ impl PolicySet {
         self.templates.is_empty() && self.links.is_empty()
     }
 
-    /// Lookup a template by policy id
-    pub fn get_template(&self, id: &PolicyID) -> Option<Arc<Template>> {
+    /// Lookup a template by policy id, returns [`Option<Arc<Template>>`]
+    pub fn get_template_arc(&self, id: &PolicyID) -> Option<Arc<Template>> {
         self.templates.get(id).cloned()
+    }
+
+    /// Lookup a template by policy id, returns [`Option<&Template>`]
+    pub fn get_template(&self, id: &PolicyID) -> Option<&Template> {
+        self.templates.get(id).map(AsRef::as_ref)
     }
 
     /// Lookup an policy by policy id
@@ -615,11 +620,14 @@ mod test {
     #[test]
     fn link_conflicts() {
         let mut pset = PolicySet::new();
-        let p1 = parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p1 = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add_static(p1).expect("Failed to add!");
-        let template = parser::parse_policy_template(
-            Some("t".into()),
+        let template = parser::parse_policy_or_template(
+            Some(PolicyID::from_string("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
@@ -648,16 +656,18 @@ mod test {
     #[test]
     fn policyset_add() {
         let mut pset = PolicySet::new();
-        let static_policy =
-            parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-                .expect("Failed to parse");
+        let static_policy = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         let static_policy: Policy = static_policy.into();
         pset.add(static_policy)
             .expect("Adding static policy in Policy form should succeed");
 
         let template = Arc::new(
-            parser::parse_policy_template(
-                Some("t".into()),
+            parser::parse_policy_or_template(
+                Some(PolicyID::from_string("t")),
                 "permit(principal == ?principal, action, resource);",
             )
             .expect("Failed to parse"),
@@ -675,7 +685,7 @@ mod test {
             "Adding link should succeed, even though the template wasn't previously in the pset",
         );
         assert!(
-            pset.get_template(&PolicyID::from_string("t")).is_some(),
+            pset.get_template_arc(&PolicyID::from_string("t")).is_some(),
             "Adding link should implicitly add the template"
         );
 
@@ -704,8 +714,8 @@ mod test {
         );
 
         let template2 = Arc::new(
-            parser::parse_policy_template(
-                Some("t".into()),
+            parser::parse_policy_or_template(
+                Some(PolicyID::from_string("t")),
                 "forbid(principal, action, resource == ?resource);",
             )
             .expect("Failed to parse"),
@@ -734,10 +744,13 @@ mod test {
     #[test]
     fn policy_conflicts() {
         let mut pset = PolicySet::new();
-        let p1 = parser::parse_policy(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p1 = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         let p2 = parser::parse_policy(
-            Some("id".into()),
+            Some(PolicyID::from_string("id")),
             "permit(principal,action,resource) when { false };",
         )
         .expect("Failed to parse");
@@ -750,13 +763,13 @@ mod test {
 
     #[test]
     fn template_filtering() {
-        let template = parser::parse_policy_template(
-            Some("template".into()),
+        let template = parser::parse_policy_or_template(
+            Some(PolicyID::from_string("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
         let static_policy = parser::parse_policy(
-            Some("static".into()),
+            Some(PolicyID::from_string("static")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -988,13 +1001,13 @@ mod test {
             &tid2
         );
         assert!(pset.get(&tid2).is_none());
-        assert!(pset.get_template(&id1).is_some()); // Static policies are also templates
-        assert!(pset.get_template(&id2).is_some()); // Static policies are also templates
-        assert!(pset.get_template(&tid2).is_some());
+        assert!(pset.get_template_arc(&id1).is_some()); // Static policies are also templates
+        assert!(pset.get_template_arc(&id2).is_some()); // Static policies are also templates
+        assert!(pset.get_template_arc(&tid2).is_some());
         assert_eq!(pset.policies().count(), 3);
 
         assert_eq!(
-            pset.get_template(&tid1)
+            pset.get_template_arc(&tid1)
                 .expect("should find the template")
                 .id(),
             &tid1

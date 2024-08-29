@@ -68,6 +68,7 @@ impl Template {
     // GRCOV_BEGIN_COVERAGE
 
     /// Construct a `Template` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -94,6 +95,7 @@ impl Template {
     }
 
     /// Construct a template from an expression/annotations that are already [`std::sync::Arc`] allocated
+    #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -921,6 +923,7 @@ impl StaticPolicy {
     }
 
     /// Construct a `StaticPolicy` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1119,6 +1122,7 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
+    #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1142,6 +1146,7 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from its components
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -2548,7 +2553,7 @@ mod test {
     #[test]
     fn test_iter_once() {
         let id = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid"),
             None,
         );
@@ -2560,12 +2565,12 @@ mod test {
     #[test]
     fn test_iter_mult() {
         let id1 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid1"),
             None,
         );
         let id2 = EntityUID::from_components(
-            name::Name::unqualified_name(id::Id::new_unchecked("s")).into(),
+            name::Name::parse_unqualified_name("s").unwrap().into(),
             entity::Eid::new("eid2"),
             None,
         );
@@ -2605,7 +2610,7 @@ mod test {
     #[test]
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
-        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+        assert_matches!(parse_policy(Some(PolicyID::from_string("id")), policy_str), Err(e) => {
             expect_exactly_one_error(policy_str, &e, &ExpectedErrorMessageBuilder::error(
                 "expected a static policy, got a template containing the slot ?principal"
                 )
@@ -2617,7 +2622,7 @@ mod test {
 
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
-        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+        assert_matches!(parse_policy(Some(PolicyID::from_string("id")), policy_str), Err(e) => {
             expect_some_error_matches(policy_str, &e, &ExpectedErrorMessageBuilder::error(
                 "expected a static policy, got a template containing the slot ?principal"
                 )

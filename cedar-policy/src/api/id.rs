@@ -95,7 +95,7 @@ impl AsRef<str> for EntityId {
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityTypeName(ast::EntityType);
+pub struct EntityTypeName(pub(crate) ast::EntityType);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
@@ -106,7 +106,7 @@ impl EntityTypeName {
     /// assert_eq!(type_name.basename(), "User");
     /// ```
     pub fn basename(&self) -> &str {
-        self.0.name().basename().as_ref()
+        self.0.as_ref().basename_as_ref().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
@@ -120,7 +120,11 @@ impl EntityTypeName {
     /// assert_eq!(components.next(), None);
     /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
-        self.0.name().namespace_components().map(AsRef::as_ref)
+        self.0
+            .name()
+            .as_ref()
+            .namespace_components()
+            .map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
@@ -132,7 +136,7 @@ impl EntityTypeName {
     /// assert_eq!(components,"Namespace::MySpace");
     /// ```
     pub fn namespace(&self) -> String {
-        self.0.name().namespace()
+        self.0.as_ref().as_ref().namespace()
     }
 }
 
@@ -155,13 +159,6 @@ impl std::fmt::Display for EntityTypeName {
 }
 
 #[doc(hidden)]
-impl From<ast::Name> for EntityTypeName {
-    fn from(name: ast::Name) -> Self {
-        Self(name.into())
-    }
-}
-
-#[doc(hidden)]
 impl From<ast::EntityType> for EntityTypeName {
     fn from(ty: ast::EntityType) -> Self {
         Self(ty)
@@ -179,7 +176,7 @@ impl From<ast::EntityType> for EntityTypeName {
 // INVARIANT: this can never be an `ast::EntityType::Unspecified`
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
-pub struct EntityUid(ast::EntityUID);
+pub struct EntityUid(pub(crate) ast::EntityUID);
 
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
@@ -232,13 +229,11 @@ impl EntityUid {
     /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
     #[allow(clippy::result_large_err)]
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+    pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
-        Ok::<Self, JsonDeserializationError>(
-            parsed
-                .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
-                .into(),
-        )
+        Ok(parsed
+            .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+            .into())
     }
 
     /// Testing utility for creating `EntityUids` a bit easier
@@ -313,9 +308,9 @@ impl From<ast::EntityUID> for EntityUid {
 
 /// Unique ids assigned to policies and templates.
 ///
-/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string.
-/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
+/// A [`PolicyId`] can can be constructed using [`PolicyId::new`] or by calling
+/// `parse()` on a string. The `parse()` implementation is [`Infallible`], so
+/// the parsed [`EntityId`] can be extracted safely.
 /// Examples:
 /// ```
 /// # use cedar_policy::PolicyId;
@@ -326,7 +321,9 @@ impl From<ast::EntityUID> for EntityUid {
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
-pub struct PolicyId(ast::PolicyID);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
 
 impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
@@ -373,8 +370,10 @@ impl From<PolicyId> for ast::PolicyID {
 /// Identifier for a Template slot
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
-pub struct SlotId(ast::SlotId);
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct SlotId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId);
 
 impl SlotId {
     /// Get the slot for `principal`

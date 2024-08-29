@@ -35,12 +35,12 @@ pub struct EntitySchemaConformanceChecker<'a, S: Schema> {
     /// Schema to check conformance with
     schema: &'a S,
     /// Extensions which are active for the conformance checks
-    extensions: Extensions<'a>,
+    extensions: &'a Extensions<'a>,
 }
 
 impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
     /// Create a new checker
-    pub fn new(schema: &'a S, extensions: Extensions<'a>) -> Self {
+    pub fn new(schema: &'a S, extensions: &'a Extensions<'a>) -> Self {
         Self { schema, extensions }
     }
 
@@ -64,7 +64,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = self
                     .schema
-                    .entity_types_with_basename(etype.name().basename())
+                    .entity_types_with_basename(&etype.name().basename())
                     .collect();
                 UnexpectedEntityTypeError {
                     uid: uid.clone(),
@@ -155,7 +155,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
 pub fn typecheck_value_against_schematype(
     value: &PartialValue,
     expected_ty: &SchemaType,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
     match RestrictedExpr::try_from(value.clone()) {
         Ok(expr) => typecheck_restricted_expr_against_schematype(
@@ -182,7 +182,7 @@ pub fn typecheck_value_against_schematype(
 pub fn typecheck_restricted_expr_against_schematype(
     expr: BorrowedRestrictedExpr<'_>,
     expected_ty: &SchemaType,
-    extensions: Extensions<'_>,
+    extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
     // TODO(#440): instead of computing the `SchemaType` of `expr` and then
     // checking whether the schematypes are "consistent", wouldn't it be less

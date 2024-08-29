@@ -338,25 +338,7 @@ mod scope_constraints_tests {
 
     #[test]
     fn principal_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Any);
         let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal == T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal in T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::In(euid.clone())
-        );
         let map: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), euid.clone())).collect();
         let p = link(
@@ -375,68 +357,11 @@ mod scope_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::Eq(euid.clone())
         );
-
-        let p = link(
-            "permit(principal is T in T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
-        );
-        let p = link("permit(principal is T,action,resource);", HashMap::new());
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap())
-        );
-        let p = link("permit(principal is T in ?principal,action,resource);", map);
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid)
-        );
-    }
-
-    #[test]
-    fn action_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.action_constraint(), ActionConstraint::Any);
-        let euid = EntityUid::from_strs("Action", "a");
-        let p = link(
-            "permit(principal,action == Action::\"a\",resource);",
-            HashMap::new(),
-        );
-        assert_eq!(p.action_constraint(), ActionConstraint::Eq(euid.clone()));
-        let p = link(
-            "permit(principal,action in [Action::\"a\",Action::\"b\"],resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.action_constraint(),
-            ActionConstraint::In(vec![euid, EntityUid::from_strs("Action", "b"),])
-        );
     }
 
     #[test]
     fn resource_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Any);
         let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal,action,resource == T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal,action,resource in T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::In(euid.clone())
-        );
         let map: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::resource(), euid.clone())).collect();
         let p = link(
@@ -455,20 +380,6 @@ mod scope_constraints_tests {
             p.resource_constraint(),
             ResourceConstraint::Eq(euid.clone())
         );
-
-        let p = link(
-            "permit(principal,action,resource is T in T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
-        );
-        let p = link("permit(principal,action,resource is T);", HashMap::new());
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Is(EntityTypeName::from_str("T").unwrap())
-        );
         let p = link("permit(principal,action,resource is T in ?resource);", map);
         assert_eq!(
             p.resource_constraint(),
@@ -476,14 +387,15 @@ mod scope_constraints_tests {
         );
     }
 
+    #[track_caller]
     fn link(src: &str, values: HashMap<SlotId, EntityUid>) -> Policy {
         let mut pset = PolicySet::new();
-        let template = Template::parse(Some("Id".to_string()), src).unwrap();
+        let template = Template::parse(Some(PolicyId::new("Id")), src).unwrap();
 
         pset.add_template(template).unwrap();
 
-        let link_id = PolicyId::from_str("link").unwrap();
-        pset.link(PolicyId::from_str("Id").unwrap(), link_id.clone(), values)
+        let link_id = PolicyId::new("link");
+        pset.link(PolicyId::new("Id"), link_id.clone(), values)
             .unwrap();
         pset.policy(&link_id).unwrap().clone()
     }
@@ -495,13 +407,35 @@ mod policy_set_tests {
     use cool_asserts::assert_matches;
 
     #[test]
+    fn no_unknown_feature() {
+        let src = r#"
+        permit(principal,action,resource) when {
+            unknown("foo")
+        };
+        "#;
+        let pset: Result<PolicySet, _> = src.parse();
+        #[cfg(not(feature = "partial-eval"))]
+        {
+            let err_string = pset.unwrap_err().to_string();
+            assert!(err_string.contains("`unknown` is not a valid function"));
+        }
+        #[cfg(feature = "partial-eval")]
+        {
+            assert!(pset.is_ok());
+        }
+    }
+
+    #[test]
     fn template_link_lookup() {
         let mut pset = PolicySet::new();
-        let p = Policy::parse(Some("p".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p = Policy::parse(
+            Some(PolicyId::new("p")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add(p).expect("Failed to add");
         let template = Template::parse(
-            Some("t".into()),
+            Some(PolicyId::new("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
@@ -509,15 +443,11 @@ mod policy_set_tests {
 
         let env: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("id").unwrap(),
-            env.clone(),
-        )
-        .expect("Failed to link");
+        pset.link(PolicyId::new("t"), PolicyId::new("id"), env.clone())
+            .expect("Failed to link");
 
-        let p0 = pset.policy(&PolicyId::from_str("p").unwrap()).unwrap();
-        let tp = pset.policy(&PolicyId::from_str("id").unwrap()).unwrap();
+        let p0 = pset.policy(&PolicyId::new("p")).unwrap();
+        let tp = pset.policy(&PolicyId::new("id")).unwrap();
 
         assert_eq!(
             p0.template_links(),
@@ -534,11 +464,14 @@ mod policy_set_tests {
     #[test]
     fn link_conflicts() {
         let mut pset = PolicySet::new();
-        let p1 = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let p1 = Policy::parse(
+            Some(PolicyId::new("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add(p1).expect("Failed to add");
         let template = Template::parse(
-            Some("t".into()),
+            Some(PolicyId::new("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
@@ -548,11 +481,7 @@ mod policy_set_tests {
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
 
         let before_link = pset.clone();
-        let r = pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("id").unwrap(),
-            env,
-        );
+        let r = pset.link(PolicyId::new("t"), PolicyId::new("id"), env);
 
         assert_matches!(
             r,
@@ -569,12 +498,15 @@ mod policy_set_tests {
     #[test]
     fn policyset_add() {
         let mut pset = PolicySet::new();
-        let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let static_policy = Policy::parse(
+            Some(PolicyId::new("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add(static_policy).expect("Failed to add");
 
         let template = Template::parse(
-            Some("t".into()),
+            Some(PolicyId::new("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
@@ -582,44 +514,32 @@ mod policy_set_tests {
 
         let env1: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("link").unwrap(),
-            env1,
-        )
-        .expect("Failed to link");
+        pset.link(PolicyId::new("t"), PolicyId::new("link"), env1)
+            .expect("Failed to link");
 
         let env2: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test2"))).collect();
 
         let err = pset
-            .link(
-                PolicyId::from_str("t").unwrap(),
-                PolicyId::from_str("link").unwrap(),
-                env2.clone(),
-            )
+            .link(PolicyId::new("t"), PolicyId::new("link"), env2.clone())
             .expect_err("Should have failed due to conflict with existing link id");
         match err {
             PolicySetError::Linking(_) => (),
             e => panic!("Wrong error: {e}"),
         }
 
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("link2").unwrap(),
-            env2,
-        )
-        .expect("Failed to link");
+        pset.link(PolicyId::new("t"), PolicyId::new("link2"), env2)
+            .expect("Failed to link");
 
         let template2 = Template::parse(
-            Some("t".into()),
+            Some(PolicyId::new("t")),
             "forbid(principal, action, resource == ?resource);",
         )
         .expect("Failed to parse");
         pset.add_template(template2)
             .expect_err("should have failed due to conflict on template id");
         let template2 = Template::parse(
-            Some("t2".into()),
+            Some(PolicyId::new("t2")),
             "forbid(principal, action, resource == ?resource);",
         )
         .expect("Failed to parse");
@@ -628,19 +548,11 @@ mod policy_set_tests {
         let env3: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::resource(), EntityUid::from_strs("Test", "test3"))).collect();
 
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("unique3").unwrap(),
-            env3.clone(),
-        )
-        .expect_err("should have failed due to conflict on template id");
+        pset.link(PolicyId::new("t"), PolicyId::new("unique3"), env3.clone())
+            .expect_err("should have failed due to conflict on template id");
 
-        pset.link(
-            PolicyId::from_str("t2").unwrap(),
-            PolicyId::from_str("unique3").unwrap(),
-            env3,
-        )
-        .expect("should succeed with unique ids");
+        pset.link(PolicyId::new("t2"), PolicyId::new("unique3"), env3)
+            .expect("should succeed with unique ids");
     }
 
     #[test]
@@ -675,15 +587,18 @@ mod policy_set_tests {
         let entities = Entities::from_json_str(e, None).expect("entity error");
 
         let mut pset = PolicySet::new();
-        let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
+        let static_policy = Policy::parse(
+            Some(PolicyId::new("id")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
         pset.add(static_policy).expect("Failed to add");
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
         assert_eq!(response.decision(), Decision::Allow);
 
-        pset.remove_static(PolicyId::from_str("id").unwrap())
+        pset.remove_static(PolicyId::new("id"))
             .expect("Failed to remove static policy");
 
         //Deny
@@ -691,28 +606,24 @@ mod policy_set_tests {
         assert_eq!(response.decision(), Decision::Deny);
 
         let template = Template::parse(
-            Some("t".into()),
+            Some(PolicyId::new("t")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Failed to parse");
         pset.add_template(template).expect("Failed to add");
 
-        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        let linked_policy_id = PolicyId::new("linked");
         let env1: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            linked_policy_id.clone(),
-            env1,
-        )
-        .expect("Failed to link");
+        pset.link(PolicyId::new("t"), linked_policy_id.clone(), env1)
+            .expect("Failed to link");
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
         assert_eq!(response.decision(), Decision::Allow);
 
         assert_matches!(
-            pset.remove_static(PolicyId::from_str("t").unwrap()),
+            pset.remove_static(PolicyId::new("t")),
             Err(PolicySetError::PolicyNonexistent(_))
         );
 
@@ -720,7 +631,7 @@ mod policy_set_tests {
         assert_matches!(result, Ok(_));
 
         assert_matches!(
-            pset.remove_static(PolicyId::from_str("t").unwrap()),
+            pset.remove_static(PolicyId::new("t")),
             Err(PolicySetError::PolicyNonexistent(_))
         );
 
@@ -730,12 +641,8 @@ mod policy_set_tests {
 
         let env1: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            linked_policy_id.clone(),
-            env1,
-        )
-        .expect("Failed to link");
+        pset.link(PolicyId::new("t"), linked_policy_id.clone(), env1)
+            .expect("Failed to link");
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
@@ -743,14 +650,14 @@ mod policy_set_tests {
 
         //Can't remove template that is still linked
         assert_matches!(
-            pset.remove_template(PolicyId::from_str("t").unwrap()),
+            pset.remove_template(PolicyId::new("t")),
             Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //Unlink first, then remove
         let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
-        pset.remove_template(PolicyId::from_str("t").unwrap())
+        pset.remove_template(PolicyId::new("t"))
             .expect("Failed to remove policy template");
 
         //Deny
@@ -761,7 +668,7 @@ mod policy_set_tests {
     #[test]
     fn pset_removal_prop_test_1() {
         let template = Template::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -769,14 +676,10 @@ mod policy_set_tests {
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("policy0").unwrap(),
-            PolicyId::from_str("policy3").unwrap(),
-            env,
-        )
-        .unwrap();
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
         let template = Template::parse(
-            Some("policy3".into()),
+            Some(PolicyId::new("policy3")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -786,11 +689,11 @@ mod policy_set_tests {
             Err(PolicySetError::AlreadyDefined(_))
         );
         assert_matches!(
-            pset.remove_static(PolicyId::from_str("policy3").unwrap()),
+            pset.remove_static(PolicyId::new("policy3")),
             Err(PolicySetError::PolicyNonexistent(_))
         );
         assert_matches!(
-            pset.remove_template(PolicyId::from_str("policy3").unwrap()),
+            pset.remove_template(PolicyId::new("policy3")),
             Err(PolicySetError::TemplateNonexistent(_))
         );
     }
@@ -798,12 +701,12 @@ mod policy_set_tests {
     #[test]
     fn pset_requests() {
         let template = Template::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
         let static_policy = Policy::parse(
-            Some("static".into()),
+            Some(PolicyId::new("static")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -811,8 +714,8 @@ mod policy_set_tests {
         pset.add_template(template).unwrap();
         pset.add(static_policy).unwrap();
         pset.link(
-            PolicyId::from_str("template").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .expect("Link failure");
@@ -846,7 +749,7 @@ mod policy_set_tests {
         // Linking the `PolicyId` of a static policy should not be allowed.
         // Attempting it should cause an `ExpectedTemplate` error.
         let static_policy = Policy::parse(
-            Some("static".into()),
+            Some(PolicyId::new("static")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -855,8 +758,8 @@ mod policy_set_tests {
 
         let before_link = pset.clone();
         let result = pset.link(
-            PolicyId::from_str("static").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
+            PolicyId::new("static"),
+            PolicyId::new("linked"),
             HashMap::new(),
         );
         assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
@@ -869,7 +772,7 @@ mod policy_set_tests {
     #[test]
     fn link_linked_policy() {
         let template = Template::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -877,16 +780,16 @@ mod policy_set_tests {
         pset.add_template(template).unwrap();
 
         pset.link(
-            PolicyId::from_str("template").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .unwrap();
 
         let before_link = pset.clone();
         let result = pset.link(
-            PolicyId::from_str("linked").unwrap(),
-            PolicyId::from_str("linked2").unwrap(),
+            PolicyId::new("linked"),
+            PolicyId::new("linked2"),
             HashMap::new(),
         );
         assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
@@ -921,16 +824,16 @@ mod policy_set_tests {
     #[test]
     fn unlink_linked_policy() {
         let template = Template::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
         let mut pset = PolicySet::new();
         pset.add_template(template).unwrap();
 
-        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        let linked_policy_id = PolicyId::new("linked");
         pset.link(
-            PolicyId::from_str("template").unwrap(),
+            PolicyId::new("template"),
             linked_policy_id.clone(),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
@@ -985,15 +888,15 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
 
         let template = Template::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
         pset.add_template(template).unwrap();
 
-        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        let linked_policy_id = PolicyId::new("linked");
         pset.link(
-            PolicyId::from_str("template").unwrap(),
+            PolicyId::new("template"),
             linked_policy_id.clone(),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
@@ -1001,7 +904,7 @@ mod policy_set_tests {
 
         //add link, count 1
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             1
@@ -1010,7 +913,7 @@ mod policy_set_tests {
         assert_matches!(result, Ok(_));
         //remove link, count 0
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             0
@@ -1019,25 +922,25 @@ mod policy_set_tests {
         assert_matches!(result, Err(PolicySetError::LinkNonexistent(_)));
 
         pset.link(
-            PolicyId::from_str("template").unwrap(),
+            PolicyId::new("template"),
             linked_policy_id.clone(),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .unwrap();
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             1
         );
         pset.link(
-            PolicyId::from_str("template").unwrap(),
-            PolicyId::from_str("linked2").unwrap(),
+            PolicyId::new("template"),
+            PolicyId::new("linked2"),
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .unwrap();
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             2
@@ -1045,7 +948,7 @@ mod policy_set_tests {
 
         //Can't re-add template
         let template = Template::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1056,7 +959,7 @@ mod policy_set_tests {
 
         //Add another template
         let template = Template::parse(
-            Some("template2".into()),
+            Some(PolicyId::new("template2")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1064,7 +967,7 @@ mod policy_set_tests {
 
         //template2 count 0
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template2").unwrap())
+            pset.get_linked_policies(PolicyId::new("template2"))
                 .unwrap()
                 .count(),
             0
@@ -1072,7 +975,7 @@ mod policy_set_tests {
 
         //template count 2
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             2
@@ -1080,13 +983,13 @@ mod policy_set_tests {
 
         //Can't remove template
         assert_matches!(
-            pset.remove_template(PolicyId::from_str("template").unwrap()),
+            pset.remove_template(PolicyId::new("template")),
             Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //Can't add policy named template
         let illegal_template_policy = Policy::parse(
-            Some("template".into()),
+            Some(PolicyId::new("template")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -1097,7 +1000,7 @@ mod policy_set_tests {
 
         //Can't add policy named linked
         let illegal_linked_policy = Policy::parse(
-            Some("linked".into()),
+            Some(PolicyId::new("linked")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -1108,31 +1011,31 @@ mod policy_set_tests {
 
         //Can add policy named `policy`
         let static_policy = Policy::parse(
-            Some("policy".into()),
+            Some(PolicyId::new("policy")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
         pset.add(static_policy).unwrap();
 
         //Can remove `policy`
-        pset.remove_static(PolicyId::from_str("policy").unwrap())
+        pset.remove_static(PolicyId::new("policy"))
             .expect("should be able to remove policy");
 
         //Cannot remove "linked"
         assert_matches!(
-            pset.remove_static(PolicyId::from_str("linked").unwrap()),
+            pset.remove_static(PolicyId::new("linked")),
             Err(PolicySetError::PolicyNonexistent(_))
         );
 
         //Cannot remove "template"
         assert_matches!(
-            pset.remove_static(PolicyId::from_str("template").unwrap()),
+            pset.remove_static(PolicyId::new("template")),
             Err(PolicySetError::PolicyNonexistent(_))
         );
 
         //template count 2
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             2
@@ -1142,43 +1045,37 @@ mod policy_set_tests {
         let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             1
         );
 
         //remove template2
-        assert_matches!(
-            pset.remove_template(PolicyId::from_str("template2").unwrap()),
-            Ok(_)
-        );
+        assert_matches!(pset.remove_template(PolicyId::new("template2")), Ok(_));
 
         //can't remove template1
         assert_matches!(
-            pset.remove_template(PolicyId::from_str("template").unwrap()),
+            pset.remove_template(PolicyId::new("template")),
             Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
         );
 
         //unlink other policy, template count 0
-        let result = pset.unlink(PolicyId::from_str("linked2").unwrap());
+        let result = pset.unlink(PolicyId::new("linked2"));
         assert_matches!(result, Ok(_));
         assert_eq!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .unwrap()
                 .count(),
             0
         );
 
         //remove template
-        assert_matches!(
-            pset.remove_template(PolicyId::from_str("template").unwrap()),
-            Ok(_)
-        );
+        assert_matches!(pset.remove_template(PolicyId::new("template")), Ok(_));
 
         //can't get count for nonexistent template
         assert_matches!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+            pset.get_linked_policies(PolicyId::new("template"))
                 .err()
                 .unwrap(),
             PolicySetError::TemplateNonexistent(_)
@@ -1188,7 +1085,7 @@ mod policy_set_tests {
     #[test]
     fn pset_add_conflict() {
         let template = Template::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1196,16 +1093,12 @@ mod policy_set_tests {
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("policy0").unwrap(),
-            PolicyId::from_str("policy1").unwrap(),
-            env,
-        )
-        .unwrap();
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env)
+            .unwrap();
 
         //fails for template; static
         let static_policy = Policy::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -1216,7 +1109,7 @@ mod policy_set_tests {
 
         //fails for link; static
         let static_policy = Policy::parse(
-            Some("policy1".into()),
+            Some(PolicyId::new("policy1")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -1227,7 +1120,7 @@ mod policy_set_tests {
 
         //fails for static; static
         let static_policy = Policy::parse(
-            Some("policy2".into()),
+            Some(PolicyId::new("policy2")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
@@ -1241,7 +1134,7 @@ mod policy_set_tests {
     #[test]
     fn pset_add_template_conflict() {
         let template = Template::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1249,16 +1142,12 @@ mod policy_set_tests {
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("policy0").unwrap(),
-            PolicyId::from_str("policy3").unwrap(),
-            env,
-        )
-        .unwrap();
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
 
         //fails for link; template
         let template = Template::parse(
-            Some("policy3".into()),
+            Some(PolicyId::new("policy3")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1269,7 +1158,7 @@ mod policy_set_tests {
 
         //fails for template; template
         let template = Template::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1280,13 +1169,13 @@ mod policy_set_tests {
 
         //fails for static; template
         let static_policy = Policy::parse(
-            Some("policy1".into()),
+            Some(PolicyId::new("policy1")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
         pset.add(static_policy).unwrap();
         let template = Template::parse(
-            Some("policy1".into()),
+            Some(PolicyId::new("policy1")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1299,7 +1188,7 @@ mod policy_set_tests {
     #[test]
     fn pset_link_conflict() {
         let template = Template::parse(
-            Some("policy0".into()),
+            Some(PolicyId::new("policy0")),
             "permit(principal == ?principal, action, resource);",
         )
         .expect("Template Parse Failure");
@@ -1310,15 +1199,15 @@ mod policy_set_tests {
 
         //fails for link; link
         pset.link(
-            PolicyId::from_str("policy0").unwrap(),
-            PolicyId::from_str("policy3").unwrap(),
+            PolicyId::new("policy0"),
+            PolicyId::new("policy3"),
             env.clone(),
         )
         .unwrap();
         assert_matches!(
             pset.link(
-                PolicyId::from_str("policy0").unwrap(),
-                PolicyId::from_str("policy3").unwrap(),
+                PolicyId::new("policy0"),
+                PolicyId::new("policy3"),
                 env.clone(),
             ),
             Err(PolicySetError::Linking(policy_set_errors::LinkingError {
@@ -1329,8 +1218,8 @@ mod policy_set_tests {
         //fails for template; link
         assert_matches!(
             pset.link(
-                PolicyId::from_str("policy0").unwrap(),
-                PolicyId::from_str("policy0").unwrap(),
+                PolicyId::new("policy0"),
+                PolicyId::new("policy0"),
                 env.clone(),
             ),
             Err(PolicySetError::Linking(policy_set_errors::LinkingError {
@@ -1340,17 +1229,13 @@ mod policy_set_tests {
 
         //fails for static; link
         let static_policy = Policy::parse(
-            Some("policy1".into()),
+            Some(PolicyId::new("policy1")),
             "permit(principal, action, resource);",
         )
         .expect("Static parse failure");
         pset.add(static_policy).unwrap();
         assert_matches!(
-            pset.link(
-                PolicyId::from_str("policy0").unwrap(),
-                PolicyId::from_str("policy1").unwrap(),
-                env,
-            ),
+            pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env,),
             Err(PolicySetError::Linking(policy_set_errors::LinkingError {
                 inner: ast::LinkingError::PolicyIdConflict { .. }
             }))
@@ -1466,7 +1351,7 @@ mod schema_tests {
                 expect_err(
                     "",
                     &Report::new(e),
-                    &ExpectedErrorMessageBuilder::error("failed to parse schema in JSON format: invalid entry: found duplicate key at line 39 column 17")
+                    &ExpectedErrorMessageBuilder::error("invalid entry: found duplicate key at line 39 column 17")
                         .build(),
                 )
         );
@@ -2793,7 +2678,7 @@ mod schema_based_parsing_tests {
     /// Test that involves namespaced entity types
     #[test]
     fn namespaces() {
-        let schema = Schema::from_str(
+        let schema = Schema::from_json_str(
             r#"
         {"XYZCorp": {
             "entityTypes": {
@@ -2886,7 +2771,7 @@ mod schema_based_parsing_tests {
     /// Test that involves optional attributes
     #[test]
     fn optional_attrs() {
-        let schema = Schema::from_str(
+        let schema = Schema::from_json_str(
             r#"
         {"": {
             "entityTypes": {
@@ -2964,7 +2849,7 @@ mod schema_based_parsing_tests {
     fn schema_sanity_check() {
         let src = "{ , .. }";
         assert_matches!(
-            Schema::from_str(src),
+            Schema::from_json_str(src),
             Err(crate::SchemaError::JsonDeserialization(_))
         );
     }
@@ -2986,27 +2871,12 @@ mod schema_based_parsing_tests {
     #[test]
     fn template_principal_constraints() {
         let src = r"
-            permit(principal, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
-
-        let src = r"
             permit(principal == ?principal, action, resource);
         ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
             TemplatePrincipalConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal == A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
         let src = r"
@@ -3018,23 +2888,6 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::In(None)
         );
 
-        let src = r#"
-            permit(principal in A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r"
-            permit(principal is A, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Is(EntityTypeName::from_str("A").unwrap())
-        );
         let src = r"
             permit(principal is A in ?principal, action, resource);
         ";
@@ -3043,42 +2896,31 @@ mod schema_based_parsing_tests {
             t.principal_constraint(),
             TemplatePrincipalConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
         );
-        let src = r#"
-            permit(principal is A in A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::IsIn(
-                EntityTypeName::from_str("A").unwrap(),
-                Some(EntityUid::from_strs("A", "a"))
-            )
-        );
     }
 
     #[test]
-    fn template_action_constraints() {
+    fn static_action_constraints() {
         let src = r"
             permit(principal, action, resource);
         ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.action_constraint(), ActionConstraint::Any);
+        let p = Policy::parse(None, src).unwrap();
+        assert_eq!(p.action_constraint(), ActionConstraint::Any);
 
         let src = r#"
             permit(principal, action == Action::"A", resource);
         "#;
-        let t = Template::parse(None, src).unwrap();
+        let p = Policy::parse(None, src).unwrap();
         assert_eq!(
-            t.action_constraint(),
+            p.action_constraint(),
             ActionConstraint::Eq(EntityUid::from_strs("Action", "A"))
         );
 
         let src = r#"
             permit(principal, action in [Action::"A", Action::"B"], resource);
         "#;
-        let t = Template::parse(None, src).unwrap();
+        let p = Policy::parse(None, src).unwrap();
         assert_eq!(
-            t.action_constraint(),
+            p.action_constraint(),
             ActionConstraint::In(vec![
                 EntityUid::from_strs("Action", "A"),
                 EntityUid::from_strs("Action", "B")
@@ -3089,27 +2931,12 @@ mod schema_based_parsing_tests {
     #[test]
     fn template_resource_constraints() {
         let src = r"
-            permit(principal, action, resource);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
-
-        let src = r"
             permit(principal, action, resource == ?resource);
         ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
             TemplateResourceConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal, action, resource == A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
         let src = r"
@@ -3121,23 +2948,6 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::In(None)
         );
 
-        let src = r#"
-            permit(principal, action, resource in A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r"
-            permit(principal, action, resource is A);
-        ";
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Is(EntityTypeName::from_str("A").unwrap())
-        );
         let src = r"
             permit(principal, action, resource is A in ?resource);
         ";
@@ -3146,30 +2956,20 @@ mod schema_based_parsing_tests {
             t.resource_constraint(),
             TemplateResourceConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
         );
-        let src = r#"
-            permit(principal, action, resource is A in A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::IsIn(
-                EntityTypeName::from_str("A").unwrap(),
-                Some(EntityUid::from_strs("A", "a"))
-            )
-        );
     }
 
     #[test]
     fn schema_namespace() {
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "Foo::Bar": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(
@@ -3178,15 +2978,16 @@ mod schema_based_parsing_tests {
         );
         let _schema: Schema = fragment.try_into().expect("Should convert to schema");
 
-        let fragment: SchemaFragment = r#"
+        let fragment: SchemaFragment = SchemaFragment::from_json_str(
+            r#"
         {
             "": {
                 "entityTypes": {},
                 "actions": {}
             }
         }
-        "#
-        .parse()
+        "#,
+        )
         .unwrap();
         let namespaces = fragment.namespaces().next().unwrap();
         assert_eq!(namespaces, None);
@@ -3674,7 +3475,10 @@ mod partial_schema {
 }
 
 mod template_tests {
+    use std::str::FromStr;
+
     use crate::Template;
+    use cedar_policy_core::test_utils::*;
 
     #[test]
     fn test_policy_template_to_json() {
@@ -3696,6 +3500,38 @@ mod template_tests {
             "permit(principal == ?principal, action, resource in ?resource);".to_string()
         );
     }
+
+    #[track_caller]
+    fn assert_not_a_template(src: &str) {
+        let e = Template::from_str(src).unwrap_err();
+        expect_err(
+            src,
+            &miette::Report::new(e),
+            &ExpectedErrorMessageBuilder::error("expected a template, got a static policy")
+                .help("a template should include slot(s) `?principal` or `?resource`")
+                .exactly_one_underline(src)
+                .build(),
+        )
+    }
+
+    #[test]
+    fn test_static_policy_as_template() {
+        // Can't parse static policies as a `Template`s
+        assert_not_a_template("permit(principal == User::\"alice\", action, resource is Photo);");
+        assert_not_a_template("permit(principal,action,resource);");
+        assert_not_a_template("permit(principal == T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal in T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal is T in T::\"a\",action,resource);");
+        assert_not_a_template("permit(principal is T,action,resource);");
+        assert_not_a_template("permit(principal,action == Action::\"a\",resource);");
+        assert_not_a_template(
+            "permit(principal,action in [Action::\"a\",Action::\"b\"],resource);",
+        );
+        assert_not_a_template("permit(principal,action,resource == T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource in T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource is T in T::\"a\");");
+        assert_not_a_template("permit(principal,action,resource is T);");
+    }
 }
 
 mod issue_326 {
@@ -3708,11 +3544,8 @@ mod issue_326 {
         use std::str::FromStr;
 
         let src = r"
-            permit (
-                principal
-                action
-                resource
-            );
+            permit(principal action resource);
+            permit(principal, action resource);
         ";
         assert_matches!(PolicySet::from_str(src), Err(e) => {
             assert!(e.to_string().contains("unexpected token `action`"), "actual error message was {e}");
@@ -3828,9 +3661,9 @@ mod issue_779 {
     #[test]
     fn issue_779() {
         let json = r#"{ "" : { "actions": { "view": {} }, "entityTypes": { invalid } }}"#;
-        let human = r"namespace Foo { entity User; action View; invalid }";
+        let cedar = r"namespace Foo { entity User; action View; invalid }";
 
-        assert_matches!(Schema::from_json_str(human), Err(e) => {
+        assert_matches!(Schema::from_json_str(cedar), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?"));
         });
         assert_matches!(Schema::from_json_str(json), Err(e) => {
@@ -3839,14 +3672,14 @@ mod issue_779 {
         assert_matches!(Schema::from_json_str("    "), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant non-JSON format
         });
-        assert_matches!(Schema::from_str_natural(json).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_cedarschema_str(json).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), Some(h) => assert_eq!(h, "this API was expecting a schema in the Cedar schema format; did you mean to use a different function, which expects a JSON-format Cedar schema"));
         });
-        assert_matches!(Schema::from_str_natural(human).map(|(s, _warnings)| s), Err(e) => {
+        assert_matches!(Schema::from_cedarschema_str(cedar).map(|(s, _warnings)| s), Err(e) => {
             assert_matches!(e.help().map(|h| h.to_string()), None, "found unexpected help message on error:\n{:?}", miette::Report::new(e)); // in particular, shouldn't suggest you meant JSON format, because this doesn't look like JSON
         });
         assert_matches!(
-            Schema::from_str_natural("    ").map(|(s, _warnings)| s),
+            Schema::from_cedarschema_str("    ").map(|(s, _warnings)| s),
             Ok(_)
         );
     }
@@ -5030,7 +4863,7 @@ mod authorization_error_tests {
 
         let mut pset = PolicySet::new();
         let static_policy = Policy::parse(
-            Some("id0".into()),
+            Some(PolicyId::new("id0")),
             "permit(principal,action,resource) when {principal.foo == 1};",
         )
         .expect("Failed to parse");

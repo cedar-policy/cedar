@@ -20,7 +20,7 @@
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
 
-mod test_utils;
+pub(crate) mod test_utils;
 
 mod expr;
 mod extensions;

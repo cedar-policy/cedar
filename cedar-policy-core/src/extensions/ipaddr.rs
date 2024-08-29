@@ -27,7 +27,7 @@ use std::sync::Arc;
 // PANIC SAFETY All the names are valid names
 #[allow(clippy::expect_used)]
 mod names {
-    use super::Name;
+    use crate::ast::Name;
     lazy_static::lazy_static! {
         pub static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         pub static ref IP_FROM_STR_NAME : Name = Name::parse_unqualified_name("ip").expect("should be a valid identifier");
@@ -242,12 +242,46 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {
         Some(i) => {
-            // PANIC SAFETY `i` is guaranteed to be < `s.len()`, so this won't panic
+            // For this slicing operation not to panic, two preconditions must be met:
+            // 1) `i + c.len_utf()` must be <= `s.len()`
+            //     This is met because:
+            //     i := s.find(c) meaning:
+            //     A) `i` < `s.len()`
+            //     B) `c` is in the list at position `i`, meaning `c.utf_len()` is at most going to
+            //         point to the end of the string
+            // 2) `i + c.utf_len()` must be a character boundary
+            //     This is met because we use `c.len_utf()` which is guaranteed to be the length of
+            //     `c`, since Rust strings use UTF8 and `c` is guaranteed to be the character at
+            //     position `i` in `s`.
+            // The above is checked by [`proof::contains_at_least_two_correct`], which proves
+            // safety for strings up to length 6
+            // PANIC SAFETY: (see above)
             #[allow(clippy::indexing_slicing)]
-            let idx = s[i + 1..].find(c);
+            // PANIC SAFETY: (see above)
+            #[allow(clippy::unwrap_used)]
+            let idx = s.get(i + c.len_utf8()..).unwrap().find(c);
             idx.is_some()
         }
         None => false,
+    }
+}
+
+#[cfg(kani)]
+mod proof {
+
+    /// Prove that `contains_two_correct` does not panic for strings with length <= 6
+    #[kani::proof]
+    #[kani::unwind(7)]
+    fn contains_at_least_two_correct() {
+        let buf: [u8; 6] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= 6);
+        let slice = &buf[0..len];
+        if let Ok(s) = std::str::from_utf8(slice) {
+            let pat = kani::any();
+            // Just don't panic
+            let _ = super::contains_at_least_two(s, pat);
+        }
     }
 }
 
@@ -363,42 +397,42 @@ pub fn extension() -> Extension {
                 CallStyle::FunctionStyle,
                 Box::new(ip_from_str),
                 ipaddr_type.clone(),
-                Some(SchemaType::String),
+                SchemaType::String,
             ),
             ExtensionFunction::unary(
                 names::IS_IPV4.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_ipv4),
                 SchemaType::Bool,
-                Some(ipaddr_type.clone()),
+                ipaddr_type.clone(),
             ),
             ExtensionFunction::unary(
                 names::IS_IPV6.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_ipv6),
                 SchemaType::Bool,
-                Some(ipaddr_type.clone()),
+                ipaddr_type.clone(),
             ),
             ExtensionFunction::unary(
                 names::IS_LOOPBACK.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_loopback),
                 SchemaType::Bool,
-                Some(ipaddr_type.clone()),
+                ipaddr_type.clone(),
             ),
             ExtensionFunction::unary(
                 names::IS_MULTICAST.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_multicast),
                 SchemaType::Bool,
-                Some(ipaddr_type.clone()),
+                ipaddr_type.clone(),
             ),
             ExtensionFunction::binary(
                 names::IS_IN_RANGE.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_in_range),
                 SchemaType::Bool,
-                (Some(ipaddr_type.clone()), Some(ipaddr_type)),
+                (ipaddr_type.clone(), ipaddr_type),
             ),
         ],
     )
@@ -481,7 +515,7 @@ mod tests {
     #[test]
     fn ip_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -613,7 +647,7 @@ mod tests {
     #[test]
     fn ip_range_creation() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -695,7 +729,7 @@ mod tests {
     #[test]
     fn ip_equality() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -739,7 +773,7 @@ mod tests {
     #[test]
     fn is_loopback_and_is_multicast() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -833,7 +867,7 @@ mod tests {
     #[test]
     fn ip_is_in_range() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -953,7 +987,7 @@ mod tests {
     #[test]
     fn more_ip_semantics() {
         let ext_array = [extension()];
-        let exts = Extensions::specific_extensions(&ext_array);
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
@@ -1134,5 +1168,10 @@ mod tests {
         assert!(contains_at_least_two(":::", ':'));
         assert!(contains_at_least_two("::", ':'));
         assert!(!contains_at_least_two(":", ':'));
+    }
+
+    #[test]
+    fn test_contains_two_multibyte() {
+        assert!(!contains_at_least_two("\u{f1b}", '\u{f1b}'));
     }
 }

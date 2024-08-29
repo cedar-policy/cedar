@@ -25,16 +25,11 @@ jobs:
       # All targets are run with the same `RUSTFLAGS
       - run: cargo build --verbose
       - run: cargo test --verbose
-      - run: cargo bench --no-run --profile=dev
+      - run: cargo test --verbose --benches
       - run: cargo test --verbose --no-default-features
       - run: cargo build --verbose --features "experimental"
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
-
-  run-integration-tests:
-    uses: ./.github/workflows/run_integration_tests_reusable.yml
-    with:
-      cedar_policy_ref: ${{ github.ref }}
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # don't effect it. As a side effect, this will run in parallel, saving some
@@ -85,15 +80,26 @@ jobs:
 
   wasm-build:
     name: run wasm build script
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain:
-          - stable
+        os: [ubuntu-latest, macos-latest-large, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     env:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
       - uses: actions/checkout@v4
-      - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh
+      - name: update llvm (macOS)
+        if: ${{ matrix.os  == 'macos-latest-large' }}
+        run: brew install llvm && echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
+      - name: update llvm (macOSarm64)
+        if: ${{ matrix.os  == 'macos-latest' }}
+        run: brew install llvm && echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+      - name: install typescript
+        if: ${{ matrix.os  != 'ubuntu-latest' }}
+        run: npm install -g typescript
+      - name: install wasm-pack
+        run: cargo install wasm-pack
+      - name: build wasm and test build
+        run: cd ./cedar-wasm && TEST_TS=1 ./build-wasm.sh

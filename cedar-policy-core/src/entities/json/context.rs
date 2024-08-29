@@ -21,7 +21,7 @@ use super::{
 use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
 use miette::Diagnostic;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Trait for schemas that can inform the parsing of Context data
@@ -36,7 +36,7 @@ pub struct NullContextSchema;
 impl ContextSchema for NullContextSchema {
     fn context_type(&self) -> SchemaType {
         SchemaType::Record {
-            attrs: HashMap::new(),
+            attrs: BTreeMap::new(),
             open_attrs: false,
         }
     }
@@ -54,7 +54,7 @@ pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
-    extensions: Extensions<'e>,
+    extensions: &'e Extensions<'e>,
 }
 
 impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
@@ -66,7 +66,7 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     /// `schema` -- for instance, it will error if attributes have the wrong
     /// types (e.g., string instead of integer), or if required attributes are
     /// missing or superfluous attributes are provided.
-    pub fn new(schema: Option<&'s S>, extensions: Extensions<'e>) -> Self {
+    pub fn new(schema: Option<&'s S>, extensions: &'e Extensions<'e>) -> Self {
         Self { schema, extensions }
     }
 

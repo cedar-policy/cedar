@@ -18,16 +18,19 @@
 // GRCOV_STOP_COVERAGE
 
 use crate::{diagnostics::ValidationError, types::Type};
-use cedar_policy_core::ast::{Expr, Name};
+use cedar_policy_core::ast::Expr;
 use std::str::FromStr;
 
 use super::test_utils::{
     assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema, expr_id_placeholder,
+    get_loc,
 };
 
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typechecks() {
+    use cedar_policy_core::ast::Name;
+
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let expr = Expr::from_str("ip(\"127.0.0.1\")").expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::extension(ipaddr_name));
@@ -41,46 +44,52 @@ fn ip_extension_typechecks() {
 #[test]
 #[cfg(feature = "ipaddr")]
 fn ip_extension_typecheck_fails() {
+    use cedar_policy_core::ast::Name;
+
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
-    let expr = Expr::from_str("ip(3)").expect("parsing should succeed");
+    let src = "ip(3)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(ipaddr_name.clone()),
-        vec![ValidationError::expected_type(
-            Expr::val(3),
+        [ValidationError::expected_type(
+            get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
         )],
     );
-    let expr = Expr::from_str("ip(\"foo\")").expect("parsing should succeed");
+    let src = "ip(\"foo\")";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
-        expr.clone(),
+        expr,
         Type::extension(ipaddr_name.clone()),
-        vec![ValidationError::function_argument_validation(
-            expr,
+        [ValidationError::function_argument_validation(
+            get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as IP address: `\"foo\"`".into(),
         )],
     );
-    let expr = Expr::from_str("ip(\"127.0.0.1\").isIpv4(3)").expect("parsing should succeed");
+    let src = "ip(\"127.0.0.1\").isIpv4(3)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![ValidationError::wrong_number_args(
-            expr,
+        [ValidationError::wrong_number_args(
+            get_loc(src, src),
             expr_id_placeholder(),
             1,
             2,
         )],
     );
-    let expr = Expr::from_str("ip(\"127.0.0.1\").isInRange(3)").expect("parsing should succeed");
+    let src = "ip(\"127.0.0.1\").isInRange(3)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![ValidationError::expected_type(
-            Expr::val(3),
+        [ValidationError::expected_type(
+            get_loc(src, "3"),
             expr_id_placeholder(),
             Type::extension(ipaddr_name),
             Type::primitive_long(),
@@ -92,6 +101,8 @@ fn ip_extension_typecheck_fails() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typechecks() {
+    use cedar_policy_core::ast::Name;
+
     let decimal_name =
         Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let expr = Expr::from_str("decimal(\"1.23\")").expect("parsing should succeed");
@@ -113,47 +124,53 @@ fn decimal_extension_typechecks() {
 #[test]
 #[cfg(feature = "decimal")]
 fn decimal_extension_typecheck_fails() {
+    use cedar_policy_core::ast::Name;
+
     let decimal_name =
         Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
-    let expr = Expr::from_str("decimal(3)").expect("parsing should succeed");
+    let src = "decimal(3)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::extension(decimal_name.clone()),
-        vec![ValidationError::expected_type(
-            Expr::val(3),
+        [ValidationError::expected_type(
+            get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
         )],
     );
-    let expr = Expr::from_str("decimal(\"foo\")").expect("parsing should succeed");
+    let src = "decimal(\"foo\")";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::extension(decimal_name.clone()),
-        vec![ValidationError::function_argument_validation(
-            expr,
+        [ValidationError::function_argument_validation(
+            get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as a decimal value: `\"foo\"`".into(),
         )],
     );
-    let expr = Expr::from_str("decimal(\"1.23\").lessThan(3, 4)").expect("parsing should succeed");
+    let src = "decimal(\"1.23\").lessThan(3, 4)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr.clone(),
         Type::primitive_boolean(),
-        vec![ValidationError::wrong_number_args(
-            expr,
+        [ValidationError::wrong_number_args(
+            get_loc(src, src),
             expr_id_placeholder(),
             2,
             3,
         )],
     );
-    let expr = Expr::from_str("decimal(\"1.23\").lessThan(3)").expect("parsing should succeed");
+    let src = "decimal(\"1.23\").lessThan(4)";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
     assert_typecheck_fails_empty_schema(
         expr,
         Type::primitive_boolean(),
-        vec![ValidationError::expected_type(
-            Expr::val(3),
+        [ValidationError::expected_type(
+            get_loc(src, "4"),
             expr_id_placeholder(),
             Type::extension(decimal_name),
             Type::primitive_long(),

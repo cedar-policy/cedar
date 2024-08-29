@@ -1037,19 +1037,11 @@ mod tests {
             @bad-annotation("bad") permit (principal, action, resource);
         "#;
         let errs = assert_parse_fails(parse_policies, src);
-        expect_n_errors(src, &errs, 2);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `-`")
                 .exactly_one_underline_with_label("-", "expected `(`")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `\"bad\"`")
-                .exactly_one_underline_with_label("\"bad\"", "expected `)` or identifier")
                 .build(),
         );
 
@@ -1069,19 +1061,11 @@ mod tests {
             @bad_annotation(bad_annotation) permit (principal, action, resource);
         "#;
         let errs = assert_parse_fails(parse_policies, src);
-        expect_n_errors(src, &errs, 2);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `bad_annotation`")
                 .exactly_one_underline_with_label("bad_annotation", "expected string literal")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
-                .exactly_one_underline_with_label(")", "expected `(`")
                 .build(),
         );
 
@@ -1089,27 +1073,11 @@ mod tests {
             permit (@comment("your name here") principal, action, resource);
         "#;
         let errs = assert_parse_fails(parse_policies, src);
-        expect_n_errors(src, &errs, 4);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `@`")
                 .exactly_one_underline_with_label("@", "expected `)` or identifier")
-                .build(),
-        );
-        // 2 copies of the `,` error
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `,`")
-                .exactly_one_underline_with_label(",", "expected `(`")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
-                .exactly_one_underline_with_label(")", "expected `(`")
                 .build(),
         );
 
@@ -1118,22 +1086,11 @@ mod tests {
             permit(principal, action, resource);
         "#;
         let errs = assert_parse_fails(parse_policies, src);
-        expect_n_errors(src, &errs, 2);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `mom`")
                 .exactly_one_underline_with_label("mom", "expected `(`")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
-                .exactly_one_underline_with_label(
-                    "\"this should be invalid\"",
-                    "expected `)` or identifier",
-                )
                 .build(),
         );
 
@@ -1142,22 +1099,11 @@ mod tests {
             permit(principal, action, resource);
         "#;
         let errs = assert_parse_fails(parse_policies, src);
-        expect_n_errors(src, &errs, 2);
-        expect_some_error_matches(
+        expect_exactly_one_error(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `+`")
                 .exactly_one_underline_with_label("+", "expected `(`")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
-                .exactly_one_underline_with_label(
-                    "\"this should be invalid\"",
-                    "expected `)` or identifier",
-                )
                 .build(),
         );
     }
@@ -1170,5 +1116,61 @@ mod tests {
         let revert = format!("{}", cst1);
         let cst2 = assert_parse_succeeds(parse_policies, &revert);
         assert_eq!(cst1, cst2);
+    }
+
+    #[test]
+    fn error_recovery() {
+        // After hitting an unexpected `!`, the parser skips ahead until it
+        // finds a `;`, skipping over the body of the policy where it used to
+        // emit a lot of useless parse errors, after which it attempts to parse
+        // another policy. There is no error in that policy, so it reports
+        // exactly one error.
+        let src = r#"
+            permit(principal, action, !) when { principal.foo == resource.bar};
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `!`")
+                .exactly_one_underline_with_label("!", "expected identifier")
+                .build(),
+        );
+
+        // Now there is another error which should also be reported.
+        let src = r#"
+            permit(principal, action, !) when { principal.foo == resource.bar};
+            permit(principal, action, +);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `!`")
+                .exactly_one_underline_with_label("!", "expected identifier")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
+                .exactly_one_underline_with_label("+", "expected identifier")
+                .build(),
+        );
+        expect_n_errors(src, &errs, 2);
+
+        // Make sure nothing strange happens when there's no semicolon to be found.
+        let src = r#"
+            permit(principal, action, !) when { principal.foo == resource.bar}
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `!`")
+                .exactly_one_underline_with_label("!", "expected identifier")
+                .build(),
+        );
     }
 }

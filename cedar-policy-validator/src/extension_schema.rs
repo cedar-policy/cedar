@@ -16,14 +16,13 @@
 
 use crate::types::Type;
 use cedar_policy_core::ast::{Expr, Name};
-use std::collections::HashMap;
 
 /// Type information for a Cedar extension.
 pub struct ExtensionSchema {
     /// Name of the extension
     name: Name,
     /// Type information for extension functions
-    function_types: HashMap<Name, ExtensionFunctionType>,
+    function_types: Vec<ExtensionFunctionType>,
 }
 
 impl std::fmt::Debug for ExtensionSchema {
@@ -40,10 +39,7 @@ impl ExtensionSchema {
     ) -> Self {
         Self {
             name,
-            function_types: function_types
-                .into_iter()
-                .map(|f| (f.name.clone(), f))
-                .collect(),
+            function_types: function_types.into_iter().collect(),
         }
     }
 
@@ -52,8 +48,8 @@ impl ExtensionSchema {
         &self.name
     }
 
-    pub fn get_function_type(&self, name: &Name) -> Option<&ExtensionFunctionType> {
-        self.function_types.get(name)
+    pub fn function_types(&self) -> impl Iterator<Item = &ExtensionFunctionType> {
+        self.function_types.iter()
     }
 }
 
@@ -61,7 +57,8 @@ impl ExtensionSchema {
 /// extension function application. An `ArgumentCheckFn` is passed a slice
 /// containing the arguments to the extension function call and returns `Err` if
 /// it can statically determine that the arguments are invalid.
-pub(crate) type ArgumentCheckFn = Box<dyn Fn(&[Expr]) -> Result<(), String>>;
+pub(crate) type ArgumentCheckFn =
+    Box<dyn Fn(&[Expr]) -> Result<(), String> + Sync + Send + 'static>;
 
 /// Type information for a single extension function.
 pub struct ExtensionFunctionType {

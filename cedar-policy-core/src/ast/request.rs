@@ -23,6 +23,7 @@ use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::Serialize;
 use smol_str::SmolStr;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -31,7 +32,7 @@ use crate::ast::proto;
 
 use super::{
     BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
-    PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -136,7 +137,7 @@ impl Request {
         resource: (EntityUID, Option<Loc>),
         context: Context,
         schema: Option<&S>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
             principal: EntityUIDEntry::known(principal.0, principal.1),
@@ -161,7 +162,7 @@ impl Request {
         resource: EntityUIDEntry,
         context: Option<Context>,
         schema: Option<&S>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
             principal,
@@ -259,35 +260,54 @@ impl From<&Request> for proto::Request {
 
 /// `Context` field of a `Request`
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Context {
-    /// Context is internally represented as a `PartialValue`
-    ///
-    /// Context is serialized as a `RestrictedExpr`, for partly historical reasons.
-    //
-    // INVARIANT(ContextRecord): This must be a `Record`: either
-    // `PartialValue::Value(Value::Record)` or `PartialValue::Residual(Expr::Record)`
-    #[serde(flatten)]
-    context: PartialValueSerializedAsExpr,
+// Serialization is used for differential testing, which requires that `Context`
+// is serialized as a `RestrictedExpr`.
+#[serde(into = "RestrictedExpr")]
+pub enum Context {
+    /// The context is a concrete value.
+    Value(Arc<BTreeMap<SmolStr, Value>>),
+    /// The context is a residual expression, containing some unknown value in
+    /// the record attributes.
+    /// INVARIANT(restricted): Each `Expr` in this map must be a `RestrictedExpr`.
+    /// INVARIANT(unknown): At least one `Expr` must contain an `unknown`.
+    RestrictedResidual(Arc<BTreeMap<SmolStr, Expr>>),
 }
 
 impl Context {
     /// Create an empty `Context`
-    //
-    // INVARIANT(ContextRecord): due to use of `Value::empty_record`
     pub fn empty() -> Self {
-        Self {
-            context: PartialValue::Value(Value::empty_record(None)).into(),
-        }
+        Self::Value(Arc::new(BTreeMap::new()))
     }
 
-    /// Create a `Context` from a `PartialValue` without checking its validity.
-    /// Should only be used in situations where the context invariant (which
-    /// guarantees that the context is a record) is assured to hold.
-    //
-    // WARNING: assumes INVARIANT(ContextRecord)
-    pub(crate) fn from_partial_value_unchecked(val: PartialValue) -> Self {
-        Self {
-            context: val.into(),
+    /// Create a `Context` from a `PartialValue` without checking that the
+    /// residual is a restricted expression.  This function does check that the
+    /// value or residual is a record and returns `Err` when it is not.
+    ///
+    /// INVARIANT: if `value` is a residual, then it must be a valid restricted expression.
+    fn from_restricted_partial_val_unchecked(
+        value: PartialValue,
+    ) -> Result<Self, ContextCreationError> {
+        match value {
+            PartialValue::Value(v) => {
+                if let ValueKind::Record(attrs) = v.value {
+                    Ok(Context::Value(attrs))
+                } else {
+                    Err(ContextCreationError::not_a_record(v.into()))
+                }
+            }
+            PartialValue::Residual(e) => {
+                if let ExprKind::Record(attrs) = e.expr_kind() {
+                    // From the invariant on `PartialValue::Residual`, there is
+                    // an unknown in `e`. It is a record, so there must be an
+                    // unknown in one of the attributes expressions, satisfying
+                    // INVARIANT(unknown). From the invariant on this function,
+                    // `e` is a valid restricted expression, satisfying
+                    // INVARIANT(restricted).
+                    Ok(Context::RestrictedResidual(attrs.clone()))
+                } else {
+                    Err(ContextCreationError::not_a_record(e))
+                }
+            }
         }
     }
 
@@ -295,23 +315,27 @@ impl Context {
     ///
     /// `extensions` provides the `Extensions` which should be active for
     /// evaluating the `RestrictedExpr`.
-    //
-    // INVARIANT(ContextRecord): always constructs a record if it returns Ok
     pub fn from_expr(
         expr: BorrowedRestrictedExpr<'_>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
         match expr.expr_kind() {
-            // INVARIANT(ContextRecord): `RestrictedEvaluator::partial_interpret`
-            // always returns a record (or an error) given a record as input
             ExprKind::Record { .. } => {
-                let evaluator = RestrictedEvaluator::new(&extensions);
+                let evaluator = RestrictedEvaluator::new(extensions);
                 let pval = evaluator.partial_interpret(expr)?;
-                Ok(Self {
-                    context: pval.into(),
-                })
+                // The invariant on `from_restricted_partial_val_unchecked`
+                // is satisfied because `expr` is a restricted expression,
+                // and must still be restricted after `partial_interpret`.
+                // The function call cannot return `Err` because `expr` is a
+                // record, and partially evaluating a record expression will
+                // yield a record expression or a record value.
+                // PANIC SAFETY: See above
+                #[allow(clippy::expect_used)]
+                Ok(Self::from_restricted_partial_val_unchecked(pval).expect(
+                    "`from_restricted_partial_val_unchecked` should succeed when called on a record.",
+                ))
             }
-            _ => Err(ContextCreationError::not_a_record(expr.to_owned())),
+            _ => Err(ContextCreationError::not_a_record(expr.to_owned().into())),
         }
     }
 
@@ -322,9 +346,8 @@ impl Context {
     /// evaluating the `RestrictedExpr`.
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<Self, ContextCreationError> {
-        // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
         match RestrictedExpr::record(pairs) {
             Ok(record) => Self::from_expr(record.as_borrowed(), extensions),
             Err(ExpressionConstructionError::DuplicateKey(err)) => Err(
@@ -340,7 +363,6 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_str(json: &str) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_str` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_str(json)
     }
@@ -354,7 +376,6 @@ impl Context {
     pub fn from_json_value(
         json: serde_json::Value,
     ) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_value` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_value(json)
     }
@@ -368,7 +389,6 @@ impl Context {
     pub fn from_json_file(
         json: impl std::io::Read,
     ) -> Result<Self, ContextJsonDeserializationError> {
-        // INVARIANT(ContextRecord): `.from_json_file` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
     }
@@ -376,29 +396,55 @@ impl Context {
     /// Private helper function to implement `into_iter()` for `Context`.
     /// Gets an iterator over the (key, value) pairs in the `Context`, cloning
     /// only if necessary.
-    //
-    // PANIC SAFETY: This is safe due to the invariant (ContextRecord) on `self.context`
-    fn into_values(self) -> Box<dyn Iterator<Item = (SmolStr, PartialValue)>> {
-        // PANIC SAFETY invariant on `self.context` ensures that it is a record
-        #[allow(clippy::panic)]
-        match self.context.into() {
-            PartialValue::Value(Value {
-                value: ValueKind::Record(record),
-                ..
-            }) => Box::new(
+    fn into_values(self) -> Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>> {
+        match self {
+            Context::Value(record) => Box::new(
                 Arc::unwrap_or_clone(record)
                     .into_iter()
-                    .map(|(k, v)| (k, PartialValue::Value(v))),
+                    .map(|(k, v)| (k, RestrictedExpr::from(v))),
             ),
-            PartialValue::Residual(expr) => match expr.into_expr_kind() {
-                ExprKind::Record(map) => Box::new(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k, PartialValue::Residual(v))),
-                ),
-                kind => panic!("internal invariant violation: expected a record, got {kind:?}"),
-            },
-            v => panic!("internal invariant violation: expected a record, got {v:?}"),
+            Context::RestrictedResidual(record) => Box::new(
+                Arc::unwrap_or_clone(record)
+                    .into_iter()
+                    // By INVARIANT(restricted), all attributes expressions are
+                    // restricted expressions.
+                    .map(|(k, v)| (k, RestrictedExpr::new_unchecked(v))),
+            ),
+        }
+    }
+
+    /// Substitute unknowns with concrete values in this context. If this is
+    /// already a `Context::Value`, then this returns `self` unchanged and will
+    /// not error. Otherwise delegate to [`Expr::substitute`].
+    pub fn substitute(self, mapping: &HashMap<SmolStr, Value>) -> Result<Self, EvaluationError> {
+        match self {
+            Context::RestrictedResidual(residual_context) => {
+                // From Invariant(Restricted), `residual_context` contains only
+                // restricted expressions, so `Expr::record_arc` of the attributes
+                // will also be a restricted expression. This doesn't change after
+                // substitution, so we know `expr` must be a restricted expression.
+                let expr = Expr::record_arc(residual_context).substitute(mapping);
+                let expr = BorrowedRestrictedExpr::new_unchecked(&expr);
+
+                let extns = Extensions::all_available();
+                let eval = RestrictedEvaluator::new(extns);
+                let partial_value = eval.partial_interpret(expr)?;
+
+                // The invariant on `from_restricted_partial_val_unchecked`
+                // is satisfied because `expr` is restricted and must still be
+                // restricted after `partial_interpret`.
+                // The function call cannot fail because because `expr` was
+                // constructed as a record, and substitution and partial
+                // evaluation does not change this.
+                // PANIC SAFETY: See above
+                #[allow(clippy::expect_used)]
+                Ok(
+                    Self::from_restricted_partial_val_unchecked(partial_value).expect(
+                        "`from_restricted_partial_val_unchecked` should succeed when called on a record.",
+                    ),
+                )
+            }
+            Context::Value(_) => Ok(self),
         }
     }
 }
@@ -408,7 +454,7 @@ mod iter {
     use super::*;
 
     /// `IntoIter` iterator for `Context`
-    pub struct IntoIter(pub(super) Box<dyn Iterator<Item = (SmolStr, PartialValue)>>);
+    pub struct IntoIter(pub(super) Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>>);
 
     impl std::fmt::Debug for IntoIter {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -417,7 +463,7 @@ mod iter {
     }
 
     impl Iterator for IntoIter {
-        type Item = (SmolStr, PartialValue);
+        type Item = (SmolStr, RestrictedExpr);
 
         fn next(&mut self) -> Option<Self::Item> {
             self.0.next()
@@ -426,7 +472,7 @@ mod iter {
 }
 
 impl IntoIterator for Context {
-    type Item = (SmolStr, PartialValue);
+    type Item = (SmolStr, RestrictedExpr);
 
     type IntoIter = iter::IntoIter;
 
@@ -435,15 +481,32 @@ impl IntoIterator for Context {
     }
 }
 
-impl AsRef<PartialValue> for Context {
-    fn as_ref(&self) -> &PartialValue {
-        &self.context
+impl From<Context> for RestrictedExpr {
+    fn from(value: Context) -> Self {
+        match value {
+            Context::Value(attrs) => Value::record_arc(attrs, None).into(),
+            Context::RestrictedResidual(attrs) => {
+                // By INVARIANT(restricted), all attributes expressions are
+                // restricted expressions, so the result of `record_arc` will be
+                // a restricted expression.
+                RestrictedExpr::new_unchecked(Expr::record_arc(attrs))
+            }
+        }
     }
 }
 
 impl From<Context> for PartialValue {
     fn from(ctx: Context) -> PartialValue {
-        ctx.context.into()
+        match ctx {
+            Context::Value(attrs) => Value::record_arc(attrs, None).into(),
+            Context::RestrictedResidual(attrs) => {
+                // A `PartialValue::Residual` must contain an unknown in the
+                // expression. By INVARIANT(unknown), at least one expr in
+                // `attrs` contains an unknown, so the `record_arc` expression
+                // contains at least one unknown.
+                PartialValue::Residual(Expr::record_arc(attrs))
+            }
+        }
     }
 }
 
@@ -455,7 +518,7 @@ impl std::default::Default for Context {
 
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.context)
+        write!(f, "{}", PartialValue::from(self.clone()))
     }
 }
 
@@ -475,7 +538,7 @@ impl From<&Context> for proto::Context {
     fn from(v: &Context) -> Self {
         Self {
             context: Some(proto::Expr::from(&Expr::from(PartialValue::from(
-                v.context.as_ref().to_owned(),
+                v.to_owned(),
             )))),
         }
     }
@@ -500,7 +563,7 @@ pub enum ContextCreationError {
 }
 
 impl ContextCreationError {
-    pub(crate) fn not_a_record(expr: RestrictedExpr) -> Self {
+    pub(crate) fn not_a_record(expr: Expr) -> Self {
         Self::NotARecord(context_creation_errors::NotARecord {
             expr: Box::new(expr),
         })
@@ -509,7 +572,8 @@ impl ContextCreationError {
 
 /// Error subtypes for [`ContextCreationError`]
 pub mod context_creation_errors {
-    use super::RestrictedExpr;
+    use super::Expr;
+    use crate::impl_diagnostic_from_expr_field;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -522,23 +586,12 @@ pub mod context_creation_errors {
     #[error("expression is not a record: {expr}")]
     pub struct NotARecord {
         /// Expression which is not a record
-        pub(super) expr: Box<RestrictedExpr>,
+        pub(super) expr: Box<Expr>,
     }
 
     // custom impl of `Diagnostic`: take source location from the `expr` field
     impl Diagnostic for NotARecord {
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.expr.source_loc().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-        }
-
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.expr
-                .source_loc()
-                .map(|loc| &loc.src as &dyn miette::SourceCode)
-        }
+        impl_diagnostic_from_expr_field!(expr);
     }
 }
 
@@ -550,7 +603,7 @@ pub trait RequestSchema {
     fn validate_request(
         &self,
         request: &Request,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error>;
 }
 
@@ -562,7 +615,7 @@ impl RequestSchema for RequestSchemaAllPass {
     fn validate_request(
         &self,
         _request: &Request,
-        _extensions: Extensions<'_>,
+        _extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

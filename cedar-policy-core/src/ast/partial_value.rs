@@ -59,14 +59,24 @@ impl From<Expr> for PartialValue {
 }
 
 /// Errors encountered when converting `PartialValue` to `Value`
+// CAUTION: this type is publicly exported in `cedar-policy`.
 #[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum PartialValueToValueError {
     /// The `PartialValue` is a residual, i.e., contains an unknown
-    #[error("value contains a residual expression: `{residual}`")]
-    ContainsUnknown {
-        /// Residual expression which contains an unknown
-        residual: Expr,
-    },
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ContainsUnknown(#[from] ContainsUnknown),
+}
+
+/// The `PartialValue` is a residual, i.e., contains an unknown
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[error("value contains a residual expression: `{residual}`")]
+pub struct ContainsUnknown {
+    /// Residual expression which contains an unknown
+    residual: Expr,
 }
 
 impl TryFrom<PartialValue> for Value {
@@ -75,9 +85,7 @@ impl TryFrom<PartialValue> for Value {
     fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
         match value {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(e) => {
-                Err(PartialValueToValueError::ContainsUnknown { residual: e })
-            }
+            PartialValue::Residual(e) => Err(ContainsUnknown { residual: e }.into()),
         }
     }
 }

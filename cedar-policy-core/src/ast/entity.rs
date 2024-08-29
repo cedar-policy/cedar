@@ -24,6 +24,7 @@ use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
 use miette::Diagnostic;
+use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
@@ -35,9 +36,10 @@ use thiserror::Error;
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
 /// Entity type names are just [`Name`]s, but we have some operations on them specific to entity types.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, RefCast)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(transparent)]
+#[repr(transparent)]
 pub struct EntityType(Name);
 
 impl EntityType {
@@ -46,7 +48,7 @@ impl EntityType {
     /// base name for the type, so this will return true for any entity type named
     /// `Action` regardless of namespaces.
     pub fn is_action(&self) -> bool {
-        self.0.basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+        self.0.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
     }
 
     /// The name of this entity type
@@ -56,23 +58,29 @@ impl EntityType {
 
     /// The source location of this entity type
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc()
+        self.0.as_ref().loc()
     }
 
-    /// Calls [`Name::qualify_with`] on the underlying [`Name`]
+    /// Calls [`Name::qualify_with_name`] on the underlying [`Name`]
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
-        Self(self.0.qualify_with(namespace))
+        Self(self.0.qualify_with_name(namespace))
     }
 
     /// Wraps [`Name::from_normalized_str`]
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
-        Name::from_normalized_str(src).map(Self)
+        Name::from_normalized_str(src).map(Into::into)
     }
 }
 
 impl From<Name> for EntityType {
     fn from(n: Name) -> Self {
         Self(n)
+    }
+}
+
+impl From<EntityType> for Name {
+    fn from(ty: EntityType) -> Name {
+        ty.0
     }
 }
 
@@ -83,11 +91,10 @@ impl AsRef<Name> for EntityType {
 }
 
 impl FromStr for EntityType {
-    type Err = <Name as FromStr>::Err;
+    type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let name: Name = s.parse()?;
-        Ok(Self(name))
+        s.parse().map(Self)
     }
 }
 

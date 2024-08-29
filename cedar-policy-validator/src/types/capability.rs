@@ -18,19 +18,19 @@ use std::collections::HashSet;
 
 use cedar_policy_core::ast::{Expr, ExprShapeOnly};
 
-/// A set of effects. Used to represent knowledge about attribute existence
+/// A set of capabilities. Used to represent knowledge about attribute existence
 /// before and after evaluating an expression.
 #[derive(Eq, PartialEq, Debug, Clone, Default)]
-pub struct EffectSet<'a>(HashSet<Effect<'a>>);
+pub struct CapabilitySet<'a>(HashSet<Capability<'a>>);
 
-impl<'a> EffectSet<'a> {
-    /// An empty effect set
+impl<'a> CapabilitySet<'a> {
+    /// An empty capability set
     pub fn new() -> Self {
-        EffectSet(HashSet::new())
+        CapabilitySet(HashSet::new())
     }
 
-    /// An effect set with a single [`Effect`]
-    pub fn singleton(e: Effect<'a>) -> Self {
+    /// A capability set with a single [`Capability`]
+    pub fn singleton(e: Capability<'a>) -> Self {
         let mut set = Self::new();
         set.0.insert(e);
         set
@@ -38,32 +38,32 @@ impl<'a> EffectSet<'a> {
 
     /// Construct the union of `self` and `other`
     pub fn union(&self, other: &Self) -> Self {
-        EffectSet(self.0.union(&other.0).cloned().collect())
+        CapabilitySet(self.0.union(&other.0).cloned().collect())
     }
 
     /// Construct the intersection of `self` and `other`
     pub fn intersect(&self, other: &Self) -> Self {
-        EffectSet(self.0.intersection(&other.0).cloned().collect())
+        CapabilitySet(self.0.intersection(&other.0).cloned().collect())
     }
 
-    /// Does this effect set contain the given [`Effect`]
-    pub fn contains(&self, e: &Effect<'_>) -> bool {
+    /// Does this capability set contain the given [`Capability`]
+    pub fn contains(&self, e: &Capability<'_>) -> bool {
         self.0.contains(e)
     }
 }
 
-/// Represent a single effect, which is an expression and some attribute that is
+/// Represent a single capability, which is an expression and some attribute that is
 /// known to exist for that expression.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub struct Effect<'a> {
+pub struct Capability<'a> {
     /// For this expression
     on_expr: ExprShapeOnly<'a>,
     /// This attribute is known to exist on that expression
     attribute: &'a str,
 }
 
-impl<'a> Effect<'a> {
-    /// Construct a new [`Effect`] stating that the attribute `attribute` is
+impl<'a> Capability<'a> {
+    /// Construct a new [`Capability`] stating that the attribute `attribute` is
     /// known to exist for the expression `on_expr`
     pub fn new(on_expr: &'a Expr, attribute: &'a str) -> Self {
         Self {

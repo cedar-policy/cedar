@@ -22,7 +22,7 @@ use crate::ast::proto;
 use serde::{Deserialize, Serialize};
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal

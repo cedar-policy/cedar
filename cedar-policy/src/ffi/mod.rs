@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-#![cfg_attr(feature = "wasm", allow(non_snake_case))]
-
 mod is_authorized;
 pub use is_authorized::*;
 mod utils;
 pub use utils::*;
 mod validate;
 pub use validate::*;
+mod check_parse;
+pub use check_parse::*;
+mod format;
+pub use format::*;
+mod convert;
+pub use convert::*;
+mod tests;

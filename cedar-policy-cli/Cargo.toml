@@ -22,15 +22,17 @@ thiserror = "1.0"
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate"]
+experimental = ["permissive-validate", "partial-validate", "partial-eval"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
+partial-eval = ["cedar-policy/partial-eval"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
 tempfile = "3"
 glob = "0.3.1"
 predicates = "3.1.0"
+rstest = "0.22.0"
 
 # We override the name of the binary for src/main.rs, which otherwise would be
 # cedar-policy-cli (matching the crate name).

@@ -23,49 +23,130 @@ pub mod ipaddr;
 pub mod decimal;
 pub mod partial_evaluation;
 
+use std::collections::HashMap;
+
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use self::extension_function_lookup_errors::FuncDoesNotExistError;
+use self::extension_initialization_errors::{
+    FuncMultiplyDefinedError, MultipleConstructorsSameSignatureError,
+};
+
 lazy_static::lazy_static! {
-    static ref ALL_AVAILABLE_EXTENSIONS: Vec<Extension> = vec![
+    static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
         #[cfg(feature = "ipaddr")]
         ipaddr::extension(),
         #[cfg(feature = "decimal")]
         decimal::extension(),
+        #[cfg(feature = "partial-eval")]
         partial_evaluation::extension(),
     ];
+
+    static ref ALL_AVAILABLE_EXTENSIONS : Extensions<'static> = Extensions::build_all_available();
+
+    static ref EXTENSIONS_NONE : Extensions<'static> = Extensions {
+        extensions: &[],
+        functions: HashMap::new(),
+        single_arg_constructors: HashMap::new(),
+    };
+}
+
+/// Structure representing the type signature of an extension function
+/// constructor. We assume constructors take exactly one argument.
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub(crate) struct ExtensionConstructorSignature<'a> {
+    /// The type of the constructors single argument.
+    pub(crate) argument_type: &'a SchemaType,
+    /// The constructors return type.
+    pub(crate) return_type: &'a SchemaType,
 }
 
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
-/// Clone is cheap for this type.
-#[derive(Debug, Clone, Copy)]
+/// This structure is intentionally not `Clone` because we can use it entirely
+/// by reference.
+#[derive(Debug)]
 pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
+    /// All extension functions, collected from every extension used to
+    /// construct this object.  Built ahead of time so that we know during
+    /// extension function lookup that at most one extension function exists
+    /// for a name. This should also make the lookup more efficient.
+    functions: HashMap<&'a Name, &'a ExtensionFunction>,
+    /// All single argument extension function constructors, indexed by their
+    /// type signature. Built ahead of time so that we know each constructor has
+    /// a unique type signature.
+    single_arg_constructors: HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>,
 }
 
 impl Extensions<'static> {
     /// Get a new `Extensions` containing data on all the available extensions.
-    pub fn all_available() -> Extensions<'static> {
-        Extensions {
-            extensions: &ALL_AVAILABLE_EXTENSIONS,
-        }
+    fn build_all_available() -> Extensions<'static> {
+        // PANIC SAFETY: Builtin extensions define functions/constructors only once. Also tested by many different test cases.
+        #[allow(clippy::expect_used)]
+        Self::specific_extensions(&ALL_AVAILABLE_EXTENSION_OBJECTS)
+            .expect("Default extensions should never error on initialization")
+    }
+
+    /// An [`Extensions`] object with static lifetime contain all available extensions.
+    pub fn all_available() -> &'static Extensions<'static> {
+        &ALL_AVAILABLE_EXTENSIONS
     }
 
     /// Get a new `Extensions` with no extensions enabled.
-    pub fn none() -> Extensions<'static> {
-        Extensions { extensions: &[] }
+    pub fn none() -> &'static Extensions<'static> {
+        &EXTENSIONS_NONE
     }
 }
 
 impl<'a> Extensions<'a> {
     /// Get a new `Extensions` with these specific extensions enabled.
-    pub fn specific_extensions(extensions: &'a [Extension]) -> Extensions<'a> {
-        Extensions { extensions }
+    pub fn specific_extensions(
+        extensions: &'a [Extension],
+    ) -> std::result::Result<Extensions<'a>, ExtensionInitializationError> {
+        // Build functions map, ensuring that no functions share the same name.
+        let functions = util::collect_no_duplicates(
+            extensions
+                .iter()
+                .flat_map(|e| e.funcs())
+                .map(|f| (f.name(), f)),
+        )
+        .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
+
+        // Build the constructor map, ensuring that no constructors share a type signature.
+        let single_arg_constructors = util::collect_no_duplicates(
+            extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
+                if f.is_constructor() {
+                    if let (Some(argument_type), Some(return_type)) =
+                        (f.arg_types().first(), f.return_type())
+                    {
+                        return Some((
+                            ExtensionConstructorSignature {
+                                argument_type,
+                                return_type,
+                            },
+                            f,
+                        ));
+                    }
+                }
+                None
+            }),
+        )
+        .map_err(|sig| MultipleConstructorsSameSignatureError {
+            arg_type: Box::new(sig.argument_type.clone()),
+            return_type: Box::new(sig.return_type.clone()),
+        })?;
+
+        Ok(Extensions {
+            extensions,
+            functions,
+            single_arg_constructors,
+        })
     }
 
     /// Get the names of all active extensions.
@@ -73,33 +154,28 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().map(|ext| ext.name())
     }
 
+    /// Get all extension type names declared by active extensions.
+    ///
+    /// (More specifically, all extension type names such that any function in
+    /// an active extension could produce a value of that extension type.)
+    pub fn ext_types(&self) -> impl Iterator<Item = &Name> {
+        self.extensions.iter().flat_map(|ext| ext.ext_types())
+    }
+
     /// Get the extension function with the given name, from these extensions.
     ///
-    /// Returns an error if the function is not defined by any extension, or if
-    /// it is defined multiple times.
-    pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
-        // NOTE: in the future, we could build a single HashMap of function
-        // name to ExtensionFunction, combining all extension functions
-        // into one map, to make this lookup faster.
-        let extension_funcs: Vec<&ExtensionFunction> = self
-            .extensions
-            .iter()
-            .filter_map(|ext| ext.get_func(name))
-            .collect();
-        match extension_funcs.first() {
-            None => Err(extension_function_lookup_errors::FuncDoesNotExistError {
+    /// Returns an error if the function is not defined by any extension
+    pub fn func(
+        &self,
+        name: &Name,
+    ) -> std::result::Result<&ExtensionFunction, ExtensionFunctionLookupError> {
+        self.functions.get(name).copied().ok_or_else(|| {
+            FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: None,
+                source_loc: name.loc().cloned(),
             }
-            .into()),
-            Some(first) if extension_funcs.len() == 1 => Ok(first),
-            _ => Err(extension_function_lookup_errors::FuncMultiplyDefinedError {
-                name: name.clone(),
-                num_defs: extension_funcs.len(),
-                source_loc: None,
-            }
-            .into()),
-        }
+            .into()
+        })
     }
 
     /// Iterate over all extension functions defined by all of these extensions.
@@ -110,35 +186,60 @@ impl<'a> Extensions<'a> {
     }
 
     /// Lookup a single-argument constructor by its return type and argument type.
-    /// This will ignore polymorphic functions (that accept multiple argument types).
     ///
-    /// `Ok(None)` means no constructor has that signature.
-    /// `Err` is returned in the case that multiple constructors have that signature.
+    /// `None` means no constructor has that signature.
     pub(crate) fn lookup_single_arg_constructor(
         &self,
-        return_type: &SchemaType,
-        arg_type: &SchemaType,
-    ) -> Result<Option<&ExtensionFunction>> {
-        let matches = self
-            .all_funcs()
-            .filter(|f| {
-                f.is_constructor()
-                    && f.return_type() == Some(return_type)
-                    && f.arg_types().first().map(Option::as_ref) == Some(Some(arg_type))
-            })
-            .collect::<Vec<_>>();
-        match matches.first() {
-            None => Ok(None),
-            Some(first) if matches.len() == 1 => Ok(Some(first)),
-            _ => Err(
-                extension_function_lookup_errors::MultipleConstructorsSameSignatureError {
-                    return_type: Box::new(return_type.clone()),
-                    arg_type: Box::new(arg_type.clone()),
-                    source_loc: None,
-                }
-                .into(),
-            ),
-        }
+        type_signature: &ExtensionConstructorSignature<'_>,
+    ) -> Option<&ExtensionFunction> {
+        self.single_arg_constructors.get(type_signature).copied()
+    }
+}
+
+/// Errors occurring while initializing extensions. There are internal errors, so
+/// this enum should not become part of the public API unless we publicly expose
+/// user-defined extension function.
+#[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
+pub enum ExtensionInitializationError {
+    /// An extension function was defined by multiple extensions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FuncMultiplyDefined(#[from] extension_initialization_errors::FuncMultiplyDefinedError),
+
+    /// Two extension constructors (in the same or different extensions) had
+    /// exactly the same type signature.  This is currently not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MultipleConstructorsSameSignature(
+        #[from] extension_initialization_errors::MultipleConstructorsSameSignatureError,
+    ),
+}
+
+/// Error subtypes for [`ExtensionInitializationError`]
+mod extension_initialization_errors {
+    use crate::{ast::Name, entities::SchemaType};
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// An extension function was defined by multiple extensions.
+    #[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
+    #[error("extension function `{name}` is defined multiple times")]
+    pub struct FuncMultiplyDefinedError {
+        /// Name of the function that was multiply defined
+        pub(crate) name: Name,
+    }
+
+    /// Two extension constructors (in the same or different extensions) had
+    /// exactly the same type signature.  This is currently not allowed.
+    #[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
+    #[error(
+        "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
+    )]
+    pub struct MultipleConstructorsSameSignatureError {
+        /// argument type of the shared constructor signature
+        pub(crate) arg_type: Box<SchemaType>,
+        /// return type of the shared constructor signature
+        pub(crate) return_type: Box<SchemaType>,
     }
 }
 
@@ -153,34 +254,12 @@ pub enum ExtensionFunctionLookupError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
-
-    /// Tried to call a function but it was defined multiple times (e.g., by
-    /// multiple different extensions)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    FuncMultiplyDefined(#[from] extension_function_lookup_errors::FuncMultiplyDefinedError),
-
-    /// Attempted to typecheck a function without a return type
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HasNoType(#[from] extension_function_lookup_errors::HasNoTypeError),
-
-    /// Two extension constructors (in the same or different extensions) had
-    /// exactly the same type signature.  This is currently not allowed.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MultipleConstructorsSameSignature(
-        #[from] extension_function_lookup_errors::MultipleConstructorsSameSignatureError,
-    ),
 }
 
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
             Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::FuncMultiplyDefined(e) => e.source_loc.as_ref(),
-            Self::HasNoType(e) => e.source_loc.as_ref(),
-            Self::MultipleConstructorsSameSignature(e) => e.source_loc.as_ref(),
         }
     }
 
@@ -192,21 +271,6 @@ impl ExtensionFunctionLookupError {
                     ..e
                 })
             }
-            Self::FuncMultiplyDefined(e) => Self::FuncMultiplyDefined(
-                extension_function_lookup_errors::FuncMultiplyDefinedError { source_loc, ..e },
-            ),
-            Self::HasNoType(e) => {
-                Self::HasNoType(extension_function_lookup_errors::HasNoTypeError {
-                    source_loc,
-                    ..e
-                })
-            }
-            Self::MultipleConstructorsSameSignature(e) => Self::MultipleConstructorsSameSignature(
-                extension_function_lookup_errors::MultipleConstructorsSameSignatureError {
-                    source_loc,
-                    ..e
-                },
-            ),
         }
     }
 }
@@ -214,7 +278,6 @@ impl ExtensionFunctionLookupError {
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
-    use crate::entities::SchemaType;
     use crate::parser::Loc;
     use miette::Diagnostic;
     use thiserror::Error;
@@ -234,113 +297,40 @@ pub mod extension_function_lookup_errors {
     }
 
     impl Diagnostic for FuncDoesNotExistError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Tried to call a function that doesn't exist
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("extension function `{name}` is defined {num_defs} times")]
-    pub struct FuncMultiplyDefinedError {
-        /// Name of the function that was multiply defined
-        pub(crate) name: Name,
-        /// How many times that function is defined
-        pub(crate) num_defs: usize,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for FuncMultiplyDefinedError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Attempted to typecheck a function without a return type
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("extension function `{name}` has no return type")]
-    pub struct HasNoTypeError {
-        /// Name of the function that has no return type
-        pub(crate) name: Name,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for HasNoTypeError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-    }
-
-    /// Two extension constructors (in the same or different extensions) had
-    /// exactly the same type signature.  This is currently not allowed.
-    //
-    // CAUTION: this type is publicly exported in `cedar-policy`.
-    // Don't make fields `pub`, don't make breaking changes, and use caution
-    // when adding public methods.
-    #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error(
-        "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
-    )]
-    pub struct MultipleConstructorsSameSignatureError {
-        /// return type of the shared constructor signature
-        pub(crate) return_type: Box<SchemaType>,
-        /// argument type of the shared constructor signature
-        pub(crate) arg_type: Box<SchemaType>,
-        /// Source location
-        pub(crate) source_loc: Option<Loc>,
-    }
-
-    impl Diagnostic for MultipleConstructorsSameSignatureError {
-        impl_diagnostic_from_source_loc_field!();
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
-        fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            None
-        }
+        impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 }
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
+
+/// Utilities shared with the `cedar-policy-validator` extensions module.
+pub mod util {
+    use std::collections::{hash_map::Entry, HashMap};
+
+    /// Utility to build a `HashMap` of key value pairs from an iterator,
+    /// returning an `Err` result if there are any duplicate keys in the
+    /// iterator.
+    pub fn collect_no_duplicates<K, V>(
+        i: impl Iterator<Item = (K, V)>,
+    ) -> std::result::Result<HashMap<K, V>, K>
+    where
+        K: Clone + std::hash::Hash + Eq,
+    {
+        let mut map = HashMap::with_capacity(i.size_hint().0);
+        for (k, v) in i {
+            match map.entry(k) {
+                Entry::Occupied(occupied) => {
+                    return Err(occupied.key().clone());
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(v);
+                }
+            }
+        }
+        Ok(map)
+    }
+}
 
 #[cfg(test)]
 pub mod test {

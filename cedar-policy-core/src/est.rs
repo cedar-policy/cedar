@@ -49,6 +49,7 @@ extern crate tsify;
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", serde(rename = "PolicyJson"))]
 pub struct Policy {
     /// `Effect` of the policy or template
     effect: ast::Effect,
@@ -172,7 +173,7 @@ impl TryFrom<cst::Cond> for Clause {
 }
 
 impl Policy {
-    /// Try to convert EST Policy into AST Policy.
+    /// Try to convert a [`Policy`] into a [`ast::Policy`].
     ///
     /// This process requires a policy ID. If not supplied, this method will
     /// fill it in as "JSON policy".
@@ -180,17 +181,37 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Policy, FromJsonError> {
-        let template: ast::Template = self.try_into_ast_template(id)?;
+        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(Into::into)
     }
 
-    /// Try to convert EST Policy into AST Template.
+    /// Try to convert a [`Policy`] into a [`ast::Template`]. Returns an error
+    /// if the input is a static policy.
     ///
     /// This process requires a policy ID. If not supplied, this method will
     /// fill it in as "JSON policy".
     pub fn try_into_ast_template(
+        self,
+        id: Option<ast::PolicyID>,
+    ) -> Result<ast::Template, FromJsonError> {
+        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
+        if template.slots().count() == 0 {
+            Err(FromJsonError::PolicyToTemplate(
+                parse_errors::ExpectedTemplate::new(),
+            ))
+        } else {
+            Ok(template)
+        }
+    }
+
+    /// Try to convert a [`Policy`] into a [`ast::Template`]. The `Template` may
+    /// represent a template or static policy (which is a template with zero slots).
+    ///
+    /// This process requires a policy ID. If not supplied, this method will
+    /// fill it in as "JSON policy".
+    pub fn try_into_ast_policy_or_template(
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
@@ -362,7 +383,7 @@ mod test {
     #[track_caller]
     fn ast_roundtrip_template(est: Policy) -> Policy {
         let ast = est
-            .try_into_ast_template(None)
+            .try_into_ast_policy_or_template(None)
             .expect("Failed to convert to AST");
         ast.into()
     }
@@ -387,7 +408,7 @@ mod test {
     #[track_caller]
     fn circular_roundtrip_template(est: Policy) -> Policy {
         let ast = est
-            .try_into_ast_template(None)
+            .try_into_ast_policy_or_template(None)
             .expect("Failed to convert to AST");
         let text = ast.to_string();
         let cst = parser::text_to_cst::parse_policy(&text)
@@ -3196,8 +3217,8 @@ mod test {
                 expect_err(
                     "",
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"tried to convert JSON representing a template to a static policy"#)
-                        .source("found slot `?principal` where slots are not allowed")
+                    &ExpectedErrorMessageBuilder::error(r#"expected a static policy, got a template containing the slot ?principal"#)
+                        .help("try removing the template slot(s) from this policy")
                         .build()
                 );
             }
@@ -3993,6 +4014,182 @@ mod test {
             );
         }
     }
+
+    mod reserved_names {
+        use cool_asserts::assert_matches;
+
+        use crate::{entities::json::err::JsonDeserializationError, est::FromJsonError};
+
+        use super::Policy;
+        #[test]
+        fn entity_type() {
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "__cedar",
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::InvalidEntityType(_))
+            );
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ {
+                        "kind": "when",
+                        "body": {
+                            "is": {
+                                "left": { "Var": "principal" },
+                                "entity_type": "__cedar",
+                            }
+                        }
+                    } ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::InvalidEntityType(_))
+            );
+        }
+        #[test]
+        fn entities() {
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": {
+                                        "Var": "principal"
+                                    },
+                                    "right": {
+                                        "Value": {
+                                            "__entity": { "type": "__cedar", "id": "" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "==",
+                        "entity": { "type": "__cedar", "id": "12UA45" }
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "==",
+                        "entity": { "type": "__cedar", "id": "12UA45" }
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
+
+            let policy: Policy = serde_json::from_value(serde_json::json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All"
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "__cedar::Action", "id": "12UA45" }
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": [
+                    ],
+                }
+            ))
+            .unwrap();
+            assert_matches!(
+                policy.try_into_ast_policy(None),
+                Err(FromJsonError::JsonDeserializationError(
+                    JsonDeserializationError::ParseEscape(_)
+                ))
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4261,5 +4458,51 @@ mod issue_994 {
                 );
             }
         );
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+#[cfg(test)]
+mod issue_1061 {
+    use crate::{est, parser};
+    use serde_json::json;
+
+    #[test]
+    fn function_with_name_unknown() {
+        let src = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "unknown": [
+                                {"Value": ""}
+                            ]
+                        }
+                    }
+                ]
+            }
+        );
+        let est = serde_json::from_value::<est::Policy>(src.clone())
+            .expect("Failed to deserialize policy JSON");
+        let ast_from_est = est
+            .try_into_ast_policy(None)
+            .expect("Failed to convert EST to AST");
+        let ast_from_cedar = parser::parse_policy_or_template(None, &ast_from_est.to_string())
+            .expect("Failed to parse policy template");
+
+        assert!(ast_from_est
+            .non_scope_constraints()
+            .eq_shape(ast_from_cedar.non_scope_constraints()));
     }
 }

@@ -106,7 +106,7 @@ impl TryFrom<PolicySet> for ast::PolicySet {
         let mut ast_pset = ast::PolicySet::default();
 
         for (id, policy) in value.templates {
-            let ast = policy.try_into_ast_template(Some(id))?;
+            let ast = policy.try_into_ast_policy_or_template(Some(id))?;
             ast_pset.add_template(ast)?;
         }
 
@@ -189,7 +189,7 @@ mod test {
         assert_eq!(ast_policy_set.policies().count(), 2);
         assert_eq!(ast_policy_set.templates().count(), 1);
         assert!(ast_policy_set
-            .get_template(&PolicyID::from_string("template"))
+            .get_template_arc(&PolicyID::from_string("template"))
             .is_some());
         let link = ast_policy_set.get(&PolicyID::from_string("link")).unwrap();
         assert_eq!(link.template().id(), &PolicyID::from_string("template"));

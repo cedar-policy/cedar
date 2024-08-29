@@ -23,6 +23,7 @@
 )]
 
 mod id;
+use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
 mod err;
@@ -92,7 +93,7 @@ impl Entity {
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
             parents.into_iter().map(EntityUid::into).collect(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )?))
     }
 
@@ -158,7 +159,7 @@ impl Entity {
     /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
     /// assert!(entity.attr("foo").is_none());
     /// ```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, PartialValueToValueError>> {
         let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
@@ -646,6 +647,14 @@ impl Entities {
     /// `from_json_file`.
     pub fn write_to_json(&self, f: impl std::io::Write) -> std::result::Result<(), EntitiesError> {
         self.0.write_to_json(f)
+    }
+
+    #[doc = include_str!("../experimental_warning.md")]
+    /// Visualize an `Entities` object in the graphviz `dot`
+    /// format. Entity visualization is best-effort and not well tested.
+    /// Feel free to submit an issue if you are using this feature and would like it improved.
+    pub fn to_dot_str(&self) -> String {
+        self.0.to_dot_str()
     }
 }
 
@@ -1182,35 +1191,64 @@ impl Validator {
 /// used to validate a policy.
 #[derive(Debug)]
 pub struct SchemaFragment {
-    value: cedar_policy_validator::ValidatorSchemaFragment,
-    lossless: cedar_policy_validator::SchemaFragment<cedar_policy_validator::RawName>,
+    value: cedar_policy_validator::ValidatorSchemaFragment<
+        cedar_policy_validator::ConditionalName,
+        cedar_policy_validator::ConditionalName,
+    >,
+    lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
 }
 
 impl SchemaFragment {
-    /// Extract namespaces defined in this `SchemaFragment`. Each namespace
-    /// entry defines the name of the namespace and the entity types and actions
-    /// that exist in the namespace.
+    /// Extract namespaces defined in this [`SchemaFragment`].
+    ///
+    /// `None` indicates the empty namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
-        self.value
-            .namespaces()
-            .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
+        self.value.namespaces().filter_map(|ns| {
+            match ns.map(|ns| ast::Name::try_from(ns.clone())) {
+                Some(Ok(n)) => Some(Some(EntityNamespace(n))),
+                None => Some(None), // empty namespace, which we want to surface to the user
+                Some(Err(_)) => {
+                    // if the `SchemaFragment` contains namespaces with
+                    // reserved `__cedar` components, that's an internal
+                    // implementation detail; hide that from the user.
+                    // Also note that `EntityNamespace` is backed by `Name`
+                    // which can't even contain names with reserved
+                    // `__cedar` components.
+                    None
+                }
+            }
+        })
     }
 
-    /// Create an `SchemaFragment` from a JSON value (which should be an
-    /// object of the shape required for Cedar schemas).
+    /// Create a [`SchemaFragment`] from a string containing JSON in the
+    /// JSON schema format.
+    pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
+    /// Create a [`SchemaFragment`] from a JSON value (which should be an
+    /// object of the shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
         })
     }
 
-    /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
-    pub fn from_file_natural(
+    /// Parse a [`SchemaFragment`] from a reader containing the Cedar schema syntax
+    pub fn from_cedarschema_file(
         r: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::Fragment::from_cedarschema_file(
+                r,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1220,11 +1258,15 @@ impl SchemaFragment {
         ))
     }
 
-    /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
-    pub fn from_str_natural(
+    /// Parse a [`SchemaFragment`] from a string containing the Cedar schema syntax
+    pub fn from_cedarschema_str(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (lossless, warnings) =
+            cedar_policy_validator::json_schema::Fragment::from_cedarschema_str(
+                src,
+                Extensions::all_available(),
+            )?;
         Ok((
             Self {
                 value: lossless.clone().try_into()?,
@@ -1234,28 +1276,30 @@ impl SchemaFragment {
         ))
     }
 
-    /// Create a `SchemaFragment` directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
+    /// Create a [`SchemaFragment`] directly from a JSON file (which should
+    /// contain an object of the shape required for the JSON schema format).
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
         })
     }
 
-    /// Serialize this [`SchemaFragment`] as a json value
+    /// Serialize this [`SchemaFragment`] as a JSON value
     pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
         serde_json::to_value(self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
-    /// Serialize this [`SchemaFragment`] as a json value
-    pub fn as_json_string(&self) -> Result<String, SchemaError> {
+    /// Serialize this [`SchemaFragment`] as a JSON string
+    pub fn to_json_string(&self) -> Result<String, SchemaError> {
         serde_json::to_string(&self.lossless).map_err(|e| SchemaError::JsonSerialization(e.into()))
     }
 
-    /// Serialize this [`SchemaFragment`] into the natural syntax
-    pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
-        let str = self.lossless.as_natural_schema()?;
+    /// Serialize this [`SchemaFragment`] into a string in the Cedar schema
+    /// syntax
+    pub fn to_cedarschema(&self) -> Result<String, ToCedarSchemaError> {
+        let str = self.lossless.to_cedarschema()?;
         Ok(str)
     }
 }
@@ -1263,33 +1307,28 @@ impl SchemaFragment {
 impl TryInto<Schema> for SchemaFragment {
     type Error = SchemaError;
 
-    /// Convert `SchemaFragment` into a `Schema`. To build the `Schema` we
+    /// Convert [`SchemaFragment`] into a [`Schema`]. To build the [`Schema`] we
     /// need to have all entity types defined, so an error will be returned if
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
-                Extensions::all_available(),
+                &Extensions::all_available(),
             )?,
         ))
     }
 }
 
 impl FromStr for SchemaFragment {
-    type Err = SchemaError;
-    /// Construct `SchemaFragment` from a string containing a schema formatted
-    /// in the cedar schema format. This can fail if the string is not valid
-    /// JSON, or if the JSON structure does not form a valid schema. This
-    /// function does not check for consistency in the schema (e.g., references
-    /// to undefined entities) because this is not required until a `Schema` is
-    /// constructed.
+    type Err = CedarSchemaError;
+    /// Construct [`SchemaFragment`] from a string containing a schema formatted
+    /// in the Cedar schema format. This can fail if the string is not a valid
+    /// schema. This function does not check for consistency in the schema
+    /// (e.g., references to undefined entities) because this is not required
+    /// until a `Schema` is constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_json_str(src)?;
-        Ok(Self {
-            value: lossless.clone().try_into()?,
-            lossless,
-        })
+        Self::from_cedarschema_str(src).map(|(frag, _)| frag)
     }
 }
 
@@ -1299,23 +1338,23 @@ impl FromStr for SchemaFragment {
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
 
 impl FromStr for Schema {
-    type Err = SchemaError;
+    type Err = CedarSchemaError;
 
-    /// Construct a schema from a string containing a schema formatted in the
-    /// Cedar schema format. This can fail if it is not possible to parse a
-    /// schema from the strings, or if errors in values in the schema are
+    /// Construct a [`Schema`] from a string containing a schema formatted in
+    /// the Cedar schema format. This can fail if it is not possible to parse a
+    /// schema from the string, or if errors in values in the schema are
     /// uncovered after parsing. For instance, when an entity attribute name is
     /// found to not be a valid attribute name according to the Cedar
     /// grammar.
     fn from_str(schema_src: &str) -> Result<Self, Self::Err> {
-        Ok(Self(schema_src.parse()?))
+        Self::from_cedarschema_str(schema_src).map(|(schema, _)| schema)
     }
 }
 
 impl Schema {
-    /// Create a `Schema` from multiple `SchemaFragment`. The individual
-    /// fragments may references entity types that are not declared in that
-    /// fragment, but all referenced entity types must be declared in some
+    /// Create a [`Schema`] from multiple [`SchemaFragment`]. The individual
+    /// fragments may reference entity or common types that are not declared in that
+    /// fragment, but all referenced entity and common types must be declared in some
     /// fragment.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = SchemaFragment>,
@@ -1328,8 +1367,8 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` from a JSON value (which should be an object of the
-    /// shape required for Cedar schemas).
+    /// Create a [`Schema`] from a JSON value (which should be an object of the
+    /// shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_json_value(
@@ -1339,7 +1378,7 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` from a string containing JSON in the appropriate
+    /// Create a [`Schema`] from a string containing JSON in the appropriate
     /// shape.
     pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
@@ -1350,41 +1389,157 @@ impl Schema {
         ))
     }
 
-    /// Create a `Schema` directly from a file containing JSON in the
+    /// Create a [`Schema`] directly from a file containing JSON in the
     /// appropriate shape.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
-            file,
-            Extensions::all_available(),
-        )?))
+    pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_validator::ValidatorSchema::from_json_file(
+                file,
+                Extensions::all_available(),
+            )?,
+        ))
     }
 
-    /// Parse the schema from a reader
-    pub fn from_file_natural(
+    /// Parse the schema from a reader, in the Cedar schema format.
+    pub fn from_cedarschema_file(
         file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), CedarSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_file(
             file,
             Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
 
-    /// Parse the schema from a string
-    pub fn from_str_natural(
+    /// Parse the schema from a string, in the Cedar schema format.
+    pub fn from_cedarschema_str(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_str(
             src,
             Extensions::all_available(),
         )?;
         Ok((Self(schema), warnings))
     }
 
-    /// Extract from the schema an `Entities` containing the action entities
+    /// Extract from the schema an [`Entities`] containing the action entities
     /// declared in the schema.
     pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
+    }
+
+    /// Returns an iterator over every entity type that can be a principal for any action in this schema
+    ///
+    /// Note: this iterator may contain duplicates.
+    ///
+    /// # Examples
+    /// Here's an example of using a [`std::collections::HashSet`] to get a de-duplicated set of principals
+    /// ```
+    /// use std::collections::HashSet;
+    /// use cedar_policy::Schema;
+    /// let schema : Schema = r#"
+    ///     entity User;
+    ///     entity Folder;
+    ///     action Access appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    ///     action Delete appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    /// "#.parse().unwrap();
+    /// let principals = schema.principals().collect::<HashSet<_>>();
+    /// assert_eq!(principals, HashSet::from([&"User".parse().unwrap()]));
+    /// ```
+    pub fn principals(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0.principals().map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over every entity type that can be a resource for any action in this schema
+    ///
+    /// Note: this iterator may contain duplicates.
+    /// # Examples
+    /// Here's an example of using a [`std::collections::HashSet`] to get a de-duplicated set of resources
+    /// ```
+    /// use std::collections::HashSet;
+    /// use cedar_policy::Schema;
+    /// let schema : Schema = r#"
+    ///     entity User;
+    ///     entity Folder;
+    ///     action Access appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    ///     action Delete appliesTo {
+    ///         principal : User,
+    ///         resource : Folder,
+    ///     };
+    /// "#.parse().unwrap();
+    /// let resources = schema.resources().collect::<HashSet<_>>();
+    /// assert_eq!(resources, HashSet::from([&"Folder".parse().unwrap()]));
+    /// ```
+    pub fn resources(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0.resources().map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over every entity type that can be a principal for `action` in this schema
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if `action` is not found in the schema
+    pub fn principals_for_action(
+        &self,
+        action: &EntityUid,
+    ) -> Option<impl Iterator<Item = &EntityTypeName>> {
+        self.0
+            .principals_for_action(&action.0)
+            .map(|iter| iter.map(RefCast::ref_cast))
+    }
+
+    /// Returns an iterator over every entity type that can be a resource for `action` in this schema
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if `action` is not found in the schema
+    pub fn resources_for_action(
+        &self,
+        action: &EntityUid,
+    ) -> Option<impl Iterator<Item = &EntityTypeName>> {
+        self.0
+            .resources_for_action(&action.0)
+            .map(|iter| iter.map(RefCast::ref_cast))
+    }
+
+    /// Returns an iterator over all the entity types that can be an ancestor of `ty`
+    ///
+    /// # Errors
+    ///
+    /// Returns [`None`] if the `ty` is not found in the schema
+    pub fn ancestors<'a>(
+        &'a self,
+        ty: &'a EntityTypeName,
+    ) -> Option<impl Iterator<Item = &EntityTypeName> + 'a> {
+        self.0
+            .ancestors(&ty.0)
+            .map(|iter| iter.map(RefCast::ref_cast))
+    }
+
+    /// Returns an iterator over all the action groups defined in this schema
+    pub fn action_groups(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0.action_groups().map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over all entity types defined in this schema
+    pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .map(|(name, _)| RefCast::ref_cast(name))
+    }
+
+    /// Returns an iterator over all actions defined in this schema
+    pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0.actions().map(RefCast::ref_cast)
     }
 }
 
@@ -1871,7 +2026,7 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
-    pub fn annotation<'a>(&'a self, id: &PolicyId, key: impl AsRef<str>) -> Option<&'a str> {
+    pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
@@ -1879,15 +2034,11 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
-    //
-    // TODO: unfortunate that this method returns `Option<String>` and the corresponding method
-    // for policies (`.annotation()`) above returns `Option<&str>`, but this can't be changed
-    // without a semver break
-    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
+    pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get_template(id.as_ref())?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(|annot| annot.val.to_string())
+            .map(AsRef::as_ref)
     }
 
     /// Returns true iff the `PolicySet` is empty
@@ -1905,8 +2056,8 @@ impl PolicySet {
     ///   1) The map passed in `vals` may not match the slots in the template
     ///   2) The `new_id` may conflict w/ a policy that already exists in the set
     ///   3) `template_id` does not correspond to a template. Either the id is
-    ///   not in the policy set, or it is in the policy set but is either a
-    ///   linked or static policy rather than a template
+    ///      not in the policy set, or it is in the policy set but is either a
+    ///      linked or static policy rather than a template
     #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,
@@ -2054,7 +2205,81 @@ pub(crate) fn fold_partition<T, A, B, E>(
     Ok((lefts, rights))
 }
 
+/// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
+/// and resource, and the [`EntityUid`] of action
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct RequestEnv {
+    pub(crate) principal: EntityTypeName,
+    pub(crate) action: EntityUid,
+    pub(crate) resource: EntityTypeName,
+}
+
+impl RequestEnv {
+    /// Construct a [`RequestEnv`]
+    pub fn new(principal: EntityTypeName, action: EntityUid, resource: EntityTypeName) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+        }
+    }
+    /// Get the principal type name
+    pub fn principal(&self) -> &EntityTypeName {
+        &self.principal
+    }
+
+    /// Get the action [`EntityUid`]
+    pub fn action(&self) -> &EntityUid {
+        &self.action
+    }
+
+    /// Get the resource type name
+    pub fn resource(&self) -> &EntityTypeName {
+        &self.resource
+    }
+}
+
+// Get valid request envs
+// This function is called by [`Template::get_valid_request_envs`] and
+// [`Policy::get_valid_request_envs`]
+fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_validator::ValidationMode::default(),
+        ast.id().clone(),
+    );
+    tc.typecheck_by_request_env(ast)
+        .into_iter()
+        .filter_map(|(env, pc)| {
+            if matches!(pc, PolicyCheck::Success(_)) {
+                Some(match env {
+                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                        principal,
+                        action,
+                        resource,
+                        ..
+                    } => RequestEnv {
+                        principal: principal.clone().into(),
+                        resource: resource.clone().into(),
+                        action: action.clone().into(),
+                    },
+                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+                    #[allow(clippy::unreachable)]
+                    _ => unreachable!("used unsupported feature"),
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+}
+
 /// Policy template datatype
+//
+// NOTE: Unlike the internal type [`ast::Template`], this type only supports
+// templates. The `Template` constructors will return an error if provided with
+// a static policy.
 #[derive(Debug, Clone)]
 pub struct Template {
     /// AST representation of the template, used for most operations.
@@ -2083,12 +2308,13 @@ impl PartialEq for Template {
 impl Eq for Template {}
 
 impl Template {
-    /// Attempt to parse a `Template` from source.
+    /// Attempt to parse a [`Template`] from source.
+    /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, then the resulting template will have that `id`.
     /// If the `id` is None, the parser will use the default "policy0".
     /// The behavior around None may change in the future.
-    pub fn parse(id: Option<String>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_policy_template(id, src.as_ref())?;
+    pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
@@ -2207,7 +2433,8 @@ impl Template {
         }
     }
 
-    /// Create a `Template` from its JSON representation.
+    /// Create a [`Template`] from its JSON representation.
+    /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "JSON policy" will be used.
     /// The behavior around None may change in the future.
@@ -2232,6 +2459,13 @@ impl Template {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+        get_valid_request_envs(&self.ast, s)
     }
 }
 
@@ -2524,8 +2758,8 @@ impl Policy {
     /// This can fail if the policy fails to parse.
     /// It can also fail if a template was passed in, as this function only accepts static
     /// policies
-    pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let inline_ast = parser::parse_policy(id, policy_src.as_ref())?;
+    pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
@@ -2606,6 +2840,13 @@ impl Policy {
             .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
         Self::from_est(id, est)
+    }
+
+    /// Get valid [`RequestEnv`]s.
+    /// A [`RequestEnv`] is valid when the policy type checks w.r.t requests
+    /// that satisfy it.
+    pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
+        get_valid_request_envs(self.ast.template(), s)
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
@@ -3410,21 +3651,9 @@ mod context {
         type Item = (String, RestrictedExpression);
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.inner.next().map(|(k, v)| {
-                (
-                    k.to_string(),
-                    match v {
-                        ast::PartialValue::Value(val) => {
-                            RestrictedExpression(ast::RestrictedExpr::from(val))
-                        }
-                        ast::PartialValue::Residual(exp) => {
-                            // `exp` is guaranteed to be a valid `RestrictedExpr`
-                            // since it was originally stored in a `Context`
-                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
-                        }
-                    },
-                )
-            })
+            self.inner
+                .next()
+                .map(|(k, v)| (k.to_string(), RestrictedExpression(v)))
         }
     }
 }
@@ -3605,9 +3834,440 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(request.0.clone(), &entities.0, &all_ext);
+    let eval = Evaluator::new(request.0.clone(), &entities.0, all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
+}
+
+// These are the same tests in validator, just ensuring all the plumbing is done correctly
+#[cfg(test)]
+mod test_access {
+    use super::*;
+
+    fn schema() -> Schema {
+        let src = r#"
+        type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application;
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+
+entity CoolList;
+
+entity Team in [Team, Application];
+
+action Read, Write, Create;
+
+action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+    principal: [User],
+    resource : [List]
+};
+
+action GetList in Read appliesTo {
+    principal : [User],
+    resource : [List, CoolList]
+};
+
+action GetLists in Read appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+action CreateList in Create appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+        "#;
+
+        src.parse().unwrap()
+    }
+
+    #[test]
+    fn principals() {
+        let schema = schema();
+        let principals = schema.principals().collect::<HashSet<_>>();
+        assert_eq!(principals.len(), 1);
+        let user: EntityTypeName = "User".parse().unwrap();
+        assert!(principals.contains(&user));
+        let principals = schema.principals().collect::<Vec<_>>();
+        assert!(principals.len() > 1);
+        assert!(principals.iter().all(|ety| **ety == user));
+    }
+
+    #[test]
+    fn empty_schema_principals_and_resources() {
+        let empty: Schema = "".parse().unwrap();
+        assert!(empty.principals().collect::<Vec<_>>().is_empty());
+        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn resources() {
+        let schema = schema();
+        let resources = schema.resources().cloned().collect::<HashSet<_>>();
+        let expected: HashSet<EntityTypeName> = HashSet::from([
+            "List".parse().unwrap(),
+            "Application".parse().unwrap(),
+            "CoolList".parse().unwrap(),
+        ]);
+        assert_eq!(resources, expected);
+    }
+
+    #[test]
+    fn principals_for_action() {
+        let schema = schema();
+        let delete_list: EntityUid = r#"Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUid = r#"Action::"DeleteUser""#.parse().unwrap();
+        let got = schema
+            .principals_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["User".parse().unwrap()]);
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn resources_for_action() {
+        let schema = schema();
+        let delete_list: EntityUid = r#"Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUid = r#"Action::"DeleteUser""#.parse().unwrap();
+        let create_list: EntityUid = r#"Action::"CreateList""#.parse().unwrap();
+        let get_list: EntityUid = r#"Action::"GetList""#.parse().unwrap();
+        let got = schema
+            .resources_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["List".parse().unwrap()]);
+        let got = schema
+            .resources_for_action(&create_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["Application".parse().unwrap()]);
+        let got = schema
+            .resources_for_action(&get_list)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            got,
+            HashSet::from(["List".parse().unwrap(), "CoolList".parse().unwrap()])
+        );
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn principal_parents() {
+        let schema = schema();
+        let user: EntityTypeName = "User".parse().unwrap();
+        let parents = schema
+            .ancestors(&user)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        let parents = schema
+            .ancestors(&"List".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
+        let parents = schema
+            .ancestors(&"CoolList".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([]);
+        assert_eq!(parents, expected);
+    }
+
+    #[test]
+    fn action_groups() {
+        let schema = schema();
+        let groups = schema.action_groups().cloned().collect::<HashSet<_>>();
+        let expected = ["Read", "Write", "Create"]
+            .into_iter()
+            .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUid>>();
+        assert_eq!(groups, expected);
+    }
+
+    #[test]
+    fn actions() {
+        let schema = schema();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
+        let expected = [
+            "Read",
+            "Write",
+            "Create",
+            "DeleteList",
+            "EditShare",
+            "UpdateList",
+            "CreateTask",
+            "UpdateTask",
+            "DeleteTask",
+            "GetList",
+            "GetLists",
+            "CreateList",
+        ]
+        .into_iter()
+        .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+        .collect::<HashSet<EntityUid>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn entities() {
+        let schema = schema();
+        let entities = schema.entity_types().cloned().collect::<HashSet<_>>();
+        let expected = ["List", "Application", "User", "CoolList", "Team"]
+            .into_iter()
+            .map(|ty| ty.parse().unwrap())
+            .collect::<HashSet<EntityTypeName>>();
+        assert_eq!(entities, expected);
+    }
+}
+
+#[cfg(test)]
+mod test_access_namespace {
+    use super::*;
+
+    fn schema() -> Schema {
+        let src = r#"
+        namespace Foo {
+        type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application;
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+
+entity CoolList;
+
+entity Team in [Team, Application];
+
+action Read, Write, Create;
+
+action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+    principal: [User],
+    resource : [List]
+};
+
+action GetList in Read appliesTo {
+    principal : [User],
+    resource : [List, CoolList]
+};
+
+action GetLists in Read appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+
+action CreateList in Create appliesTo {
+    principal : [User],
+    resource : [Application]
+};
+    }
+
+        "#;
+
+        src.parse().unwrap()
+    }
+
+    #[test]
+    fn principals() {
+        let schema = schema();
+        let principals = schema.principals().collect::<HashSet<_>>();
+        assert_eq!(principals.len(), 1);
+        let user: EntityTypeName = "Foo::User".parse().unwrap();
+        assert!(principals.contains(&user));
+        let principals = schema.principals().collect::<Vec<_>>();
+        assert!(principals.len() > 1);
+        assert!(principals.iter().all(|ety| **ety == user));
+    }
+
+    #[test]
+    fn empty_schema_principals_and_resources() {
+        let empty: Schema = "".parse().unwrap();
+        assert!(empty.principals().collect::<Vec<_>>().is_empty());
+        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn resources() {
+        let schema = schema();
+        let resources = schema.resources().cloned().collect::<HashSet<_>>();
+        let expected: HashSet<EntityTypeName> = HashSet::from([
+            "Foo::List".parse().unwrap(),
+            "Foo::Application".parse().unwrap(),
+            "Foo::CoolList".parse().unwrap(),
+        ]);
+        assert_eq!(resources, expected);
+    }
+
+    #[test]
+    fn principals_for_action() {
+        let schema = schema();
+        let delete_list: EntityUid = r#"Foo::Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUid = r#"Foo::Action::"DeleteUser""#.parse().unwrap();
+        let got = schema
+            .principals_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["Foo::User".parse().unwrap()]);
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn resources_for_action() {
+        let schema = schema();
+        let delete_list: EntityUid = r#"Foo::Action::"DeleteList""#.parse().unwrap();
+        let delete_user: EntityUid = r#"Foo::Action::"DeleteUser""#.parse().unwrap();
+        let create_list: EntityUid = r#"Foo::Action::"CreateList""#.parse().unwrap();
+        let get_list: EntityUid = r#"Foo::Action::"GetList""#.parse().unwrap();
+        let got = schema
+            .resources_for_action(&delete_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["Foo::List".parse().unwrap()]);
+        let got = schema
+            .resources_for_action(&create_list)
+            .unwrap()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(got, vec!["Foo::Application".parse().unwrap()]);
+        let got = schema
+            .resources_for_action(&get_list)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            got,
+            HashSet::from([
+                "Foo::List".parse().unwrap(),
+                "Foo::CoolList".parse().unwrap()
+            ])
+        );
+        assert!(schema.principals_for_action(&delete_user).is_none());
+    }
+
+    #[test]
+    fn principal_parents() {
+        let schema = schema();
+        let user: EntityTypeName = "Foo::User".parse().unwrap();
+        let parents = schema
+            .ancestors(&user)
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([
+            "Foo::Team".parse().unwrap(),
+            "Foo::Application".parse().unwrap(),
+        ]);
+        assert_eq!(parents, expected);
+        let parents = schema
+            .ancestors(&"Foo::List".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from(["Foo::Application".parse().unwrap()]);
+        assert_eq!(parents, expected);
+        assert!(schema.ancestors(&"Foo::Foo".parse().unwrap()).is_none());
+        let parents = schema
+            .ancestors(&"Foo::CoolList".parse().unwrap())
+            .unwrap()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let expected = HashSet::from([]);
+        assert_eq!(parents, expected);
+    }
+
+    #[test]
+    fn action_groups() {
+        let schema = schema();
+        let groups = schema.action_groups().cloned().collect::<HashSet<_>>();
+        let expected = ["Read", "Write", "Create"]
+            .into_iter()
+            .map(|ty| format!("Foo::Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUid>>();
+        assert_eq!(groups, expected);
+    }
+
+    #[test]
+    fn actions() {
+        let schema = schema();
+        let actions = schema.actions().cloned().collect::<HashSet<_>>();
+        let expected = [
+            "Read",
+            "Write",
+            "Create",
+            "DeleteList",
+            "EditShare",
+            "UpdateList",
+            "CreateTask",
+            "UpdateTask",
+            "DeleteTask",
+            "GetList",
+            "GetLists",
+            "CreateList",
+        ]
+        .into_iter()
+        .map(|ty| format!("Foo::Action::\"{ty}\"").parse().unwrap())
+        .collect::<HashSet<EntityUid>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn entities() {
+        let schema = schema();
+        let entities = schema.entity_types().cloned().collect::<HashSet<_>>();
+        let expected = [
+            "Foo::List",
+            "Foo::Application",
+            "Foo::User",
+            "Foo::CoolList",
+            "Foo::Team",
+        ]
+        .into_iter()
+        .map(|ty| ty.parse().unwrap())
+        .collect::<HashSet<EntityTypeName>>();
+        assert_eq!(entities, expected);
+    }
 }

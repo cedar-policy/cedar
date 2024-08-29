@@ -27,7 +27,7 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast;
+use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -77,12 +77,10 @@ pub struct ToASTError {
     loc: Loc,
 }
 
-// Construct `labels` and `source_code` based on the `loc` in this struct;
-// and everything else forwarded directly to `kind`.
+// Construct `labels` and `source_code` based on the `loc` in this
+// struct; and everything else forwarded directly to `kind`.
 impl Diagnostic for ToASTError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(iter::once(LabeledSpan::underline(self.loc.span))))
-    }
+    impl_diagnostic_from_source_loc_field!(loc);
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.code()
@@ -98,10 +96,6 @@ impl Diagnostic for ToASTError {
 
     fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.loc.src as &dyn miette::SourceCode)
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
@@ -139,12 +133,13 @@ pub enum ToASTErrorKind {
     #[error("a policy with id `{0}` already exists in the policy set")]
     DuplicatePolicyId(ast::PolicyID),
     /// Returned when a template is encountered but a static policy is expected
-    #[error("expected a static policy, got a template containing the slot {}", slot.id)]
-    #[diagnostic(help("try removing the template slot(s) from this policy"))]
-    UnexpectedTemplate {
-        /// Slot that was found (which is not valid in a static policy)
-        slot: ast::Slot,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedStaticPolicy(#[from] parse_errors::ExpectedStaticPolicy),
+    /// Returned when a static policy is encountered but a template is expected
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedTemplate(#[from] parse_errors::ExpectedTemplate),
     /// Returned when we attempt to parse a policy or template with duplicate or
     /// conflicting annotations
     #[error("duplicate annotation: @{0}")]
@@ -246,11 +241,11 @@ pub enum ToASTErrorKind {
     /// Returned when a policy attempts to call a method function-style
     #[error("`{0}` is a method, not a function")]
     #[diagnostic(help("use a method-style call `e.{0}(..)`"))]
-    FunctionCallOnMethod(ast::Id),
+    FunctionCallOnMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function in the method style
     #[error("`{0}` is a function, not a method")]
     #[diagnostic(help("use a function-style call `{0}(..)`"))]
-    MethodCallOnFunction(ast::Id),
+    MethodCallOnFunction(ast::UnreservedId),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
@@ -298,10 +293,10 @@ pub enum ToASTErrorKind {
     VariableCall(ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
-    NoMethods(ast::Name, ast::Id),
+    NoMethods(ast::Name, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
     #[error("`{0}` is not a valid method")]
-    UnknownMethod(String),
+    UnknownMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a valid function")]
     UnknownFunction(ast::Name),
@@ -368,6 +363,10 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid template slot")]
     #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
     InvalidSlot(SmolStr),
+    /// Returned when an entity type contains a reserved namespace or typename (as of this writing, just `__cedar`)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ReservedNamespace(#[from] ReservedNameError),
     /// Returned when a policy uses `_ in _ is _` instead of `_ is _ in _` in the policy scope
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
@@ -402,6 +401,16 @@ impl ToASTErrorKind {
         parse_errors::SlotsInConditionClause { slot, clause_type }.into()
     }
 
+    /// Constructor for the [`ToASTErrorKind::ExpectedStaticPolicy`] error
+    pub fn expected_static_policy(slot: ast::Slot) -> Self {
+        parse_errors::ExpectedStaticPolicy { slot }.into()
+    }
+
+    /// Constructor for the [`ToASTErrorKind::ExpectedTemplate`] error
+    pub fn expected_template() -> Self {
+        parse_errors::ExpectedTemplate::new().into()
+    }
+
     /// Constructor for the [`ToASTErrorKind::WrongEntityArgument`] error when
     /// one kind of entity argument was expected
     pub fn wrong_entity_argument_one_expected(
@@ -433,6 +442,41 @@ pub mod parse_errors {
     use std::sync::Arc;
 
     use super::*;
+
+    /// Details about a `ExpectedStaticPolicy` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("expected a static policy, got a template containing the slot {}", slot.id)]
+    #[diagnostic(help("try removing the template slot(s) from this policy"))]
+    pub struct ExpectedStaticPolicy {
+        /// Slot that was found (which is not valid in a static policy)
+        pub(crate) slot: ast::Slot,
+    }
+
+    impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
+        fn from(err: ast::UnexpectedSlotError) -> Self {
+            match err {
+                ast::UnexpectedSlotError::FoundSlot(slot) => Self { slot },
+            }
+        }
+    }
+
+    /// Details about a `ExpectedTemplate` error.
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("expected a template, got a static policy")]
+    #[diagnostic(help("a template should include slot(s) `?principal` or `?resource`"))]
+    pub struct ExpectedTemplate {
+        /// A private field, just so the public interface notes this as a
+        /// private-fields struct and not a empty-fields struct for semver
+        /// purposes (e.g., consumers cannot construct this type with
+        /// `ExpectedTemplate {}`)
+        _dummy: (),
+    }
+
+    impl ExpectedTemplate {
+        pub(crate) fn new() -> Self {
+            Self { _dummy: () }
+        }
+    }
 
     /// Details about a `SlotsInConditionClause` error.
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]

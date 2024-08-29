@@ -21,45 +21,17 @@ use thiserror::Error;
 
 use std::fmt::Display;
 
-use cedar_policy_core::impl_diagnostic_from_source_loc_field;
+use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{
-    CallStyle, EntityType, EntityUID, Expr, ExprKind, ExprShapeOnly, PolicyID, Var,
-};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use itertools::Itertools;
 use smol_str::SmolStr;
-
-// This macro implements `cedar_policy_core::impl_diagnostic_from_source_loc_field`
-// for the validation error variants that have `on_expr` instead.  Some variants
-// use `on_expr` instead of `source_loc` because many tests were written to
-// check that an error was raised on a particular expression rather than at a
-// source location.  Storing the `Expr` should not be required because we only
-// care about the source location emended in the expression.  To avoid cloning
-// expressions when constructing errors, we should remove `on_expr` and rewrite
-// the affected tests to only check for the correct `source_loc`.
-macro_rules! impl_diagnostic_from_on_expr_field {
-    () => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.on_expr
-                .source_loc()
-                .as_ref()
-                .map(|loc| &loc.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.on_expr.source_loc().as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
-            })
-        }
-    };
-}
 
 /// Structure containing details about an unrecognized entity type error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
@@ -78,7 +50,7 @@ pub struct UnrecognizedEntityType {
 }
 
 impl Diagnostic for UnrecognizedEntityType {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_entity_type {
@@ -104,7 +76,7 @@ pub struct UnrecognizedActionId {
 }
 
 impl Diagnostic for UnrecognizedActionId {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.suggested_action_id {
@@ -129,7 +101,7 @@ pub struct InvalidActionApplication {
 }
 
 impl Diagnostic for InvalidActionApplication {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match (self.would_in_fix_principal, self.would_in_fix_resource) {
@@ -148,7 +120,7 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unexpected type error.
-#[derive(Error, Debug, Clone, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error("for policy `{policy_id}`, unexpected type: expected {} but saw {}",
     match .expected.iter().next() {
         Some(single) if .expected.len() == 1 => format!("{}", single),
@@ -156,8 +128,8 @@ impl Diagnostic for InvalidActionApplication {
     },
     .actual)]
 pub struct UnexpectedType {
-    /// [`Expr`] which had the unexpected type
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Type(s) which were expected
@@ -168,31 +140,8 @@ pub struct UnexpectedType {
     pub help: Option<UnexpectedTypeHelp>,
 }
 
-impl std::hash::Hash for UnexpectedType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.expected.hash(state);
-        self.actual.hash(state);
-        self.help.hash(state);
-    }
-}
-
-// Manual `PartialEq` implementations are so that we do not need to have the
-// same source location for on errors when asserting error equality in tests
-// cases. We can remove this impls if we replace `on_expr` with a `Loc` and
-// update tests cases with the correct value for this loc check source
-// locations.
-impl PartialEq for UnexpectedType {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.expected == other.expected
-            && self.actual == other.actual
-            && self.help == other.help
-    }
-}
-
 impl Diagnostic for UnexpectedType {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.help.as_ref().map(|h| Box::new(h) as Box<dyn Display>)
@@ -234,10 +183,10 @@ pub enum UnexpectedTypeHelp {
 }
 
 /// Structure containing details about an incompatible type error.
-#[derive(Error, Debug, Clone, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct IncompatibleTypes {
-    /// [`Expr`] that had the incompatible type
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Types which are incompatible
@@ -248,25 +197,8 @@ pub struct IncompatibleTypes {
     pub context: LubContext,
 }
 
-impl std::hash::Hash for IncompatibleTypes {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.types.hash(state);
-        self.hint.hash(state);
-        self.context.hash(state);
-    }
-}
-impl PartialEq for IncompatibleTypes {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.types == other.types
-            && self.hint == other.hint
-            && self.context == other.context
-    }
-}
-
 impl Diagnostic for IncompatibleTypes {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
@@ -325,11 +257,11 @@ pub enum LubContext {
 }
 
 /// Structure containing details about a missing attribute error.
-#[derive(Debug, Clone, Eq, Error)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Error)]
 #[error("for policy `{policy_id}`, attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
-    /// [`Expr`] that was missing an attribute
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// More details about the missing-attribute error
@@ -341,25 +273,8 @@ pub struct UnsafeAttributeAccess {
     pub may_exist: bool,
 }
 
-impl std::hash::Hash for UnsafeAttributeAccess {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.attribute_access.hash(state);
-        self.suggestion.hash(state);
-        self.may_exist.hash(state);
-    }
-}
-impl PartialEq for UnsafeAttributeAccess {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.attribute_access == other.attribute_access
-            && self.suggestion == other.suggestion
-            && self.may_exist == other.may_exist
-    }
-}
-
 impl Diagnostic for UnsafeAttributeAccess {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.suggestion, self.may_exist) {
@@ -372,32 +287,19 @@ impl Diagnostic for UnsafeAttributeAccess {
 }
 
 /// Structure containing details about an unsafe optional attribute error.
-#[derive(Error, Debug, Clone, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
 pub struct UnsafeOptionalAttributeAccess {
-    /// [`Expr`] that contains unsafe optional attribute access
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// More details about the attribute-access error
     pub attribute_access: AttributeAccess,
 }
 
-impl std::hash::Hash for UnsafeOptionalAttributeAccess {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.attribute_access.hash(state);
-    }
-}
-impl PartialEq for UnsafeOptionalAttributeAccess {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.attribute_access == other.attribute_access
-    }
-}
-
 impl Diagnostic for UnsafeOptionalAttributeAccess {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
@@ -408,69 +310,27 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 }
 
 /// Structure containing details about an undefined function error.
-#[derive(Error, Debug, Clone, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error("for policy `{policy_id}`, undefined extension function: {name}")]
 pub struct UndefinedFunction {
-    /// [`Expr`] that contains a call to an undefined function
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Name of the undefined function
     pub name: String,
 }
 
-impl std::hash::Hash for UndefinedFunction {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.name.hash(state);
-    }
-}
-impl PartialEq for UndefinedFunction {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.name == other.name
-    }
-}
-
 impl Diagnostic for UndefinedFunction {
-    impl_diagnostic_from_on_expr_field!();
-}
-
-/// Structure containing details about a multiply defined function error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, extension function defined multiple times: {name}")]
-pub struct MultiplyDefinedFunction {
-    /// [`Expr`] containing a call to a multiply defined function
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Name of the multiply defined function
-    pub name: String,
-}
-
-impl std::hash::Hash for MultiplyDefinedFunction {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.name.hash(state);
-    }
-}
-impl PartialEq for MultiplyDefinedFunction {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.name == other.name
-    }
-}
-
-impl Diagnostic for MultiplyDefinedFunction {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a wrong number of arguments error.
-#[derive(Error, Debug, Clone, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
-    /// [`Expr`] containing a call with the wrong number of arguments
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Expected number of arguments
@@ -479,88 +339,24 @@ pub struct WrongNumberArguments {
     pub actual: usize,
 }
 
-impl std::hash::Hash for WrongNumberArguments {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.expected.hash(state);
-        self.actual.hash(state);
-    }
-}
-
-impl PartialEq for WrongNumberArguments {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.expected == other.expected
-            && self.actual == other.actual
-    }
-}
-
 impl Diagnostic for WrongNumberArguments {
-    impl_diagnostic_from_on_expr_field!();
-}
-
-/// Structure containing details about a wrong call style error.
-#[derive(Error, Debug, Clone, Eq)]
-#[error("for policy `{policy_id}`, wrong call style in extension function application. Expected {expected}, got {actual}")]
-pub struct WrongCallStyle {
-    /// [`Expr`] containing a call in the wrong style
-    pub on_expr: Expr,
-    /// Policy ID where the error occurred
-    pub policy_id: PolicyID,
-    /// Expected call style
-    pub expected: CallStyle,
-    /// Actual call style
-    pub actual: CallStyle,
-}
-
-impl std::hash::Hash for WrongCallStyle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.expected.hash(state);
-        self.actual.hash(state);
-    }
-}
-
-impl PartialEq for WrongCallStyle {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.expected == other.expected
-            && self.actual == other.actual
-    }
-}
-
-impl Diagnostic for WrongCallStyle {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a function argument validation error.
-#[derive(Debug, Clone, Eq, Error)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidation {
-    /// [`Expr`] containing the problematic function argument
-    pub on_expr: Expr,
+    /// Source location
+    pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Error message
     pub msg: String,
 }
 
-impl std::hash::Hash for FunctionArgumentValidation {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ExprShapeOnly::new(&self.on_expr).hash(state);
-        self.msg.hash(state);
-    }
-}
-
-impl PartialEq for FunctionArgumentValidation {
-    fn eq(&self, other: &Self) -> bool {
-        ExprShapeOnly::new(&self.on_expr) == ExprShapeOnly::new(&other.on_expr)
-            && self.msg == other.msg
-    }
-}
-
 impl Diagnostic for FunctionArgumentValidation {
-    impl_diagnostic_from_on_expr_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about a hierarchy not respected error
@@ -578,7 +374,7 @@ pub struct HierarchyNotRespected {
 }
 
 impl Diagnostic for HierarchyNotRespected {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         match (&self.in_lhs, &self.in_rhs) {
@@ -601,7 +397,7 @@ pub struct EmptySetForbidden {
 }
 
 impl Diagnostic for EmptySetForbidden {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// The policy passes a non-literal to an extension constructor, which is
@@ -616,7 +412,7 @@ pub struct NonLitExtConstructor {
 }
 
 impl Diagnostic for NonLitExtConstructor {
-    impl_diagnostic_from_source_loc_field!();
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(

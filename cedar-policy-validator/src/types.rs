@@ -17,8 +17,8 @@
 //! Defines the type structure for typechecking and various utilities for
 //! constructing and manipulating types.
 
-mod effect;
-pub use effect::*;
+mod capability;
+pub use capability::*;
 mod request_env;
 pub use request_env::*;
 
@@ -34,7 +34,10 @@ use cedar_policy_core::{
     ast::{
         BorrowedRestrictedExpr, EntityType, EntityUID, Name, PartialValue, RestrictedExpr, Value,
     },
-    entities::{conformance::typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
+    entities::{
+        conformance::typecheck_restricted_expr_against_schematype,
+        AttributeType as CoreAttributeType, GetSchemaTypeError, SchemaType as CoreSchemaType,
+    },
     extensions::Extensions,
 };
 
@@ -392,11 +395,7 @@ impl Type {
     /// Is this validator type "consistent with" the given Core `SchemaType`.
     /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
-    pub(crate) fn is_consistent_with(
-        &self,
-        core_type: &cedar_policy_core::entities::SchemaType,
-    ) -> bool {
-        use cedar_policy_core::entities::SchemaType as CoreSchemaType;
+    pub(crate) fn is_consistent_with(&self, core_type: &CoreSchemaType) -> bool {
         match core_type {
             CoreSchemaType::Bool => matches!(
                 self,
@@ -507,7 +506,7 @@ impl Type {
     pub(crate) fn typecheck_partial_value(
         &self,
         value: &PartialValue,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         match value {
             PartialValue::Value(value) => self.typecheck_value(value, extensions),
@@ -522,7 +521,7 @@ impl Type {
     pub(crate) fn typecheck_value(
         &self,
         value: &Value,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         // we accept the overhead of cloning the `Value` and converting to
         // `RestrictedExpr` in order to improve code reuse and maintainability
@@ -537,7 +536,7 @@ impl Type {
     pub(crate) fn typecheck_restricted_expr(
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
-        extensions: Extensions<'_>,
+        extensions: &Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
@@ -622,9 +621,7 @@ impl Type {
                 Some((fn_name, args)) => {
                     let func = extensions.func(fn_name)?;
                     match func.return_type() {
-                        Some(cedar_policy_core::entities::SchemaType::Extension {
-                            name: actual_name,
-                        }) => {
+                        Some(CoreSchemaType::Extension { name: actual_name }) => {
                             if actual_name != name {
                                 return Ok(false);
                             }
@@ -632,17 +629,14 @@ impl Type {
                         _ => return Ok(false),
                     }
                     for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
-                        match expected_arg_ty {
-                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
-                            Some(ty) => {
-                                if typecheck_restricted_expr_against_schematype(
-                                    actual_arg, ty, extensions,
-                                )
-                                .is_err()
-                                {
-                                    return Ok(false);
-                                }
-                            }
+                        if typecheck_restricted_expr_against_schematype(
+                            actual_arg,
+                            expected_arg_ty,
+                            extensions,
+                        )
+                        .is_err()
+                        {
+                            return Ok(false);
                         }
                     }
                     // if we got here, then the return type and arg types typecheck
@@ -789,11 +783,10 @@ impl From<&Type> for proto::Type {
     }
 }
 
-impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
+
+impl TryFrom<Type> for CoreSchemaType {
     type Error = String;
-    fn try_from(ty: Type) -> Result<cedar_policy_core::entities::SchemaType, String> {
-        use cedar_policy_core::entities::AttributeType as CoreAttributeType;
-        use cedar_policy_core::entities::SchemaType as CoreSchemaType;
+    fn try_from(ty: Type) -> Result<CoreSchemaType, String> {
         match ty {
             Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
             Type::True | Type::False => Ok(CoreSchemaType::Bool),
@@ -855,6 +848,15 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
 /// is exactly that entity type.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct EntityLUB {
+    /// We store `EntityType` here because these are entity types.
+    /// As of this writing, `EntityType` is backed by `Name` (rather than
+    /// `InternalName`), so this excludes entity types containing `__cedar`.
+    /// As of this writing, there are no valid entity types that contain
+    /// `__cedar`.
+    /// If that changes in the future, we will have to change this here to
+    /// `InternalName`, or change `EntityType` to be backed by `InternalName`
+    /// instead of `Name`.
+    //
     // INVARIANT: Non-empty set.
     lub_elements: BTreeSet<EntityType>,
 }
@@ -981,7 +983,7 @@ impl EntityLUB {
 
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize, Default)]
 pub struct Attributes {
     /// Attributes map
     pub attrs: BTreeMap<SmolStr, AttributeType>,
@@ -1605,12 +1607,8 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        human_schema::parser::parse_type, schema::try_schema_type_into_validator_type,
-        ActionBehavior,
-    };
+    use crate::{json_schema, ActionBehavior};
     use cool_asserts::assert_matches;
-    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
@@ -1991,7 +1989,7 @@ mod test {
 
     fn simple_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!({ "":
+            json_schema::Fragment::from_json_value(serde_json::json!({ "":
             {
                 "entityTypes": {
                     "foo": {},
@@ -2001,7 +1999,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2082,7 +2080,7 @@ mod test {
 
     fn attr_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
             {"": {
                 "entityTypes": {
                     "foo": {},
@@ -2112,7 +2110,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2214,7 +2212,7 @@ mod test {
     #[test]
     fn record_entity_lub_non_term() {
         let schema = ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
             {"": {
                 "entityTypes": {
                     "U": {
@@ -2238,7 +2236,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2255,7 +2253,7 @@ mod test {
 
     fn rec_schema() -> ValidatorSchema {
         ValidatorSchema::from_schema_frag(
-            serde_json::from_value(serde_json::json!(
+            json_schema::Fragment::from_json_value(serde_json::json!(
                 {"": {
                     "entityTypes": {
                         "biz": {
@@ -2280,7 +2278,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            Extensions::all_available(),
+            &Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2321,18 +2319,20 @@ mod test {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_type_display_roundtrip(ty: Type) {
-        let type_str = ty.to_string();
+        // test that a common type declaration using this type roundtrips properly
+        let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
-        let parsed_schema_type = parse_type(&type_str)
-            .expect("String representation should have parsed into a schema type");
-        let type_from_schema_type = try_schema_type_into_validator_type(
-            parsed_schema_type.qualify_type_references(None),
-            Extensions::all_available(),
-        )
-        .expect("Schema type should have converted to type.")
-        .resolve_type_defs(&HashMap::new())
-        .unwrap();
-        assert_eq!(ty, type_from_schema_type);
+        let (schema, _) =
+            ValidatorSchema::from_cedarschema_str(&type_str, &Extensions::all_available()).unwrap();
+        assert_eq!(
+            &schema
+                .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
+                .unwrap()
+                .attr("foo")
+                .unwrap()
+                .attr_type,
+            &ty
+        );
     }
 
     #[test]
@@ -2373,10 +2373,10 @@ mod test {
     // Test display for types that don't roundtrip.
     #[test]
     fn test_type_display() {
-        // Entity types don't roundtrip because the human format type parser
+        // Entity types don't roundtrip because the Cedar format type parser
         // checks that they are defined already, so we'd need to provide a
         // complete schema. TODO: the final stage of schema parsing already does
-        // this. Can we remove duplicated checks from human schema parsing?
+        // this. Can we remove duplicated checks from Cedar schema parsing?
         assert_displays_as(Type::named_entity_reference_from_str("Foo"), "Foo");
         assert_displays_as(
             Type::named_entity_reference_from_str("Foo::Bar"),
@@ -2407,7 +2407,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "ipaddr")]
-    fn text_extension_type_dislay() {
+    fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(Type::extension(ipaddr));
     }
