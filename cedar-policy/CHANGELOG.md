@@ -37,9 +37,6 @@ Cedar Language Version: 4.0
 - Removed unnecessary lifetimes from some validation related structs (#715)
 - (*) Changed policy validation to reject comparisons and conditionals between
   record types that differ in whether an attribute is required or optional. (#769)
-- (*) Changed JSON schema parser so that `Set`, `Entity`, `Record`, and `Extension`
-  can be common type names; updated the error message when common type names
-  conflict with built-in primitive type names (#974, partially resolving #973)
 - Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
 - Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
   instead of `Option<String>` to set the policy id (#1055, resolving #1049)
@@ -56,7 +53,9 @@ Cedar Language Version: 4.0
 - Marked errors/warnings related to parsing and entity/request validation as
   `non_exhaustive`, allowing future variants to be added without a breaking
   change. (#1137)
-- (*) `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`, and `String` cannot be common type names (#1150, resolving #1139)
+- (*) Improved consistency between JSON and Cedar schema formats. Both now
+  forbid using `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`,
+  and `String` as common type names. (#1150, resolving #1139)
 
 ### Removed
 
