@@ -222,7 +222,7 @@ impl Diagnostic for PartialExpressionError {}
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("Entity slicing requires a fully concrete request. Got a partial request.")]
+#[error("entity slicing requires a fully concrete request. Got a partial request")]
 pub struct PartialRequestError {}
 impl Diagnostic for PartialRequestError {}
 
