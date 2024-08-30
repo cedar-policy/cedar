@@ -3,8 +3,39 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+permissions:
+  # deployments permission to deploy GitHub pages website
+  deployments: write
+  # contents permission to update benchmark contents in gh-pages branch
+  contents: write
+
 env: 
   CARGO_TERM_COLOR: always
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+
+  benchmark:
+    name: Performance regression check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      # Run benchmark and store the output to a file
+      - name: Run benchmark
+        run: cargo +nightly bench | tee output.txt
+      # gh-pages branch is updated and pushed automatically with extracted benchmark data
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Cedar Rust Benchmark
+          tool: 'cargo'
+          output-file-path: output.txt
+          # Access token to deploy GitHub Pages branch
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Push and deploy GitHub pages branch automatically
+          auto-push: true
