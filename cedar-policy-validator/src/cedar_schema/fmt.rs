@@ -32,7 +32,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
         for (ns, def) in &self.0 {
             match ns {
                 None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}")?,
+                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}\n")?,
             }
         }
         Ok(())

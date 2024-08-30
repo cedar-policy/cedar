@@ -900,7 +900,7 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
 }
 
 fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
-    let fragment = SchemaFragment::from_str(json_src.as_ref())?;
+    let fragment = SchemaFragment::from_json_str(json_src.as_ref())?;
     let output = fragment.to_cedarschema()?;
     Ok(output)
 }

@@ -1,0 +1,169 @@
+{
+    "": {
+        "commonTypes": {
+            "Task": {
+                "type": "Record",
+                "attributes": {
+                    "id": {
+                        "type": "Long"
+                    },
+                    "name": {
+                        "type": "String"
+                    },
+                    "state": {
+                        "type": "String"
+                    }
+                }
+            },
+            "Tasks": {
+                "type": "Set",
+                "element": {
+                    "type": "Task"
+                }
+            }
+        },
+        "entityTypes": {
+            "Team": {
+                "memberOfTypes": [
+                    "Team",
+                    "Application"
+                ]
+            },
+            "Application": {},
+            "User": {
+                "memberOfTypes": [
+                    "Team",
+                    "Application"
+                ],
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "joblevel": {
+                            "type": "Long"
+                        },
+                        "location": {
+                            "type": "String"
+                        }
+                    }
+                }
+            },
+            "List": {
+                "memberOfTypes": [
+                    "Application"
+                ],
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "editors": {
+                            "type": "Team"
+                        },
+                        "name": {
+                            "type": "String"
+                        },
+                        "owner": {
+                            "type": "User"
+                        },
+                        "readers": {
+                            "type": "Team"
+                        },
+                        "tasks": {
+                            "type": "Tasks"
+                        }
+                    }
+                }
+            }
+        },
+        "actions": {
+            "UpdateTask": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "DeleteTask": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "CreateTask": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "CreateList": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Application"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "GetList": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "EditShare": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "GetLists": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Application"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "DeleteList": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "UpdateList": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "List"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}
