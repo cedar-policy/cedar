@@ -81,8 +81,8 @@ impl EntityManifestAnalysisResult {
 
     /// Extend all the access paths with this attr,
     /// adding all the new paths to the global trie.
-    pub fn get_attr(mut self, attr: &SmolStr) -> Self {
-        self.resulting_paths = self.resulting_paths.get_attr(attr);
+    pub fn get_or_has_attr(mut self, attr: &SmolStr) -> Self {
+        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr);
 
         self.restore_global_trie_invariant()
     }
@@ -123,20 +123,22 @@ impl EntityManifestAnalysisResult {
 
 impl WrappedAccessPaths {
     /// Add accessting this attribute to all access paths
-    fn get_attr(self, attr: &SmolStr) -> Self {
+    fn get_or_has_attr(self, attr: &SmolStr) -> Self {
         match self {
             WrappedAccessPaths::AccessPath(mut access_path) => {
                 access_path.path.push(attr.clone());
                 WrappedAccessPaths::AccessPath(access_path)
             }
             WrappedAccessPaths::RecordLiteral(mut record) => {
-                // PANIC SAFETY: Record literals should have any attributes accessed after typechecking has occurred.
                 #[allow(clippy::panic)]
-                let Some(field) = record.remove(attr) else {
-                    panic!("Record literal lacks dereferenced field, but the typechecker failed to catch it.");
-                };
-
-                *field
+                if let Some(field) = record.remove(attr) {
+                    *field
+                } else {
+                    // otherwise, this is a `has` expression
+                    // but the record literal didn't have it.
+                    // do nothing in this case
+                    WrappedAccessPaths::RecordLiteral(record)
+                }
             }
             // PANIC SAFETY: Type checker should prevent using `.` operator on a set type.
             #[allow(clippy::panic)]
@@ -145,8 +147,8 @@ impl WrappedAccessPaths {
             }
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
             WrappedAccessPaths::Union(left, right) => WrappedAccessPaths::Union(
-                Box::new(left.get_attr(attr)),
-                Box::new(right.get_attr(attr)),
+                Box::new(left.get_or_has_attr(attr)),
+                Box::new(right.get_or_has_attr(attr)),
             ),
         }
     }

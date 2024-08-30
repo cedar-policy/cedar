@@ -552,7 +552,7 @@ fn entity_manifest_from_expr(
             })
         }
         ExprKind::GetAttr { expr, attr } | ExprKind::HasAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr)?.get_attr(attr))
+            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
         }
     }
 }
