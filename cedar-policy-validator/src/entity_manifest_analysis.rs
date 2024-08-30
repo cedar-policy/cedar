@@ -47,7 +47,7 @@ pub(crate) struct EntityManifestAnalysisResult {
 
 impl EntityManifestAnalysisResult {
     /// Drop the resulting paths part of the analysis.
-    /// This is sound when the expression is a primitive value, so it
+    /// This is necessary when the expression is a primitive value, so it
     /// can't be dereferenced.
     pub fn empty_paths(mut self) -> Self {
         self.resulting_paths = Default::default();
