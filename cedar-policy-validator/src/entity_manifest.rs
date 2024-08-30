@@ -448,7 +448,7 @@ fn entity_manifest_from_expr(
             arg2: right,
         } => Ok(entity_manifest_from_expr(left)?
             .empty_paths()
-            .union(&entity_manifest_from_expr(right)?)),
+            .union(&entity_manifest_from_expr(right)?.empty_paths())),
         ExprKind::UnaryApp { op, arg } => {
             match op {
                 // both unary ops are on booleans, so they are simple
@@ -502,8 +502,9 @@ fn entity_manifest_from_expr(
         }
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions
-            // don't take full structs as inputs.
-            // If they did, we would need to use logic similar to the Eq binary operator.
+            // all take primitives as inputs and produce
+            // primitives as outputs.
+            // If not, we would need to use logic similar to the Eq binary operator.
 
             let mut res = EntityManifestAnalysisResult::default();
 
