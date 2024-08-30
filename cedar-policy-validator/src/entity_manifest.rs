@@ -552,12 +552,12 @@ fn entity_manifest_from_expr(
                 global_trie,
             })
         }
-        ExprKind::GetAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
-            .get_or_has_attr(attr)
-            .empty_paths()),
-        ExprKind::HasAttr { expr, attr } => {
+        ExprKind::GetAttr { expr, attr } => {
             Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
         }
+        ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
+            .get_or_has_attr(attr)
+            .empty_paths()),
     }
 }
 
