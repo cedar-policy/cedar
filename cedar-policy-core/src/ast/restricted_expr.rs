@@ -657,9 +657,7 @@ pub mod restricted_expr_errors {
 
 /// Errors possible from `RestrictedExpr::from_str()`
 //
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
+// This is NOT a publicly exported error type.
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExpressionParseError {
     /// Failed to parse the expression

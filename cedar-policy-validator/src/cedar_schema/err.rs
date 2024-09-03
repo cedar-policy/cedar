@@ -581,6 +581,7 @@ impl Diagnostic for MultipleEAMapDeclarationsError {
 
 /// Errors relating to embedded attribute maps (`EAMap`s)
 #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EAMapError {
     /// An embedded attribute map (RFC 68) was encountered where one is not allowed
     #[error(transparent)]
