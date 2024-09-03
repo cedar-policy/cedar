@@ -47,6 +47,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 # Experimental features.
 partial-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+entity-manifest = []
 
 [dev-dependencies]
 similar-asserts = "1.5.0"
