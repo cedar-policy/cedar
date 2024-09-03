@@ -204,23 +204,13 @@ impl AccessTrie {
         }
 
         let new_ancestors = if self.ancestors_trie != Default::default() {
-            eprintln!("ancestors trie: {:?}", self.ancestors_trie);
             let relavent_ancestors = self
                 .ancestors_trie
                 .slice_entities_internal(entities, request)?
                 .1;
-            eprintln!("relavent ancestors: {:?}", relavent_ancestors);
             relavent_ancestors
                 .into_iter()
-                .filter(|ancestor| {
-                    eprintln!(
-                        "{} is decendant of {}: {}",
-                        entity,
-                        ancestor,
-                        entity.is_descendant_of(ancestor)
-                    );
-                    entity.is_descendant_of(ancestor)
-                })
+                .filter(|ancestor| entity.is_descendant_of(ancestor))
                 .collect()
         } else {
             HashSet::new()
@@ -256,6 +246,16 @@ impl AccessTrie {
                 || matches!(val.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
         );
 
+        // unless this is an entity id or set, it should not be an
+        // ancestor
+        assert!(
+            !self.is_ancestor
+                || matches!(
+                    val.value_kind(),
+                    ValueKind::Lit(Literal::EntityUID(_)) | ValueKind::Set(_)
+                )
+        );
+
         Ok(match val.value_kind() {
             ValueKind::Lit(Literal::EntityUID(id)) => {
                 self.slice_entity(entities, request, id, res, res_ancestors)?;
@@ -267,6 +267,32 @@ impl AccessTrie {
                         non_record_entity_value: val.clone(),
                     }
                     .into());
+                }
+
+                // when this is an ancestor, request all of the entities
+                // in this set
+                if self.is_ancestor {
+                    // PANIC SAFETY: is_ancestor is only called on the rhs of an `is`, which the typechecker ensures is an entity or set of entity type.
+                    #[allow(clippy::panic)]
+                    let ValueKind::Set(set) = val.value_kind() else {
+                        panic!("Found is_ancestor on non-entity type {}", val.value_kind())
+                    };
+
+                    for val in set.iter() {
+                        match val.value_kind() {
+                            ValueKind::Lit(Literal::EntityUID(id)) => {
+                                res_ancestors.insert((**id).clone());
+                            }
+                            // PANIC SAFETY: see above panic- set must contain entities
+                            #[allow(clippy::panic)]
+                            _ => {
+                                panic!(
+                                    "Found is_ancestor on set of non-entity-type {}",
+                                    val.value_kind()
+                                );
+                            }
+                        }
+                    }
                 }
 
                 val.clone()
@@ -675,6 +701,88 @@ when {
                         { "type" : "Document", "id" : "oliverdocument"}
                     ]
                 }
+            ]
+        );
+
+        expect_entity_slice_to(
+            entities_json,
+            expected_entities_json,
+            &schema,
+            &entity_manifest,
+        );
+    }
+
+    #[test]
+    fn test_entity_manifest_set_of_ancestors() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            "permit(principal, action, resource)
+when {
+    principal in principal.managers
+};",
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User in [User] = {
+  name: String,
+  managers: Set<User>
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+    ",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+
+        let entities_json = serde_json::json!(
+            [
+                {
+                    "uid" : { "type" : "User", "id" : "oliver"},
+                    "attrs" : {
+                        "name" : "Oliver",
+                        "managers": [
+                            { "type" : "User", "id" : "george"},
+                            { "type" : "User", "id" : "yihong"},
+                            { "type" : "User", "id" : "ignored"},
+                        ]
+                    },
+                    "parents" : [
+                        { "type" : "User", "id" : "dummy"},
+                        { "type" : "User", "id" : "george"},
+                        { "type" : "User", "id" : "yihong"},
+                    ]
+                },
+            ]
+        );
+
+        let expected_entities_json = serde_json::json!(
+            [
+                {
+                    "uid" : { "type" : "User", "id" : "oliver"},
+                    "attrs" : {
+                        "managers": [
+                            { "__entity": { "type" : "User", "id" : "george"}},
+                            { "__entity": { "type" : "User", "id" : "yihong"}},
+                            { "__entity": { "type" : "User", "id" : "ignored"}},
+                        ]
+                    },
+                    "parents" : [
+                        { "type" : "User", "id" : "george"},
+                        { "type" : "User", "id" : "yihong"},
+                    ]
+                },
             ]
         );
 
