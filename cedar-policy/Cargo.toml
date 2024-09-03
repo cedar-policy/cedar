@@ -1,14 +1,13 @@
 [package]
 name = "cedar-policy"
-edition = "2021"
-rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
-
-version = "4.0.0"
-license = "Apache-2.0"
-categories = ["compilers", "config"]
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+categories.workspace = true
 description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
-keywords = ["cedar", "authorization", "policy", "security"]
-homepage = "https://cedarpolicy.com"
+keywords.workspace = true
+homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]

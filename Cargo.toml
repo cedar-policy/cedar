@@ -14,3 +14,15 @@ resolver = "2"
 # Enable global integer overflow detection for the release profile
 [profile.release]
 overflow-checks = true
+
+# Keys that packages can inherit
+[workspace.package]
+# Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
+rust-version = "1.77"
+version = "4.0.0"
+homepage = "https://cedarpolicy.com"
+keywords = ["cedar", "authorization", "policy", "security"]
+categories = ["compilers", "config"]
+license = "Apache-2.0"
+edition = "2021"
+repository = "https://github.com/cedar-policy/cedar"
