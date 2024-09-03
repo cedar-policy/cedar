@@ -181,7 +181,8 @@ impl AccessTrie {
             }
         }
 
-        let new_ancestors = if self.ancestors_required {
+        // TODO make more precise by only loading particular ancestors
+        let new_ancestors = if self.ancestors_trie != Default::default() {
             entity.ancestors().cloned().collect()
         } else {
             HashSet::new()
@@ -211,7 +212,7 @@ impl AccessTrie {
     ) -> Result<Value, EntitySliceError> {
         // unless this is an entity id, parents should not be required
         assert!(
-            !self.ancestors_required
+            self.ancestors_trie == Default::default()
                 || matches!(val.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
         );
 

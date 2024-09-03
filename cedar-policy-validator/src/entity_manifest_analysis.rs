@@ -68,11 +68,7 @@ impl EntityManifestAnalysisResult {
 
     /// Create an analysis result that starts with a cedar variable
     pub fn from_root(root: EntityRoot) -> Self {
-        let path = AccessPath {
-            root,
-            path: vec![],
-            ancestors_required: false,
-        };
+        let path = AccessPath { root, path: vec![] };
         Self {
             global_trie: path.to_root_access_trie(),
             resulting_paths: WrappedAccessPaths::AccessPath(path),
@@ -91,17 +87,23 @@ impl EntityManifestAnalysisResult {
     /// in `resulting_paths` to the `global_trie`.
     /// This is necessary after modifying the `resulting_paths`.
     pub(crate) fn restore_global_trie_invariant(mut self) -> Self {
-        self.global_trie
-            .add_wrapped_access_paths(&self.resulting_paths);
+        self.global_trie.add_wrapped_access_paths(
+            &self.resulting_paths,
+            false,
+            &Default::default(),
+        );
         self
     }
 
     /// Add the ancestors required flag to all of the
     /// resulting paths for this analysis result, but only set it
     /// for entity types.
-    pub(crate) fn ancestors_required(mut self, ty: &Type) -> Self {
-        self.resulting_paths.ancestors_required(ty);
-        self.restore_global_trie_invariant()
+    /// Add the ancestors required flag to all of the resulting
+    /// paths for this path record.
+    pub(crate) fn with_ancestors_required(mut self, ancestors_trie: &RootAccessTrie) -> Self {
+        self.global_trie
+            .add_wrapped_access_paths(&self.resulting_paths, false, ancestors_trie);
+        self
     }
 
     /// For equality or containment checks, all paths in the type
@@ -150,57 +152,6 @@ impl WrappedAccessPaths {
                 Box::new(left.get_or_has_attr(attr)),
                 Box::new(right.get_or_has_attr(attr)),
             ),
-        }
-    }
-
-    /// Add the ancestors required flag to all of the resulting
-    /// paths for this path record.
-    fn ancestors_required(&mut self, ty: &Type) {
-        match self {
-            WrappedAccessPaths::AccessPath(path) => {
-                if let Type::EntityOrRecord(EntityRecordKind::Entity { .. }) = ty {
-                    path.ancestors_required = true;
-                }
-            }
-            WrappedAccessPaths::RecordLiteral(record) => match ty {
-                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
-                    for (field, value) in record.iter_mut() {
-                        // PANIC SAFETY: Record literals must have attributes that match the type.
-                        #[allow(clippy::expect_used)]
-                        let field_ty = &attrs
-                            .get_attr(field)
-                            .expect("Missing field in record type")
-                            .attr_type;
-                        value.ancestors_required(field_ty);
-                    }
-                }
-                // PANIC SAFETY: Typechecking should identity record literals as record types.
-                #[allow(clippy::panic)]
-                _ => {
-                    panic!("Found record literal when expected {} type", ty);
-                }
-            },
-            WrappedAccessPaths::SetLiteral(elements) => {
-                // PANIC SAFETY: Typechecking should identity set literals as set types.
-                #[allow(clippy::panic)]
-                let Type::Set { element_type } = ty
-                else {
-                    panic!("Found set literal when expected {} type", ty);
-                };
-
-                // PANIC SAFETY: Typechecking should give concrete types for set elements.
-                #[allow(clippy::expect_used)]
-                let ele_type = element_type
-                    .as_ref()
-                    .expect("Expected concrete set type after typechecking");
-
-                elements.ancestors_required(ele_type);
-            }
-            WrappedAccessPaths::Empty => (),
-            WrappedAccessPaths::Union(left, right) => {
-                left.ancestors_required(ty);
-                right.ancestors_required(ty);
-            }
         }
     }
 
@@ -255,24 +206,40 @@ impl WrappedAccessPaths {
                 .union(&right.full_type_required(ty)),
         }
     }
+
+    pub(crate) fn to_ancestor_access_trie(&self) -> RootAccessTrie {
+        let mut trie = RootAccessTrie::default();
+        trie.add_wrapped_access_paths(self, true, &Default::default());
+        trie
+    }
 }
 
 impl RootAccessTrie {
-    pub(crate) fn add_wrapped_access_paths(&mut self, path: &WrappedAccessPaths) {
+    pub(crate) fn add_wrapped_access_paths(
+        &mut self,
+        path: &WrappedAccessPaths,
+        is_ancestor: bool,
+        ancestors_trie: &RootAccessTrie,
+    ) {
         match path {
             WrappedAccessPaths::AccessPath(access_path) => {
-                self.add_access_path(access_path, &AccessTrie::new());
+                let mut leaf = AccessTrie::new();
+                leaf.is_ancestor = is_ancestor;
+                leaf.ancestors_trie = ancestors_trie.clone();
+                self.add_access_path(access_path, &leaf);
             }
             WrappedAccessPaths::RecordLiteral(record) => {
                 for field in record.values() {
-                    self.add_wrapped_access_paths(field);
+                    self.add_wrapped_access_paths(field, is_ancestor, ancestors_trie);
                 }
             }
-            WrappedAccessPaths::SetLiteral(elements) => self.add_wrapped_access_paths(elements),
+            WrappedAccessPaths::SetLiteral(elements) => {
+                self.add_wrapped_access_paths(elements, is_ancestor, ancestors_trie)
+            }
             WrappedAccessPaths::Empty => (),
             WrappedAccessPaths::Union(left, right) => {
-                self.add_wrapped_access_paths(left);
-                self.add_wrapped_access_paths(right);
+                self.add_wrapped_access_paths(left, is_ancestor, ancestors_trie);
+                self.add_wrapped_access_paths(right, is_ancestor, ancestors_trie);
             }
         }
     }
@@ -312,7 +279,8 @@ fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
             }
             AccessTrie {
                 children: fields,
-                ancestors_required: false,
+                ancestors_trie: Default::default(),
+                is_ancestor: false,
                 data: (),
             }
         }

@@ -137,10 +137,13 @@ pub struct AccessTrie<T = ()> {
     /// The keys are edges in the trie pointing to sub-trie values.
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) children: Fields<T>,
-    /// For entity types, this boolean may be `true`
-    /// to signal that all the ancestors in the entity hierarchy
-    /// are required (transitively).
-    pub(crate) ancestors_required: bool,
+    /// `ancestors_trie` is another [`RootAccessTrie`] representing
+    /// all of the ancestors of this entity that are required.
+    /// See the [`RootAccessTrie::is_ancestor`] annotation.
+    pub(crate) ancestors_trie: RootAccessTrie,
+    /// When ancestors are required, each node marked `is_ancestor`
+    /// represents an ancestor or set of ancestors that are required.
+    pub(crate) is_ancestor: bool,
     /// Optional data annotation, usually used for type information.
     #[serde(skip_serializing, skip_deserializing)]
     #[serde(bound(deserialize = "T: Default"))]
@@ -156,8 +159,6 @@ pub(crate) struct AccessPath {
     pub root: EntityRoot,
     /// The path of fields of entities or structs
     pub path: Vec<SmolStr>,
-    /// Request all the parents in the entity hierarchy of this entity.
-    pub ancestors_required: bool,
 }
 
 /// Error when expressions are partial during entity
@@ -229,8 +230,6 @@ impl AccessPath {
     /// add a full trie as the leaf at the end.
     pub(crate) fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
         let mut current = leaf_trie;
-        // set ancestors required for the leaf trie
-        current.ancestors_required = self.ancestors_required;
 
         // reverse the path, visiting the last access first
         for field in self.path.iter().rev() {
@@ -240,7 +239,8 @@ impl AccessPath {
             // the first time we build an access trie is the leaf
             // of the path, so set the `ancestors_required` flag
             current = AccessTrie {
-                ancestors_required: false,
+                ancestors_trie: Default::default(),
+                is_ancestor: false,
                 children: fields,
                 data: (),
             };
@@ -310,7 +310,8 @@ impl<T: Clone> AccessTrie<T> {
     /// Like [`AccessTrie::union`], but modifies the current trie.
     pub fn union_mut(&mut self, other: &Self) {
         self.children = union_fields(&self.children, &other.children);
-        self.ancestors_required = self.ancestors_required || other.ancestors_required;
+        self.ancestors_trie.union_mut(&other.ancestors_trie);
+        self.is_ancestor = self.is_ancestor || other.is_ancestor;
     }
 
     /// Get the children of this [`AccessTrie`].
@@ -320,8 +321,8 @@ impl<T: Clone> AccessTrie<T> {
 
     /// Get a boolean which is true if this trie
     /// requires all ancestors of the entity to be loaded.
-    pub fn ancestors_required(&self) -> bool {
-        self.ancestors_required
+    pub fn ancestors_required(&self) -> &RootAccessTrie {
+        &self.ancestors_trie
     }
 
     /// Get the data associated with this [`AccessTrie`].
@@ -336,7 +337,8 @@ impl AccessTrie {
     pub fn new() -> Self {
         Self {
             children: Default::default(),
-            ancestors_required: false,
+            ancestors_trie: Default::default(),
+            is_ancestor: false,
             data: (),
         }
     }
@@ -491,14 +493,16 @@ fn entity_manifest_from_expr(
 
             // For the `in` operator, we need the ancestors of entities.
             if let BinaryOp::In = op {
-                arg1_res = arg1_res.ancestors_required(ty1);
+                arg1_res = arg1_res
+                    .with_ancestors_required(&arg2_res.resulting_paths.to_ancestor_access_trie());
             }
 
             // Load all fields using `full_type_required`, since
             // these operations do equality checks.
             Ok(arg1_res
                 .full_type_required(ty1)
-                .union(&arg2_res.full_type_required(ty2)))
+                .union(&arg2_res.full_type_required(ty2))
+                .empty_paths())
         }
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions
@@ -650,11 +654,13 @@ when {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
@@ -831,11 +837,13 @@ action Read appliesTo {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
@@ -862,11 +870,13 @@ action Read appliesTo {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
@@ -964,22 +974,26 @@ action Read appliesTo {
                                 "owner",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ],
                         [
                           "readers",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ],
                 ]
@@ -1060,22 +1074,26 @@ action BeSad appliesTo {
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ],
                               [
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
@@ -1153,22 +1171,26 @@ action Hello appliesTo {
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ],
                               [
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                     }
                   ],
                   [
@@ -1185,22 +1207,26 @@ action Hello appliesTo {
                                 "nickname",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ],
                               [
                                 "friends",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
@@ -1254,11 +1280,13 @@ when {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                     }
                   ],
                   [
@@ -1274,11 +1302,13 @@ when {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                     }
                   ],
                   [
@@ -1291,7 +1321,8 @@ when {
                           "viewer",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ],
                         [
@@ -1302,15 +1333,18 @@ when {
                                 "name",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                     }
                   ]
                 ]
@@ -1373,11 +1407,13 @@ when {
                           "name",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                     }
                   ],
                   [
@@ -1390,7 +1426,8 @@ when {
                           "viewer",
                           {
                             "children": [],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ],
                         [
@@ -1401,15 +1438,18 @@ when {
                                 "name",
                                 {
                                   "children": [],
-                                  "ancestorsRequired": false
+                                  "ancestorsTrie": { "trie": []},
+                                  "isAncestor": false
                                 }
                               ]
                             ],
-                            "ancestorsRequired": false
+                            "ancestorsTrie": { "trie": []},
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": false
+                      "ancestorsTrie": { "trie": []},
+                      "isAncestor": false
                     }
                   ]
                 ]
