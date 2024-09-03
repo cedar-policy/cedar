@@ -17,7 +17,7 @@ overflow-checks = true
 
 # Keys that packages can inherit
 [workspace.package]
-# minimum supported Rust version is currently 1.77.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.77.0`
+# Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
 rust-version = "1.77"
 version = "4.0.0"
 homepage = "https://cedarpolicy.com"
