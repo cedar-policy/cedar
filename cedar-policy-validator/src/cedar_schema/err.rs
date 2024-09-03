@@ -580,6 +580,8 @@ impl Diagnostic for MultipleEAMapDeclarationsError {
 }
 
 /// Errors relating to embedded attribute maps (`EAMap`s)
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EAMapError {

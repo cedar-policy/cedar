@@ -257,8 +257,8 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
 }
 
 /// Error when the request does not conform to the schema.
-///
-/// This is NOT a publicly exported error type.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error)]
 pub enum RequestValidationError {
     /// Request action is not declared in the schema
