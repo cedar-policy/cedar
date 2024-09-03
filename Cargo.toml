@@ -14,3 +14,15 @@ resolver = "2"
 # Enable global integer overflow detection for the release profile
 [profile.release]
 overflow-checks = true
+
+# Keys that packages can inherit
+[workspace.package]
+# minimum supported Rust version is currently 1.77.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.77.0`
+rust-version = "1.77"
+version = "4.0.0"
+homepage = "https://cedarpolicy.com"
+keywords = ["cedar", "authorization", "policy", "security"]
+categories = ["compilers", "config"]
+license = "Apache-2.0"
+edition = "2021"
+repository = "https://github.com/cedar-policy/cedar"
