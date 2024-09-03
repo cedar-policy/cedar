@@ -101,7 +101,7 @@ pub fn parse_policyset_to_ests_and_pset(
 }
 
 /// Main function for parsing a policy _or_ template. In either case, the
-/// returned value will be a [`Template`].
+/// returned value will be a [`ast::Template`].
 /// If `id` is Some, then the resulting template will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
 pub fn parse_policy_or_template(

@@ -9,13 +9,15 @@ use wasm_bindgen::prelude::*;
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result of getting valid request environments
 pub enum GetValidRequestEnvsResult {
-    /// represents a successful call to [`get_valid_request_envs()`]
+    /// represents a successful call to [`get_valid_request_envs_template()`]
+    /// or [`get_valid_request_envs_policy()`]
     Success {
         principals: Vec<String>,
         actions: Vec<String>,
         resources: Vec<String>,
     },
-    /// represents a failed call to [`get_valid_request_envs()`]
+    /// represents a failed call to [`get_valid_request_envs_template()`]
+    /// or [`get_valid_request_envs_policy()`]
     Failure {
         /// the encountered error
         error: String,
