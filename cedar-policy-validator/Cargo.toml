@@ -23,7 +23,7 @@ unicode-security = "0.1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
-lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
 
