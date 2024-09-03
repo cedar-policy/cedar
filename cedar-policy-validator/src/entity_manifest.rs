@@ -760,11 +760,39 @@ action Read appliesTo {
                           "manager",
                           {
                             "children": [],
-                            "ancestorsRequired": true
+                            "ancestorsTrie": {
+                              "trie": [
+                                [
+                                  {
+                                    "var": "resource",
+                                  },
+                                  {
+                                    "children": [],
+                                    "isAncestor": true,
+                                    "ancestorsTrie": { "trie": [] }
+                                  }
+                                ]
+                              ]
+                            },
+                            "isAncestor": false
                           }
                         ]
                       ],
-                      "ancestorsRequired": true
+                      "ancestorsTrie": {
+                              "trie": [
+                                [
+                                  {
+                                    "var": "resource",
+                                  },
+                                  {
+                                    "children": [],
+                                    "isAncestor": true,
+                                    "ancestorsTrie": { "trie": [] }
+                                  }
+                                ]
+                              ]
+                            },
+                      "isAncestor": false
                     }
                   ]
                 ]
