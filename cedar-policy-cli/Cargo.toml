@@ -2,6 +2,7 @@
 name = "cedar-policy-cli"
 edition.workspace = true
 version.workspace = true
+rust-version.workspace = true
 license.workspace = true
 categories.workspace = true
 description = "CLI interface for the Cedar Policy language."
