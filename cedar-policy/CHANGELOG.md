@@ -15,7 +15,7 @@ Cedar Language Version: 4.0
 ### Added
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
-  structure that describes what data is required to satisfy a 
+  structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
@@ -53,9 +53,8 @@ Cedar Language Version: 4.0
   to parse strings in the JSON schema format.
 - `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
   `Option<String>` in the previous version (#1131, resolving #1116)
-- Marked errors/warnings related to parsing and entity/request validation as
-  `non_exhaustive`, allowing future variants to be added without a breaking
-  change. (#1137)
+- Marked errors/warnings related to parsing and validation as `non_exhaustive`,
+  allowing future variants to be added without a breaking change. (#1137, #1169)
 - (*) Improved consistency between JSON and Cedar schema formats. Both now
   forbid using `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`,
   and `String` as common type names. (#1150, resolving #1139)
