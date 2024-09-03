@@ -113,23 +113,35 @@ impl RootAccessTrie {
         entities: &Entities,
         request: &Request,
     ) -> Result<Entities, EntitySliceError> {
+        self.slice_entities_internal(entities, request)
+            .map(|res| res.0)
+    }
+
+    /// Returns a new entity store and also the ancestor entities found
+    /// along the way.
+    fn slice_entities_internal(
+        &self,
+        entities: &Entities,
+        request: &Request,
+    ) -> Result<(Entities, HashSet<EntityUID>), EntitySliceError> {
         let mut res = HashMap::<EntityUID, Entity>::new();
+        let mut ancestors = HashSet::new();
         for (root, slice) in &self.trie {
             match root {
                 EntityRoot::Literal(lit) => {
-                    slice.slice_entity(entities, lit, &mut res)?;
+                    slice.slice_entity(entities, request, lit, &mut res, &mut ancestors)?;
                 }
                 EntityRoot::Var(Var::Action) => {
                     let entity_id = request.action().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, entity_id, &mut res)?;
+                    slice.slice_entity(entities, request, entity_id, &mut res, &mut ancestors)?;
                 }
                 EntityRoot::Var(Var::Principal) => {
                     let entity_id = request.principal().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, entity_id, &mut res)?;
+                    slice.slice_entity(entities, request, entity_id, &mut res, &mut ancestors)?;
                 }
                 EntityRoot::Var(Var::Resource) => {
                     let resource_id = request.resource().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, resource_id, &mut res)?;
+                    slice.slice_entity(entities, request, resource_id, &mut res, &mut ancestors)?;
                 }
                 EntityRoot::Var(Var::Context) => {
                     if slice.children.is_empty() {
@@ -141,17 +153,20 @@ impl RootAccessTrie {
                         let PartialValue::Value(val) = partial_val else {
                             return Err(PartialRequestError {}.into());
                         };
-                        slice.slice_val(entities, &val, &mut res)?;
+                        slice.slice_val(entities, request, &val, &mut res, &mut ancestors)?;
                     }
                 }
             }
         }
-        Ok(Entities::from_entities(
-            res.into_values(),
-            None::<&NoEntitiesSchema>,
-            TCComputation::AssumeAlreadyComputed,
-            Extensions::all_available(),
-        )?)
+        Ok((
+            Entities::from_entities(
+                res.into_values(),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::all_available(),
+            )?,
+            ancestors,
+        ))
     }
 }
 
@@ -161,9 +176,16 @@ impl AccessTrie {
     fn slice_entity(
         &self,
         entities: &Entities,
+        request: &Request,
         lit: &EntityUID,
         res: &mut HashMap<EntityUID, Entity>,
+        res_ancestors: &mut HashSet<EntityUID>,
     ) -> Result<(), EntitySliceError> {
+        // add to the res_ancestors set if this is a relavent ancestor
+        if self.is_ancestor {
+            res_ancestors.insert(lit.clone());
+        }
+
         // If the entity is not present, no need to slice
         let Dereference::Data(entity) = entities.entity(lit) else {
             return Ok(());
@@ -175,15 +197,31 @@ impl AccessTrie {
                 let PartialValue::Value(val) = pval else {
                     return Err(PartialEntityError {}.into());
                 };
-                let sliced = slice.slice_val(entities, &val, res)?;
+                let sliced = slice.slice_val(entities, request, &val, res, res_ancestors)?;
 
                 new_entity.insert(field.clone(), PartialValue::Value(sliced));
             }
         }
 
-        // TODO make more precise by only loading particular ancestors
         let new_ancestors = if self.ancestors_trie != Default::default() {
-            entity.ancestors().cloned().collect()
+            eprintln!("ancestors trie: {:?}", self.ancestors_trie);
+            let relavent_ancestors = self
+                .ancestors_trie
+                .slice_entities_internal(entities, request)?
+                .1;
+            eprintln!("relavent ancestors: {:?}", relavent_ancestors);
+            relavent_ancestors
+                .into_iter()
+                .filter(|ancestor| {
+                    eprintln!(
+                        "{} is decendant of {}: {}",
+                        entity,
+                        ancestor,
+                        entity.is_descendant_of(ancestor)
+                    );
+                    entity.is_descendant_of(ancestor)
+                })
+                .collect()
         } else {
             HashSet::new()
         };
@@ -207,8 +245,10 @@ impl AccessTrie {
     fn slice_val(
         &self,
         entities: &Entities,
+        request: &Request,
         val: &Value,
         res: &mut HashMap<EntityUID, Entity>,
+        res_ancestors: &mut HashSet<EntityUID>,
     ) -> Result<Value, EntitySliceError> {
         // unless this is an entity id, parents should not be required
         assert!(
@@ -218,7 +258,7 @@ impl AccessTrie {
 
         Ok(match val.value_kind() {
             ValueKind::Lit(Literal::EntityUID(id)) => {
-                self.slice_entity(entities, id, res)?;
+                self.slice_entity(entities, request, id, res, res_ancestors)?;
                 val.clone()
             }
             ValueKind::Set(_) | ValueKind::ExtensionValue(_) | ValueKind::Lit(_) => {
@@ -236,7 +276,10 @@ impl AccessTrie {
                 for (field, slice) in &self.children {
                     // only slice when field is available
                     if let Some(v) = record.get(field) {
-                        new_map.insert(field.clone(), slice.slice_val(entities, v, res)?);
+                        new_map.insert(
+                            field.clone(),
+                            slice.slice_val(entities, request, v, res, res_ancestors)?,
+                        );
                     }
                 }
 
@@ -273,6 +316,28 @@ action Read appliesTo {
   resource: [Document]
 };
     ",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    fn schema_with_hierarchy() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            "
+entity User in [Document] = {
+  name: String,
+  manager: User,
+  personaldoc: Document,
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
             Extensions::all_available(),
         )
         .unwrap()
@@ -489,7 +554,7 @@ when {
     }
 
     #[test]
-    fn test_entity_manifest_ancestors_required() {
+    fn test_entity_manifest_ancestors_skipped() {
         let mut pset = PolicySet::new();
         let policy = parse_policy(
             None,
@@ -501,24 +566,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User in [Document] = {
-  name: String,
-  manager: User
-};
-
-entity Document;
-
-action Read appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
+        let schema = schema_with_hierarchy();
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
 
@@ -528,20 +576,22 @@ action Read appliesTo {
                     "uid" : { "type" : "User", "id" : "oliver"},
                     "attrs" : {
                         "name" : "Oliver",
-                        "manager": { "type" : "User", "id" : "george"}
+                        "manager": { "type" : "User", "id" : "george"},
+                        "personaldoc": { "type" : "Document", "id" : "oliverdocument"}
                     },
                     "parents" : [
-                        { "type" : "Document", "id" : "oliverdocument"}
+                        { "type" : "Document", "id" : "oliverdocument"},
+                        { "type" : "Document", "id" : "dummy"}
                     ]
                 },
                 {
                     "uid" : { "type" : "User", "id" : "george"},
                     "attrs" : {
                         "name" : "George",
-                        "manager": { "type" : "User", "id" : "george"}
+                        "manager": { "type" : "User", "id" : "george"},
+                        "personaldoc": { "type" : "Document", "id" : "georgedocument"}
                     },
                     "parents" : [
-                        { "type" : "Document", "id" : "georgedocument"}
                     ]
                 },
             ]
@@ -555,7 +605,7 @@ action Read appliesTo {
                         "manager": { "__entity": { "type" : "User", "id" : "george"} }
                     },
                     "parents" : [
-                        { "type" : "Document", "id" : "oliverdocument"}
+                        { "type" : "Document", "id" : "dummy"}
                     ]
                 },
                 {
@@ -563,9 +613,68 @@ action Read appliesTo {
                     "attrs" : {
                     },
                     "parents" : [
-                        { "type" : "Document", "id" : "georgedocument"}
                     ]
                 },
+            ]
+        );
+
+        expect_entity_slice_to(
+            entities_json,
+            expected_entities_json,
+            &schema,
+            &entity_manifest,
+        );
+    }
+
+    #[test]
+    fn test_entity_manifest_possible_ancestors() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            "permit(principal, action, resource)
+when {
+    principal in (if 2 > 3
+                  then Document::\"dummy\"
+                  else principal.personaldoc)
+};",
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let schema = schema_with_hierarchy();
+
+        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+
+        let entities_json = serde_json::json!(
+            [
+                {
+                    "uid" : { "type" : "User", "id" : "oliver"},
+                    "attrs" : {
+                        "name" : "Oliver",
+                        "manager": { "type" : "User", "id" : "george"},
+                        "personaldoc": { "type" : "Document", "id" : "oliverdocument"}
+                    },
+                    "parents" : [
+                        { "type" : "Document", "id" : "oliverdocument"},
+                        { "type" : "Document", "id" : "georgedocument"},
+                        { "type" : "Document", "id" : "dummy"}
+                    ]
+                },
+            ]
+        );
+
+        let expected_entities_json = serde_json::json!(
+            [
+                {
+                    "uid" : { "type" : "User", "id" : "oliver"},
+                    "attrs" : {
+                        "personaldoc":{"__entity":{"type":"Document","id":"oliverdocument"}},
+                    },
+                    "parents" : [
+                        { "type" : "Document", "id" : "dummy"},
+                        { "type" : "Document", "id" : "oliverdocument"}
+                    ]
+                }
             ]
         );
 
