@@ -703,10 +703,12 @@ impl Display for Type {
                 write!(f, "{{")?;
                 for (name, ty) in attrs.iter() {
                     write!(f, "{name}")?;
-                    if !ty.is_required {
+                    if !ty.is_required() {
                         write!(f, "?")?;
                     }
-                    write!(f, ": {},", ty.attr_type)?;
+                    write!(f, ": ")?;
+                    ty.display(f)?;
+                    write!(f, ",")?;
                 }
                 write!(f, "}}")
             }
