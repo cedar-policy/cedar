@@ -707,7 +707,7 @@ impl Display for Type {
                         write!(f, "?")?;
                     }
                     write!(f, ": ")?;
-                    ty.display(f)?;
+                    ty.display_type(f)?;
                     write!(f, ",")?;
                 }
                 write!(f, "}}")
@@ -1421,7 +1421,7 @@ impl AttributeType {
 
     /// Display just the type portion of the [`AttributeType`], ignoring the
     /// `is_required` flag
-    fn display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn display_type(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.attr_type.fmt(f)
     }
 
@@ -1449,11 +1449,12 @@ impl AttributeType {
         ty1: &AttributeType,
         mode: ValidationMode,
     ) -> bool {
-        (if mode.is_strict() {
+        let qualifier_subtype = if mode.is_strict() {
             ty0.is_required() == ty1.is_required()
         } else {
             ty0.is_required() || !ty1.is_required()
-        }) && Type::is_subtype(schema, &ty0.attr_type, &ty1.attr_type, mode)
+        };
+        qualifier_subtype && Type::is_subtype(schema, &ty0.attr_type, &ty1.attr_type, mode)
     }
 }
 
