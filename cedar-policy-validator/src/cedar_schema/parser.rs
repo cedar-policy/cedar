@@ -84,7 +84,10 @@ lazy_static::lazy_static! {
 }
 
 /// Parse errors for parsing a schema in the Cedar syntax
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum CedarSchemaParseErrors {
     /// Parse error for the Cedar syntax
     #[error(transparent)]

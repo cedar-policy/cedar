@@ -87,6 +87,8 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
+//
+// This is NOT a publicly exported error type.
 #[derive(Clone, Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
 pub enum ValidationError {
     /// A policy contains an entity type that is not declared in the schema.

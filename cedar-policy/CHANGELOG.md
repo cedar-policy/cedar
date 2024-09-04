@@ -62,9 +62,8 @@ Cedar Language Version: 4.0
   `Option<String>` in the previous version (#1131, resolving #1116)
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Removed unnecessary lifetimes from some validation related structs (#715)
-- Marked errors/warnings related to parsing and entity/request validation as
-  `non_exhaustive`, allowing future variants to be added without a breaking
-  change. (#1137)
+- Marked errors/warnings related to parsing and validation as `non_exhaustive`,
+  allowing future variants to be added without a breaking change. (#1137, #1169)
 
 ### Removed
 

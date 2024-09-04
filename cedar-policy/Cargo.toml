@@ -17,7 +17,7 @@ cedar-policy-formatter = { version = "=4.0.0", path = "../cedar-policy-formatter
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.20.0", features = ["lexer"] }
+lalrpop-util = { version = "0.21.0", features = ["lexer"] }
 itertools = "0.13"
 miette = "7.1.0"
 thiserror = "1.0"
