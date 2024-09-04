@@ -8,6 +8,5 @@ allow = [
     "Apache-2.0",
     "MIT",
     "ISC",
-    "CC0-1.0",
     "Unicode-DFS-2016",
 ]
