@@ -10,13 +10,19 @@ The "Cedar Language Version" refers to the language version as documented in the
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
 ## [Unreleased]
-Cedar Language Version: 4.0
+Cedar Language Version: TBD
 
 ### Added
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
+
+## [4.0.0] - Coming soon
+Cedar Language Version: 4.0
+
+### Added
+
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
 - (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a
@@ -26,38 +32,38 @@ Cedar Language Version: 4.0
 
 ### Changed
 
-- The API around `Request::new` has changed to remove the `Option`s
-  around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - (*) Implemented [RFC 70](https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md).
   In both the Cedar and JSON schema syntaxes, it is now illegal to define the
   same entity name, common type name, or action name in both the empty namespace
   and a nonempty namespace.
-- Significantly reworked all public-facing error types to address some issues
-  and improve consistency. See issue #745.
-- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
-  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
-- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
-- Removed unnecessary lifetimes from some validation related structs (#715)
-- (*) Changed policy validation to reject comparisons and conditionals between
-  record types that differ in whether an attribute is required or optional. (#769)
-- Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
-- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
-  instead of `Option<String>` to set the policy id (#1055, resolving #1049)
 - (*) Implemented [RFC 52](https://github.com/cedar-policy/rfcs/blob/main/text/0052-reserved-namespaces.md).
   Names containing `__cedar` (e.g., `__cedar`, `A::__cedar`, `__cedar::A`, and
   `A::__cedar::B`) are now invalid. (#969)
+- The API around `Request::new` has changed to remove the `Option`s
+  around the entity type arguments. See [RFC 55](https://github.com/cedar-policy/rfcs/blob/main/text/0055-remove-unspecified.md).
 - Replaced uses of "natural", "human", "human-readable", and "custom" with "Cedar" (#1114).
   APIs with these names are changed accordingly. E.g., `Schema::from_str_natural` to `Schema::from_cedarschema_str`.
   Moreover, the `FromStr` implementations of `Schema` and `SchemaFragment`
   now parse strings in the Cedar schema format. Use `Schema::from_json_str` and `SchemaFragment::from_json_str`
   to parse strings in the JSON schema format.
-- `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
-  `Option<String>` in the previous version (#1131, resolving #1116)
-- Marked errors/warnings related to parsing and validation as `non_exhaustive`,
-  allowing future variants to be added without a breaking change. (#1137, #1169)
+- Significantly reworked all public-facing error types to address some issues
+  and improve consistency. See issue #745.
+- Finalized the `ffi` module and `cedar-wasm` crate which were preview-released
+  in 3.2.0. This involved API breaking changes in both. See #757 and #854.
+- (*) Changed policy validation to reject comparisons and conditionals between
+  record types that differ in whether an attribute is required or optional. (#769)
 - (*) Improved consistency between JSON and Cedar schema formats. Both now
   forbid using `Bool`, `Boolean`, `Entity`, `Extension`, `Long`, `Record`, `Set`,
   and `String` as common type names. (#1150, resolving #1139)
+- Changed the FFI to error on typos or unexpected fields in the input JSON (#1041)
+- Changed `Policy::parse` and `Template::parse` to accept an `Option<PolicyId>`
+  instead of `Option<String>` to set the policy id (#1055, resolving #1049)
+- `PolicySet::template_annotation` now returns `Option<&str>` as opposed to
+  `Option<String>` in the previous version (#1131, resolving #1116)
+- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
+- Removed unnecessary lifetimes from some validation related structs (#715)
+- Marked errors/warnings related to parsing and validation as `non_exhaustive`,
+  allowing future variants to be added without a breaking change. (#1137, #1169)
 
 ### Removed
 
@@ -666,7 +672,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.3.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
+[4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
