@@ -956,6 +956,7 @@ pub mod context_json_errors {
 
 /// Error type for parsing a `RestrictedExpression`
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum RestrictedExpressionParseError {
     /// Failed to parse the expression
     #[error(transparent)]
