@@ -23,13 +23,6 @@
 )]
 
 mod id;
-#[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest;
-// TODO (#1157) implement wrappers for these structs before they become public
-#[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_manifest::{
-    AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
-};
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -4277,18 +4270,4 @@ action CreateList in Create appliesTo {
         .collect::<HashSet<EntityTypeName>>();
         assert_eq!(entities, expected);
     }
-}
-
-/// Given a schema and policy set, compute an entity manifest.
-/// The policies must validate against the schema in strict mode,
-/// otherwise an error is returned.
-/// The manifest describes the data required to answer requests
-/// for each action.
-#[doc = include_str!("../experimental_warning.md")]
-#[cfg(feature = "entity-manifest")]
-pub fn compute_entity_manifest(
-    schema: &Schema,
-    pset: &PolicySet,
-) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
 }

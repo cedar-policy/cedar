@@ -18,6 +18,12 @@ Cedar Language Version: TBD
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 
+### Changed
+
+### Removed
+
+=======
+
 ## [4.0.0] - Coming soon
 Cedar Language Version: 4.0
 
