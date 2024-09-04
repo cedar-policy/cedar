@@ -21,15 +21,15 @@ use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprKind, ExpressionConstructionError,
-    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, ExpressionConstructionError, PartialValue,
+    RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -47,18 +47,6 @@ pub struct Request {
     /// Context associated with the request.
     /// `None` means that variable will result in a residual for partial evaluation.
     pub(crate) context: Option<Context>,
-}
-
-/// Represents the principal type, resource type, and action UID.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestType {
-    /// Principal type
-    pub principal: EntityType,
-    /// Action type
-    pub action: EntityUID,
-    /// Resource type
-    pub resource: EntityType,
 }
 
 /// An entry in a request for a Entity UID.
@@ -197,19 +185,6 @@ impl Request {
     /// Returning `None` means the variable is unknown, and will result in a residual expression
     pub fn context(&self) -> Option<&Context> {
         self.context.as_ref()
-    }
-
-    /// Get the request types that correspond to this request.
-    /// This includes the types of the principal, action, and resource.
-    /// [`RequestType`] is used by the entity manifest.
-    /// The context type is implied by the action's type.
-    /// Returns `None` if the request is not fully concrete.
-    pub fn to_request_type(&self) -> Option<RequestType> {
-        Some(RequestType {
-            principal: self.principal().uid()?.entity_type().clone(),
-            action: self.action().uid()?.clone(),
-            resource: self.resource().uid()?.entity_type().clone(),
-        })
     }
 }
 
