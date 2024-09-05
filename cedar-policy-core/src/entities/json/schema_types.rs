@@ -353,12 +353,8 @@ impl Diagnostic for NontrivialResidualError {
 /// For records, we can't know whether the attributes in the given record are
 /// required or optional.
 /// This function, when given a record that has keys A, B, and C, will return a
-/// `SchemaType` where A, B, and C are all marked as optional attributes, but no
+/// `SchemaType` where A, B, and C are all marked as required attributes, but no
 /// other attributes are possible.
-/// That is, this assumes that all existing attributes are optional, but that no
-/// other optional attributes are possible.
-/// Compared to marking A, B, and C as required, this allows the returned
-/// `SchemaType` to `is_consistent_with()` more types.
 ///
 /// This function may return `GetSchemaTypeError`, but should never return
 /// `NontrivialResidual`, because `RestrictedExpr`s can't contain nontrivial
@@ -382,10 +378,10 @@ pub fn schematype_of_restricted_expr(
                         BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                         extensions,
                     )?;
-                    // we can't know if the attribute is required or optional,
-                    // but marking it optional is more flexible -- allows the
-                    // attribute type to `is_consistent_with()` more types
-                    Ok((k.clone(), AttributeType::optional(attr_type)))
+                    // We can't know if the attribute is required or optional.
+                    // Assume it's required so that calling `is_consistent_with` on this and a type from the Schema
+                    // will reject attributes not present in the schema.
+                    Ok((k.clone(), AttributeType::required(attr_type)))
                 }).collect::<Result<BTreeMap<_,_>, GetSchemaTypeError>>()?,
                 open_attrs: false,
             })
