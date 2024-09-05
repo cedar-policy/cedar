@@ -2357,7 +2357,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2501,7 +2501,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
                 .build()
         );
 
@@ -2846,7 +2846,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2997,8 +2997,8 @@ mod schema_based_parsing_tests {
         expect_err(
             "",
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (optional) long, "inner2" => (optional) string, "inner3" => (optional) { "innerinner" => (optional) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
                 .build()
         );
 

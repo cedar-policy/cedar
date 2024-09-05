@@ -2408,7 +2408,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                     .build()
             );
         });
@@ -2596,7 +2596,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
                     .build()
             );
         });
