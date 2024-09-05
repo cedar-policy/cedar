@@ -220,38 +220,31 @@ impl std::fmt::Display for SchemaType {
             Self::Bool => write!(f, "bool"),
             Self::Long => write!(f, "long"),
             Self::String => write!(f, "string"),
-            Self::Set { element_ty } => write!(f, "(set of {})", &element_ty),
-            Self::EmptySet => write!(f, "empty-set"),
+            Self::Set { element_ty } => write!(f, "[{element_ty}]"),
+            Self::EmptySet => write!(f, "[]"),
             Self::Record { attrs, open_attrs } => {
-                if attrs.is_empty() && *open_attrs {
-                    write!(f, "any record")
-                } else if attrs.is_empty() {
-                    write!(f, "empty record")
-                } else {
-                    if *open_attrs {
-                        write!(f, "record with at least attributes: {{")?;
-                    } else {
-                        write!(f, "record with attributes: {{")?;
+                write!(f, "{{ ")?;
+                // sorting attributes ensures that there is a single, deterministic
+                // Display output for each `SchemaType`, which is important for
+                // tests that check equality of error messages
+                for (i, (k, v)) in attrs
+                    .iter()
+                    .sorted_unstable_by_key(|(k, _)| SmolStr::clone(k))
+                    .enumerate()
+                {
+                    write!(f, "{k:?} => {v}")?;
+                    if i < (attrs.len() - 1) {
+                        write!(f, ", ")?;
                     }
-                    // sorting attributes ensures that there is a single, deterministic
-                    // Display output for each `SchemaType`, which is important for
-                    // tests that check equality of error messages
-                    for (i, (k, v)) in attrs
-                        .iter()
-                        .sorted_unstable_by_key(|(k, _)| SmolStr::clone(k))
-                        .enumerate()
-                    {
-                        write!(f, "{k:?} => {v}")?;
-                        if i < (attrs.len() - 1) {
-                            write!(f, ", ")?;
-                        }
-                    }
-                    write!(f, "}}")?;
-                    Ok(())
                 }
+                if *open_attrs {
+                    write!(f, ", ...")?;
+                }
+                write!(f, " }}")?;
+                Ok(())
             }
             Self::Entity { ty } => write!(f, "`{ty}`"),
-            Self::Extension { name } => write!(f, "{}", name),
+            Self::Extension { name } => write!(f, "{name}"),
         }
     }
 }
