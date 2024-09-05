@@ -69,9 +69,9 @@ pub enum SchemaType {
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
-    attr_type: SchemaType,
+    pub(crate) attr_type: SchemaType,
     /// Is the attribute required
-    required: bool,
+    pub(crate) required: bool,
 }
 
 impl SchemaType {
@@ -353,8 +353,9 @@ impl Diagnostic for NontrivialResidualError {
 /// For records, we can't know whether the attributes in the given record are
 /// required or optional.
 /// This function, when given a record that has keys A, B, and C, will return a
-/// `SchemaType` where A, B, and C are all marked as required attributes, but no
-/// other attributes are possible.
+/// `SchemaType` where A, B, and C are all marked as optional attributes, but no
+/// other attributes are possible. This maximized flexibility while avoiding
+/// heterogeneous sets.
 ///
 /// This function may return `GetSchemaTypeError`, but should never return
 /// `NontrivialResidual`, because `RestrictedExpr`s can't contain nontrivial
@@ -379,9 +380,8 @@ pub fn schematype_of_restricted_expr(
                         extensions,
                     )?;
                     // We can't know if the attribute is required or optional.
-                    // Assume it's required so that calling `is_consistent_with` on this and a type from the Schema
-                    // will reject attributes not present in the schema.
-                    Ok((k.clone(), AttributeType::required(attr_type)))
+                    // Keep as optional to minimize heterogeneous sets.
+                    Ok((k.clone(), AttributeType::optional(attr_type)))
                 }).collect::<Result<BTreeMap<_,_>, GetSchemaTypeError>>()?,
                 open_attrs: false,
             })

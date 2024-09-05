@@ -1382,6 +1382,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use cool_asserts::assert_matches;
     use entities::err::EntitiesError;
     use serde_json::json;
 
@@ -1709,6 +1710,158 @@ mod entity_validate_tests {
             }
         }
     }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    (
+                        "extra".into(),
+                        RestrictedExpression::new_string("bad".into()),
+                    ),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(_))
+        );
+    }
+
+    #[test]
+    fn issue_1176_should_pass_1() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn issue_1176_should_pass_2() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+            entity User {
+              allowedTagsForRole: {
+                "Role-A"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+                "Role-B"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+              },
+            };
+
+            action UpdateWorkspace appliesTo {
+              principal: User,
+              resource: User,
+            };
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+                "type": "User",
+                "id": "Alice"
+            },
+            "attrs": {
+                "allowedTagsForRole": {
+                    "Role-B": {
+                        "production_status": [
+                            "production"
+                        ],
+                        "country": [
+                            "ALL"
+                        ],
+                        "stage": [
+                            "valuation"
+                        ]
+                    }
+                }
+            },
+            "parents": []
+        }
+        "###;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
 }
 
 /// The main unit tests for schema-based parsing live here, as they require both
@@ -1743,7 +1896,7 @@ mod schema_based_parsing_tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::cognitive_complexity)]
-    fn signle_attr_types() {
+    fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
             "entityTypes": {
@@ -1998,7 +2151,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (required) string, "type" => (required) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2487,7 +2640,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (required) string, "type" => (required) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2639,7 +2792,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (required) long, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (optional) long, "inner2" => (optional) string, "inner3" => (optional) { "innerinner" => (optional) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
                 .build()
         );
 
@@ -3374,45 +3527,6 @@ mod schema_based_parsing_tests {
             parser_enforce_computed.from_json_value(entitiesjson_no_tc),
             Err(EntitiesError::TransitiveClosureError(_))
         ));
-    }
-
-    /// Record inside entity doesn't conform to schema
-    #[test]
-    fn issue_1176() {
-        let (schema, _) = Schema::from_cedarschema_str(
-            "
-            entity E {
-              rec: {
-                foo: Long
-              }
-            };
-            action Act appliesTo {
-              principal: [E],
-              resource: [E],
-            };
-        ",
-        )
-        .unwrap();
-        let entity = Entity::new(
-            EntityUid::from_str(r#"E::"abc""#).unwrap(),
-            HashMap::from_iter([(
-                "rec".into(),
-                RestrictedExpression::new_record([
-                    ("foo".into(), RestrictedExpression::new_long(4567)),
-                    (
-                        "extra".into(),
-                        RestrictedExpression::new_string("bad".into()),
-                    ),
-                ])
-                .unwrap(),
-            )]),
-            HashSet::new(),
-        )
-        .unwrap();
-        assert_matches!(
-            Entities::from_entities([entity], Some(&schema)),
-            Err(EntitiesError::InvalidEntity(_))
-        );
     }
 }
 

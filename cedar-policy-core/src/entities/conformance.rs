@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::collections::BTreeMap;
+
 use super::{
     json::err::TypeMismatchError, schematype_of_restricted_expr, EntityTypeDescription,
     GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType,
@@ -24,6 +26,7 @@ use crate::ast::{
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
 use miette::Diagnostic;
+use smol_str::SmolStr;
 use thiserror::Error;
 pub mod err;
 
@@ -176,6 +179,68 @@ pub fn typecheck_value_against_schematype(
     }
 }
 
+/// Check whether the given `RestrictedExpr` is a valid instance of `SchemaType`
+pub fn does_restricted_expr_implement_schematype(
+    expr: BorrowedRestrictedExpr<'_>,
+    expr_ty: &SchemaType,
+    expected_ty: &SchemaType,
+    extensions: &Extensions<'_>,
+) -> bool {
+    use SchemaType::*;
+    if expr_ty == expected_ty {
+        return true;
+    }
+
+    match (expr_ty, expected_ty) {
+        (Set { .. }, EmptySet) => true,
+        (EmptySet, Set { .. }) => true,
+        (
+            Set {
+                element_ty: expr_elm_ty,
+            },
+            Set { element_ty: elty },
+        ) => match expr.as_set_elements() {
+            Some(mut els) => els.all(|e| {
+                does_restricted_expr_implement_schematype(e, expr_elm_ty, elty, extensions)
+            }),
+            None => false,
+        },
+        (
+            Record {
+                attrs: expr_attrs, ..
+            },
+            Record { attrs, open_attrs },
+        ) => match expr.as_record_pairs() {
+            Some(pairs) => {
+                let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
+                let all_req_schema_attrs_in_record =
+                    attrs.iter().all(|(k, v)| match pairs_map.get(k) {
+                        Some(inner_e) => does_restricted_expr_implement_schematype(
+                            *inner_e,
+                            &expr_attrs.get(k).unwrap().attr_type,
+                            &v.attr_type,
+                            extensions,
+                        ),
+                        None => !v.required,
+                    });
+                let all_rec_attrs_in_schema =
+                    pairs_map.iter().all(|(k, inner_e)| match attrs.get(*k) {
+                        Some(sch_ty) => does_restricted_expr_implement_schematype(
+                            *inner_e,
+                            &expr_attrs.get(*k).unwrap().attr_type,
+                            &sch_ty.attr_type,
+                            extensions,
+                        ),
+                        None => false,
+                    });
+                (*open_attrs || all_rec_attrs_in_schema) && all_req_schema_attrs_in_record
+            }
+            None => false,
+        },
+        _ => false,
+    }
+}
+
 /// Check whether the given `RestrictedExpr` typechecks with the given `SchemaType`.
 /// If the typecheck passes, return `Ok(())`.
 /// If the typecheck fails, return an appropriate `Err`.
@@ -190,7 +255,8 @@ pub fn typecheck_restricted_expr_against_schematype(
     // directly?
     match schematype_of_restricted_expr(expr, extensions) {
         Ok(actual_ty) => {
-            if actual_ty.is_consistent_with(expected_ty) {
+            if does_restricted_expr_implement_schematype(expr, &actual_ty, expected_ty, extensions)
+            {
                 // typecheck passes
                 Ok(())
             } else {
