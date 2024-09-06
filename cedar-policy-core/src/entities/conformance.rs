@@ -213,16 +213,18 @@ pub fn does_restricted_expr_implement_schematype(
         ) => match expr.as_record_pairs() {
             Some(pairs) => {
                 let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
-                let all_req_schema_attrs_in_record =
-                    attrs.iter().all(|(k, v)| match pairs_map.get(k) {
-                        Some(inner_e) => does_restricted_expr_implement_schematype(
-                            *inner_e,
-                            &expr_attrs.get(k).unwrap().attr_type,
-                            &v.attr_type,
-                            extensions,
-                        ),
-                        None => !v.required,
-                    });
+                let all_req_schema_attrs_in_record = attrs.iter().all(|(k, v)| {
+                    !v.required
+                        || match pairs_map.get(k) {
+                            Some(inner_e) => does_restricted_expr_implement_schematype(
+                                *inner_e,
+                                &expr_attrs.get(k).unwrap().attr_type,
+                                &v.attr_type,
+                                extensions,
+                            ),
+                            None => false,
+                        }
+                });
                 let all_rec_attrs_in_schema =
                     pairs_map.iter().all(|(k, inner_e)| match attrs.get(*k) {
                         Some(sch_ty) => does_restricted_expr_implement_schematype(

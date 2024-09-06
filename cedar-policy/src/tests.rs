@@ -1862,6 +1862,93 @@ action "g" appliesTo {
         "###;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
+
+    #[test]
+    fn issue_1176_should_pass_3() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+            entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
+            action "g" appliesTo {
+              principal: [A],
+              resource: [A],
+              context: {"vlipwwpm0am": Set < Set < {"": __cedar::String, "b"?: __cedar::Bool} > >}
+            };
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": ""
+            },
+            "attrs": {
+              "qqamncWam": [
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  }
+                ],
+                [
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
 }
 
 /// The main unit tests for schema-based parsing live here, as they require both
@@ -3859,7 +3946,7 @@ mod issue_618 {
         round_trip(r#"permit(principal, action, resource) when { principal["\n"] };"#);
         round_trip(r#"permit(principal, action, resource) when { {"\n": 0} };"#);
         round_trip(
-            r#"@annotation("\n") 
+            r#"@annotation("\n")
 permit(principal, action, resource) when { {"\n": 0} };"#,
         );
     }
