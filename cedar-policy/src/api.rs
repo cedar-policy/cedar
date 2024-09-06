@@ -2058,7 +2058,7 @@ impl PolicySet {
     }
 
     /// Returns the number of `Template`s in the `PolicySet`.
-    /// 
+    ///
     /// This will include both static and template-linked policies.
     pub fn num_of_policies(&self) -> usize {
         self.policies.len()
