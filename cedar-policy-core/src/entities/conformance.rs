@@ -182,35 +182,29 @@ pub fn typecheck_value_against_schematype(
 /// Check whether the given `RestrictedExpr` is a valid instance of `SchemaType`
 pub fn does_restricted_expr_implement_schematype(
     expr: BorrowedRestrictedExpr<'_>,
-    expr_ty: &SchemaType,
     expected_ty: &SchemaType,
     extensions: &Extensions<'_>,
 ) -> bool {
     use SchemaType::*;
-    if expr_ty == expected_ty {
-        return true;
-    }
 
-    match (expr_ty, expected_ty) {
-        (Set { .. }, EmptySet) => true,
-        (EmptySet, Set { .. }) => true,
-        (
-            Set {
-                element_ty: expr_elm_ty,
-            },
-            Set { element_ty: elty },
-        ) => match expr.as_set_elements() {
-            Some(mut els) => els.all(|e| {
-                does_restricted_expr_implement_schematype(e, expr_elm_ty, elty, extensions)
-            }),
+    match expected_ty {
+        Bool => expr.as_bool().is_some(),
+        Long => expr.as_long().is_some(),
+        String => expr.as_string().is_some(),
+        EmptySet => expr.as_set_elements().is_some(),
+        Set { .. }
+            if expr.as_set_elements().is_some() && expr.as_set_elements().unwrap().count() == 0 =>
+        {
+            true
+        }
+
+        Set { element_ty: elty } => match expr.as_set_elements() {
+            Some(mut els) => {
+                els.all(|e| does_restricted_expr_implement_schematype(e, elty, extensions))
+            }
             None => false,
         },
-        (
-            Record {
-                attrs: expr_attrs, ..
-            },
-            Record { attrs, open_attrs },
-        ) => match expr.as_record_pairs() {
+        Record { attrs, open_attrs } => match expr.as_record_pairs() {
             Some(pairs) => {
                 let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
                 let all_req_schema_attrs_in_record = attrs.iter().all(|(k, v)| {
@@ -218,7 +212,6 @@ pub fn does_restricted_expr_implement_schematype(
                         || match pairs_map.get(k) {
                             Some(inner_e) => does_restricted_expr_implement_schematype(
                                 *inner_e,
-                                &expr_attrs.get(k).unwrap().attr_type,
                                 &v.attr_type,
                                 extensions,
                             ),
@@ -229,7 +222,6 @@ pub fn does_restricted_expr_implement_schematype(
                     pairs_map.iter().all(|(k, inner_e)| match attrs.get(*k) {
                         Some(sch_ty) => does_restricted_expr_implement_schematype(
                             *inner_e,
-                            &expr_attrs.get(*k).unwrap().attr_type,
                             &sch_ty.attr_type,
                             extensions,
                         ),
@@ -239,7 +231,17 @@ pub fn does_restricted_expr_implement_schematype(
             }
             None => false,
         },
-        _ => false,
+        Extension { name } => match expr.as_extn_fn_call() {
+            Some((actual_name, _)) => match format!("{:?}", name.0.id).as_str() {
+                "Id(\"ipaddr\")" => format!("{:?}", actual_name.0.id).as_str() == "Id(\"ip\")",
+                _ => name == actual_name,
+            },
+            None => false,
+        },
+        Entity { ty } => match expr.as_euid() {
+            Some(actual_euid) => actual_euid.entity_type() == ty,
+            None => false,
+        },
     }
 }
 
@@ -257,8 +259,7 @@ pub fn typecheck_restricted_expr_against_schematype(
     // directly?
     match schematype_of_restricted_expr(expr, extensions) {
         Ok(actual_ty) => {
-            if does_restricted_expr_implement_schematype(expr, &actual_ty, expected_ty, extensions)
-            {
+            if does_restricted_expr_implement_schematype(expr, expected_ty, extensions) {
                 // typecheck passes
                 Ok(())
             } else {

@@ -3946,7 +3946,7 @@ mod issue_618 {
         round_trip(r#"permit(principal, action, resource) when { principal["\n"] };"#);
         round_trip(r#"permit(principal, action, resource) when { {"\n": 0} };"#);
         round_trip(
-            r#"@annotation("\n")
+            r#"@annotation("\n") 
 permit(principal, action, resource) when { {"\n": 0} };"#,
         );
     }
