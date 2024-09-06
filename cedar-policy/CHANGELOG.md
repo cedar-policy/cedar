@@ -11,6 +11,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 Cedar Language Version: TBD
+* Add convenience methods to see how many policies and templates a policy set has (#1179).
 
 ### Added
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
