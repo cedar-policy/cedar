@@ -139,10 +139,13 @@ pub struct AccessTrie<T = ()> {
     pub(crate) children: Fields<T>,
     /// `ancestors_trie` is another [`RootAccessTrie`] representing
     /// all of the ancestors of this entity that are required.
+    /// The ancestors trie is a subset of the original [`RootAccessTrie`].
     /// See the [`RootAccessTrie::is_ancestor`] annotation.
     pub(crate) ancestors_trie: RootAccessTrie,
     /// When ancestors are required, each node marked `is_ancestor`
     /// represents an ancestor or set of ancestors that are required.
+    /// An ancestor trie can be thought of as a set of pointers to
+    /// nodes in the original trie, one `is_ancestor`-marked node per pointer.
     pub(crate) is_ancestor: bool,
     /// Optional data annotation, usually used for type information.
     #[serde(skip_serializing, skip_deserializing)]
