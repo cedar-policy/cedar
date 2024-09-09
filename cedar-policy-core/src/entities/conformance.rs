@@ -190,18 +190,8 @@ pub fn does_restricted_expr_implement_schematype(
         Bool => expr.as_bool().is_some(),
         Long => expr.as_long().is_some(),
         String => expr.as_string().is_some(),
-        EmptySet => {
-            // PANIC SAFETY: LHS checks that `is_some()`.
-            #[allow(clippy::unwrap_used)]
-            (expr.as_set_elements().is_some() && expr.as_set_elements().unwrap().count() == 0)
-        }
-        // PANIC SAFETY: LHS checks that `is_some()`.
-        #[allow(clippy::unwrap_used)]
-        Set { .. }
-            if expr.as_set_elements().is_some() && expr.as_set_elements().unwrap().count() == 0 =>
-        {
-            true
-        }
+        EmptySet => expr.as_set_elements().is_some_and(|e| e.count() == 0),
+        Set { .. } if expr.as_set_elements().is_some_and(|e| e.count() == 0) => true,
         Set { element_ty: elty } => match expr.as_set_elements() {
             Some(mut els) => els.all(|e| does_restricted_expr_implement_schematype(e, elty)),
             None => false,
