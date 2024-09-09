@@ -226,8 +226,8 @@ pub fn does_restricted_expr_implement_schematype(
             None => false,
         },
         Extension { name } => match expr.as_extn_fn_call() {
-            Some((actual_name, _)) => match format!("{:?}", name.0.id).as_str() {
-                "Id(\"ipaddr\")" => format!("{:?}", actual_name.0.id).as_str() == "Id(\"ip\")",
+            Some((actual_name, _)) => match name.0.id.as_ref() {
+                "ipaddr" => actual_name.0.id.as_ref() == "ip",
                 _ => name == actual_name,
             },
             None => false,

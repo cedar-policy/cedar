@@ -1752,7 +1752,7 @@ mod entity_validate_tests {
 
     /// Record inside entity doesn't conform to schema
     #[test]
-    // #[cfg(feature = "partial-validate")]
+    #[cfg(feature = "partial-validate")]
     fn issue_1176_should_fail2() {
         let schema = Schema::from_json_value(json!(
         {
