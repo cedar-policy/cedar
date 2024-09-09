@@ -17,6 +17,10 @@ Cedar Language Version: TBD
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
+- `Entity` is now `Hash`. The hash implementation compares the hash of
+  the entity UID
+- `Entity::new_empty_attrs` utility constructor that can't error 
+
 
 ## [4.0.0] - Coming soon
 Cedar Language Version: 4.0

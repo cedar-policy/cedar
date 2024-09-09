@@ -162,6 +162,13 @@ impl Entities {
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
+    ///
+    /// # Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entiites`
+    /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
+    ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
+    /// - [`EntitiesError::InvalidEntity` if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
