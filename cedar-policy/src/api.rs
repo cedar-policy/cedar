@@ -2968,6 +2968,18 @@ impl PolicySet {
         self.ast.is_empty()
     }
 
+    /// Returns the number of `Policy`s in the `PolicySet`.
+    ///
+    /// This will include both static and template-linked policies.
+    pub fn num_of_policies(&self) -> usize {
+        self.policies.len()
+    }
+
+    /// Returns the number of `Template`s in the `PolicySet`.
+    pub fn num_of_templates(&self) -> usize {
+        self.templates.len()
+    }
+
     /// Attempt to link a template and add the new template-linked policy to the policy set.
     /// If link fails, the `PolicySet` is not modified.
     /// Failure can happen for three reasons
@@ -5131,7 +5143,7 @@ mod test {
         let pset2 = PolicySet::from_json_value(json).unwrap();
 
         // There should be 2 policies, one static and two links
-        assert_eq!(pset2.policies().count(), 3);
+        assert_eq!(pset2.num_of_policies(), 3);
         let static_policy = pset2.policy(&PolicyId::new("policy")).unwrap();
         assert!(static_policy.is_static());
 
@@ -5217,8 +5229,8 @@ mod test {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.templates().count(), 0);
-        assert_eq!(policyset.policies().count(), 1);
+        assert_eq!(policyset.num_of_templates(), 0);
+        assert_eq!(policyset.num_of_policies(), 1);
         assert!(policyset.policy(&PolicyId::new("policy1")).is_some());
     }
 
@@ -5290,8 +5302,8 @@ mod test {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.policies().count(), 2);
-        assert_eq!(policyset.templates().count(), 1);
+        assert_eq!(policyset.num_of_policies(), 2);
+        assert_eq!(policyset.num_of_templates(), 1);
         assert!(policyset.template(&PolicyId::new("template")).is_some());
         let link = policyset.policy(&PolicyId::new("link")).unwrap();
         assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
