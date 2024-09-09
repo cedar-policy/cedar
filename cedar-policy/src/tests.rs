@@ -1713,7 +1713,7 @@ mod entity_validate_tests {
 
     /// Record inside entity doesn't conform to schema
     #[test]
-    fn issue_1176_should_fail() {
+    fn issue_1176_should_fail1() {
         let (schema, _) = Schema::from_cedarschema_str(
             "
             entity E {
@@ -1748,6 +1748,131 @@ mod entity_validate_tests {
             Entities::from_entities([entity], Some(&schema)),
             Err(EntitiesError::InvalidEntity(_))
         );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    // #[cfg(feature = "partial-validate")]
+    fn issue_1176_should_fail2() {
+        let schema = Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "rec": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": {
+                                            "type": "Long"
+                                        },
+                                        "bar": {
+                                            "type": "Boolean",
+                                            "required": false
+                                        }
+                                    },
+                                    "additionalAttributes": true
+                                }
+                            }
+                        },
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {
+                    "pull": {
+                        "appliesTo": {
+                            "principalTypes": [
+                                "User"
+                            ],
+                            "resourceTypes": [
+                                "User"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .expect("should be a valid schema");
+        let entity = Entity::new(
+            EntityUid::from_str(r#"User::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    ("bar".into(), RestrictedExpression::new_string("bad".into())),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(_))
+        );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail3() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Err(_));
     }
 
     #[test]
