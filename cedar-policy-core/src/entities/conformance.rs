@@ -214,14 +214,14 @@ pub fn does_restricted_expr_implement_schematype(
                             None => false,
                         }
                 });
-                let all_rec_attrs_in_schema =
+                let all_rec_attrs_match_schema =
                     pairs_map.iter().all(|(k, inner_e)| match attrs.get(*k) {
                         Some(sch_ty) => {
                             does_restricted_expr_implement_schematype(*inner_e, &sch_ty.attr_type)
                         }
-                        None => false,
+                        None => *open_attrs,
                     });
-                (*open_attrs || all_rec_attrs_in_schema) && all_req_schema_attrs_in_record
+                all_rec_attrs_match_schema && all_req_schema_attrs_in_record
             }
             None => false,
         },
@@ -247,23 +247,15 @@ pub fn typecheck_restricted_expr_against_schematype(
     expected_ty: &SchemaType,
     extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
-    // TODO(#440): instead of computing the `SchemaType` of `expr` and then
-    // checking whether the schematypes are "consistent", wouldn't it be less
-    // confusing, more efficient, and maybe even more precise to just typecheck
-    // directly?
+    if does_restricted_expr_implement_schematype(expr, expected_ty) {
+        return Ok(());
+    }
     match schematype_of_restricted_expr(expr, extensions) {
-        Ok(actual_ty) => {
-            if does_restricted_expr_implement_schematype(expr, expected_ty) {
-                // typecheck passes
-                Ok(())
-            } else {
-                Err(TypecheckError::TypeMismatch(TypeMismatchError {
-                    expected: Box::new(expected_ty.clone()),
-                    actual_ty: Some(Box::new(actual_ty)),
-                    actual_val: Either::Right(Box::new(expr.to_owned())),
-                }))
-            }
-        }
+        Ok(actual_ty) => Err(TypecheckError::TypeMismatch(TypeMismatchError {
+            expected: Box::new(expected_ty.clone()),
+            actual_ty: Some(Box::new(actual_ty)),
+            actual_val: Either::Right(Box::new(expr.to_owned())),
+        })),
         Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }) => {
             // in this case we just don't have the information to know whether
             // the attribute value (an unknown) matches the expected type.
