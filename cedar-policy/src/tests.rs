@@ -720,8 +720,8 @@ mod policy_set_tests {
         )
         .expect("Link failure");
 
-        assert_eq!(pset.templates().count(), 1);
-        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 2);
         assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
 
         assert_eq!(
@@ -4211,7 +4211,7 @@ mod policy_set_est_tests {
         let pset2 = PolicySet::from_json_value(json).unwrap();
 
         // There should be 2 policies, one static and two links
-        assert_eq!(pset2.policies().count(), 3);
+        assert_eq!(pset2.num_of_policies(), 3);
         let static_policy = pset2.policy(&PolicyId::new("policy")).unwrap();
         assert!(static_policy.is_static());
 
@@ -4297,8 +4297,8 @@ mod policy_set_est_tests {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.templates().count(), 0);
-        assert_eq!(policyset.policies().count(), 1);
+        assert_eq!(policyset.num_of_templates(), 0);
+        assert_eq!(policyset.num_of_policies(), 1);
         assert!(policyset.policy(&PolicyId::new("policy1")).is_some());
     }
 
@@ -4370,8 +4370,8 @@ mod policy_set_est_tests {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.policies().count(), 2);
-        assert_eq!(policyset.templates().count(), 1);
+        assert_eq!(policyset.num_of_policies(), 2);
+        assert_eq!(policyset.num_of_templates(), 1);
         assert!(policyset.template(&PolicyId::new("template")).is_some());
         let link = policyset.policy(&PolicyId::new("link")).unwrap();
         assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
