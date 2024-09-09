@@ -190,7 +190,9 @@ pub fn does_restricted_expr_implement_schematype(
         Bool => expr.as_bool().is_some(),
         Long => expr.as_long().is_some(),
         String => expr.as_string().is_some(),
-        EmptySet => expr.as_set_elements().is_some(),
+        EmptySet => {
+            expr.as_set_elements().is_some() && expr.as_set_elements().unwrap().count() == 0
+        }
         // PANIC SAFETY: LHS checks that `is_some()`.
         #[allow(clippy::unwrap_used)]
         Set { .. }
