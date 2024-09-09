@@ -1639,6 +1639,18 @@ impl PolicySet {
         self.ast.is_empty()
     }
 
+    /// Returns the number of `Policy`s in the `PolicySet`.
+    ///
+    /// This will include both static and template-linked policies.
+    pub fn num_of_policies(&self) -> usize {
+        self.policies.len()
+    }
+
+    /// Returns the number of `Template`s in the `PolicySet`.
+    pub fn num_of_templates(&self) -> usize {
+        self.templates.len()
+    }
+
     /// Attempt to link a template and add the new template-linked policy to the policy set.
     /// If link fails, the `PolicySet` is not modified.
     /// Failure can happen for three reasons
@@ -3605,8 +3617,8 @@ mod policy_set_tests {
         )
         .expect("Link failure");
 
-        assert_eq!(pset.templates().count(), 1);
-        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 2);
         assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
 
         assert_eq!(
