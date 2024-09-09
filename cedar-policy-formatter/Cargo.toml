@@ -15,7 +15,7 @@ cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
 pretty = "0.12.1"
 logos = "0.14.0"
 itertools = "0.13"
-smol_str = { version = "0.2", features = ["serde"] }
+smol_str = { version = "0.3", features = ["serde"] }
 regex = { version= "1.9.1", features = ["unicode"] }
 miette = { version = "7.1.0" }
 lazy_static = "1.4.0"
