@@ -264,18 +264,16 @@ impl ConditionalName {
             if matches!(
                 self.reference_type,
                 ReferenceType::Common | ReferenceType::CommonOrEntity
-            ) {
-                if all_defs.is_defined_as_common(possibility) {
-                    return Ok(possibility.clone());
-                }
+            ) && all_defs.is_defined_as_common(possibility)
+            {
+                return Ok(possibility.clone());
             }
             if matches!(
                 self.reference_type,
                 ReferenceType::Entity | ReferenceType::CommonOrEntity
-            ) {
-                if all_defs.is_defined_as_entity(possibility) {
-                    return Ok(possibility.clone());
-                }
+            ) && all_defs.is_defined_as_entity(possibility)
+            {
+                return Ok(possibility.clone());
             }
         }
         Err(TypeNotDefinedError(nonempty![self]))
