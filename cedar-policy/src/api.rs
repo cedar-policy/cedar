@@ -2968,6 +2968,18 @@ impl PolicySet {
         self.ast.is_empty()
     }
 
+    /// Returns the number of `Policy`s in the `PolicySet`.
+    ///
+    /// This will include both static and template-linked policies.
+    pub fn num_of_policies(&self) -> usize {
+        self.policies.len()
+    }
+
+    /// Returns the number of `Template`s in the `PolicySet`.
+    pub fn num_of_templates(&self) -> usize {
+        self.templates.len()
+    }
+
     /// Attempt to link a template and add the new template-linked policy to the policy set.
     /// If link fails, the `PolicySet` is not modified.
     /// Failure can happen for three reasons

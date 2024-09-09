@@ -753,8 +753,8 @@ mod policy_set_tests {
         )
         .expect("Link failure");
 
-        assert_eq!(pset.templates().count(), 1);
-        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 2);
         assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
 
         assert_eq!(
