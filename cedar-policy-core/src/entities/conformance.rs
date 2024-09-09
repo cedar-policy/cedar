@@ -183,7 +183,6 @@ pub fn typecheck_value_against_schematype(
 pub fn does_restricted_expr_implement_schematype(
     expr: BorrowedRestrictedExpr<'_>,
     expected_ty: &SchemaType,
-    extensions: &Extensions<'_>,
 ) -> bool {
     use SchemaType::*;
 
@@ -192,16 +191,15 @@ pub fn does_restricted_expr_implement_schematype(
         Long => expr.as_long().is_some(),
         String => expr.as_string().is_some(),
         EmptySet => expr.as_set_elements().is_some(),
+        // PANIC SAFETY: LHS checks that `is_some()`.
+        #[allow(clippy::unwrap_used)]
         Set { .. }
             if expr.as_set_elements().is_some() && expr.as_set_elements().unwrap().count() == 0 =>
         {
             true
         }
-
         Set { element_ty: elty } => match expr.as_set_elements() {
-            Some(mut els) => {
-                els.all(|e| does_restricted_expr_implement_schematype(e, elty, extensions))
-            }
+            Some(mut els) => els.all(|e| does_restricted_expr_implement_schematype(e, elty)),
             None => false,
         },
         Record { attrs, open_attrs } => match expr.as_record_pairs() {
@@ -210,21 +208,17 @@ pub fn does_restricted_expr_implement_schematype(
                 let all_req_schema_attrs_in_record = attrs.iter().all(|(k, v)| {
                     !v.required
                         || match pairs_map.get(k) {
-                            Some(inner_e) => does_restricted_expr_implement_schematype(
-                                *inner_e,
-                                &v.attr_type,
-                                extensions,
-                            ),
+                            Some(inner_e) => {
+                                does_restricted_expr_implement_schematype(*inner_e, &v.attr_type)
+                            }
                             None => false,
                         }
                 });
                 let all_rec_attrs_in_schema =
                     pairs_map.iter().all(|(k, inner_e)| match attrs.get(*k) {
-                        Some(sch_ty) => does_restricted_expr_implement_schematype(
-                            *inner_e,
-                            &sch_ty.attr_type,
-                            extensions,
-                        ),
+                        Some(sch_ty) => {
+                            does_restricted_expr_implement_schematype(*inner_e, &sch_ty.attr_type)
+                        }
                         None => false,
                     });
                 (*open_attrs || all_rec_attrs_in_schema) && all_req_schema_attrs_in_record
@@ -259,7 +253,7 @@ pub fn typecheck_restricted_expr_against_schematype(
     // directly?
     match schematype_of_restricted_expr(expr, extensions) {
         Ok(actual_ty) => {
-            if does_restricted_expr_implement_schematype(expr, expected_ty, extensions) {
+            if does_restricted_expr_implement_schematype(expr, expected_ty) {
                 // typecheck passes
                 Ok(())
             } else {

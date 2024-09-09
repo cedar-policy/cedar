@@ -1751,7 +1751,7 @@ mod entity_validate_tests {
     }
 
     #[test]
-    fn issue_1176_should_pass_1() {
+    fn should_pass_set_set_rec_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
             r###"
 entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
@@ -1811,7 +1811,7 @@ action "g" appliesTo {
     }
 
     #[test]
-    fn issue_1176_should_pass_2() {
+    fn example_app_tags() {
         let (schema, _) = Schema::from_cedarschema_str(
             r###"
             entity User {
@@ -1864,7 +1864,7 @@ action "g" appliesTo {
     }
 
     #[test]
-    fn issue_1176_should_pass_3() {
+    fn should_pass_set_set_record_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
             r###"
             entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
