@@ -15,8 +15,7 @@
  */
 
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, PartialValue, Type, Unknown,
-    Value, ValueKind,
+    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Type, Unknown, Value, ValueKind,
 };
 use crate::entities::Name;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
@@ -495,32 +494,5 @@ fn schematype_of_set_elements<E: From<HeterogeneousSetError>>(
                 Some(Err(e)) => Err(e),
             }
         }
-    }
-}
-
-/// Get the [`SchemaType`] of a [`PartialValue`].
-///
-/// For some residuals, the `SchemaType` cannot be determined without evaluating
-/// (or knowing more type information about the unknowns). In those cases, this
-/// function returns an appropriate `GetSchemaTypeError`.
-///
-/// See notes on [`schematype_of_value()`].
-pub fn schematype_of_partialvalue(
-    pvalue: &PartialValue,
-    extensions: &Extensions<'_>,
-) -> Result<SchemaType, GetSchemaTypeError> {
-    match pvalue {
-        PartialValue::Value(v) => schematype_of_value(v).map_err(Into::into),
-        PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-            Ok(expr) => schematype_of_restricted_expr(expr, extensions),
-            Err(_) => {
-                // the PartialValue is a residual that isn't a valid restricted expression.
-                // For now we don't try to determine the type in this case.
-                Err(NontrivialResidualError {
-                    residual: Box::new(expr.clone()),
-                }
-                .into())
-            }
-        },
     }
 }
