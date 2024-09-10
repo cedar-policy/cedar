@@ -120,7 +120,7 @@ impl From<SlotId> for ast::SlotId {
 /// Entity datatype
 // INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
 pub struct Entity(ast::Entity);
 
 impl Entity {
@@ -162,6 +162,16 @@ impl Entity {
             parents.into_iter().map(|uid| uid.0).collect(),
             &Extensions::all_available(),
         )?))
+    }
+
+    /// Create a new `Entity` with this Uid, parents, and no attributes.
+    /// This is the same as `Self::new` except the attributes are empty, and therefore it can
+    /// return `Self` instead of `Result<Self>`
+    pub fn new_empty_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
+        Self(ast::Entity::new_empty_attrs(
+            uid.into(),
+            parents.into_iter().map(EntityUid::into).collect(),
+        ))
     }
 
     /// Create a new `Entity` with no attributes.
@@ -408,6 +418,10 @@ impl Entities {
     /// error if attributes have the wrong types (e.g., string instead of
     /// integer), or if required attributes are missing or superfluous
     /// attributes are provided.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
@@ -434,6 +448,10 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn add_entities(
         self,
         entities: impl IntoIterator<Item = Entity>,
@@ -464,6 +482,11 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_str(
         self,
         json: &str,
@@ -497,6 +520,11 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_value(
         self,
         json: serde_json::Value,
@@ -530,6 +558,12 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_file(
         self,
         json: impl std::io::Read,
@@ -566,6 +600,12 @@ impl Entities {
     /// instance, it will error if attributes have the wrong types (e.g., string
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     ///
     /// ```
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
@@ -625,6 +665,12 @@ impl Entities {
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
     ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`]if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
+    ///
     /// ```
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
     /// let data =serde_json::json!(
@@ -676,6 +722,12 @@ impl Entities {
     /// instance, it will error if attributes have the wrong types (e.g., string
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
@@ -1628,7 +1680,7 @@ impl Schema {
 
     /// Returns an iterator over every entity type that can be a principal for `action` in this schema
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if `action` is not found in the schema
     pub fn principals_for_action(
@@ -1645,7 +1697,7 @@ impl Schema {
 
     /// Returns an iterator over every entity type that can be a resource for `action` in this schema
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if `action` is not found in the schema
     pub fn resources_for_action(
@@ -1662,7 +1714,7 @@ impl Schema {
 
     /// Returns an iterator over all the entity types that can be an ancestor of `ty`
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if the `ty` is not found in the schema
     pub fn ancestors<'a>(
