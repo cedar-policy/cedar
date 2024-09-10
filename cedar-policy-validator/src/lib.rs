@@ -41,6 +41,8 @@ pub mod entity_manifest;
 mod entity_manifest_analysis;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_slicing;
+#[cfg(feature = "entity-manifest")]
+mod entity_manifest_type_annotations;
 mod err;
 pub use err::*;
 mod coreschema;
