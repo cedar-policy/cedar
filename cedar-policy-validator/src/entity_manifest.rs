@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use cedar_policy_core::ast::{
-    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use cedar_policy_core::entities::err::EntitiesError;
 use miette::Diagnostic;
@@ -51,14 +51,10 @@ use crate::{ValidationResult, Validator};
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EntityManifest<T = ()>
-where
-    T: Clone,
-{
+pub struct EntityManifest {
     /// A map from request types to [`RootAccessTrie`]s.
     #[serde_as(as = "Vec<(_, _)>")]
-    #[serde(bound(deserialize = "T: Default"))]
-    pub(crate) per_action: HashMap<RequestType, RootAccessTrie<T>>,
+    pub(crate) per_action: HashMap<RequestType, RootAccessTrie>,
 }
 
 /// A map of data fields to [`AccessTrie`]s.
@@ -68,7 +64,7 @@ where
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[doc = include_str!("../../cedar-policy/experimental_warning.md")]
-pub type Fields<T> = HashMap<SmolStr, Box<AccessTrie<T>>>;
+pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
 
 /// The root of a data path or [`RootAccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -109,14 +105,10 @@ impl Display for EntityRoot {
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RootAccessTrie<T = ()>
-where
-    T: Clone,
-{
+pub struct RootAccessTrie {
     /// The data that needs to be loaded, organized by root.
     #[serde_as(as = "Vec<(_, _)>")]
-    #[serde(bound(deserialize = "T: Default"))]
-    pub(crate) trie: HashMap<EntityRoot, AccessTrie<T>>,
+    pub(crate) trie: HashMap<EntityRoot, AccessTrie>,
 }
 
 /// A Trie representing a set of data paths to load,
@@ -132,11 +124,11 @@ where
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccessTrie<T = ()> {
+pub struct AccessTrie {
     /// Child data of this entity slice.
     /// The keys are edges in the trie pointing to sub-trie values.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) children: Fields<T>,
+    pub(crate) children: Fields,
     /// `ancestors_trie` is another [`RootAccessTrie`] representing
     /// all of the ancestors of this entity that are required.
     /// The ancestors trie is a subset of the original [`RootAccessTrie`].
@@ -147,10 +139,9 @@ pub struct AccessTrie<T = ()> {
     /// An ancestor trie can be thought of as a set of pointers to
     /// nodes in the original trie, one `is_ancestor`-marked node per pointer.
     pub(crate) is_ancestor: bool,
-    /// Optional data annotation, usually used for type information.
-    #[serde(skip_serializing, skip_deserializing)]
-    #[serde(bound(deserialize = "T: Default"))]
-    pub(crate) data: T,
+    /// When this node represents an entity, this field
+    /// is populated with the entity's type.
+    entity_type: Option<EntityType>,
 }
 
 /// An access path represents path of fields, starting with an [`EntityRoot`].
@@ -161,7 +152,7 @@ pub(crate) struct AccessPath {
     /// The root variable that begins the data path
     pub root: EntityRoot,
     /// The path of fields of entities or structs
-    pub path: Vec<SmolStr>,
+    pub path: Vec<(SmolStr, Option<EntityType>)>,
 }
 
 /// Error when expressions are partial during entity
@@ -204,16 +195,16 @@ pub enum EntityManifestError {
     PartialExpression(#[from] PartialExpressionError),
 }
 
-impl<T: Clone> EntityManifest<T> {
+impl EntityManifest {
     /// Get the contents of the entity manifest
     /// indexed by the type of the request.
-    pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie<T>> {
+    pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie> {
         &self.per_action
     }
 }
 
 /// Union two tries by combining the fields.
-fn union_fields<T: Clone>(first: &Fields<T>, second: &Fields<T>) -> Fields<T> {
+fn union_fields(first: &Fields, second: &Fields) -> Fields {
     let mut res = first.clone();
     for (key, value) in second {
         res.entry(key.clone())
@@ -235,7 +226,7 @@ impl AccessPath {
         let mut current = leaf_trie;
 
         // reverse the path, visiting the last access first
-        for field in self.path.iter().rev() {
+        for (field, entity_type) in self.path.iter().rev() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
 
@@ -245,7 +236,7 @@ impl AccessPath {
                 ancestors_trie: Default::default(),
                 is_ancestor: false,
                 children: fields,
-                data: (),
+                entity_type: entity_type,
             };
         }
 
@@ -260,10 +251,10 @@ impl AccessPath {
     }
 }
 
-impl<T: Clone> RootAccessTrie<T> {
+impl RootAccessTrie {
     /// Get the trie as a hash map from [`EntityRoot`]
     /// to sub-[`AccessTrie`]s.
-    pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie<T>> {
+    pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie> {
         &self.trie
     }
 }
@@ -277,7 +268,7 @@ impl RootAccessTrie {
     }
 }
 
-impl<T: Clone> RootAccessTrie<T> {
+impl RootAccessTrie {
     /// Union two [`RootAccessTrie`]s together.
     /// The new trie requests the data from both of the original.
     pub fn union(mut self, other: &Self) -> Self {
@@ -302,7 +293,7 @@ impl Default for RootAccessTrie {
     }
 }
 
-impl<T: Clone> AccessTrie<T> {
+impl AccessTrie {
     /// Union two [`AccessTrie`]s together.
     /// The new trie requests the data from both of the original.
     pub fn union(mut self, other: &Self) -> Self {
@@ -318,7 +309,7 @@ impl<T: Clone> AccessTrie<T> {
     }
 
     /// Get the children of this [`AccessTrie`].
-    pub fn children(&self) -> &Fields<T> {
+    pub fn children(&self) -> &Fields {
         &self.children
     }
 
@@ -326,12 +317,6 @@ impl<T: Clone> AccessTrie<T> {
     /// requires all ancestors of the entity to be loaded.
     pub fn ancestors_required(&self) -> &RootAccessTrie {
         &self.ancestors_trie
-    }
-
-    /// Get the data associated with this [`AccessTrie`].
-    /// This is usually `()` unless it is annotated by a type.
-    pub fn data(&self) -> &T {
-        &self.data
     }
 }
 
@@ -342,7 +327,6 @@ impl AccessTrie {
             children: Default::default(),
             ancestors_trie: Default::default(),
             is_ancestor: false,
-            data: (),
         }
     }
 }
