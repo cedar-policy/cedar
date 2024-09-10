@@ -281,6 +281,7 @@ fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
                 children: fields,
                 ancestors_trie: Default::default(),
                 is_ancestor: false,
+                node_type: None
             }
         }
 

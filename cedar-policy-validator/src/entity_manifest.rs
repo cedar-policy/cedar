@@ -155,7 +155,7 @@ pub(crate) struct AccessPath {
     /// The root variable that begins the data path
     pub root: EntityRoot,
     /// The path of fields of entities or structs
-    pub path: Vec<(SmolStr, Option<Type>)>,
+    pub path: Vec<SmolStr>,
 }
 
 /// Error when expressions are partial during entity
@@ -204,6 +204,25 @@ impl EntityManifest {
     pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie> {
         &self.per_action
     }
+
+    /// Convert a json string to an [`EntityManifest`].
+    /// Requires the schema in order to add type annotations.
+    pub fn from_json_str(
+        json: &str,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json).map(|manifest: Self| manifest.to_typed(schema))
+    }
+
+    /// Convert a json value to an [`EntityManifest`].
+    /// Requires the schema in order to add type annotations.
+    #[allow(dead_code)]
+    pub fn from_json_value(
+        value: serde_json::Value,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, serde_json::Error> {
+        serde_json::from_value(value).map(|manifest: Self| manifest.to_typed(schema))
+    }
 }
 
 /// Union two tries by combining the fields.
@@ -229,7 +248,7 @@ impl AccessPath {
         let mut current = leaf_trie;
 
         // reverse the path, visiting the last access first
-        for (field, node_type) in self.path.iter().rev() {
+        for field in self.path.iter().rev() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
 
@@ -239,7 +258,7 @@ impl AccessPath {
                 ancestors_trie: Default::default(),
                 is_ancestor: false,
                 children: fields,
-                node_type: node_type.clone(),
+                node_type: None,
             };
         }
 
@@ -659,7 +678,7 @@ when {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -692,7 +711,7 @@ when {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -791,7 +810,7 @@ action Read appliesTo {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -903,7 +922,7 @@ action Read appliesTo {
             ]
           ]
             });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1020,7 +1039,7 @@ action Read appliesTo {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1120,7 +1139,7 @@ action BeSad appliesTo {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1253,7 +1272,7 @@ action Hello appliesTo {
             ]
           ]
         });
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1372,7 +1391,7 @@ when {
           ]
         }
         );
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1477,7 +1496,7 @@ when {
           ]
         }
         );
-        let expected_manifest = serde_json::from_value(expected).unwrap();
+        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 }

@@ -29,7 +29,7 @@ use crate::{
 impl EntityManifest {
     /// Given an untyped entity manifest and the schema that produced it,
     /// return a newly typed entity manifest.
-    fn to_typed(&self, schema: &ValidatorSchema) -> EntityManifest {
+    pub(crate) fn to_typed(&self, schema: &ValidatorSchema) -> EntityManifest {
         EntityManifest {
             per_action: self
                 .per_action
@@ -43,7 +43,11 @@ impl EntityManifest {
 impl RootAccessTrie {
     /// Type-annotate this primary slice, given the type of
     /// the request and the schema.
-    pub fn to_typed(&self, request_type: &RequestType, schema: &ValidatorSchema) -> RootAccessTrie {
+    pub(crate) fn to_typed(
+        &self,
+        request_type: &RequestType,
+        schema: &ValidatorSchema,
+    ) -> RootAccessTrie {
         RootAccessTrie {
             trie: self
                 .trie
@@ -52,11 +56,14 @@ impl RootAccessTrie {
                     (
                         key.clone(),
                         match key {
+                            // PANIC SAFETY: literal is checked against the schema during typechecking
+                            #[allow(clippy::unwrap_used)]
                             EntityRoot::Literal(lit) => slice.to_typed(
                                 request_type,
                                 &Type::euid_literal(lit.clone(), schema).unwrap(),
                                 schema,
                             ),
+                            // PANIC SAFETY: action literal is checked against the schema during typechecking
                             EntityRoot::Var(Var::Action) => {
                                 let ty = Type::euid_literal(request_type.action.clone(), schema)
                                     .unwrap();
@@ -75,7 +82,7 @@ impl RootAccessTrie {
                             EntityRoot::Var(Var::Context) => {
                                 let ty =
                                     &schema.get_action_id(&request_type.action).unwrap().context;
-                                slice.to_typed(request_type,ty, schema)
+                                slice.to_typed(request_type, ty, schema)
                             }
                         },
                     )
@@ -86,7 +93,12 @@ impl RootAccessTrie {
 }
 
 impl AccessTrie {
-    fn to_typed(&self, request_type: &RequestType, ty: &Type, schema: &ValidatorSchema) -> AccessTrie {
+    pub(crate) fn to_typed(
+        &self,
+        request_type: &RequestType,
+        ty: &Type,
+        schema: &ValidatorSchema,
+    ) -> AccessTrie {
         let children: Fields = match ty {
             Type::Never
             | Type::True
@@ -103,6 +115,8 @@ impl AccessTrie {
                         attrs,
                         open_attributes: _,
                     } => attrs,
+                    // PANIC SAFETY: strict validation shouldn't produce the AnyEntity type
+                    #[allow(clippy::panic)]
                     EntityRecordKind::AnyEntity => {
                         panic!("Strict validation resulted in AnyEntity")
                     }
