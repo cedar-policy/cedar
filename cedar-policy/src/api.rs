@@ -1321,7 +1321,7 @@ impl TryInto<Schema> for SchemaFragment {
         Ok(Schema(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
-                &Extensions::all_available(),
+                Extensions::all_available(),
             )?,
         ))
     }
@@ -3933,8 +3933,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: Schema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]
@@ -4143,8 +4143,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: Schema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]

@@ -2337,7 +2337,7 @@ mod ea_maps {
     #[test]
     fn entity_attribute() {
         let src = "entity E { tags: { ?: Set<String> } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Ok((frag, warnings)) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs, .. }) => {
@@ -2356,7 +2356,7 @@ mod ea_maps {
     #[test]
     fn record_attribute_inside_entity_attribute() {
         let src = "entity E { tags: { foo: { ?: Set<String> } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2370,7 +2370,7 @@ mod ea_maps {
     #[test]
     fn context_attribute() {
         let src = "entity E; action read appliesTo { principal: [E], resource: [E], context: { operationDetails: { ?: String } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2384,7 +2384,7 @@ mod ea_maps {
     #[test]
     fn toplevel_entity() {
         let src = "entity E { ?: Set<String> };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2399,7 +2399,7 @@ mod ea_maps {
     #[test]
     fn toplevel_context() {
         let src = "entity E; action read appliesTo { principal: [E], resource: [E], context: { ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2413,7 +2413,7 @@ mod ea_maps {
     #[test]
     fn common_type() {
         let src = "type blah = { ?: String }; entity User { blah: blah };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2427,7 +2427,7 @@ mod ea_maps {
     #[test]
     fn value_type_is_common_type() {
         let src = "type blah = { foo: String }; entity User { blah: { ?: blah } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Ok((frag, warnings)) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs, .. }) => {
@@ -2444,7 +2444,7 @@ mod ea_maps {
     #[test]
     fn nested_ea_map() {
         let src = "entity E { tags: { ?: { ?: String } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2458,7 +2458,7 @@ mod ea_maps {
     #[test]
     fn ea_map_and_attribute() {
         let src = "entity E { tags: { foo: Long, ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
@@ -2472,7 +2472,7 @@ mod ea_maps {
     #[test]
     fn two_ea_maps() {
         let src = "entity E { tags: { ?: Long, ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),

@@ -1042,8 +1042,7 @@ impl Attributes {
     ) -> Attributes {
         Attributes::with_attributes(
             Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Permissive)
-                .map(|r| r.map(|(k, v)| (k.clone(), v)))
-                .flatten(),
+                .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
     }
 }
@@ -1868,7 +1867,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -1979,7 +1978,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2105,7 +2104,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2147,7 +2146,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2192,7 +2191,7 @@ mod test {
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
         let (schema, _) =
-            ValidatorSchema::from_cedarschema_str(&type_str, &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_cedarschema_str(&type_str, Extensions::all_available()).unwrap();
         assert_eq!(
             &schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())

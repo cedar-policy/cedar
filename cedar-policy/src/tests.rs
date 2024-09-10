@@ -349,14 +349,8 @@ mod scope_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::In(euid.clone())
         );
-        let p = link(
-            "permit(principal == ?principal,action,resource);",
-            map.clone(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
+        let p = link("permit(principal == ?principal,action,resource);", map);
+        assert_eq!(p.principal_constraint(), PrincipalConstraint::Eq(euid));
     }
 
     #[test]
@@ -3511,7 +3505,7 @@ mod template_tests {
                 .help("a template should include slot(s) `?principal` or `?resource`")
                 .exactly_one_underline(src)
                 .build(),
-        )
+        );
     }
 
     #[test]
