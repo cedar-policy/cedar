@@ -32,8 +32,8 @@ Cedar Language Version: 4.0
   part of resolving #579)
 - Add convenience methods to see how many policies and templates a policy set has (#1179)
 - `Entity` is now `Hash`. The hash implementation compares the hash of
-  the entity UID
-- `Entity::new_empty_attrs` utility constructor that can't error 
+  the entity UID (#1180)
+- `Entity::new_empty_attrs` utility constructor that can't error (#1180)
 
 ### Changed
 
