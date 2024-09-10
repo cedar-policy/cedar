@@ -164,10 +164,10 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     ///
     /// # Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entiites`
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
     /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
     ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
-    /// - [`EntitiesError::InvalidEntity` if `schema` is not none and any entities do not conform
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
@@ -824,7 +824,7 @@ mod json_parsing_tests {
         parser.from_json_value(json).expect("JSON is correct")
     }
 
-    /// Ensure the initial conditions of the entiites still hold
+    /// Ensure the initial conditions of the entities still hold
     fn simple_entities_still_sane(e: &Entities) {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
