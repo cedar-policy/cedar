@@ -239,8 +239,6 @@ impl AccessPath {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
 
-            // the first time we build an access trie is the leaf
-            // of the path, so set the `ancestors_required` flag
             current = AccessTrie {
                 ancestors_trie: Default::default(),
                 is_ancestor: false,
