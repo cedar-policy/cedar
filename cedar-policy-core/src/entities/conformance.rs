@@ -257,13 +257,6 @@ pub fn typecheck_restricted_expr_against_schematype(
             // type error.
             Ok(())
         }
-        Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
-            // this case is unreachable according to the invariant in the comments
-            // on `schematype_of_restricted_expr()`.
-            // Nonetheless, rather than relying on that invariant, it's safe to
-            // treat this case like the case above and consider this as passing.
-            Ok(())
-        }
         Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
             Err(TypecheckError::HeterogeneousSet(err))
         }
