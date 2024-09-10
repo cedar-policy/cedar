@@ -511,9 +511,7 @@ impl EntityTypeFragment<ConditionalName> {
                 attributes,
                 parents,
             }),
-            (Ok(_), Some(undeclared_parents)) => {
-                Err(TypeNotDefinedError(undeclared_parents).into())
-            }
+            (Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError(undeclared_parents)),
             (Err(e), None) => Err(e),
             (Err(e), Some(mut undeclared)) => {
                 undeclared.extend(e.0);

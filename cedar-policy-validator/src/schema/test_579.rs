@@ -73,7 +73,7 @@ fn assert_parses_successfully_cedar(s: &str) -> (ValidatorSchema, Vec<SchemaWarn
     println!("{s}");
     collect_warnings(ValidatorSchema::from_cedarschema_str(
         s,
-        &Extensions::all_available(),
+        Extensions::all_available(),
     ))
     .map_err(miette::Report::new)
     .unwrap()
@@ -82,7 +82,7 @@ fn assert_parses_successfully_cedar(s: &str) -> (ValidatorSchema, Vec<SchemaWarn
 #[track_caller]
 fn assert_parses_successfully_json(v: serde_json::Value) -> ValidatorSchema {
     println!("{}", serde_json::to_string_pretty(&v).unwrap());
-    ValidatorSchema::from_json_value(v, &Extensions::all_available())
+    ValidatorSchema::from_json_value(v, Extensions::all_available())
         .map_err(miette::Report::new)
         .unwrap()
 }
@@ -90,7 +90,7 @@ fn assert_parses_successfully_json(v: serde_json::Value) -> ValidatorSchema {
 #[track_caller]
 fn assert_parse_error_cedar(s: &str, e: &ExpectedErrorMessage<'_>) {
     println!("{s}");
-    assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(s, &Extensions::all_available())), Err(err) => {
+    assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(s, Extensions::all_available())), Err(err) => {
         expect_err(s, &miette::Report::new(err), e);
     });
 }
@@ -98,12 +98,12 @@ fn assert_parse_error_cedar(s: &str, e: &ExpectedErrorMessage<'_>) {
 #[track_caller]
 fn assert_parse_error_json(v: serde_json::Value, e: &ExpectedErrorMessage<'_>) {
     println!("{}", serde_json::to_string_pretty(&v).unwrap());
-    assert_matches!(ValidatorSchema::from_json_value(v.clone(), &Extensions::all_available()), Err(err) => {
+    assert_matches!(ValidatorSchema::from_json_value(v.clone(), Extensions::all_available()), Err(err) => {
         expect_err(&v, &miette::Report::new(err), e);
     });
 }
 
-/// Makes a schema for all the XXa1 test cases, where different XX plug in
+/// Makes a schema for all the `XXa1` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as an entity type in the
@@ -120,7 +120,7 @@ fn a1_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXa1 test cases, where different XX plug in a
+/// Makes a schema for all the `XXa1` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -139,7 +139,7 @@ fn a1_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXa2 test cases, where different XX plug in
+/// Makes a schema for all the `XXa2` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as a common type in the
@@ -156,7 +156,7 @@ fn a2_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXa2 test cases, where different XX plug in a
+/// Makes a schema for all the `XXa2` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -177,7 +177,7 @@ fn a2_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXb1 test cases, where different XX plug in
+/// Makes a schema for all the `XXb1` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as an entity type in the
@@ -194,7 +194,7 @@ fn b1_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXb1 test cases, where different XX plug in a
+/// Makes a schema for all the `XXb1` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -218,7 +218,7 @@ fn b1_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXb2 test cases, where different XX plug in
+/// Makes a schema for all the `XXb2` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as a common type in the
@@ -235,7 +235,7 @@ fn b2_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXb2 test cases, where different XX plug in a
+/// Makes a schema for all the `XXb2` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -260,7 +260,7 @@ fn b2_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXc test cases, where different XX plug in
+/// Makes a schema for all the `XXc` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is not declared in any namespace.
@@ -275,7 +275,7 @@ fn c_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXc test cases, where different XX plug in a
+/// Makes a schema for all the `XXc` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -292,7 +292,7 @@ fn c_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXd1 test cases, where different XX plug in
+/// Makes a schema for all the `XXd1` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as an entity type in an
@@ -311,7 +311,7 @@ fn d1_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXd1 test cases, where different XX plug in a
+/// Makes a schema for all the `XXd1` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///
@@ -335,7 +335,7 @@ fn d1_json() -> serde_json::Value {
     })
 }
 
-/// Makes a schema for all the XXd2 test cases, where different XX plug in
+/// Makes a schema for all the `XXd2` test cases, where different XX plug in
 /// different `mytype_use` (schema constructs that use `MyType`).
 ///
 /// In all of these cases, `MyType` is declared as a common type in an
@@ -354,7 +354,7 @@ fn d2_cedar(mytype_use: &str) -> String {
     )
 }
 
-/// Makes a schema for all the XXd2 test cases, where different XX plug in a
+/// Makes a schema for all the `XXd2` test cases, where different XX plug in a
 /// different schema construct that uses `MyType` (e.g., with a function
 /// like `A1X1_json()`).
 ///

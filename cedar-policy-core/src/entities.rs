@@ -162,6 +162,13 @@ impl Entities {
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
+    ///
+    /// # Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
+    ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
@@ -817,7 +824,7 @@ mod json_parsing_tests {
         parser.from_json_value(json).expect("JSON is correct")
     }
 
-    /// Ensure the initial conditions of the entiites still hold
+    /// Ensure the initial conditions of the entities still hold
     fn simple_entities_still_sane(e: &Entities) {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
@@ -2401,7 +2408,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
                     .build()
             );
         });
@@ -2589,7 +2596,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
                     .build()
             );
         });

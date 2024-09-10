@@ -474,7 +474,7 @@ impl ValidatorSchema {
             for parent in entity_type.parents.iter() {
                 entity_children
                     .entry(internal_name_to_entity_type(parent.clone())?)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(name.clone());
             }
         }
