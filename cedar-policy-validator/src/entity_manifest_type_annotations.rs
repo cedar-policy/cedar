@@ -29,7 +29,7 @@ use crate::{
 impl EntityManifest {
     /// Given an untyped entity manifest and the schema that produced it,
     /// return a newly typed entity manifest.
-    fn to_typed(&self, schema: &ValidatorSchema) -> EntityManifest<Type> {
+    fn to_typed(&self, schema: &ValidatorSchema) -> EntityManifest {
         EntityManifest {
             per_action: self
                 .per_action
@@ -43,11 +43,7 @@ impl EntityManifest {
 impl RootAccessTrie {
     /// Type-annotate this primary slice, given the type of
     /// the request and the schema.
-    pub fn to_typed(
-        &self,
-        request_type: &RequestType,
-        schema: &ValidatorSchema,
-    ) -> RootAccessTrie<Type> {
+    pub fn to_typed(&self, request_type: &RequestType, schema: &ValidatorSchema) -> RootAccessTrie {
         RootAccessTrie {
             trie: self
                 .trie
@@ -57,26 +53,29 @@ impl RootAccessTrie {
                         key.clone(),
                         match key {
                             EntityRoot::Literal(lit) => slice.to_typed(
+                                request_type,
                                 &Type::euid_literal(lit.clone(), schema).unwrap(),
                                 schema,
                             ),
                             EntityRoot::Var(Var::Action) => {
                                 let ty = Type::euid_literal(request_type.action.clone(), schema)
                                     .unwrap();
-                                slice.to_typed(&ty, schema)
+                                slice.to_typed(request_type, &ty, schema)
                             }
                             EntityRoot::Var(Var::Principal) => slice.to_typed(
+                                request_type,
                                 &Type::named_entity_reference(request_type.principal.clone()),
                                 schema,
                             ),
                             EntityRoot::Var(Var::Resource) => slice.to_typed(
+                                request_type,
                                 &Type::named_entity_reference(request_type.resource.clone()),
                                 schema,
                             ),
                             EntityRoot::Var(Var::Context) => {
                                 let ty =
                                     &schema.get_action_id(&request_type.action).unwrap().context;
-                                slice.to_typed(ty, schema)
+                                slice.to_typed(request_type,ty, schema)
                             }
                         },
                     )
@@ -87,8 +86,8 @@ impl RootAccessTrie {
 }
 
 impl AccessTrie {
-    fn to_typed(&self, request_type: &Type, ty: &Type, schema: &ValidatorSchema) -> AccessTrie<Type> {
-        let children: Fields<Type> = match ty {
+    fn to_typed(&self, request_type: &RequestType, ty: &Type, schema: &ValidatorSchema) -> AccessTrie {
+        let children: Fields = match ty {
             Type::Never
             | Type::True
             | Type::False
@@ -131,7 +130,7 @@ impl AccessTrie {
 
         AccessTrie {
             children,
-            data: ty.clone(),
+            node_type: Some(ty.clone()),
             ancestors_trie: self.ancestors_trie.to_typed(request_type, schema),
             is_ancestor: self.is_ancestor,
         }

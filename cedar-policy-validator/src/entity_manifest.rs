@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
+    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use cedar_policy_core::entities::err::EntitiesError;
 use miette::Diagnostic;
@@ -139,9 +139,12 @@ pub struct AccessTrie {
     /// An ancestor trie can be thought of as a set of pointers to
     /// nodes in the original trie, one `is_ancestor`-marked node per pointer.
     pub(crate) is_ancestor: bool,
-    /// When this node represents an entity, this field
-    /// is populated with the entity's type.
-    entity_type: Option<EntityType>,
+    /// The type of this node in the [`AccessTrie`].
+    /// From the public API, this field should always be `Some`.
+    /// It is `None` after deserialization or after first being constructed, but it is type annotated right away.
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub(crate) node_type: Option<Type>,
 }
 
 /// An access path represents path of fields, starting with an [`EntityRoot`].
@@ -152,7 +155,7 @@ pub(crate) struct AccessPath {
     /// The root variable that begins the data path
     pub root: EntityRoot,
     /// The path of fields of entities or structs
-    pub path: Vec<(SmolStr, Option<EntityType>)>,
+    pub path: Vec<(SmolStr, Option<Type>)>,
 }
 
 /// Error when expressions are partial during entity
@@ -226,7 +229,7 @@ impl AccessPath {
         let mut current = leaf_trie;
 
         // reverse the path, visiting the last access first
-        for (field, entity_type) in self.path.iter().rev() {
+        for (field, node_type) in self.path.iter().rev() {
             let mut fields = HashMap::new();
             fields.insert(field.clone(), Box::new(current));
 
@@ -236,7 +239,7 @@ impl AccessPath {
                 ancestors_trie: Default::default(),
                 is_ancestor: false,
                 children: fields,
-                entity_type: entity_type,
+                node_type: node_type.clone(),
             };
         }
 
@@ -322,11 +325,12 @@ impl AccessTrie {
 
 impl AccessTrie {
     /// A new trie that requests no data.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             children: Default::default(),
             ancestors_trie: Default::default(),
             is_ancestor: false,
+            node_type: None,
         }
     }
 }
