@@ -169,8 +169,8 @@ impl Entity {
     /// return `Self` instead of `Result<Self>`
     pub fn new_empty_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
         Self(ast::Entity::new_empty_attrs(
-            uid.into(),
-            parents.into_iter().map(EntityUid::into).collect(),
+            uid.0,
+            parents.into_iter().map(|uid| uid.0).collect(),
         ))
     }
 
