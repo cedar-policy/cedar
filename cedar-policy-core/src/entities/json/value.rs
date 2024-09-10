@@ -18,6 +18,11 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
+use crate::entities::{
+    conformance::err::EntitySchemaConformanceError,
+    json::err::{EscapeKind, TypeMismatchError},
+    schematype_of_restricted_expr,
+};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use crate::{
@@ -26,14 +31,6 @@ use crate::{
         ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
     },
     entities::Name,
-};
-use crate::{
-    entities::{
-        conformance::err::EntitySchemaConformanceError,
-        json::err::{EscapeKind, TypeMismatchError},
-        schematype_of_restricted_expr, GetSchemaTypeError,
-    },
-    extensions::ExtensionConstructorSignature,
 };
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -637,51 +634,19 @@ impl<'e> ValueParser<'e> {
                 }
             }
             ExtnValueJson::ImplicitConstructor(val) => {
-                let arg = val.into_expr(ctx.clone())?;
-                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
-                    .map_err(|e| match e {
-                        GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::heterogeneous_set(uid, attr, err),
-                                )
-                            }
-                            ctx => JsonDeserializationError::heterogeneous_set(ctx, err),
-                        },
-                        GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid, attr, err,
-                                    ),
-                                )
-                            }
-                            ctx => JsonDeserializationError::extension_function_lookup(ctx, err),
-                        },
-                        GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
-                        | GetSchemaTypeError::NontrivialResidual { .. } => {
-                            JsonDeserializationError::unknown_in_implicit_constructor_arg(
-                                ctx(),
-                                arg.clone(),
-                            )
-                        }
-                    })?;
                 let expected_return_type = SchemaType::Extension {
                     name: expected_typename,
                 };
                 let func = self
                     .extensions
-                    .lookup_single_arg_constructor(&ExtensionConstructorSignature {
-                        argument_type: &argty,
-                        return_type: &expected_return_type,
-                    })
+                    .lookup_single_arg_constructor(&expected_return_type)
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),
                             expected_return_type,
-                            argty.clone(),
                         )
                     })?;
+                let arg = val.into_expr(ctx.clone())?;
                 Ok(RestrictedExpr::call_extension_fn(
                     func.name().clone(),
                     vec![arg],
