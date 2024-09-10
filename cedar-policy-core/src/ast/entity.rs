@@ -317,8 +317,17 @@ pub struct Entity {
     ancestors: HashSet<EntityUID>,
 }
 
+impl std::hash::Hash for Entity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.uid.hash(state);
+    }
+}
+
 impl Entity {
     /// Create a new `Entity` with this UID, attributes, and ancestors
+    ///
+    /// # Errors
+    /// - Will error if any of the [`RestrictedExpr]`s in `attrs` error when evaluated
     pub fn new(
         uid: EntityUID,
         attrs: HashMap<SmolStr, RestrictedExpr>,
@@ -344,6 +353,13 @@ impl Entity {
             attrs: evaluated_attrs,
             ancestors,
         })
+    }
+
+    /// Create a new `Entity` with this UID, ancestors, and an empty set of attributes
+    ///
+    /// Since there are no attributes, this method does not error, and returns `Self` instead of `Result<Self>`
+    pub fn new_empty_attrs(uid: EntityUID, ancestors: HashSet<EntityUID>) -> Self {
+        Self::new_with_attr_partial_value(uid, HashMap::new(), ancestors)
     }
 
     /// Create a new `Entity` with this UID, attributes, and ancestors.
