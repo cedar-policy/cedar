@@ -67,9 +67,9 @@ pub enum SchemaType {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
-    attr_type: SchemaType,
+    pub(crate) attr_type: SchemaType,
     /// Is the attribute required
-    required: bool,
+    pub(crate) required: bool,
 }
 
 impl SchemaType {
@@ -313,11 +313,8 @@ pub struct HeterogeneousSetError {
 /// required or optional.
 /// This function, when given a record that has keys A, B, and C, will return a
 /// `SchemaType` where A, B, and C are all marked as optional attributes, but no
-/// other attributes are possible.
-/// That is, this assumes that all existing attributes are optional, but that no
-/// other optional attributes are possible.
-/// Compared to marking A, B, and C as required, this allows the returned
-/// `SchemaType` to `is_consistent_with()` more types.
+/// other attributes are possible. This maximized flexibility while avoiding
+/// heterogeneous sets.
 ///
 /// This function may return `GetSchemaTypeError`, but should never return
 /// `NontrivialResidual`, because `RestrictedExpr`s can't contain nontrivial
@@ -341,9 +338,8 @@ pub fn schematype_of_restricted_expr(
                         BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                         extensions,
                     )?;
-                    // we can't know if the attribute is required or optional,
-                    // but marking it optional is more flexible -- allows the
-                    // attribute type to `is_consistent_with()` more types
+                    // We can't know if the attribute is required or optional.
+                    // Keep as optional to minimize heterogeneous sets.
                     Ok((k.clone(), AttributeType::optional(attr_type)))
                 }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?,
                 open_attrs: false,
