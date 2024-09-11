@@ -700,6 +700,40 @@ when {
         let schema = schema();
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let expected_rust = EntityManifest {
+            per_action: [(
+                RequestType {
+                    principal: "User".parse().unwrap(),
+                    resource: "Document".parse().unwrap(),
+                    action: "Action::\"Read\"".parse().unwrap(),
+                },
+                RootAccessTrie {
+                    trie: [(
+                        EntityRoot::Var(Var::Principal),
+                        AccessTrie {
+                            children: [(
+                                SmolStr::new("name"),
+                                Box::new(AccessTrie {
+                                    children: HashMap::new(),
+                                    ancestors_trie: RootAccessTrie::new(),
+                                    is_ancestor: false,
+                                    node_type: Some(Type::primitive_string()),
+                                }),
+                            )]
+                            .into_iter()
+                            .collect(),
+                            ancestors_trie: RootAccessTrie::new(),
+                            is_ancestor: false,
+                            node_type: Some(Type::named_entity_reference("User".parse().unwrap())),
+                        },
+                    )]
+                    .into_iter()
+                    .collect(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
         let expected = serde_json::json! ({
           "perAction": [
             [
@@ -739,6 +773,7 @@ when {
         });
         let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
+        assert_eq!(entity_manifest, expected_rust);
     }
 
     #[test]
