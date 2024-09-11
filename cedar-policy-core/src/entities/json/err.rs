@@ -16,14 +16,13 @@
 
 use std::fmt::Display;
 
-use super::{HeterogeneousSetError, SchemaType};
+use super::SchemaType;
 use crate::ast::{
     BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PartialValue,
     PolicyID, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::{Name, ReservedNameError};
-use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
@@ -117,37 +116,6 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeMismatch(TypeMismatch),
-    /// During schema-based parsing, found a set whose elements don't all have
-    /// the same type.  This doesn't match any possible schema.
-    ///
-    /// (This is used in all cases except inside entity attributes;
-    /// heterogeneous sets in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`. As of this writing, that means this
-    /// should only be used for schema-based parsing of the `Context`. Note that
-    /// for non-schema-based parsing, heterogeneous sets are not an error.)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HeterogeneousSet(HeterogeneousSet),
-    /// During schema-based parsing, error looking up an extension function.
-    /// This error can occur during schema-based parsing because that may
-    /// require getting information about any extension functions referenced in
-    /// the JSON.
-    ///
-    /// (This is used in all cases except inside entity attributes; extension
-    /// function lookup errors in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`. As of this writing, that means this
-    /// should only be used for schema-based parsing of the `Context`.)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExtensionFunctionLookup(ExtensionFunctionLookup),
-    /// During schema-based parsing, found an unknown in an _argument_ to an
-    /// extension function being processed in implicit-constructor form. This is
-    /// not currently supported.
-    /// To pass an unknown to an extension function, use the
-    /// explicit-constructor form.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownInImplicitConstructorArg(UnknownInImplicitConstructorArg),
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
     #[error("{0}, the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
@@ -201,12 +169,10 @@ impl JsonDeserializationError {
     pub(crate) fn missing_implied_constructor(
         ctx: JsonDeserializationErrorContext,
         return_type: SchemaType,
-        arg_type: SchemaType,
     ) -> Self {
         Self::MissingImpliedConstructor(MissingImpliedConstructor {
             ctx: Box::new(ctx),
             return_type: Box::new(return_type),
-            arg_type: Box::new(arg_type),
         })
     }
 
@@ -249,75 +215,6 @@ impl JsonDeserializationError {
             err,
         })
     }
-
-    pub(crate) fn heterogeneous_set(
-        ctx: JsonDeserializationErrorContext,
-        err: HeterogeneousSetError,
-    ) -> Self {
-        Self::HeterogeneousSet(HeterogeneousSet {
-            ctx: Box::new(ctx),
-            err,
-        })
-    }
-
-    pub(crate) fn extension_function_lookup(
-        ctx: JsonDeserializationErrorContext,
-        err: ExtensionFunctionLookupError,
-    ) -> Self {
-        Self::ExtensionFunctionLookup(ExtensionFunctionLookup {
-            ctx: Box::new(ctx),
-            err,
-        })
-    }
-
-    pub(crate) fn unknown_in_implicit_constructor_arg(
-        ctx: JsonDeserializationErrorContext,
-        arg: RestrictedExpr,
-    ) -> Self {
-        Self::UnknownInImplicitConstructorArg(UnknownInImplicitConstructorArg {
-            ctx: Box::new(ctx),
-            arg: Box::new(arg),
-        })
-    }
-}
-
-#[derive(Debug, Error, Diagnostic)]
-#[error("{}, argument `{}` to implicit constructor contains an unknown; this is not currently supported", .ctx, .arg)]
-#[diagnostic(help(
-        r#"expected an extension value here because of the schema. To pass an unknown to an extension function, use the explicit constructor form: `{{ "fn": "SomeFn", "arg": "SomeArg" }}`"#
-    ))]
-/// Error type for constructors containing an unknown
-pub struct UnknownInImplicitConstructorArg {
-    /// Context of this error
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Argument which contains an unknown
-    arg: Box<RestrictedExpr>,
-}
-#[derive(Debug, Error, Diagnostic)]
-#[error("{ctx}, {err}")]
-/// Error type for heterogeneous sets
-pub struct HeterogeneousSet {
-    /// Context of this error, which will be something other than `EntityAttribute`.
-    /// (Heterogeneous sets in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`.)
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: HeterogeneousSetError,
-}
-
-#[derive(Debug, Error, Diagnostic)]
-#[error("{ctx}, {err}")]
-/// Error type for extension function lookup errors
-pub struct ExtensionFunctionLookup {
-    /// Context of this error, which will be something other than
-    /// `EntityAttribute`.
-    /// (Extension function lookup errors in entity attributes are reported
-    /// as `Self::EntitySchemaConformance`.)
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: ExtensionFunctionLookupError,
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -364,16 +261,14 @@ pub struct DuplicateKey {
 }
 
 #[derive(Debug, Error, Diagnostic)]
-#[error("{}, missing extension constructor for {} -> {}", .ctx, .arg_type, .return_type)]
+#[error("{}, missing extension constructor for {}", .ctx, .return_type)]
 #[diagnostic(help("expected a value of type {} because of the schema", .return_type))]
-/// Error type for missing extesnsion contructors
+/// Error type for missing extension constructors
 pub struct MissingImpliedConstructor {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
     /// return type of the constructor we were looking for
     return_type: Box<SchemaType>,
-    /// argument type of the constructor we were looking for
-    arg_type: Box<SchemaType>,
 }
 
 #[derive(Debug, Error, Diagnostic)]
