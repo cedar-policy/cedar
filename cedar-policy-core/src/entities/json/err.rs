@@ -482,11 +482,7 @@ pub enum JsonDeserializationErrorContext {
 
 /// Type mismatch error (in terms of `SchemaType`)
 #[derive(Debug, Diagnostic, Error)]
-#[error("type mismatch: value was expected to have type {expected}, but {}: `{}`",
-    match .actual_ty {
-        Some(actual_ty) => format!("actually has type {actual_ty}"),
-        None => "it does not".to_string(),
-    },
+#[error("type mismatch: value was expected to have type {expected}: `{}`",
     match .actual_val {
         Either::Left(pval) => format!("{pval}"),
         Either::Right(expr) => display_restricted_expr(expr.as_borrowed()),
@@ -495,10 +491,6 @@ pub enum JsonDeserializationErrorContext {
 pub struct TypeMismatchError {
     /// Type which was expected
     pub expected: Box<SchemaType>,
-    /// Type which was encountered instead. May be `None` in the case that
-    /// the encountered value was an `Unknown` with insufficient type
-    /// information to produce a `SchemaType`
-    pub actual_ty: Option<Box<SchemaType>>,
     /// Value which doesn't have the expected type; represented as either a
     /// PartialValue or RestrictedExpr, whichever is more convenient for the
     /// caller

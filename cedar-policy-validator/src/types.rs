@@ -36,9 +36,9 @@ use cedar_policy_core::{
     },
     entities::{
         conformance::typecheck_restricted_expr_against_schematype,
-        AttributeType as CoreAttributeType, GetSchemaTypeError, SchemaType as CoreSchemaType,
+        AttributeType as CoreAttributeType, SchemaType as CoreSchemaType,
     },
-    extensions::Extensions,
+    extensions::{ExtensionFunctionLookupError, Extensions},
 };
 
 use crate::{validation_errors::LubHelp, ValidationMode};
@@ -515,7 +515,7 @@ impl Type {
         &self,
         value: &PartialValue,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         match value {
             PartialValue::Value(value) => self.typecheck_value(value, extensions),
             PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
@@ -530,7 +530,7 @@ impl Type {
         &self,
         value: &Value,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         // we accept the overhead of cloning the `Value` and converting to
         // `RestrictedExpr` in order to improve code reuse and maintainability
         let rexpr = RestrictedExpr::from(value.clone());
@@ -545,7 +545,7 @@ impl Type {
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
             Type::Primitive {
