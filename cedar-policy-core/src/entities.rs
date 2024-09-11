@@ -33,10 +33,10 @@ pub mod json;
 use json::err::JsonSerializationError;
 
 pub use json::{
-    schematype_of_partialvalue, schematype_of_restricted_expr, AllEntitiesNoAttrsSchema,
-    AttributeType, CedarValueJson, ContextJsonParser, ContextSchema, EntityJson, EntityJsonParser,
-    EntityTypeDescription, EntityUidJson, FnAndArg, GetSchemaTypeError, HeterogeneousSetError,
-    NoEntitiesSchema, NoStaticContext, Schema, SchemaType, TypeAndId,
+    schematype_of_restricted_expr, AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson,
+    ContextJsonParser, ContextSchema, EntityJson, EntityJsonParser, EntityTypeDescription,
+    EntityUidJson, FnAndArg, GetSchemaTypeError, HeterogeneousSetError, NoEntitiesSchema,
+    NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
 use conformance::EntitySchemaConformanceChecker;
@@ -2873,7 +2873,7 @@ mod schema_based_parsing_tests {
             expect_err(
                 &entitiesjson,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                     .source(r#"found action entity `Action::"update"`, but it was not declared as an action in the schema"#)
                     .build()
             );
@@ -3036,7 +3036,7 @@ mod schema_based_parsing_tests {
             expect_err(
                 &entitiesjson,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                     .source(r#"definition of action `Action::"view"` does not match its schema declaration"#)
                     .help(r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#)
                     .build()
