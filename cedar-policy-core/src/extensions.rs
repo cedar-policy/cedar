@@ -55,16 +55,6 @@ lazy_static::lazy_static! {
     };
 }
 
-/// Structure representing the type signature of an extension function
-/// constructor. We assume constructors take exactly one argument.
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub(crate) struct ExtensionConstructorSignature<'a> {
-    /// The type of the constructors single argument.
-    pub(crate) argument_type: &'a SchemaType,
-    /// The constructors return type.
-    pub(crate) return_type: &'a SchemaType,
-}
-
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
 /// This structure is intentionally not `Clone` because we can use it entirely
@@ -79,9 +69,9 @@ pub struct Extensions<'a> {
     /// for a name. This should also make the lookup more efficient.
     functions: HashMap<&'a Name, &'a ExtensionFunction>,
     /// All single argument extension function constructors, indexed by their
-    /// type signature. Built ahead of time so that we know each constructor has
-    /// a unique type signature.
-    single_arg_constructors: HashMap<ExtensionConstructorSignature<'a>, &'a ExtensionFunction>,
+    /// return type. Built ahead of time so that we know each constructor has
+    /// a unique return type.
+    single_arg_constructors: HashMap<&'a SchemaType, &'a ExtensionFunction>,
 }
 
 impl Extensions<'static> {
@@ -118,28 +108,16 @@ impl<'a> Extensions<'a> {
         )
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
-        // Build the constructor map, ensuring that no constructors share a type signature.
+        // Build the constructor map, ensuring that no constructors share a return type
         let single_arg_constructors = util::collect_no_duplicates(
-            extensions.iter().flat_map(|e| e.funcs()).filter_map(|f| {
-                if f.is_constructor() {
-                    if let (Some(argument_type), Some(return_type)) =
-                        (f.arg_types().first(), f.return_type())
-                    {
-                        return Some((
-                            ExtensionConstructorSignature {
-                                argument_type,
-                                return_type,
-                            },
-                            f,
-                        ));
-                    }
-                }
-                None
-            }),
+            extensions
+                .iter()
+                .flat_map(|e| e.funcs())
+                .filter(|f| f.is_constructor() && f.arg_types().len() == 1)
+                .filter_map(|f| f.return_type().map(|return_type| (return_type, f))),
         )
-        .map_err(|sig| MultipleConstructorsSameSignatureError {
-            arg_type: Box::new(sig.argument_type.clone()),
-            return_type: Box::new(sig.return_type.clone()),
+        .map_err(|return_type| MultipleConstructorsSameSignatureError {
+            return_type: Box::new(return_type.clone()),
         })?;
 
         Ok(Extensions {
@@ -190,9 +168,9 @@ impl<'a> Extensions<'a> {
     /// `None` means no constructor has that signature.
     pub(crate) fn lookup_single_arg_constructor(
         &self,
-        type_signature: &ExtensionConstructorSignature<'_>,
+        return_type: &SchemaType,
     ) -> Option<&ExtensionFunction> {
-        self.single_arg_constructors.get(type_signature).copied()
+        self.single_arg_constructors.get(return_type).copied()
     }
 }
 
@@ -229,15 +207,11 @@ mod extension_initialization_errors {
         pub(crate) name: Name,
     }
 
-    /// Two extension constructors (in the same or different extensions) had
-    /// exactly the same type signature.  This is currently not allowed.
+    /// Two extension constructors (in the same or different extensions) exist
+    /// for one extension type.  This is currently not allowed.
     #[derive(Diagnostic, Debug, PartialEq, Eq, Clone, Error)]
-    #[error(
-        "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
-    )]
+    #[error("multiple extension constructors for the same extension type {return_type}")]
     pub struct MultipleConstructorsSameSignatureError {
-        /// argument type of the shared constructor signature
-        pub(crate) arg_type: Box<SchemaType>,
         /// return type of the shared constructor signature
         pub(crate) return_type: Box<SchemaType>,
     }
