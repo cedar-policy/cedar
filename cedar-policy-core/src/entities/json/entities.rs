@@ -23,7 +23,7 @@ use crate::ast::{BorrowedRestrictedExpr, Entity, EntityUID, PartialValue, Restri
 use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
     conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
-    schematype_of_partialvalue, Entities, EntitiesError, GetSchemaTypeError, TCComputation,
+    Entities, EntitiesError, TCComputation,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -79,11 +79,10 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
 /// Schema information about a single entity can take one of these forms:
 #[derive(Debug)]
 enum EntitySchemaInfo<E: EntityTypeDescription> {
-    /// There is no schema, i.e. we're not doing schema-based parsing
+    /// There is no schema, i.e. we're not doing schema-based parsing. We don't
+    /// have attribute type information in the schema for action entities, so
+    /// these are also parsed without schema-based parsing.
     NoSchema,
-    /// The entity is an action, and here's the schema's copy of the
-    /// `Entity` object for it
-    Action(Arc<Entity>),
     /// The entity is a non-action, and here's the schema's information
     /// about its type
     NonAction(E),
@@ -274,11 +273,8 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             None => EntitySchemaInfo::NoSchema,
             Some(schema) => {
                 if etype.is_action() {
-                    EntitySchemaInfo::Action(schema.action(&uid).ok_or(
-                        JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::undeclared_action(uid.clone()),
-                        ),
-                    )?)
+                    // Action entities do not have attribute type information in the schema.
+                    EntitySchemaInfo::NoSchema
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = schema
@@ -342,59 +338,6 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         )?,
                     };
                     Ok((k.clone(), rexpr))
-                }
-                EntitySchemaInfo::Action(action) => {
-                    // We'll do schema-based parsing assuming optimistically that
-                    // the type in the JSON is the same as the type in the schema.
-                    // (As of this writing, the schema doesn't actually tell us
-                    // what type each action attribute is supposed to be)
-                    let expected_val = match action.get(&k) {
-                        // `None` indicates the attribute isn't in the schema's
-                        // copy of the action entity
-                        None => {
-                            return Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::action_declaration_mismatch(
-                                    uid.clone(),
-                                ),
-                            ))
-                        }
-                        Some(v) => v,
-                    };
-                    let expected_ty =
-                        match schematype_of_partialvalue(expected_val, self.extensions) {
-                            Ok(ty) => Ok(Some(ty)),
-                            Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
-                                Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::heterogeneous_set(
-                                        uid.clone(),
-                                        k.clone(),
-                                        err,
-                                    ),
-                                ))
-                            }
-                            Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
-                                Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid.clone(),
-                                        k.clone(),
-                                        err,
-                                    ),
-                                ))
-                            }
-                            Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
-                            | Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
-                                // In these cases, we'll just do ordinary non-schema-based parsing.
-                                Ok(None)
-                            }
-                        }?;
-                    let rexpr =
-                        vparser.val_into_restricted_expr(v.into(), expected_ty.as_ref(), || {
-                            JsonDeserializationErrorContext::EntityAttribute {
-                                uid: uid.clone(),
-                                attr: k.clone(),
-                            }
-                        })?;
-                    Ok((k, rexpr))
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;

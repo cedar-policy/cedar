@@ -14,13 +14,9 @@
  * limitations under the License.
  */
 
-use crate::ast::{
-    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, PartialValue, Type, Unknown,
-    Value, ValueKind,
-};
+use crate::ast::{BorrowedRestrictedExpr, EntityType, ExprKind, Literal, Type, Unknown};
 use crate::entities::Name;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
-use crate::impl_diagnostic_from_expr_field;
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -285,13 +281,6 @@ pub enum GetSchemaTypeError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownInsufficientTypeInfo(#[from] UnknownInsufficientTypeInfoError),
-    /// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
-    /// residual which is not just a single `Unknown`). For now, we do not
-    /// attempt to compute the [`SchemaType`] in these cases, and just return
-    /// this error.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    NontrivialResidual(#[from] NontrivialResidualError),
 }
 
 /// Found a set whose elements don't all have the same type.  This doesn't match
@@ -326,22 +315,6 @@ impl std::fmt::Display for UnknownInsufficientTypeInfoError {
             None => write!(f, "unknown"),
         }
     }
-}
-
-/// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
-/// residual which is not just a single `Unknown`). For now, we do not
-/// attempt to compute the [`SchemaType`] in these cases, and just return
-/// this error.
-#[derive(Debug, Error)]
-#[error("cannot compute type of nontrivial residual `{residual}`")]
-pub struct NontrivialResidualError {
-    /// Nontrivial residual which we were trying to compute the
-    /// [`SchemaType`] of
-    residual: Box<Expr>,
-}
-
-impl Diagnostic for NontrivialResidualError {
-    impl_diagnostic_from_expr_field!(residual);
 }
 
 /// Get the [`SchemaType`] of a restricted expression.
@@ -410,56 +383,8 @@ pub fn schematype_of_restricted_expr(
     }
 }
 
-/// Get the [`SchemaType`] of a [`Value`].
-///
-/// Note that while getting the [`Type`] of a [`Value`] (with `value.type_of()`)
-/// is O(1), getting the [`SchemaType`] requires recursively traversing the
-/// whole `Value` and is thus O(n).
-///
-/// If the `Value` is a record, we can't know whether the attributes in the
-/// given record are required or optional.
-/// This function will return the `SchemaType` where all attributes that appear
-/// in the `Value` are required, and no other attributes exist.
-/// That is, this assumes that all existing attributes are required, and that no
-/// other optional attributes are possible.
-pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSetError> {
-    schematype_of_valuekind(&value.value)
-}
-
-/// Get the [`SchemaType`] of a [`ValueKind`].
-///
-/// Note that while getting the [`Type`] of a [`ValueKind`] (with `value.type_of()`)
-/// is O(1), getting the [`SchemaType`] requires recursively traversing the
-/// whole value and is thus O(n).
-///
-/// If the `ValueKind` is a record, we can't know whether the attributes in the
-/// given record are required or optional.
-/// This function will return the `SchemaType` where all attributes that appear
-/// in the `ValueKind` are required, and no other attributes exist.
-/// That is, this assumes that all existing attributes are required, and that no
-/// other optional attributes are possible.
-pub fn schematype_of_valuekind(value: &ValueKind) -> Result<SchemaType, HeterogeneousSetError> {
-    match value {
-        ValueKind::Lit(lit) => Ok(schematype_of_lit(lit)),
-        ValueKind::Set(set) => {
-            let element_types = set.iter().map(schematype_of_value);
-            schematype_of_set_elements(element_types)
-        }
-        ValueKind::Record(record) => Ok(SchemaType::Record {
-            attrs: record
-                .iter()
-                .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
-                .collect::<Result<_, HeterogeneousSetError>>()?,
-            open_attrs: false,
-        }),
-        ValueKind::ExtensionValue(ev) => Ok(SchemaType::Extension {
-            name: ev.typename(),
-        }),
-    }
-}
-
 /// Get the [`SchemaType`] of a [`Literal`].
-pub fn schematype_of_lit(lit: &Literal) -> SchemaType {
+fn schematype_of_lit(lit: &Literal) -> SchemaType {
     match lit {
         Literal::Bool(_) => SchemaType::Bool,
         Literal::Long(_) => SchemaType::Long,
@@ -495,32 +420,5 @@ fn schematype_of_set_elements<E: From<HeterogeneousSetError>>(
                 Some(Err(e)) => Err(e),
             }
         }
-    }
-}
-
-/// Get the [`SchemaType`] of a [`PartialValue`].
-///
-/// For some residuals, the `SchemaType` cannot be determined without evaluating
-/// (or knowing more type information about the unknowns). In those cases, this
-/// function returns an appropriate `GetSchemaTypeError`.
-///
-/// See notes on [`schematype_of_value()`].
-pub fn schematype_of_partialvalue(
-    pvalue: &PartialValue,
-    extensions: &Extensions<'_>,
-) -> Result<SchemaType, GetSchemaTypeError> {
-    match pvalue {
-        PartialValue::Value(v) => schematype_of_value(v).map_err(Into::into),
-        PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-            Ok(expr) => schematype_of_restricted_expr(expr, extensions),
-            Err(_) => {
-                // the PartialValue is a residual that isn't a valid restricted expression.
-                // For now we don't try to determine the type in this case.
-                Err(NontrivialResidualError {
-                    residual: Box::new(expr.clone()),
-                }
-                .into())
-            }
-        },
     }
 }
