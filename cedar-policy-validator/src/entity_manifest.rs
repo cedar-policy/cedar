@@ -198,16 +198,6 @@ pub enum EntityManifestError {
     PartialExpression(#[from] PartialExpressionError),
 }
 
-/// Error when the manifest has an attribute the schema lacks.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity manifest doesn't match schema. Schema is missing attribute {field}. Either you wrote an entity manifest by hand (not reccomended) or you are using an out-of-date entity manifest with respect to the schema.")]
-pub struct MismatchedMissingAttributeError {
-    pub(crate) field: SmolStr,
-}
-
 /// Error when the manifest has an entity the schema lacks.
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
@@ -230,14 +220,14 @@ pub struct MismatchedNotStrictSchemaError {}
 /// when the entity manifest doesn't conform to the schema.
 /// Either the user wrote an entity manifest by hand (not reccomended)
 /// or they used an out-of-date entity manifest (after updating the schema).
+/// Warning: This error is not guaranteed to happen, even when an entity
+/// manifest is out-of-date with respect to a schema! Users must ensure
+/// that entity manifests are in-sync with the schema and policies.
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 pub enum MismatchedEntityManifestError {
-    /// Mismatch between attribute in manifest and schema
-    #[error(transparent)]
-    MismatchedMissingAttribute(#[from] MismatchedMissingAttributeError),
     /// Mismatch between entity in manifest and schema
     #[error(transparent)]
     MismatchedMissingEntity(#[from] MismatchedMissingEntityError),
