@@ -17,9 +17,6 @@ Cedar Language Version: TBD
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
-- `Entity` is now `Hash`. The hash implementation compares the hash of
-  the entity UID
-- `Entity::new_empty_attrs` utility constructor that can't error 
 
 
 ## [4.0.0] - Coming soon
@@ -33,7 +30,10 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
-- Add convenience methods to see how many policies and templates a policy set has (#1179)
+- Add convenience methods to see how many policies and templates a policy set has (#1180)
+- `Entity` is now `Hash`. The hash implementation compares the hash of
+  the entity UID (#1186)
+- `Entity::new_empty_attrs` utility constructor that can't error (#1186)
 
 ### Changed
 
@@ -94,6 +94,8 @@ Cedar Language Version: 4.0
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+- (*) `Entities::from_entities()` will now correctly reject record
+  attributes with superfluous attributes. (#1177, resolving #1176)
 
 ## [3.3.0] - 2024-08-19
 Cedar Language Version: 3.4
