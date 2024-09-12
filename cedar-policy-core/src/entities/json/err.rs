@@ -494,34 +494,23 @@ pub struct TypeMismatchError {
     actual_val: Box<RestrictedExpr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 enum TypeMismatchReason {
     /// We saw this dynamic type which is not compatible with the expected
     /// schema type.
+    #[error("actually has type {0}")]
     UnexpectedType(Type),
     /// We saw a record type expression as expected, but it contains an
     /// attribute we didn't expect.
+    #[error("contains an unexpected attribute `{0}`")]
     UnexpectedAttr(SmolStr),
     /// We saw a record type expression as expected, but it did not contain an
     /// attribute we expected.
+    #[error("is missing the required attribute `{0}`")]
     MissingRequiredAtr(SmolStr),
     /// No further detail available.
+    #[error("does not")]
     None,
-}
-
-impl std::fmt::Display for TypeMismatchReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TypeMismatchReason::UnexpectedType(ty) => write!(f, "actually has type {ty}"),
-            TypeMismatchReason::UnexpectedAttr(attr) => {
-                write!(f, "contains an unexpected attribute `{attr}`")
-            }
-            TypeMismatchReason::MissingRequiredAtr(attr) => {
-                write!(f, "is missing the required attribute `{attr}`")
-            }
-            TypeMismatchReason::None => write!(f, "does not"),
-        }
-    }
 }
 
 impl TypeMismatchError {

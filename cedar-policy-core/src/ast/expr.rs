@@ -373,7 +373,7 @@ impl<T> Expr<T> {
                 .func(fn_name)
                 .ok()?
                 .return_type()
-                .map(|rty| rty.clone().into_ty()),
+                .map(|rty| rty.clone().into()),
             // We could try to be more complete here, but we can't do all that
             // much better without evaluating the argument. Even if we know it's
             // a record `Type::Record` tells us nothing about the type of the
