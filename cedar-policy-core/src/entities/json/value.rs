@@ -498,10 +498,11 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
@@ -566,10 +567,11 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(

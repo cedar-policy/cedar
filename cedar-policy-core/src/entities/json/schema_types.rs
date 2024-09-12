@@ -83,6 +83,20 @@ impl SchemaType {
         }
     }
 
+    /// Return the runtime `Type` corresponding to this `SchemaType`.
+    pub fn into_ty(self) -> Type {
+        match self {
+            SchemaType::Bool => Type::Bool,
+            SchemaType::Long => Type::Long,
+            SchemaType::String => Type::String,
+            SchemaType::Set { .. } => Type::Set,
+            SchemaType::EmptySet => Type::Set,
+            SchemaType::Record { .. } => Type::Record,
+            SchemaType::Entity { ty } => Type::Entity { ty },
+            SchemaType::Extension { name } => Type::Extension { name },
+        }
+    }
+
     /// Does this SchemaType match the given Type.
     /// I.e., are they compatible, in the sense that there exist some concrete
     /// values that have the given SchemaType and the given Type.

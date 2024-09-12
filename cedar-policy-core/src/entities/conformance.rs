@@ -22,7 +22,6 @@ use crate::ast::{
 };
 use crate::entities::ExprKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
-use either::Either;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -172,109 +171,158 @@ pub fn typecheck_value_against_schematype(
 
 /// Check whether the given `RestrictedExpr` is a valid instance of
 /// `SchemaType`.  We do not have type information for unknowns, so this
-/// function liberally treats unknowns as implementing any schema type.
-fn does_restricted_expr_implement_schematype(
-    expr: BorrowedRestrictedExpr<'_>,
-    expected_ty: &SchemaType,
-    extensions: &Extensions<'_>,
-) -> Result<bool, ExtensionFunctionLookupError> {
-    use SchemaType::*;
-
-    /// Returns `Ok(true)` only when all elements are `Ok(true)`. Return an error
-    /// result if any elements are `Err(_)`. Otherwise returns `Ok(false)`.
-    fn try_all<E>(i: impl Iterator<Item = Result<bool, E>>) -> Result<bool, E> {
-        Ok(i.collect::<Result<Vec<_>, _>>()?.iter().all(|b| *b))
-    }
-
-    // Check for `unknowns`.  Unless explicitly annotated, we don't have the
-    // information to know whether the unknown value matches the expected type.
-    // For now we consider this as passing -- we can't really report a type
-    // error <https://github.com/cedar-policy/cedar/issues/418>.
-    match expr.expr_kind() {
-        ExprKind::Unknown(u) => match u.type_annotation.clone().and_then(SchemaType::from_ty) {
-            Some(ty) => return Ok(&ty == expected_ty),
-            None => return Ok(true),
-        },
-        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-            if extensions.func(fn_name)?.return_type().is_none() {
-                // The return type is `None` only when the function is an "unknown"
-                return Ok(true);
-            }
-        }
-        _ => (),
-    };
-
-    Ok(match expected_ty {
-        Bool => expr.as_bool().is_some(),
-        Long => expr.as_long().is_some(),
-        String => expr.as_string().is_some(),
-        EmptySet => expr.as_set_elements().is_some_and(|e| e.count() == 0),
-        Set { .. } if expr.as_set_elements().is_some_and(|e| e.count() == 0) => true,
-        Set { element_ty: elty } => match expr.as_set_elements() {
-            Some(els) => try_all(
-                els.map(|e| does_restricted_expr_implement_schematype(e, elty, extensions)),
-            )?,
-            None => false,
-        },
-        Record { attrs, open_attrs } => match expr.as_record_pairs() {
-            Some(pairs) => {
-                let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
-                let all_req_schema_attrs_in_record = try_all(attrs.iter().map(|(k, v)| {
-                    if !v.required {
-                        Ok(true)
-                    } else {
-                        match pairs_map.get(k) {
-                            Some(inner_e) => does_restricted_expr_implement_schematype(
-                                *inner_e,
-                                &v.attr_type,
-                                extensions,
-                            ),
-                            None => Ok(false),
-                        }
-                    }
-                }))?;
-                let all_rec_attrs_match_schema =
-                    try_all(pairs_map.iter().map(|(k, inner_e)| match attrs.get(*k) {
-                        Some(sch_ty) => does_restricted_expr_implement_schematype(
-                            *inner_e,
-                            &sch_ty.attr_type,
-                            extensions,
-                        ),
-                        None => Ok(*open_attrs),
-                    }))?;
-                all_rec_attrs_match_schema && all_req_schema_attrs_in_record
-            }
-            None => false,
-        },
-        Extension { name } => match expr.as_extn_fn_call() {
-            Some((actual_name, _)) => match name.0.id.as_ref() {
-                "ipaddr" => actual_name.0.id.as_ref() == "ip",
-                _ => name == actual_name,
-            },
-            None => false,
-        },
-        Entity { ty } => match expr.as_euid() {
-            Some(actual_euid) => actual_euid.entity_type() == ty,
-            None => false,
-        },
-    })
-}
-
-/// Check whether the given `RestrictedExpr` typechecks with the given `SchemaType`.
-/// If the typecheck passes, return `Ok(())`.
-/// If the typecheck fails, return an appropriate `Err`.
+/// function liberally treats unknowns as implementing any schema type.  If the
+/// typecheck passes, return `Ok(())`.  If the typecheck fails, return an
+/// appropriate `Err`.
 pub fn typecheck_restricted_expr_against_schematype(
     expr: BorrowedRestrictedExpr<'_>,
     expected_ty: &SchemaType,
     extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
-    if does_restricted_expr_implement_schematype(expr, expected_ty, extensions)? {
-        Ok(())
-    } else {
-        Err(TypecheckError::TypeMismatch(TypeMismatchError {
-            expected: Box::new(expected_ty.clone()),
-            actual_val: Either::Right(Box::new(expr.to_owned())),
-        }))
+    use SchemaType::*;
+    let type_mismatch_err = || {
+        Err(TypeMismatchError::type_mismatch(
+            expected_ty.clone(),
+            expr.try_type_of(extensions),
+            expr.to_owned(),
+        )
+        .into())
+    };
+
+    match expr.expr_kind() {
+        // Check for `unknowns`.  Unless explicitly annotated, we don't have the
+        // information to know whether the unknown value matches the expected type.
+        // For now we consider this as passing -- we can't really report a type
+        // error <https://github.com/cedar-policy/cedar/issues/418>.
+        ExprKind::Unknown(u) => match u.type_annotation.clone().and_then(SchemaType::from_ty) {
+            Some(ty) => {
+                if &ty == expected_ty {
+                    return Ok(());
+                } else {
+                    return type_mismatch_err();
+                }
+            }
+            None => return Ok(()),
+        },
+        // Check for extension function calls. Restricted expressions permit all
+        // extension function calls, including those that return `bool` or
+        // potentially other values in the future.
+        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+            return match extensions.func(fn_name)?.return_type() {
+                None => {
+                    // This is actually another `unknown` case. The return type
+                    // is `None` only when the function is an "unknown"
+                    Ok(())
+                }
+                Some(rty) => {
+                    if rty == expected_ty {
+                        Ok(())
+                    } else {
+                        type_mismatch_err()
+                    }
+                }
+            };
+        }
+        _ => (),
+    };
+
+    match expected_ty {
+        Bool => {
+            if expr.as_bool().is_some() {
+                Ok(())
+            } else {
+                type_mismatch_err()
+            }
+        }
+        Long => {
+            if expr.as_long().is_some() {
+                Ok(())
+            } else {
+                type_mismatch_err()
+            }
+        }
+        String => {
+            if expr.as_string().is_some() {
+                Ok(())
+            } else {
+                type_mismatch_err()
+            }
+        }
+        EmptySet => {
+            if expr.as_set_elements().is_some_and(|e| e.count() == 0) {
+                Ok(())
+            } else {
+                type_mismatch_err()
+            }
+        }
+        Set { .. } if expr.as_set_elements().is_some_and(|e| e.count() == 0) => Ok(()),
+        Set { element_ty: elty } => match expr.as_set_elements() {
+            Some(els) => els
+                .map(|e| typecheck_restricted_expr_against_schematype(e, elty, extensions))
+                .collect::<Result<(), _>>(),
+            None => type_mismatch_err(),
+        },
+        Record { attrs, open_attrs } => match expr.as_record_pairs() {
+            Some(pairs) => {
+                let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
+                // Check that all attributes required by the schema are present
+                // in the record.
+                attrs
+                    .iter()
+                    .map(|(k, v)| {
+                        if !v.required {
+                            Ok(())
+                        } else {
+                            match pairs_map.get(k) {
+                                Some(inner_e) => typecheck_restricted_expr_against_schematype(
+                                    *inner_e,
+                                    &v.attr_type,
+                                    extensions,
+                                ),
+                                None => Err(TypeMismatchError::missing_required_attr(
+                                    expected_ty.clone(),
+                                    k.clone(),
+                                    expr.to_owned(),
+                                )
+                                .into()),
+                            }
+                        }
+                    })
+                    .collect::<Result<(), _>>()?;
+                // Check that all attributes in the record are present (as
+                // required or optional) in the schema.
+                pairs_map
+                    .iter()
+                    .map(|(k, inner_e)| match attrs.get(*k) {
+                        Some(sch_ty) => typecheck_restricted_expr_against_schematype(
+                            *inner_e,
+                            &sch_ty.attr_type,
+                            extensions,
+                        ),
+                        None => {
+                            if *open_attrs {
+                                Ok(())
+                            } else {
+                                Err(TypeMismatchError::unexpected_attr(
+                                    expected_ty.clone(),
+                                    (*k).clone(),
+                                    expr.to_owned(),
+                                )
+                                .into())
+                            }
+                        }
+                    })
+                    .collect::<Result<(), _>>()?;
+                Ok(())
+            }
+            None => type_mismatch_err(),
+        },
+        // Extension functions are handled by the first `match` in this function.
+        Extension { .. } => type_mismatch_err(),
+        Entity { ty } => match expr.as_euid() {
+            Some(actual_euid) if actual_euid.entity_type() == ty => Ok(()),
+            _ => type_mismatch_err(),
+        },
     }
 }
 

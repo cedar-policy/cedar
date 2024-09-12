@@ -2315,7 +2315,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long: `"3"`"#)
+                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                     .build()
             );
         });
@@ -2407,7 +2407,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`]: `{"id": "aaaaa", "type": "HR"}`"#)
+                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                     .build()
             );
         });
@@ -2454,7 +2454,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`: `HR::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                     .build()
             );
         });
@@ -2502,7 +2502,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr: `decimal("3.33")`"#)
+                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                     .build()
             );
         });
@@ -2595,7 +2595,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                     .build()
             );
         });
@@ -3239,7 +3239,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`: `Employee::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                     .build()
             );
         });

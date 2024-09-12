@@ -54,8 +54,7 @@ pub mod entities_json_errors {
         ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
         ExtnCall0Arguments, ExtnCall2OrMoreArguments, JsonDeserializationError, JsonError,
         JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
-        ReservedKey, Residual, TypeMismatch, TypeMismatchError, UnexpectedRecordAttr,
-        UnexpectedRestrictedExprKind,
+        ReservedKey, Residual, TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
     };
 }
 
