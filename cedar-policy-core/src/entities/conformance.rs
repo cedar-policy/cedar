@@ -186,8 +186,8 @@ fn does_restricted_expr_implement_schematype(
         Ok(i.collect::<Result<Vec<_>, _>>()?.iter().all(|b| *b))
     }
 
-    // Check for `unknowns`.  In this case we just don't have the information to
-    // know whether the attribute value (an unknown) matches the expected type.
+    // Check for `unknowns`.  Unless explicitly annotated, we don't have the
+    // information to know whether the unknown value matches the expected type.
     // For now we consider this as passing -- we can't really report a type
     // error <https://github.com/cedar-policy/cedar/issues/418>.
     match expr.expr_kind() {
