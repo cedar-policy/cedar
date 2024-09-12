@@ -450,9 +450,9 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     }
 
     /// Try to compute the runtime type of this expression. See
-    /// [Expr::try_type_of] for exactly what this computes.
+    /// [`Expr::try_type_of`] for exactly what this computes.
     ///
-    /// On a restricted expression, there are fewer case where we might fail to
+    /// On a restricted expression, there are fewer cases where we might fail to
     /// compute the type, but there are still `unknown`s and extension function
     /// calls which may cause this function to return `None` .
     pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
