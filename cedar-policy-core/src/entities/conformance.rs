@@ -206,7 +206,9 @@ pub fn typecheck_restricted_expr_against_schematype(
         },
         // Check for extension function calls. Restricted expressions permit all
         // extension function calls, including those that return `bool` or
-        // potentially other values in the future.
+        // potentially other values in the future, so it is important that this
+        // handles the case when we expect `Bool` and an extension function
+        // return `Bool``.
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
             return match extensions.func(fn_name)?.return_type() {
                 None => {
@@ -226,6 +228,13 @@ pub fn typecheck_restricted_expr_against_schematype(
         _ => (),
     };
 
+    // We know `expr` is a restricted expression, so it must either be an
+    // extension function call or a literal bool, long string, set or record.
+    // This means we don't need to check if it's a `has` or `==` expression to
+    // decide if it typechecks against `Bool`. Anything other an than a boolean
+    // literal is an error. To handle extension function calls, which could
+    // return `Bool`, we have already checked if the expression is an extension
+    // function in the prior `match` expression.
     match expected_ty {
         Bool => {
             if expr.as_bool().is_some() {
@@ -343,4 +352,346 @@ pub enum TypecheckError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
+}
+
+#[cfg(test)]
+mod test_typecheck {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+    use miette::Report;
+    use smol_str::ToSmolStr;
+
+    use crate::{
+        entities::{
+            conformance::TypecheckError, AttributeType, BorrowedRestrictedExpr, Expr, SchemaType,
+            Unknown,
+        },
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+
+    use super::typecheck_restricted_expr_against_schematype;
+
+    #[test]
+    fn unknown() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&Expr::unknown(Unknown::new_untyped("foo"))).unwrap(),
+            &SchemaType::Bool,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&Expr::unknown(Unknown::new_untyped("foo"))).unwrap(),
+            &SchemaType::String,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&Expr::unknown(Unknown::new_untyped("foo"))).unwrap(),
+            &SchemaType::Set {
+                element_ty: Box::new(SchemaType::Extension {
+                    name: "decimal".parse().unwrap(),
+                }),
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn bool() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"false".parse().unwrap()).unwrap(),
+            &SchemaType::Bool,
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn bool_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"1".parse().unwrap()).unwrap(),
+                &SchemaType::Bool,
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type bool, but it actually has type long: `1`").build()
+                );
+            }
+        )
+    }
+
+    #[test]
+    fn long() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"1".parse().unwrap()).unwrap(),
+            &SchemaType::Long,
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn long_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"false".parse().unwrap()).unwrap(),
+                &SchemaType::Long,
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type long, but it actually has type bool: `false`").build()
+                );
+            }
+        )
+    }
+
+    #[test]
+    fn string() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&r#""foo""#.parse().unwrap()).unwrap(),
+            &SchemaType::String,
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn string_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"false".parse().unwrap()).unwrap(),
+                &SchemaType::String,
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type string, but it actually has type bool: `false`").build()
+                );
+            }
+        )
+    }
+
+    #[test]
+    fn test_typecheck_set() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"[1, 2, 3]".parse().unwrap()).unwrap(),
+            &SchemaType::Set {
+                element_ty: Box::new(SchemaType::Long),
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"[]".parse().unwrap()).unwrap(),
+            &SchemaType::Set {
+                element_ty: Box::new(SchemaType::Bool),
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_typecheck_set_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"[1, 2, 3]".parse().unwrap()).unwrap(),
+                &SchemaType::Set { element_ty: Box::new(SchemaType::String) },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type string, but it actually has type long: `1`").build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"[1, true]".parse().unwrap()).unwrap(),
+                &SchemaType::Set { element_ty: Box::new(SchemaType::Long) },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type long, but it actually has type bool: `true`").build()
+                );
+            }
+        )
+    }
+
+    #[test]
+    fn test_typecheck_record() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"{}".parse().unwrap()).unwrap(),
+            &SchemaType::Record {
+                attrs: BTreeMap::new(),
+                open_attrs: false,
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"{a: 1}".parse().unwrap()).unwrap(),
+            &SchemaType::Record {
+                attrs: BTreeMap::from([(
+                    "a".to_smolstr(),
+                    AttributeType {
+                        attr_type: SchemaType::Long,
+                        required: true,
+                    },
+                )]),
+                open_attrs: false,
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&"{}".parse().unwrap()).unwrap(),
+            &SchemaType::Record {
+                attrs: BTreeMap::from([(
+                    "a".to_smolstr(),
+                    AttributeType {
+                        attr_type: SchemaType::Long,
+                        required: false,
+                    },
+                )]),
+                open_attrs: false,
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_typecheck_record_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{a: false}".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type long, but it actually has type bool: `false`").build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{}".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type { "a" => (required) long }, but it is missing the required attribute `a`: `{}`"#).build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{a: 1, b: 1}".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type { "a" => (required) long }, but it contains an unexpected attribute `b`: `{"a": 1, "b": 1}`"#).build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn extension() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&r#"decimal("1.1")"#.parse().unwrap()).unwrap(),
+            &SchemaType::Extension {
+                name: "decimal".parse().unwrap(),
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn non_constructor_extension_function() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&r#"ip("127.0.0.1").isLoopback()"#.parse().unwrap())
+                .unwrap(),
+            &SchemaType::Bool,
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn extension_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&r#"decimal("1.1")"#.parse().unwrap()).unwrap(),
+                &SchemaType::Extension { name: "ipaddr".parse().unwrap() },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("1.1")`"#).build()
+                );
+            }
+        )
+    }
+
+    #[test]
+    fn entity() {
+        typecheck_restricted_expr_against_schematype(
+            BorrowedRestrictedExpr::new(&r#"User::"alice""#.parse().unwrap()).unwrap(),
+            &SchemaType::Entity {
+                ty: "User".parse().unwrap(),
+            },
+            Extensions::all_available(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn entity_fails() {
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&r#"User::"alice""#.parse().unwrap()).unwrap(),
+                &SchemaType::Entity { ty: "Photo".parse().unwrap() },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type `Photo`, but it actually has type (entity of type `User`): `User::"alice"`"#).build()
+                );
+            }
+        )
+    }
 }

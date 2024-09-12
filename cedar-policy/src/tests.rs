@@ -1933,6 +1933,33 @@ action "g" appliesTo {
     }
 
     #[test]
+    fn from_entities_non_constructor_extension() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              foo: { bar: Bool }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity_json = json!({
+            "uid": {
+                "type": "E",
+                "id": ""
+            },
+            "attrs": {
+                "foo": {"bar": { "__extn": { "fn": "isLoopback", "arg": {"__extn": {"fn": "ip", "arg": "127.0.0.1"}}}}}
+            },
+            "parents": []
+        });
+        assert_matches!(Entity::from_json_value(entity_json, Some(&schema)), Ok(_));
+    }
+
+    #[test]
     fn should_pass_set_set_rec_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
             r###"
