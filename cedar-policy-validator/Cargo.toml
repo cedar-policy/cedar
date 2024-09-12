@@ -20,7 +20,7 @@ thiserror = "1.0"
 itertools = "0.13"
 ref-cast = "1.0"
 unicode-security = "0.1.0"
-smol_str = { version = "0.2", features = ["serde"] }
+smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
