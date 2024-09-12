@@ -1740,7 +1740,51 @@ mod entity_validate_tests {
         .unwrap();
         assert_matches!(
             Entities::from_entities([entity], Some(&schema)),
-            Err(EntitiesError::InvalidEntity(_))
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it contains an unexpected attribute `extra`: `{"extra": "bad", "foo": 4567}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_missing_attribute() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([("rec".into(), RestrictedExpression::new_record([]).unwrap())]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it is missing the required attribute `foo`: `{}`"#)
+                        .build()
+                );
+            }
         );
     }
 
@@ -1805,7 +1849,15 @@ mod entity_validate_tests {
         .unwrap();
         assert_matches!(
             Entities::from_entities([entity], Some(&schema)),
-            Err(EntitiesError::InvalidEntity(_))
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `User::"abc"`, type mismatch: value was expected to have type bool, but it actually has type string: `"bad"`"#)
+                        .build()
+                );
+            }
         );
     }
 
@@ -1866,7 +1918,18 @@ action "g" appliesTo {
           }
         "###;
 
-        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Err(_));
+        assert_matches!(
+            Entity::from_json_str(entity_str, Some(&schema)),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                        .source(r#"in attribute `foo` on `A::"alice"`, expected the record to have an attribute `bar`, but it does not"#)
+                        .build()
+                );
+            }
+        );
     }
 
     #[test]
