@@ -41,7 +41,7 @@ use super::{
 };
 use crate::{
     cedar_schema,
-    json_schema::{self, is_reserved_schema_keyword, CommonTypeId},
+    json_schema::{self, CommonTypeId},
     RawName,
 };
 
@@ -262,14 +262,15 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                 let name_loc = decl.name.loc.clone();
                 let id = UnreservedId::try_from(decl.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
-                if is_reserved_schema_keyword(&id) {
-                    Err(ToJsonSchemaError::reserved_keyword(id, name_loc))
-                } else {
-                    Ok((
-                        CommonTypeId::unchecked(id),
-                        cedar_type_to_json_type(decl.def).map_err(EAMapError::from)?,
-                    ))
-                }
+                let ctid = CommonTypeId::new(id).map_err(|e| match e {
+                    json_schema::ReservedCommonTypeBasenameError { id } => {
+                        ToJsonSchemaError::reserved_keyword(id, name_loc)
+                    }
+                })?;
+                Ok((
+                    ctid,
+                    cedar_type_to_json_type(decl.def).map_err(EAMapError::from)?,
+                ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
