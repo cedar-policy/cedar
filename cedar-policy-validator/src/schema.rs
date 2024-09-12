@@ -2916,7 +2916,7 @@ pub(crate) mod test {
     #[track_caller]
     fn assert_invalid_json_schema(src: serde_json::Value) {
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
-        assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("Used reserved schema keyword"));
+        assert_matches!(schema, Err(SchemaError::JsonDeserialization(e)) if e.to_smolstr().contains("this is reserved and cannot be the basename of a common-type declaration"));
     }
 
     // Names like `Set`, `Record`, `Entity`, and Extension` are not allowed as common type names, as specified in #1070 and #1139.

@@ -37,6 +37,7 @@ use std::{
     marker::PhantomData,
     str::FromStr,
 };
+use thiserror::Error;
 
 use crate::{
     cedar_schema::{
@@ -185,11 +186,51 @@ impl From<CommonTypeId> for UnreservedId {
     }
 }
 
+impl AsRef<UnreservedId> for CommonTypeId {
+    fn as_ref(&self) -> &UnreservedId {
+        &self.0
+    }
+}
+
 impl CommonTypeId {
+    /// Create a [`CommonTypeId`] from an [`UnreservedId`], failing if it is a reserved basename
+    pub fn new(id: UnreservedId) -> std::result::Result<Self, ReservedCommonTypeBasenameError> {
+        if Self::is_reserved_schema_keyword(&id) {
+            Err(ReservedCommonTypeBasenameError { id })
+        } else {
+            Ok(Self(id))
+        }
+    }
+
     /// Create a [`CommonTypeId`] based on an [`UnreservedId`] but do not check
     /// if the latter is valid or not
     pub fn unchecked(id: UnreservedId) -> Self {
         Self(id)
+    }
+
+    // Test if this id is a reserved JSON schema keyword.
+    // Issues:
+    // https://github.com/cedar-policy/cedar/issues/1070
+    // https://github.com/cedar-policy/cedar/issues/1139
+    fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
+        matches!(
+            id.as_ref(),
+            "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
+        )
+    }
+
+    /// Make a valid [`CommonTypeId`] from this [`UnreservedId`], modifying the
+    /// id if needed to avoid reserved basenames
+    #[cfg(feature = "arbitrary")]
+    fn make_into_valid_common_type_id(id: UnreservedId) -> Self {
+        Self::new(id.clone()).unwrap_or_else(|_| {
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid unreserved names.
+            #[allow(clippy::unwrap_used)]
+            let new_id = format!("_{id}").parse().unwrap();
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type basenames.
+            #[allow(clippy::unwrap_used)]
+            Self::new(new_id).unwrap()
+        })
     }
 }
 
@@ -203,30 +244,12 @@ impl Display for CommonTypeId {
 impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let id: UnreservedId = u.arbitrary()?;
-        if is_reserved_schema_keyword(&id) {
-            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type names as well as valid unreserved names.
-            #[allow(clippy::unwrap_used)]
-            let new_id = format!("_{id}").parse().unwrap();
-            Ok(CommonTypeId::unchecked(new_id))
-        } else {
-            Ok(CommonTypeId::unchecked(id))
-        }
+        Ok(CommonTypeId::make_into_valid_common_type_id(id))
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
         <UnreservedId as arbitrary::Arbitrary>::size_hint(depth)
     }
-}
-
-// Test if this id is a reserved JSON schema keyword.
-// Issues:
-// https://github.com/cedar-policy/cedar/issues/1070
-// https://github.com/cedar-policy/cedar/issues/1139
-pub(crate) fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
-    matches!(
-        id.as_ref(),
-        "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
-    )
 }
 
 /// Deserialize a [`CommonTypeId`]
@@ -236,15 +259,17 @@ impl<'de> Deserialize<'de> for CommonTypeId {
         D: Deserializer<'de>,
     {
         UnreservedId::deserialize(deserializer).and_then(|id| {
-            if is_reserved_schema_keyword(&id) {
-                Err(serde::de::Error::custom(format!(
-                    "Used reserved schema keyword: {id} "
-                )))
-            } else {
-                Ok(Self(id))
-            }
+            CommonTypeId::new(id).map_err(|e| serde::de::Error::custom(format!("{e}")))
         })
     }
+}
+
+/// Error when a common-type basename is reserved
+#[derive(Debug, Error, PartialEq, Clone)]
+#[error("this is reserved and cannot be the basename of a common-type declaration: {id}")]
+pub struct ReservedCommonTypeBasenameError {
+    /// `id` that is a reserved common-type basename
+    pub(crate) id: UnreservedId,
 }
 
 /// A single namespace definition from a Fragment.
