@@ -51,7 +51,6 @@ extern {
     type Error = RawUserError;
 }
 
-// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
 match {
     // Whitespace and comments
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
@@ -62,6 +61,7 @@ match {
     "entity" => ENTITY,
     "in" => IN,
     "type" => TYPE,
+    "tags" => TAGS,
     "Set" => SET,
     "appliesTo" => APPLIESTO,
     "principal" => PRINCIPAL,
@@ -108,8 +108,8 @@ Decl: Node<Declaration> = {
 
 // Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';'
 Entity: Node<Declaration> = {
-    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps.unwrap_or_default(), attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> <ts:(TAGS <Type>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps.unwrap_or_default(), attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), tags: ts }), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Action := 'action' Names ['in' QualNameOrNames]

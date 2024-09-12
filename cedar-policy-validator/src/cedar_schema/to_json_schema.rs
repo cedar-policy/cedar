@@ -348,6 +348,7 @@ fn convert_entity_decl(
     let etype = json_schema::EntityType {
         member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
         shape: convert_attr_decls(e.attrs),
+        tags: e.tags.map(|tag_ty| cedar_type_to_json_type(tag_ty)),
     };
 
     // Then map over all of the bound names

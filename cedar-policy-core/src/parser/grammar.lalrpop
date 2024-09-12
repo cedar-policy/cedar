@@ -32,7 +32,6 @@ extern {
     type Error = RawUserError;
 }
 
-// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
 match {
     // Whitespace and comments
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified

@@ -436,6 +436,7 @@ namespace Baz {action "Foo" appliesTo {
                 json_schema::EntityType::<RawName> {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )]),
             actions: HashMap::from([(
@@ -2294,5 +2295,76 @@ mod common_type_references {
             validator_schema,
             Err(SchemaError::CycleInCommonTypeReferences(_))
         );
+    }
+}
+
+/// Tests involving entity tags (RFC 82)
+#[cfg(test)]
+mod entity_tags {
+    use crate::json_schema;
+    use crate::schema::test::collect_warnings;
+    use cedar_policy_core::extensions::Extensions;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn basic_examples() {
+        let src = "entity E;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, None);
+        });
+
+        let src = "entity E tags String;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "String");
+            });
+        });
+
+        let src = "entity E tags Set<String>;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Set { element })) => {
+                assert_matches!(&**element, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                    assert_eq!(&format!("{type_name}"), "String");
+                });
+            });
+        });
+
+        let src = "entity E { foo: String } tags { foo: String };";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
+                    assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                        assert_eq!(&format!("{type_name}"), "String");
+                    });
+                    assert_eq!(*required, true);
+                });
+            });
+        });
+
+        let src = "type T = String; entity E tags T;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "T");
+            });
+        });
+
+        let src = "entity E tags E;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "E");
+            });
+        });
     }
 }

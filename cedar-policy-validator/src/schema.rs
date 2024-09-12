@@ -503,6 +503,12 @@ impl ValidatorSchema {
                         ContextOrShape::EntityTypeShape(name.clone()),
                     ))?
                 };
+                match entity_type.tags {
+                    None => (),
+                    Some(_) => {
+                        return Err(UnsupportedFeatureError(UnsupportedFeature::EntityTags).into())
+                    }
+                };
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
@@ -4462,6 +4468,134 @@ mod test_rfc70 {
         });
         assert_matches!(f.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+        });
+    }
+}
+
+/// Tests involving entity tags (RFC 82)
+#[cfg(test)]
+mod entity_tags {
+    use super::{test::collect_warnings, *};
+    use cedar_policy_core::{
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+    };
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    #[test]
+    fn cedar_syntax_tags() {
+        // This schema taken directly from the RFC 82 text
+        let src = "
+        entity User = {
+            jobLevel: Long,
+          } tags Set<String>;
+          entity Document = {
+            owner: User,
+          } tags Set<String>;
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn json_syntax_tags() {
+        // This schema taken directly from the RFC 82 text
+        let json = json!({"": {
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
+                        }
+                    },
+                    "tags" : {
+                        "type" : "Set",
+                        "element": { "type": "String" }
+                    }
+                },
+                "Document" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "owner" : {
+                                "type" : "Entity",
+                                "name" : "User"
+                            },
+                        }
+                    },
+                    "tags" : {
+                      "type" : "Set",
+                      "element": { "type": "String" }
+                    }
+                }
+            },
+            "actions": {}
+        }});
+        assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Err(e) => {
+            expect_err(
+                &json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn other_tag_types() {
+        let src = "
+            entity E;
+            type Blah = {
+                foo: Long,
+                bar: Set<E>,
+            };
+            entity Foo1 in E {
+                bool: Bool,
+            } tags Bool;
+            entity Foo2 in E {
+                bool: Bool,
+            } tags { bool: Bool };
+            entity Foo3 in E tags E;
+            entity Foo4 in E tags Set<E>;
+            entity Foo5 in E tags { a: String, b: Long };
+            entity Foo6 in E tags Blah;
+            entity Foo7 in E tags Set<Set<{a: Blah}>>;
+            entity Foo8 in E tags Foo7;
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn invalid_tags() {
+        let src = "entity E tags Undef;";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("failed to resolve type: Undef")
+                    .help("`Undef` has not been declared as a common or entity type")
+                    .build(),
+            );
         });
     }
 }
