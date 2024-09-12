@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 use crate::{
     diagnostics::ValidationError,
     json_schema,
-    types::{AttributeType, Type},
+    types::Type,
     validation_errors::{AttributeAccess, LubContext, LubHelp, UnexpectedTypeHelp},
     RawName, ValidationMode,
 };
@@ -60,7 +60,7 @@ fn slot_typechecks() {
 fn slot_in_typechecks() {
     let etype = json_schema::EntityType {
         member_of_types: vec![],
-        shape: json_schema::EntityAttributes::default(),
+        shape: json_schema::AttributesOrContext::default(),
     };
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
@@ -89,7 +89,7 @@ fn slot_in_typechecks() {
 fn slot_equals_typechecks() {
     let etype = json_schema::EntityType {
         member_of_types: vec![],
-        shape: json_schema::EntityAttributes::default(),
+        shape: json_schema::AttributesOrContext::default(),
     };
     // These don't typecheck in strict mode because the test_util expression
     // typechecker doesn't have access to a schema, so it can't link
@@ -795,6 +795,7 @@ fn contains_typechecks() {
 
 #[test]
 fn contains_typecheck_fails() {
+    use crate::types::AttributeType;
     let src = r#""foo".contains("bar")"#;
     assert_typecheck_fails_empty_schema(
         src.parse().unwrap(),

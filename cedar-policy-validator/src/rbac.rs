@@ -487,7 +487,7 @@ mod test {
                 foo_type.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -521,7 +521,7 @@ mod test {
                 "foo_type".parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -606,7 +606,7 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -630,7 +630,7 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -654,7 +654,7 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -944,7 +944,7 @@ mod test {
                 foo_type.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
                 },
             )],
             [],
@@ -977,14 +977,14 @@ mod test {
                     principal_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
             ],
@@ -994,7 +994,7 @@ mod test {
                     applies_to: Some(json_schema::ApplySpec {
                         resource_types: vec![resource_type.parse().unwrap()],
                         principal_types: vec![principal_type.parse().unwrap()],
-                        context: json_schema::RecordOrContextAttributes::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
                     attributes: None,
@@ -1366,28 +1366,28 @@ mod test {
                     principal_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_parent_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_grandparent_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
                     },
                 ),
             ],
@@ -1398,7 +1398,7 @@ mod test {
                         applies_to: Some(json_schema::ApplySpec {
                             resource_types: vec![resource_type.parse().unwrap()],
                             principal_types: vec![principal_type.parse().unwrap()],
-                            context: json_schema::RecordOrContextAttributes::default(),
+                            context: json_schema::AttributesOrContext::default(),
                         }),
                         member_of: Some(vec![json_schema::ActionEntityUID::new(
                             None,
