@@ -265,9 +265,9 @@ pub fn typecheck_restricted_expr_against_schematype(
         }
         Set { .. } if expr.as_set_elements().is_some_and(|e| e.count() == 0) => Ok(()),
         Set { element_ty: elty } => match expr.as_set_elements() {
-            Some(els) => els
-                .map(|e| typecheck_restricted_expr_against_schematype(e, elty, extensions))
-                .collect::<Result<(), _>>(),
+            Some(mut els) => els.try_for_each(|e| {
+                typecheck_restricted_expr_against_schematype(e, elty, extensions)
+            }),
             None => type_mismatch_err(),
         },
         Record { attrs, open_attrs } => match expr.as_record_pairs() {
@@ -275,33 +275,30 @@ pub fn typecheck_restricted_expr_against_schematype(
                 let pairs_map: BTreeMap<&SmolStr, BorrowedRestrictedExpr<'_>> = pairs.collect();
                 // Check that all attributes required by the schema are present
                 // in the record.
-                attrs
-                    .iter()
-                    .map(|(k, v)| {
-                        if !v.required {
-                            Ok(())
-                        } else {
-                            match pairs_map.get(k) {
-                                Some(inner_e) => typecheck_restricted_expr_against_schematype(
-                                    *inner_e,
-                                    &v.attr_type,
-                                    extensions,
-                                ),
-                                None => Err(TypeMismatchError::missing_required_attr(
-                                    expected_ty.clone(),
-                                    k.clone(),
-                                    expr.to_owned(),
-                                )
-                                .into()),
-                            }
+                attrs.iter().try_for_each(|(k, v)| {
+                    if !v.required {
+                        Ok(())
+                    } else {
+                        match pairs_map.get(k) {
+                            Some(inner_e) => typecheck_restricted_expr_against_schematype(
+                                *inner_e,
+                                &v.attr_type,
+                                extensions,
+                            ),
+                            None => Err(TypeMismatchError::missing_required_attr(
+                                expected_ty.clone(),
+                                k.clone(),
+                                expr.to_owned(),
+                            )
+                            .into()),
                         }
-                    })
-                    .collect::<Result<(), _>>()?;
+                    }
+                })?;
                 // Check that all attributes in the record are present (as
                 // required or optional) in the schema.
                 pairs_map
                     .iter()
-                    .map(|(k, inner_e)| match attrs.get(*k) {
+                    .try_for_each(|(k, inner_e)| match attrs.get(*k) {
                         Some(sch_ty) => typecheck_restricted_expr_against_schematype(
                             *inner_e,
                             &sch_ty.attr_type,
@@ -319,8 +316,7 @@ pub fn typecheck_restricted_expr_against_schematype(
                                 .into())
                             }
                         }
-                    })
-                    .collect::<Result<(), _>>()?;
+                    })?;
                 Ok(())
             }
             None => type_mismatch_err(),
