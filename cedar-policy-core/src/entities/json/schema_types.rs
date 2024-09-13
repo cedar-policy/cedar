@@ -83,84 +83,6 @@ impl SchemaType {
         }
     }
 
-    /// Does this SchemaType match the given Type.
-    /// I.e., are they compatible, in the sense that there exist some concrete
-    /// values that have the given SchemaType and the given Type.
-    pub fn matches(&self, ty: &Type) -> bool {
-        match (self, ty) {
-            (SchemaType::Bool, Type::Bool) => true,
-            (SchemaType::Long, Type::Long) => true,
-            (SchemaType::String, Type::String) => true,
-            (SchemaType::Set { .. }, Type::Set) => true,
-            (SchemaType::EmptySet, Type::Set) => true,
-            (SchemaType::Record { .. }, Type::Record) => true,
-            (SchemaType::Entity { ty: ty1 }, Type::Entity { ty: ty2 }) => ty1 == ty2,
-            (SchemaType::Extension { name: name1 }, Type::Extension { name: name2 }) => {
-                name1 == name2
-            }
-            _ => false,
-        }
-    }
-
-    /// Does this SchemaType match the given SchemaType.
-    /// I.e., are they compatible, in the sense that there exist some concrete
-    /// values that have both types.
-    pub fn is_consistent_with(&self, other: &SchemaType) -> bool {
-        if self == other {
-            true
-        } else {
-            use SchemaType::*;
-            match (self, other) {
-                (Set { .. }, EmptySet) => true,
-                (EmptySet, Set { .. }) => true,
-                (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
-                    elty1.is_consistent_with(elty2)
-                }
-                (
-                    Record {
-                        attrs: attrs1,
-                        open_attrs: open1,
-                    },
-                    Record {
-                        attrs: attrs2,
-                        open_attrs: open2,
-                    },
-                ) => {
-                    attrs1.iter().all(|(k, v)| {
-                        match attrs2.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
-                            }
-                            None => {
-                                // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1 and attrs2 is
-                                // closed, incompatible.  otherwise fine
-                                !v.required || *open2
-                            }
-                        }
-                    }) && attrs2.iter().all(|(k, v)| {
-                        match attrs1.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
-                            }
-                            None => {
-                                // attrs2 has the attribute, attrs1 does not.
-                                // if required in attrs2 and attrs1 is closed,
-                                // incompatible.  otherwise fine
-                                !v.required || *open1
-                            }
-                        }
-                    })
-                }
-                _ => false,
-            }
-        }
-    }
-
     /// Iterate over all extension function types contained in this SchemaType
     pub fn contained_ext_types(&self) -> Box<dyn Iterator<Item = &Name> + '_> {
         match self {
@@ -179,7 +101,7 @@ impl SchemaType {
 }
 
 impl AttributeType {
-    /// Constuct a new required attribute type
+    /// Construct a new required attribute type
     pub fn required(attr_type: SchemaType) -> Self {
         Self {
             attr_type,
