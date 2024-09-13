@@ -306,7 +306,7 @@ pub struct Entity {
     uid: EntityUID,
 
     /// Internal BTreMap of attributes.
-    /// We use a btreemap so that the keys have a determenistic order.
+    /// We use a btreemap so that the keys have a deterministic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
     /// `RestrictedExpr`s, for mostly historical reasons.
@@ -315,6 +315,15 @@ pub struct Entity {
     /// Set of ancestors of this `Entity` (i.e., all direct and transitive
     /// parents), as UIDs
     ancestors: HashSet<EntityUID>,
+
+    /// Tags on this entity (RFC 82)
+    ///
+    /// Like for `attrs`, we use a `BTreeMap` so that the tags have a
+    /// deterministic order.
+    /// And like in `attrs`, the values in `tags` appear as `RestrictedExpr` in
+    /// the serialized form of `Entity`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 impl std::hash::Hash for Entity {
@@ -324,7 +333,7 @@ impl std::hash::Hash for Entity {
 }
 
 impl Entity {
-    /// Create a new `Entity` with this UID, attributes, and ancestors
+    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
     ///
     /// # Errors
     /// - Will error if any of the [`RestrictedExpr]`s in `attrs` error when evaluated
@@ -352,6 +361,7 @@ impl Entity {
             uid,
             attrs: evaluated_attrs,
             ancestors,
+            tags: BTreeMap::new(),
         })
     }
 
@@ -362,7 +372,7 @@ impl Entity {
         Self::new_with_attr_partial_value(uid, HashMap::new(), ancestors)
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValue`.
@@ -375,10 +385,11 @@ impl Entity {
             uid,
             attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO(#540): can we do this without disassembling and reassembling the HashMap
             ancestors,
+            tags: BTreeMap::new(),
         }
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValueSerializedAsExpr`.
@@ -391,6 +402,7 @@ impl Entity {
             uid,
             attrs,
             ancestors,
+            tags: BTreeMap::new(),
         }
     }
 
@@ -429,12 +441,13 @@ impl Entity {
         self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
     }
 
-    /// Create an `Entity` with the given UID, no attributes, and no parents.
+    /// Create an `Entity` with the given UID, no attributes, no parents, and no tags.
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
             uid,
             attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
+            tags: BTreeMap::new(),
         }
     }
 
@@ -471,23 +484,26 @@ impl Entity {
         self.ancestors.insert(uid);
     }
 
-    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    /// Consume the entity and return the entity's owned Uid, attributes, parents, and tags.
     pub fn into_inner(
         self,
     ) -> (
         EntityUID,
         HashMap<SmolStr, PartialValue>,
         HashSet<EntityUID>,
+        HashMap<SmolStr, PartialValue>,
     ) {
         let Self {
             uid,
             attrs,
             ancestors,
+            tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
             ancestors,
+            tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
         )
     }
 
