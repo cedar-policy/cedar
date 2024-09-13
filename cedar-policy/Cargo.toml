@@ -56,6 +56,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
+miette = { version = "7.1.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"

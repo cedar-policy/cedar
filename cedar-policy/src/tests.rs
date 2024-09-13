@@ -1740,7 +1740,51 @@ mod entity_validate_tests {
         .unwrap();
         assert_matches!(
             Entities::from_entities([entity], Some(&schema)),
-            Err(EntitiesError::InvalidEntity(_))
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it contains an unexpected attribute `extra`: `{"extra": "bad", "foo": 4567}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_missing_attribute() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([("rec".into(), RestrictedExpression::new_record([]).unwrap())]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it is missing the required attribute `foo`: `{}`"#)
+                        .build()
+                );
+            }
         );
     }
 
@@ -1805,7 +1849,15 @@ mod entity_validate_tests {
         .unwrap();
         assert_matches!(
             Entities::from_entities([entity], Some(&schema)),
-            Err(EntitiesError::InvalidEntity(_))
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `User::"abc"`, type mismatch: value was expected to have type bool, but it actually has type string: `"bad"`"#)
+                        .build()
+                );
+            }
         );
     }
 
@@ -1866,7 +1918,45 @@ action "g" appliesTo {
           }
         "###;
 
-        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Err(_));
+        assert_matches!(
+            Entity::from_json_str(entity_str, Some(&schema)),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                        .source(r#"in attribute `foo` on `A::"alice"`, expected the record to have an attribute `bar`, but it does not"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_non_constructor_extension() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              foo: { bar: Bool }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity_json = json!({
+            "uid": {
+                "type": "E",
+                "id": ""
+            },
+            "attrs": {
+                "foo": {"bar": { "__extn": { "fn": "isLoopback", "arg": {"__extn": {"fn": "ip", "arg": "127.0.0.1"}}}}}
+            },
+            "parents": []
+        });
+        assert_matches!(Entity::from_json_value(entity_json, Some(&schema)), Ok(_));
     }
 
     #[test]
@@ -2287,7 +2377,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -2357,7 +2447,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2393,7 +2483,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2430,7 +2520,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2501,7 +2591,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -2772,7 +2862,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -2846,7 +2936,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2884,7 +2974,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2923,7 +3013,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2998,7 +3088,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (optional) long, "inner2" => (optional) string, "inner3" => (optional) { "innerinner" => (optional) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -3122,7 +3212,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                 .build()
         );
     }
@@ -3532,7 +3622,7 @@ mod schema_based_parsing_tests {
                         "manager": { "__extn": { "fn": "unknown", "arg": "www" }},
                         "hr_contacts": { "__extn": { "fn": "unknown", "arg": "yyy" }},
                         "sales_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "Employee", "id": "aaaaa" },
                             { "__extn": { "fn": "unknown", "arg": "123" }}
                         ],
                         "json_blob": {

@@ -43,11 +43,9 @@ pub mod entities_errors {
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
         ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
-        ExtensionFunctionLookup, ExtnCall0Arguments, ExtnCall2OrMoreArguments, HeterogeneousSet,
-        JsonDeserializationError, JsonError, JsonSerializationError, MissingImpliedConstructor,
-        MissingRequiredRecordAttr, ParseEscape, ReservedKey, Residual, TypeMismatch,
-        TypeMismatchError, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
-        UnknownInImplicitConstructorArg,
+        ExtnCall0Arguments, ExtnCall2OrMoreArguments, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
     };
 }
 
@@ -55,8 +53,8 @@ pub mod entities_json_errors {
 pub mod conformance_errors {
     pub use cedar_policy_core::entities::conformance::err::{
         ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
-        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
-        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+        InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch, UndeclaredAction,
+        UnexpectedEntityAttr, UnexpectedEntityTypeError,
     };
 }
 
@@ -1043,6 +1041,7 @@ impl From<cedar_policy_validator::RequestValidationError> for RequestValidationE
 
 /// Error subtypes for [`RequestValidationError`]
 pub mod request_validation_errors {
+    use cedar_policy_core::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use ref_cast::RefCast;
     use thiserror::Error;
@@ -1160,5 +1159,5 @@ pub mod request_validation_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct TypeOfContextError(#[from] cedar_policy_core::entities::json::GetSchemaTypeError);
+    pub struct TypeOfContextError(#[from] ExtensionFunctionLookupError);
 }

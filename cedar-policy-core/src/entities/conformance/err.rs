@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 //! This module cotnains errors around entities not conforming to schemas
-use super::{HeterogeneousSetError, TypeMismatchError};
+use super::TypeMismatchError;
 use crate::ast::{EntityType, EntityUID};
 use crate::extensions::ExtensionFunctionLookupError;
 use miette::Diagnostic;
@@ -38,11 +38,6 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeMismatch(TypeMismatch),
-    /// Found a set whose elements don't all have the same type. This doesn't match
-    /// any possible schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HeterogeneousSet(HeterogeneousSet),
     /// Found an ancestor of a type that's not allowed for that entity
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -84,24 +79,12 @@ impl EntitySchemaConformanceError {
         })
     }
 
-    pub(crate) fn type_mistmatch(
+    pub(crate) fn type_mismatch(
         uid: EntityUID,
         attr: impl Into<SmolStr>,
         err: TypeMismatchError,
     ) -> Self {
         Self::TypeMismatch(TypeMismatch {
-            uid,
-            attr: attr.into(),
-            err,
-        })
-    }
-
-    pub(crate) fn heterogeneous_set(
-        uid: EntityUID,
-        attr: impl Into<SmolStr>,
-        err: HeterogeneousSetError,
-    ) -> Self {
-        Self::HeterogeneousSet(HeterogeneousSet {
             uid,
             attr: attr.into(),
             err,
@@ -169,20 +152,6 @@ pub struct ActionDeclarationMismatch {
 pub struct UndeclaredAction {
     /// Action which was not declared in the schema
     uid: EntityUID,
-}
-
-/// Found a set whose elements don't all have the same type. This doesn't match
-/// any possible schema.
-#[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
-pub struct HeterogeneousSet {
-    /// Entity where the error occurred
-    uid: EntityUID,
-    /// Name of the attribute where the error occurred
-    attr: SmolStr,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: HeterogeneousSetError,
 }
 
 /// Found an ancestor of a type that's not allowed for that entity
