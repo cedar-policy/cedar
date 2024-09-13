@@ -23,7 +23,7 @@ use cedar_policy_core::{
     extensions::Extensions,
     parser::{Loc, Node},
 };
-use itertools::{Either, Itertools};
+use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
