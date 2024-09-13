@@ -15,8 +15,7 @@
  */
 
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::json::GetSchemaTypeError;
-use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -291,7 +290,7 @@ pub enum RequestValidationError {
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
     #[diagnostic(transparent)]
-    TypeOfContext(GetSchemaTypeError),
+    TypeOfContext(ExtensionFunctionLookupError),
 }
 
 /// Errors related to validation
