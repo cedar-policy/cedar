@@ -447,7 +447,7 @@ pub struct EntityTypeFragment<N> {
     /// fragment).
     /// In the extreme case, this may itself be just a common type pointing to a
     /// `Record` type defined in another fragment.
-    pub(super) attributes: json_schema::EntityAttributes<N>,
+    pub(super) attributes: json_schema::AttributesOrContext<N>,
     /// Direct parent entity types for this entity type.
     /// These entity types may be declared in a different namespace or schema
     /// fragment.
@@ -921,7 +921,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
         }
         json_schema::Type::Type(json_schema::TypeVariant::Record(rty)) => {
-            try_record_record_type_into_validator_type(rty, extensions)
+            try_record_type_into_validator_type(rty, extensions)
         }
         json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
             Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
@@ -985,10 +985,10 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     }
 }
 
-/// Convert a [`json_schema::RecordType<json_schema::RecordAttributeType>`]
-/// (with fully qualified names) into the [`Type`] type used by the validator.
-pub(crate) fn try_record_record_type_into_validator_type(
-    rty: json_schema::RecordType<json_schema::RecordAttributeType<InternalName>>,
+/// Convert a [`json_schema::RecordType`] (with fully qualified names) into the
+/// [`Type`] type used by the validator.
+pub(crate) fn try_record_type_into_validator_type(
+    rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
@@ -1009,52 +1009,12 @@ pub(crate) fn try_record_record_type_into_validator_type(
     }
 }
 
-/// Convert a [`json_schema::RecordType<json_schema::EntityAttributeType>`]
-/// (with fully qualified names) into the [`Type`] type used by the validator.
-pub(crate) fn try_record_entity_type_into_validator_type(
-    rty: json_schema::RecordType<json_schema::EntityAttributeType<InternalName>>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
-    if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
-        Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
-    } else {
-        Ok(
-            parse_entity_attributes(rty.attributes, extensions)?.map(move |attrs| {
-                Type::record_with_attributes(
-                    attrs,
-                    if rty.additional_attributes {
-                        OpenTag::OpenAttributes
-                    } else {
-                        OpenTag::ClosedAttributes
-                    },
-                )
-            }),
-        )
-    }
-}
-
-/// Convert a [`json_schema::EntityAttributes`] (with fully qualified names)
-/// into the [`Type`] type used by the validator.
-pub(crate) fn try_entity_attributes_into_validator_type(
-    attrs: json_schema::EntityAttributes<InternalName>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
-    match attrs {
-        json_schema::EntityAttributes::RecordAttributes(attrs) => {
-            try_jsonschema_type_into_validator_type(attrs.0, extensions)
-        }
-        json_schema::EntityAttributes::EntityAttributes(
-            json_schema::EntityAttributesInternal { attrs, .. },
-        ) => try_record_entity_type_into_validator_type(attrs, extensions),
-    }
-}
-
-/// Given the attributes for a record type in the schema file format structures
-/// (but with fully-qualified names), convert the types of the attributes into
-/// the [`Type`] data structure used by the validator, and return the result as
-/// an [`Attributes`] structure.
+/// Given the attributes for an entity or record type in the schema file format
+/// structures (but with fully-qualified names), convert the types of the
+/// attributes into the [`Type`] data structure used by the validator, and
+/// return the result as an [`Attributes`] structure.
 fn parse_record_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, json_schema::RecordAttributeType<InternalName>)>,
+    attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
@@ -1069,45 +1029,8 @@ fn parse_record_attributes(
             ))
         })
         .collect::<crate::err::Result<Vec<_>>>()?;
-    Ok(attributes_from_attributes(attrs_with_common_type_refs))
-}
-
-/// Given the attributes for an entity type in the schema file format structures
-/// (but with fully-qualified names), convert the types of the attributes into
-/// the [`Type`] data structure used by the validator, and return the result as
-/// an [`Attributes`] structure.
-fn parse_entity_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, json_schema::EntityAttributeType<InternalName>)>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
-    let attrs_with_common_type_refs = attrs
-        .into_iter()
-        .map(|(attr, ty)| -> crate::err::Result<_> {
-            match ty.ty {
-                json_schema::EntityAttributeTypeInternal::Type(inner_ty) => {
-                    let validator_type =
-                        try_jsonschema_type_into_validator_type(inner_ty, extensions)?;
-                    Ok((attr, (validator_type, ty.required)))
-                }
-                json_schema::EntityAttributeTypeInternal::EAMap { .. } => {
-                    // This will be implemented in the next RFC 68 PR, which will
-                    // introduce the necessary changes to [`Attributes`] and its
-                    // associated types
-                    Err(UnsupportedFeatureError(UnsupportedFeature::EAMaps).into())
-                }
-            }
-        })
-        .collect::<crate::err::Result<Vec<_>>>()?;
-    Ok(attributes_from_attributes(attrs_with_common_type_refs))
-}
-
-/// Given an iterator of attribute types `(attribute name, (attribute type, is_required))`,
-/// build an [`Attributes`] structure.
-fn attributes_from_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, (WithUnresolvedCommonTypeRefs<Type>, bool))> + 'static,
-) -> WithUnresolvedCommonTypeRefs<Attributes> {
-    WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
-        attrs
+    Ok(WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+        attrs_with_common_type_refs
             .into_iter()
             .map(|(s, (attr_ty, is_req))| {
                 attr_ty
@@ -1116,5 +1039,5 @@ fn attributes_from_attributes(
             })
             .collect::<crate::err::Result<Vec<_>>>()
             .map(Attributes::with_attributes)
-    })
+    }))
 }

@@ -49,7 +49,6 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-use namespace_def::try_entity_attributes_into_validator_type;
 pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
@@ -493,8 +492,8 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 let (attributes, open_attributes) = {
-                    let unresolved = try_entity_attributes_into_validator_type(
-                        entity_type.attributes,
+                    let unresolved = try_jsonschema_type_into_validator_type(
+                        entity_type.attributes.0,
                         extensions,
                     )?;
                     Self::record_attributes_or_none(
@@ -1257,7 +1256,7 @@ impl<'a> CommonTypeResolver<'a> {
                             .map(|(attr, attr_ty)| {
                                 Ok((
                                     attr,
-                                    json_schema::RecordAttributeType {
+                                    json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
                                         ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
                                     },
