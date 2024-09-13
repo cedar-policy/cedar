@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, parser::err::ParseErrors, parser::Loc};
+use crate::{
+    ast::*,
+    extensions::Extensions,
+    parser::{err::ParseErrors, Loc},
+};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -310,6 +314,77 @@ impl<T> Expr<T> {
                     | ExprKind::Record(_)
             )
         })
+    }
+
+    /// Try to compute the runtime type of this expression. This operation may
+    /// fail (returning `None`), for example, when asked to get the type of any
+    /// variables, any attributes of entities or records, or an `unknown`
+    /// without an explicitly annotated type.
+    ///
+    /// Also note that this is _not_ typechecking the expression. It does not
+    /// check that the expression actually evaluates to a value (as opposed to
+    /// erroring).
+    ///
+    /// Because of these limitations, this function should only be used to
+    /// obtain a type for use in diagnostics such as error strings.
+    pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
+        match &self.expr_kind {
+            ExprKind::Lit(l) => Some(l.type_of()),
+            ExprKind::Var(_) => None,
+            ExprKind::Slot(_) => None,
+            ExprKind::Unknown(u) => u.type_annotation.clone(),
+            ExprKind::If {
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                let type_of_then = then_expr.try_type_of(extensions);
+                let type_of_else = else_expr.try_type_of(extensions);
+                if type_of_then == type_of_else {
+                    type_of_then
+                } else {
+                    None
+                }
+            }
+            ExprKind::And { .. } => Some(Type::Bool),
+            ExprKind::Or { .. } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Neg, ..
+            } => Some(Type::Long),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Not, ..
+            } => Some(Type::Bool),
+            ExprKind::BinaryApp {
+                op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
+                ..
+            } => Some(Type::Long),
+            ExprKind::BinaryApp {
+                op:
+                    BinaryOp::Contains
+                    | BinaryOp::ContainsAll
+                    | BinaryOp::ContainsAny
+                    | BinaryOp::Eq
+                    | BinaryOp::In
+                    | BinaryOp::Less
+                    | BinaryOp::LessEq,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::ExtensionFunctionApp { fn_name, .. } => extensions
+                .func(fn_name)
+                .ok()?
+                .return_type()
+                .map(|rty| rty.clone().into()),
+            // We could try to be more complete here, but we can't do all that
+            // much better without evaluating the argument. Even if we know it's
+            // a record `Type::Record` tells us nothing about the type of the
+            // attribute.
+            ExprKind::GetAttr { .. } => None,
+            ExprKind::HasAttr { .. } => Some(Type::Bool),
+            ExprKind::Like { .. } => Some(Type::Bool),
+            ExprKind::Is { .. } => Some(Type::Bool),
+            ExprKind::Set(_) => Some(Type::Set),
+            ExprKind::Record(_) => Some(Type::Record),
+        }
     }
 }
 

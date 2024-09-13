@@ -14,14 +14,10 @@
  * limitations under the License.
  */
 
-use crate::ast::{BorrowedRestrictedExpr, EntityType, ExprKind, Literal, Type, Unknown};
-use crate::entities::Name;
-use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::ast::{EntityType, Name, Type};
 use itertools::Itertools;
-use miette::Diagnostic;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
-use thiserror::Error;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -87,84 +83,6 @@ impl SchemaType {
         }
     }
 
-    /// Does this SchemaType match the given Type.
-    /// I.e., are they compatible, in the sense that there exist some concrete
-    /// values that have the given SchemaType and the given Type.
-    pub fn matches(&self, ty: &Type) -> bool {
-        match (self, ty) {
-            (SchemaType::Bool, Type::Bool) => true,
-            (SchemaType::Long, Type::Long) => true,
-            (SchemaType::String, Type::String) => true,
-            (SchemaType::Set { .. }, Type::Set) => true,
-            (SchemaType::EmptySet, Type::Set) => true,
-            (SchemaType::Record { .. }, Type::Record) => true,
-            (SchemaType::Entity { ty: ty1 }, Type::Entity { ty: ty2 }) => ty1 == ty2,
-            (SchemaType::Extension { name: name1 }, Type::Extension { name: name2 }) => {
-                name1 == name2
-            }
-            _ => false,
-        }
-    }
-
-    /// Does this SchemaType match the given SchemaType.
-    /// I.e., are they compatible, in the sense that there exist some concrete
-    /// values that have both types.
-    pub fn is_consistent_with(&self, other: &SchemaType) -> bool {
-        if self == other {
-            true
-        } else {
-            use SchemaType::*;
-            match (self, other) {
-                (Set { .. }, EmptySet) => true,
-                (EmptySet, Set { .. }) => true,
-                (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
-                    elty1.is_consistent_with(elty2)
-                }
-                (
-                    Record {
-                        attrs: attrs1,
-                        open_attrs: open1,
-                    },
-                    Record {
-                        attrs: attrs2,
-                        open_attrs: open2,
-                    },
-                ) => {
-                    attrs1.iter().all(|(k, v)| {
-                        match attrs2.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
-                            }
-                            None => {
-                                // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1 and attrs2 is
-                                // closed, incompatible.  otherwise fine
-                                !v.required || *open2
-                            }
-                        }
-                    }) && attrs2.iter().all(|(k, v)| {
-                        match attrs1.get(k) {
-                            Some(ty) => {
-                                // both have the attribute, doesn't matter if
-                                // one or both consider it required or optional
-                                ty.attr_type.is_consistent_with(&v.attr_type)
-                            }
-                            None => {
-                                // attrs2 has the attribute, attrs1 does not.
-                                // if required in attrs2 and attrs1 is closed,
-                                // incompatible.  otherwise fine
-                                !v.required || *open1
-                            }
-                        }
-                    })
-                }
-                _ => false,
-            }
-        }
-    }
-
     /// Iterate over all extension function types contained in this SchemaType
     pub fn contained_ext_types(&self) -> Box<dyn Iterator<Item = &Name> + '_> {
         match self {
@@ -183,7 +101,7 @@ impl SchemaType {
 }
 
 impl AttributeType {
-    /// Constuct a new required attribute type
+    /// Construct a new required attribute type
     pub fn required(attr_type: SchemaType) -> Self {
         Self {
             attr_type,
@@ -207,6 +125,21 @@ impl AttributeType {
     /// Get the `SchemaType` of the attribute
     pub fn schema_type(&self) -> &SchemaType {
         &self.attr_type
+    }
+}
+
+impl From<SchemaType> for Type {
+    fn from(ty: SchemaType) -> Self {
+        match ty {
+            SchemaType::Bool => Type::Bool,
+            SchemaType::Long => Type::Long,
+            SchemaType::String => Type::String,
+            SchemaType::Set { .. } => Type::Set,
+            SchemaType::EmptySet => Type::Set,
+            SchemaType::Record { .. } => Type::Record,
+            SchemaType::Entity { ty } => Type::Entity { ty },
+            SchemaType::Extension { name } => Type::Extension { name },
+        }
     }
 }
 
@@ -257,168 +190,5 @@ impl std::fmt::Display for AttributeType {
             },
             &self.attr_type
         )
-    }
-}
-
-/// Errors encountered when trying to compute the [`SchemaType`] of something
-#[derive(Debug, Diagnostic, Error)]
-pub enum GetSchemaTypeError {
-    /// Encountered a heterogeneous set. Heterogeneous sets do not have a valid
-    /// [`SchemaType`].
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HeterogeneousSet(#[from] HeterogeneousSetError),
-    /// Error looking up an extension function, which may be necessary to
-    /// compute the [`SchemaType`] of expressions that contain extension
-    /// function calls -- not to actually call the extension function, but to
-    /// get metadata about it
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
-    /// Trying to compute the [`SchemaType`], but the value or expression
-    /// contains an [`Unknown`] that has insufficient type information
-    /// associated in order to compute the `SchemaType`
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownInsufficientTypeInfo(#[from] UnknownInsufficientTypeInfoError),
-}
-
-/// Found a set whose elements don't all have the same type.  This doesn't match
-/// any possible schema.
-#[derive(Debug, Diagnostic, Error)]
-#[error("set elements have different types: {ty1} and {ty2}")]
-#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
-pub struct HeterogeneousSetError {
-    /// First element type which was found
-    ty1: Box<SchemaType>,
-    /// Second element type which was found
-    ty2: Box<SchemaType>,
-}
-
-/// Trying to compute the [`SchemaType`], but the value or expression
-/// contains an [`Unknown`] that has insufficient type information
-/// associated in order to compute the `SchemaType`
-#[derive(Debug, Diagnostic, Error)]
-pub struct UnknownInsufficientTypeInfoError {
-    /// `Unknown` which has insufficient type information
-    unknown: Option<Unknown>,
-}
-
-impl std::fmt::Display for UnknownInsufficientTypeInfoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "cannot compute type because of insufficient type information for "
-        )?;
-        match &self.unknown {
-            Some(u) => write!(f, "`{u}`"),
-            None => write!(f, "unknown"),
-        }
-    }
-}
-
-/// Get the [`SchemaType`] of a restricted expression.
-///
-/// This isn't possible for general `Expr`s (without a request, full schema,
-/// etc), but is possible for (concrete) restricted expressions, given the
-/// information in `Extensions`.
-///
-/// For records, we can't know whether the attributes in the given record are
-/// required or optional.
-/// This function, when given a record that has keys A, B, and C, will return a
-/// `SchemaType` where A, B, and C are all marked as optional attributes, but no
-/// other attributes are possible. This maximized flexibility while avoiding
-/// heterogeneous sets.
-///
-/// This function may return `GetSchemaTypeError`, but should never return
-/// `NontrivialResidual`, because `RestrictedExpr`s can't contain nontrivial
-/// residuals, only simple unknowns.
-pub fn schematype_of_restricted_expr(
-    rexpr: BorrowedRestrictedExpr<'_>,
-    extensions: &Extensions<'_>,
-) -> Result<SchemaType, GetSchemaTypeError> {
-    match rexpr.expr_kind() {
-        ExprKind::Lit(lit) => Ok(schematype_of_lit(lit)),
-        ExprKind::Set(elements) => {
-            let element_types = elements.iter().map(|el| {
-                schematype_of_restricted_expr(BorrowedRestrictedExpr::new_unchecked(el), extensions) // assuming the invariant holds for the set as a whole, it will also hold for each element
-            });
-            schematype_of_set_elements(element_types)
-        }
-        ExprKind::Record(map) => {
-            Ok(SchemaType::Record {
-                attrs: map.iter().map(|(k, v)| {
-                    let attr_type = schematype_of_restricted_expr(
-                        BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
-                        extensions,
-                    )?;
-                    // We can't know if the attribute is required or optional.
-                    // Keep as optional to minimize heterogeneous sets.
-                    Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<BTreeMap<_,_>, GetSchemaTypeError>>()?,
-                open_attrs: false,
-            })
-        }
-        ExprKind::ExtensionFunctionApp { fn_name, args  } => {
-            let efunc = extensions.func(fn_name)?;
-            efunc.return_type().cloned().ok_or_else(|| {
-                // The return type is `None` only when the function is an "unknown"
-                // We obtained `args` by deconstructing `rexpr`, which was restricted, all args are also restricted expressions.
-                let first_arg = args.first().map(BorrowedRestrictedExpr::new_unchecked);
-                let name = first_arg.as_ref().and_then(BorrowedRestrictedExpr::as_string);
-                let unknown = name.cloned().map(Unknown::new_untyped);
-                UnknownInsufficientTypeInfoError { unknown }.into()
-            })
-        }
-        ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
-            None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
-            Some(ty) => match SchemaType::from_ty(ty.clone()) {
-                Some(ty) => Ok(ty),
-                None => Err(UnknownInsufficientTypeInfoError { unknown: Some(u.clone()) }.into()),
-            }
-        }
-        // PANIC SAFETY. Unreachable by invariant on restricted expressions
-        #[allow(clippy::unreachable)]
-        expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
-    }
-}
-
-/// Get the [`SchemaType`] of a [`Literal`].
-fn schematype_of_lit(lit: &Literal) -> SchemaType {
-    match lit {
-        Literal::Bool(_) => SchemaType::Bool,
-        Literal::Long(_) => SchemaType::Long,
-        Literal::String(_) => SchemaType::String,
-        Literal::EntityUID(euid) => SchemaType::Entity {
-            ty: euid.entity_type().clone(),
-        },
-    }
-}
-
-/// Get the [`SchemaType`] for a set whose elements have the types given by this
-/// iterator.
-///
-/// Always returns some kind of `SchemaType::Set { .. }`, or an error.
-fn schematype_of_set_elements<E: From<HeterogeneousSetError>>(
-    mut element_types: impl Iterator<Item = Result<SchemaType, E>>,
-) -> Result<SchemaType, E> {
-    match element_types.next() {
-        None => Ok(SchemaType::EmptySet),
-        Some(Err(e)) => Err(e),
-        Some(Ok(element_ty)) => {
-            let matches_element_ty = |ty: &Result<SchemaType, E>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
-            let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
-            match conflicting_ty {
-                None => Ok(SchemaType::Set {
-                    element_ty: Box::new(element_ty),
-                }),
-                Some(Ok(conflicting_ty)) => Err(HeterogeneousSetError {
-                    ty1: Box::new(element_ty),
-                    ty2: Box::new(conflicting_ty),
-                }
-                .into()),
-                Some(Err(e)) => Err(e),
-            }
-        }
     }
 }

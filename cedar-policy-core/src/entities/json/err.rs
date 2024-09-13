@@ -18,8 +18,8 @@ use std::fmt::Display;
 
 use super::SchemaType;
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PartialValue,
-    PolicyID, RestrictedExpr, RestrictedExpressionError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PolicyID,
+    RestrictedExpr, RestrictedExpressionError, Type,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::{Name, ReservedNameError};
@@ -482,27 +482,76 @@ pub enum JsonDeserializationErrorContext {
 
 /// Type mismatch error (in terms of `SchemaType`)
 #[derive(Debug, Diagnostic, Error)]
-#[error("type mismatch: value was expected to have type {expected}, but {}: `{}`",
-    match .actual_ty {
-        Some(actual_ty) => format!("actually has type {actual_ty}"),
-        None => "it does not".to_string(),
-    },
-    match .actual_val {
-        Either::Left(pval) => format!("{pval}"),
-        Either::Right(expr) => display_restricted_expr(expr.as_borrowed()),
-    }
+#[error("type mismatch: value was expected to have type {expected}, but it {mismatch_reason}: `{}`",
+    display_restricted_expr(.actual_val.as_borrowed()),
 )]
 pub struct TypeMismatchError {
     /// Type which was expected
-    pub expected: Box<SchemaType>,
-    /// Type which was encountered instead. May be `None` in the case that
-    /// the encountered value was an `Unknown` with insufficient type
-    /// information to produce a `SchemaType`
-    pub actual_ty: Option<Box<SchemaType>>,
-    /// Value which doesn't have the expected type; represented as either a
-    /// PartialValue or RestrictedExpr, whichever is more convenient for the
-    /// caller
-    pub actual_val: Either<PartialValue, Box<RestrictedExpr>>,
+    expected: Box<SchemaType>,
+    /// Reason for the type mismatch
+    mismatch_reason: TypeMismatchReason,
+    /// Value which doesn't have the expected type
+    actual_val: Box<RestrictedExpr>,
+}
+
+#[derive(Debug, Error)]
+enum TypeMismatchReason {
+    /// We saw this dynamic type which is not compatible with the expected
+    /// schema type.
+    #[error("actually has type {0}")]
+    UnexpectedType(Type),
+    /// We saw a record type expression as expected, but it contains an
+    /// attribute we didn't expect.
+    #[error("contains an unexpected attribute `{0}`")]
+    UnexpectedAttr(SmolStr),
+    /// We saw a record type expression as expected, but it did not contain an
+    /// attribute we expected.
+    #[error("is missing the required attribute `{0}`")]
+    MissingRequiredAtr(SmolStr),
+    /// No further detail available.
+    #[error("does not")]
+    None,
+}
+
+impl TypeMismatchError {
+    pub(crate) fn type_mismatch(
+        expected: SchemaType,
+        actual_ty: Option<Type>,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: match actual_ty {
+                Some(ty) => TypeMismatchReason::UnexpectedType(ty),
+                None => TypeMismatchReason::None,
+            },
+            actual_val: Box::new(actual_val),
+        }
+    }
+
+    pub(crate) fn unexpected_attr(
+        expected: SchemaType,
+        unexpected_attr: SmolStr,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: TypeMismatchReason::UnexpectedAttr(unexpected_attr),
+            actual_val: Box::new(actual_val),
+        }
+    }
+
+    pub(crate) fn missing_required_attr(
+        expected: SchemaType,
+        missing_attr: SmolStr,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: TypeMismatchReason::MissingRequiredAtr(missing_attr),
+            actual_val: Box::new(actual_val),
+        }
+    }
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {
