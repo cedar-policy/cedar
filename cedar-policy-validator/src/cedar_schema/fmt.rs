@@ -74,7 +74,7 @@ impl<N: Display> Display for json_schema::Type<N> {
     }
 }
 
-impl<N: Display> Display for json_schema::RecordType<json_schema::RecordAttributeType<N>> {
+impl<N: Display> Display for json_schema::RecordType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
@@ -91,37 +91,6 @@ impl<N: Display> Display for json_schema::RecordType<json_schema::RecordAttribut
         }
         write!(f, "}}")?;
         Ok(())
-    }
-}
-
-impl<N: Display> Display for json_schema::RecordType<json_schema::EntityAttributeType<N>> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-        for (i, (n, ty)) in self.attributes.iter().enumerate() {
-            write!(
-                f,
-                "\"{}\"{}: {}",
-                n.escape_debug(),
-                if ty.required { "" } else { "?" },
-                ty.ty
-            )?;
-            if i < (self.attributes.len() - 1) {
-                write!(f, ", ")?;
-            }
-        }
-        write!(f, "}}")?;
-        Ok(())
-    }
-}
-
-impl<N: Display> Display for json_schema::EntityAttributeTypeInternal<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            json_schema::EntityAttributeTypeInternal::Type(ty) => ty.fmt(f),
-            json_schema::EntityAttributeTypeInternal::EAMap { value_type } => {
-                write!(f, "{{ ?: {value_type} }}")
-            }
-        }
     }
 }
 

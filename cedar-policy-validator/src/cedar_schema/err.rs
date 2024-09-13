@@ -298,12 +298,6 @@ impl From<ToJsonSchemaError> for ToJsonSchemaErrors {
     }
 }
 
-impl From<EAMapError> for ToJsonSchemaErrors {
-    fn from(e: EAMapError) -> Self {
-        Self::from(ToJsonSchemaError::from(e))
-    }
-}
-
 impl Display for ToJsonSchemaErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.first()) // intentionally showing only the first error; see #326 for discussion on a similar error type
@@ -405,10 +399,6 @@ pub enum ToJsonSchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedSchemaKeyword(#[from] ReservedSchemaKeyword),
-    /// Errors relating to embedded attribute maps
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    EAMap(#[from] EAMapError),
 }
 
 impl ToJsonSchemaError {
@@ -519,86 +509,6 @@ impl Diagnostic for ReservedName {
             "Names containing `__cedar` (for example: `__cedar::A`, `A::__cedar`, or `A::__cedar::B`) are reserved",
         ))
     }
-}
-
-/// An embedded attribute map (RFC 68) was encountered where one is not allowed
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")]
-pub struct EAMapNotAllowedHereError {
-    /// Source location of the `EAMap`
-    pub(crate) source_loc: Loc,
-    /// Context-dependent help text
-    pub(crate) help: Option<EAMapNotAllowedHereHelp>,
-}
-
-impl Diagnostic for EAMapNotAllowedHereError {
-    impl_diagnostic_from_source_loc_field!(source_loc);
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.help.as_ref().map(|help| Box::new(help) as _)
-    }
-}
-
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-pub(crate) enum EAMapNotAllowedHereHelp {
-    #[error("Embedded attribute maps are not allowed as the top-level descriptor of all attributes of an entity. Try making an entity attribute to hold the embedded attribute map. E.g., `attributes: {{ ?: someType }}`.")]
-    TopLevelEAMap,
-}
-
-/// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
-/// This is currently not allowed.
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("this type contains both concrete attributes and an embedded attribute map (`?:`), which is not allowed")]
-pub struct EAMapWithConcreteAttributesError {
-    /// Source location of the `EAMap` declaration
-    pub(crate) source_loc: Loc,
-}
-
-impl Diagnostic for EAMapWithConcreteAttributesError {
-    impl_diagnostic_from_source_loc_field!(source_loc);
-}
-
-/// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
-/// This is currently not allowed.
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("this type contains two or more different embedded attribute map declarations (`?:`), which is not allowed")]
-pub struct MultipleEAMapDeclarationsError {
-    /// Source location of the first `EAMap` declaration
-    pub(crate) source_loc_1: Loc,
-    /// Source location of the second `EAMap` declaration
-    pub(crate) source_loc_2: Loc,
-}
-
-impl Diagnostic for MultipleEAMapDeclarationsError {
-    impl_diagnostic_from_two_source_loc_fields!(source_loc_1, source_loc_2);
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new(
-            "try separating this into two different attributes",
-        ))
-    }
-}
-
-/// Errors relating to embedded attribute maps (`EAMap`s)
-//
-// This is NOT a publicly exported error type.
-#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum EAMapError {
-    /// An embedded attribute map (RFC 68) was encountered where one is not allowed
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    NotAllowedHere(#[from] EAMapNotAllowedHereError),
-    /// Encountered a type like `{ foo: Long, ?: String }` that mixes concrete attributes with an `EAMap`.
-    /// This is currently not allowed.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WithConcreteAttributes(#[from] EAMapWithConcreteAttributesError),
-    /// Encountered a type like `{ ?: Long, ?: String }` that mixes two or more `EAMap` declarations.
-    /// This is currently not allowed.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MultipleEAMapDeclarations(#[from] MultipleEAMapDeclarationsError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
