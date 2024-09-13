@@ -503,12 +503,12 @@ impl ValidatorSchema {
                         ContextOrShape::EntityTypeShape(name.clone()),
                     ))?
                 };
-                match entity_type.tags {
-                    None => (),
-                    Some(_) => {
-                        return Err(UnsupportedFeatureError(UnsupportedFeature::EntityTags).into())
-                    }
-                };
+                let tags = entity_type
+                    .tags
+                    .map(|tags| try_jsonschema_type_into_validator_type(tags, extensions))
+                    .transpose()?
+                    .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
+                    .transpose()?;
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
@@ -516,6 +516,7 @@ impl ValidatorSchema {
                         descendants,
                         attributes,
                         open_attributes,
+                        tags,
                     },
                 ))
             })
@@ -1337,6 +1338,17 @@ pub(crate) mod test {
         r.map(|(a, iter)| (a, iter.collect()))
     }
 
+    /// Given an entity type as string, get the `ValidatorEntityType` from the
+    /// schema, panicking if it does not exist (or if `etype` fails to parse as
+    /// an entity type)
+    #[track_caller]
+    pub fn assert_entity_type_exists<'s>(
+        schema: &'s ValidatorSchema,
+        etype: &str,
+    ) -> &'s ValidatorEntityType {
+        schema.get_entity_type(&etype.parse().unwrap()).unwrap()
+    }
+
     // Well-formed schema
     #[test]
     fn test_from_schema_file() {
@@ -2025,15 +2037,9 @@ pub(crate) mod test {
         .unwrap();
         let schema: ValidatorSchema = fragment.try_into().unwrap();
 
-        assert!(schema
-            .get_entity_type(&"Foo::Bar::Baz".parse().unwrap())
-            .is_some());
-        assert!(schema
-            .get_entity_type(&"Bar::Foo::Baz".parse().unwrap())
-            .is_some());
-        assert!(schema
-            .get_entity_type(&"Biz::Baz".parse().unwrap())
-            .is_some());
+        assert_entity_type_exists(&schema, "Foo::Bar::Baz");
+        assert_entity_type_exists(&schema, "Bar::Foo::Baz");
+        assert_entity_type_exists(&schema, "Biz::Baz");
     }
 
     #[test]
@@ -2055,9 +2061,7 @@ pub(crate) mod test {
         .unwrap();
         let schema: ValidatorSchema = fragment.try_into().unwrap();
 
-        let buz = schema
-            .get_entity_type(&"Foo::Buz".parse().unwrap())
-            .unwrap();
+        let buz = assert_entity_type_exists(&schema, "Foo::Buz");
         assert_eq!(
             buz.descendants,
             HashSet::from(["Bar::Baz".parse().unwrap()])
@@ -2091,9 +2095,7 @@ pub(crate) mod test {
         .unwrap();
 
         let schema: ValidatorSchema = fragment.try_into().unwrap();
-        let baz = schema
-            .get_entity_type(&"Bar::Baz".parse().unwrap())
-            .unwrap();
+        let baz = assert_entity_type_exists(&schema, "Bar::Baz");
         assert_eq!(
             baz.attr("fiz").unwrap().attr_type,
             Type::named_entity_reference_from_str("Foo::Buz"),
@@ -2657,10 +2659,7 @@ pub(crate) mod test {
         );
         let schema =
             ValidatorSchema::from_json_value(src.clone(), Extensions::all_available()).unwrap();
-        let mut attributes = schema
-            .get_entity_type(&"Demo::User".parse().unwrap())
-            .unwrap()
-            .attributes();
+        let mut attributes = assert_entity_type_exists(&schema, "Demo::User").attributes();
         let (attr_name, attr_ty) = attributes.next().unwrap();
         assert_eq!(attr_name, "id");
         assert_eq!(&attr_ty.attr_type, &Type::primitive_string());
@@ -3451,8 +3450,8 @@ mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
 mod test_rfc70 {
-    use super::{test::collect_warnings, CedarSchemaError};
-    use super::{SchemaError, ValidatorSchema};
+    use super::test::{assert_entity_type_exists, collect_warnings};
+    use super::{CedarSchemaError, SchemaError, ValidatorSchema};
     use crate::types::Type;
     use cedar_policy_core::{
         extensions::Extensions,
@@ -4049,7 +4048,7 @@ mod test_rfc70 {
             }
         ";
         let schema = assert_valid_cedar_schema(src);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4062,7 +4061,7 @@ mod test_rfc70 {
         assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4158,7 +4157,7 @@ mod test_rfc70 {
             }
         });
         let schema = assert_valid_json_schema(src_json);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
@@ -4171,7 +4170,7 @@ mod test_rfc70 {
         assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4209,7 +4208,7 @@ mod test_rfc70 {
             }
         ";
         let schema = assert_valid_cedar_schema(src);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4222,7 +4221,7 @@ mod test_rfc70 {
         assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4277,7 +4276,7 @@ mod test_rfc70 {
             }
         });
         let schema = assert_valid_json_schema(src_json);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4290,7 +4289,7 @@ mod test_rfc70 {
         assert_matches!(e.attributes.get_attr("d"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
         });
@@ -4324,14 +4323,14 @@ mod test_rfc70 {
             }
         ";
         let schema = assert_valid_cedar_schema(src);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_string());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool")); // using the common type definition
         });
@@ -4372,14 +4371,14 @@ mod test_rfc70 {
             }
         });
         let schema = assert_valid_json_schema(src_json);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::primitive_string());
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool"));
         });
@@ -4407,14 +4406,14 @@ mod test_rfc70 {
             }
         ";
         let schema = assert_valid_cedar_schema(src);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
         });
@@ -4455,14 +4454,14 @@ mod test_rfc70 {
             }
         });
         let schema = assert_valid_json_schema(src_json);
-        let e = schema.get_entity_type(&"E".parse().unwrap()).unwrap();
+        let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
         });
         assert_matches!(e.attributes.get_attr("b"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
         });
-        let f = schema.get_entity_type(&"NS::F".parse().unwrap()).unwrap();
+        let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attributes.get_attr("a"), Some(atype) => {
             assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
         });
@@ -4475,7 +4474,12 @@ mod test_rfc70 {
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
 mod entity_tags {
-    use super::{test::collect_warnings, *};
+    use crate::types::Primitive;
+
+    use super::{
+        test::{assert_entity_type_exists, collect_warnings},
+        *,
+    };
     use cedar_policy_core::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -4487,21 +4491,23 @@ mod entity_tags {
     fn cedar_syntax_tags() {
         // This schema taken directly from the RFC 82 text
         let src = "
-        entity User = {
+          entity User = {
             jobLevel: Long,
           } tags Set<String>;
           entity Document = {
             owner: User,
           } tags Set<String>;
         ";
-        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
-                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
-                    .build(),
-            );
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+            assert!(warnings.is_empty());
+            let user = assert_entity_type_exists(&schema, "User");
+            assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
+                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+            });
+            let doc = assert_entity_type_exists(&schema, "Document");
+            assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
+                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+            });
         });
     }
 
@@ -4542,14 +4548,15 @@ mod entity_tags {
             },
             "actions": {}
         }});
-        assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Err(e) => {
-            expect_err(
-                &json,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
-                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
-                    .build(),
-            );
+        assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Ok(schema) => {
+            let user = assert_entity_type_exists(&schema, "User");
+            assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
+                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+            });
+            let doc = assert_entity_type_exists(&schema, "Document");
+            assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
+                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+            });
         });
     }
 
@@ -4574,14 +4581,26 @@ mod entity_tags {
             entity Foo7 in E tags Set<Set<{a: Blah}>>;
             entity Foo8 in E tags Foo7;
         ";
-        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
-                    .source("Entity tags (RFC 82) are not fully implemented in this version of Cedar")
-                    .build(),
-            );
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+            assert!(warnings.is_empty());
+            let e = assert_entity_type_exists(&schema, "E");
+            assert_matches!(e.tag_type(), None);
+            let foo1 = assert_entity_type_exists(&schema, "Foo1");
+            assert_matches!(foo1.tag_type(), Some(Type::Primitive { primitive_type: Primitive::Bool }));
+            let foo2 = assert_entity_type_exists(&schema, "Foo2");
+            assert_matches!(foo2.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            let foo3 = assert_entity_type_exists(&schema, "Foo3");
+            assert_matches!(foo3.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))));
+            let foo4 = assert_entity_type_exists(&schema, "Foo4");
+            assert_matches!(foo4.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_)))));
+            let foo5 = assert_entity_type_exists(&schema, "Foo5");
+            assert_matches!(foo5.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            let foo6 = assert_entity_type_exists(&schema, "Foo6");
+            assert_matches!(foo6.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            let foo7 = assert_entity_type_exists(&schema, "Foo7");
+            assert_matches!(foo7.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })))));
+            let foo8 = assert_entity_type_exists(&schema, "Foo8");
+            assert_matches!(foo8.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))));
         });
     }
 
