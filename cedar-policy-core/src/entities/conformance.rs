@@ -205,10 +205,9 @@ pub fn typecheck_restricted_expr_against_schematype(
             None => return Ok(()),
         },
         // Check for extension function calls. Restricted expressions permit all
-        // extension function calls, including those that return `bool` or
-        // potentially other values in the future, so it is important that this
-        // handles the case when we expect `Bool` and an extension function
-        // return `Bool``.
+        // extension function calls, including those that aren't constructors.
+        // Checking the return type here before matching on the expected type lets
+        // us handle extension functions that return, e.g., bool and not an extension type.
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
             return match extensions.func(fn_name)?.return_type() {
                 None => {
