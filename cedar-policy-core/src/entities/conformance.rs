@@ -507,6 +507,20 @@ mod test_typecheck {
     fn test_typecheck_set_fails() {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{}".parse().unwrap()).unwrap(),
+                &SchemaType::Set { element_ty: Box::new(SchemaType::String) },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type [string], but it actually has type record: `{}`").build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"[1, 2, 3]".parse().unwrap()).unwrap(),
                 &SchemaType::Set { element_ty: Box::new(SchemaType::String) },
                 Extensions::all_available(),
@@ -582,6 +596,20 @@ mod test_typecheck {
     fn test_typecheck_record_fails() {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"[]".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type {  }, but it actually has type set: `[]`").build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{a: false}".parse().unwrap()).unwrap(),
                 &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
                 Extensions::all_available(),
@@ -591,6 +619,20 @@ mod test_typecheck {
                     "",
                     &Report::new(e),
                     &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type long, but it actually has type bool: `false`").build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{a: {}}".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: false })]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type mismatch: value was expected to have type long, but it actually has type record: `{}`").build()
                 );
             }
         );
@@ -619,6 +661,20 @@ mod test_typecheck {
                     "",
                     &Report::new(e),
                     &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type { "a" => (required) long }, but it contains an unexpected attribute `b`: `{"a": 1, "b": 1}`"#).build()
+                );
+            }
+        );
+        assert_matches!(
+            typecheck_restricted_expr_against_schematype(
+                BorrowedRestrictedExpr::new(&"{b: 1}".parse().unwrap()).unwrap(),
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: false })]), open_attrs: false },
+                Extensions::all_available(),
+            ),
+            Err(e@TypecheckError::TypeMismatch(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"type mismatch: value was expected to have type { "a" => (optional) long }, but it contains an unexpected attribute `b`: `{"b": 1}`"#).build()
                 );
             }
         );
