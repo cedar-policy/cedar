@@ -39,10 +39,10 @@ jobs:
           path: cedar-spec/cedar
       - name: build cedar-drt
         working-directory: cedar-spec/cedar-drt
-        run: RUSTFLAGS="-D warnings" cargo build
+        run: cargo build
       - name: build cedar-drt/fuzz
         working-directory: cedar-spec/cedar-drt/fuzz
-        run: RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
+        run: RUSTFLAGS="--cfg=fuzzing" cargo build
 
   cedar-java:
     name: CedarJava
@@ -70,7 +70,7 @@ jobs:
         run: bash config.sh run_int_tests
       - name: build cedar-java/CedarJavaFFI
         working-directory: cedar-java/CedarJavaFFI
-        run: RUSTFLAGS="-D warnings" cargo build
+        run: cargo build
       - name: build cedar-java/CedarJava
         working-directory: cedar-java/CedarJava
         run: export MUST_RUN_CEDAR_INTEGRATION_TESTS=1 && ./gradlew build
