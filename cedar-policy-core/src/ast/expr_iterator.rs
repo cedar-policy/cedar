@@ -56,11 +56,7 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
                 self.expression_stack.push(then_expr);
                 self.expression_stack.push(else_expr);
             }
-            ExprKind::And { left, right } => {
-                self.expression_stack.push(left);
-                self.expression_stack.push(right);
-            }
-            ExprKind::Or { left, right } => {
+            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
                 self.expression_stack.push(left);
                 self.expression_stack.push(right);
             }
@@ -71,28 +67,20 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
                 self.expression_stack.push(arg1);
                 self.expression_stack.push(arg2);
             }
-            ExprKind::ExtensionFunctionApp { args, .. } => {
-                for arg in args.as_ref() {
-                    self.expression_stack.push(arg);
-                }
-            }
-            ExprKind::GetAttr { expr, attr: _ } => {
+            ExprKind::GetAttr { expr, attr: _ }
+            | ExprKind::HasAttr { expr, attr: _ }
+            | ExprKind::Like { expr, pattern: _ }
+            | ExprKind::Is {
+                expr,
+                entity_type: _,
+            } => {
                 self.expression_stack.push(expr);
             }
-            ExprKind::HasAttr { expr, attr: _ } => {
-                self.expression_stack.push(expr);
-            }
-            ExprKind::Like { expr, pattern: _ } => {
-                self.expression_stack.push(expr);
-            }
-            ExprKind::Set(elems) => {
-                self.expression_stack.extend(elems.as_ref());
+            ExprKind::ExtensionFunctionApp { args: exprs, .. } | ExprKind::Set(exprs) => {
+                self.expression_stack.extend(exprs.as_ref());
             }
             ExprKind::Record(map) => {
                 self.expression_stack.extend(map.values());
-            }
-            ExprKind::Is { expr, .. } => {
-                self.expression_stack.push(expr);
             }
         }
         Some(next_expr)

@@ -366,7 +366,8 @@ impl<T> Expr<T> {
                     | BinaryOp::Eq
                     | BinaryOp::In
                     | BinaryOp::Less
-                    | BinaryOp::LessEq,
+                    | BinaryOp::LessEq
+                    | BinaryOp::HasTag,
                 ..
             } => Some(Type::Bool),
             ExprKind::ExtensionFunctionApp { fn_name, .. } => extensions
@@ -379,6 +380,11 @@ impl<T> Expr<T> {
             // a record `Type::Record` tells us nothing about the type of the
             // attribute.
             ExprKind::GetAttr { .. } => None,
+            // similarly to `GetAttr`
+            ExprKind::BinaryApp {
+                op: BinaryOp::GetTag,
+                ..
+            } => None,
             ExprKind::HasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
@@ -499,20 +505,32 @@ impl Expr {
         ExprBuilder::new().is_in(e1, e2)
     }
 
-    /// Create a 'contains' expression.
+    /// Create a `contains` expression.
     /// First argument must have Set type.
     pub fn contains(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains(e1, e2)
     }
 
-    /// Create a 'contains_all' expression. Arguments must evaluate to Set type
+    /// Create a `containsAll` expression. Arguments must evaluate to Set type
     pub fn contains_all(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_all(e1, e2)
     }
 
-    /// Create an 'contains_any' expression. Arguments must evaluate to Set type
+    /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
+    }
+
+    /// Create a `getTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn get_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().get_tag(expr, tag)
+    }
+
+    /// Create a `hasTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn has_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().has_tag(expr, tag)
     }
 
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
@@ -556,8 +574,7 @@ impl Expr {
         ExprBuilder::new().binary_app(op, arg1, arg2)
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn get_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -565,7 +582,7 @@ impl Expr {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn has_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -1085,6 +1102,26 @@ impl<T> ExprBuilder<T> {
         })
     }
 
+    /// Create a 'getTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::GetTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
+    /// Create a 'hasTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn has_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::HasTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
     pub fn set(self, exprs: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Set(Arc::new(exprs.into_iter().collect())))
@@ -1155,8 +1192,7 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
@@ -1167,7 +1203,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {

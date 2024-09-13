@@ -416,6 +416,11 @@ impl Entity {
         self.attrs.get(attr).map(|v| v.as_ref())
     }
 
+    /// Get the value for the given tag, or `None` if not present
+    pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
+        self.tags.get(tag).map(|v| v.as_ref())
+    }
+
     /// Is this `Entity` a descendant of `e` in the entity hierarchy?
     pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
         self.ancestors.contains(e)
@@ -431,14 +436,29 @@ impl Entity {
         self.attrs.len()
     }
 
+    /// Get the number of tags on this entity
+    pub fn tags_len(&self) -> usize {
+        self.tags.len()
+    }
+
     /// Iterate over this entity's attribute names
     pub fn keys(&self) -> impl Iterator<Item = &SmolStr> {
         self.attrs.keys()
     }
 
+    /// Iterate over this entity's tag names
+    pub fn tag_keys(&self) -> impl Iterator<Item = &SmolStr> {
+        self.tags.keys()
+    }
+
     /// Iterate over this entity's attributes
     pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
+    }
+
+    /// Iterate over this entity's tags
+    pub fn tags(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
+        self.tags.iter().map(|(k, v)| (k, v.as_ref()))
     }
 
     /// Create an `Entity` with the given UID, no attributes, no parents, and no tags.
@@ -458,6 +478,13 @@ impl Entity {
         self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
     }
 
+    /// Set the UID to the given value.
+    // Only used for convenience in some tests
+    #[cfg(test)]
+    pub fn set_uid(&mut self, uid: EntityUID) {
+        self.uid = uid;
+    }
+
     /// Set the given attribute to the given value.
     // Only used for convenience in some tests and when fuzzing
     #[cfg(any(test, fuzzing))]
@@ -469,6 +496,20 @@ impl Entity {
     ) -> Result<(), EvaluationError> {
         let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
         self.attrs.insert(attr, val.into());
+        Ok(())
+    }
+
+    /// Set the given tag to the given value.
+    // Only used for convenience in some tests and when fuzzing
+    #[cfg(any(test, fuzzing))]
+    pub fn set_tag(
+        &mut self,
+        tag: SmolStr,
+        val: RestrictedExpr,
+        extensions: &Extensions<'_>,
+    ) -> Result<(), EvaluationError> {
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        self.tags.insert(tag, val.into());
         Ok(())
     }
 

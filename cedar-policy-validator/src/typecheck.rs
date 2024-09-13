@@ -1417,6 +1417,10 @@ impl<'a> Typechecker<'a> {
                     })
                 })
             }
+
+            BinaryOp::GetTag | BinaryOp::HasTag => {
+                unimplemented!("validation for .getTag() and .hasTag() operations")
+            }
         }
     }
 
