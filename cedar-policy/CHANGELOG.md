@@ -19,7 +19,7 @@ Cedar Language Version: TBD
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 
-## [4.0.0] - Coming soon
+## [4.0.0] - 2024-09-16
 Cedar Language Version: 4.0
 
 ### Added
@@ -91,7 +91,7 @@ Cedar Language Version: 4.0
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 
-## [3.4.0] - Coming soon
+## [3.4.0] - 2024-09-16
 Cedar Language Version: 3.4
 
 ### Added
