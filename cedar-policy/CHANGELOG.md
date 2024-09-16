@@ -464,7 +464,7 @@ Cedar Language Version: 3.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
-## [2.5.0] - Coming soon
+## [2.5.0] - 2024-09-16
 Cedar Language Version: 2.2
 
 ### Added
