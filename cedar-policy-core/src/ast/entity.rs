@@ -355,13 +355,6 @@ impl Entity {
         })
     }
 
-    /// Create a new `Entity` with this UID, ancestors, and an empty set of attributes
-    ///
-    /// Since there are no attributes, this method does not error, and returns `Self` instead of `Result<Self>`
-    pub fn new_empty_attrs(uid: EntityUID, ancestors: HashSet<EntityUID>) -> Self {
-        Self::new_with_attr_partial_value(uid, HashMap::new(), ancestors)
-    }
-
     /// Create a new `Entity` with this UID, attributes, and ancestors.
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
