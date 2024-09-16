@@ -97,16 +97,6 @@ impl Entity {
         )?))
     }
 
-    /// Create a new `Entity` with this Uid, parents, and no attributes.
-    /// This is the same as `Self::new` except the attributes are empty, and therefore it can
-    /// return `Self` instead of `Result<Self>`
-    pub fn new_empty_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
-        Self(ast::Entity::new_empty_attrs(
-            uid.into(),
-            parents.into_iter().map(EntityUid::into).collect(),
-        ))
-    }
-
     /// Create a new `Entity` with no attributes.
     ///
     /// Unlike [`Entity::new()`], this constructor cannot error.
