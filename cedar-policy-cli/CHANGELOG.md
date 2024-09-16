@@ -6,7 +6,7 @@
 
 ### Changed
 
-- The default `--schema-format` is now `human` for all subcommands that take
+- The default `--schema-format` is now `cedar` for all subcommands that take
   `--schema-format`. (#750)
 - The `--partial-validate` option has been replaced with `--validation-mode`,
   taking the values `strict`, `permissive` (new) and `partial`.
