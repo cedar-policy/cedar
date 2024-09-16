@@ -4,19 +4,19 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
 use cedar_policy_core::entities::err::EntitiesError;
-use cedar_policy_core::entities::{Dereference, NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::entities::Dereference;
 use cedar_policy_core::{
-    ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
+    ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind},
     entities::Entities,
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::entity_manifest::{
-    AccessTrie, EntityManifest, EntityRoot, PartialRequestError, RootAccessTrie,
+use crate::entity_loader::{
+    load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
+use crate::entity_manifest::{AccessTrie, EntityManifest, PartialRequestError};
 
 /// Error when expressions are partial during entity
 /// slicing.
@@ -118,6 +118,7 @@ pub enum EntitySliceError {
     #[error(transparent)]
     PartialEntity(#[from] PartialEntityError),
 
+    /// The entity loader returned a partial context.
     #[error(transparent)]
     PartialContext(#[from] PartialContextError),
 
@@ -134,99 +135,64 @@ impl EntityManifest {
         entities: &Entities,
         request: &Request,
     ) -> Result<Entities, EntitySliceError> {
-        let request_type = request.to_request_type().ok_or(PartialRequestError {})?;
-        self.per_action
-            .get(&request_type)
-            .map(|primary| primary.slice_entities(entities, request))
-            .unwrap_or(Ok(Entities::default()))
+        let mut slicer = EntitySlicer { entities };
+        load_entities(self, request, &mut slicer)
     }
 }
 
-impl RootAccessTrie {
-    /// Given entities and a request, return a new entitity store
-    /// which is a slice of the old one.
-    fn slice_entities(
-        &self,
-        entities: &Entities,
-        request: &Request,
-    ) -> Result<Entities, EntitySliceError> {
-        self.slice_entities_internal(entities, request)
-            .map(|res| res.0)
-    }
+struct EntitySlicer<'a> {
+    entities: &'a Entities,
+}
 
-    /// Returns a new entity store and also the ancestor entities found
-    /// along the way.
-    fn slice_entities_internal(
-        &self,
-        entities: &Entities,
-        request: &Request,
-    ) -> Result<(Entities, HashSet<EntityUID>), EntitySliceError> {
-        let mut res = HashMap::<EntityUID, Entity>::new();
-        let mut ancestors = HashSet::new();
-        for (root, slice) in &self.trie {
-            match root {
-                EntityRoot::Literal(lit) => {
-                    slice.slice_entity(entities, request, lit, &mut res, &mut ancestors)?;
-                }
-                EntityRoot::Var(Var::Action) => {
-                    let entity_id = request.action().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, request, entity_id, &mut res, &mut ancestors)?;
-                }
-                EntityRoot::Var(Var::Principal) => {
-                    let entity_id = request.principal().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, request, entity_id, &mut res, &mut ancestors)?;
-                }
-                EntityRoot::Var(Var::Resource) => {
-                    let resource_id = request.resource().uid().ok_or(PartialRequestError {})?;
-                    slice.slice_entity(entities, request, resource_id, &mut res, &mut ancestors)?;
-                }
-                EntityRoot::Var(Var::Context) => {
-                    if slice.children.is_empty() {
-                        // no data loading needed
-                    } else {
-                        let partial_val: PartialValue = PartialValue::from(
-                            request.context().ok_or(PartialRequestError {})?.clone(),
-                        );
-                        let PartialValue::Value(val) = partial_val else {
-                            return Err(PartialRequestError {}.into());
-                        };
-                        slice.slice_val(entities, request, &val, &mut res, &mut ancestors)?;
-                    }
-                }
+impl<'a> EntityLoader for EntitySlicer<'a> {
+    fn load_entities(
+        &mut self,
+        to_load: &[EntityRequest],
+    ) -> Result<Vec<EntityAnswer>, EntitySliceError> {
+        let mut res = vec![];
+        for request in to_load {
+            if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
+                // filter down the entity fields to those requested
+                res.push(Some(request.access_trie.slice_entity(entity)?));
+            } else {
+                res.push(None);
             }
         }
-        Ok((
-            Entities::from_entities(
-                res.into_values(),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::all_available(),
-            )?,
-            ancestors,
-        ))
+
+        Ok(res)
+    }
+
+    fn load_ancestors(
+        &mut self,
+        entities: &[AncestorsRequest],
+    ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError> {
+        let mut res = vec![];
+
+        for request in entities {
+            if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
+                let mut ancestors = HashSet::new();
+
+                for required_ancestor in &request.ancestors {
+                    if entity.is_descendant_of(required_ancestor) {
+                        ancestors.insert(required_ancestor.clone());
+                    }
+                }
+
+                res.push(ancestors);
+            } else {
+                // if the entity isn't there, we don't need any ancestors
+                res.push(HashSet::new());
+            }
+        }
+
+        Ok(res)
     }
 }
 
 impl AccessTrie {
     /// Given an entities store, an entity id, and a resulting store
     /// Slice the entities and put them in the resulting store.
-    fn slice_entity(
-        &self,
-        entities: &Entities,
-        request: &Request,
-        lit: &EntityUID,
-        res: &mut HashMap<EntityUID, Entity>,
-        res_ancestors: &mut HashSet<EntityUID>,
-    ) -> Result<(), EntitySliceError> {
-        // add to the res_ancestors set if this is a relavent ancestor
-        if self.is_ancestor {
-            res_ancestors.insert(lit.clone());
-        }
-
-        // If the entity is not present, no need to slice
-        let Dereference::Data(entity) = entities.entity(lit) else {
-            return Ok(());
-        };
+    fn slice_entity(&self, entity: &Entity) -> Result<Entity, EntitySliceError> {
         let mut new_entity = HashMap::<SmolStr, PartialValue>::new();
         for (field, slice) in &self.children {
             // only slice when field is available
@@ -234,68 +200,24 @@ impl AccessTrie {
                 let PartialValue::Value(val) = pval else {
                     return Err(PartialEntityError {}.into());
                 };
-                let sliced = slice.slice_val(entities, request, &val, res, res_ancestors)?;
+                let sliced = slice.slice_val(&val)?;
 
                 new_entity.insert(field.clone(), PartialValue::Value(sliced));
             }
         }
 
-        let new_ancestors = if self.ancestors_trie != Default::default() {
-            let relavent_ancestors = self
-                .ancestors_trie
-                .slice_entities_internal(entities, request)?
-                .1;
-            relavent_ancestors
-                .into_iter()
-                .filter(|ancestor| entity.is_descendant_of(ancestor))
-                .collect()
-        } else {
-            HashSet::new()
-        };
-
-        let new_entity =
-            Entity::new_with_attr_partial_value(lit.clone(), new_entity, new_ancestors);
-
-        // PANIC SAFETY: Entities in the entity store with the same ID should be compatible to union together.
-        #[allow(clippy::expect_used)]
-        if let Some(existing) = res.get_mut(lit) {
-            // Here we union the new entity with any existing one
-            *existing = existing
-                .union(&new_entity)
-                .expect("Incompatible values found in entity store");
-        } else {
-            res.insert(lit.clone(), new_entity);
-        }
-        Ok(())
+        Ok(Entity::new_with_attr_partial_value(
+            entity.uid().clone(),
+            new_entity,
+            Default::default(),
+        ))
     }
 
-    fn slice_val(
-        &self,
-        entities: &Entities,
-        request: &Request,
-        val: &Value,
-        res: &mut HashMap<EntityUID, Entity>,
-        res_ancestors: &mut HashSet<EntityUID>,
-    ) -> Result<Value, EntitySliceError> {
-        // unless this is an entity id, parents should not be required
-        assert!(
-            self.ancestors_trie == Default::default()
-                || matches!(val.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
-        );
-
-        // unless this is an entity id or set, it should not be an
-        // ancestor
-        assert!(
-            !self.is_ancestor
-                || matches!(
-                    val.value_kind(),
-                    ValueKind::Lit(Literal::EntityUID(_)) | ValueKind::Set(_)
-                )
-        );
-
+    fn slice_val(&self, val: &Value) -> Result<Value, EntitySliceError> {
         Ok(match val.value_kind() {
-            ValueKind::Lit(Literal::EntityUID(id)) => {
-                self.slice_entity(entities, request, id, res, res_ancestors)?;
+            ValueKind::Lit(Literal::EntityUID(_)) => {
+                // entities shouldn't need to be dereferenced
+                assert!(self.children.is_empty());
                 val.clone()
             }
             ValueKind::Set(_) | ValueKind::ExtensionValue(_) | ValueKind::Lit(_) => {
@@ -306,32 +228,6 @@ impl AccessTrie {
                     .into());
                 }
 
-                // when this is an ancestor, request all of the entities
-                // in this set
-                if self.is_ancestor {
-                    // PANIC SAFETY: is_ancestor is only called on the rhs of an `is`, which the typechecker ensures is an entity or set of entity type.
-                    #[allow(clippy::panic)]
-                    let ValueKind::Set(set) = val.value_kind() else {
-                        panic!("Found is_ancestor on non-entity type {}", val.value_kind())
-                    };
-
-                    for val in set.iter() {
-                        match val.value_kind() {
-                            ValueKind::Lit(Literal::EntityUID(id)) => {
-                                res_ancestors.insert((**id).clone());
-                            }
-                            // PANIC SAFETY: see above panic- set must contain entities
-                            #[allow(clippy::panic)]
-                            _ => {
-                                panic!(
-                                    "Found is_ancestor on set of non-entity-type {}",
-                                    val.value_kind()
-                                );
-                            }
-                        }
-                    }
-                }
-
                 val.clone()
             }
             ValueKind::Record(record) => {
@@ -339,10 +235,7 @@ impl AccessTrie {
                 for (field, slice) in &self.children {
                     // only slice when field is available
                     if let Some(v) = record.get(field) {
-                        new_map.insert(
-                            field.clone(),
-                            slice.slice_val(entities, request, v, res, res_ancestors)?,
-                        );
+                        new_map.insert(field.clone(), slice.slice_val(v)?);
                     }
                 }
 
@@ -356,7 +249,8 @@ impl AccessTrie {
 mod entity_slice_tests {
     use cedar_policy_core::{
         ast::{Context, PolicyID, PolicySet},
-        entities::EntityJsonParser,
+        entities::{EntityJsonParser, TCComputation},
+        extensions::Extensions,
         parser::parse_policy,
     };
 

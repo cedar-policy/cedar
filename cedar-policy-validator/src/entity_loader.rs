@@ -42,32 +42,48 @@ use crate::{
 /// Optionally, instead of loading the full entity the `access_trie`
 /// may be used to load only some fields of the entity.
 #[derive(Debug)]
-pub struct EntityRequest<'a> {
+pub(crate) struct EntityRequest {
     /// The id of the entity requested
-    entity_id: EntityUID,
+    pub(crate) entity_id: EntityUID,
     /// The fieds of the entity requested
+    pub(crate) access_trie: AccessTrie,
+}
+
+/// An entity request may be an entity or `None` when
+/// the entity is not present.
+pub(crate) type EntityAnswer = Option<Entity>;
+
+/// The entity request before sub-entitity tries have been
+/// pruned using `prune_child_entity_dereferences`.
+pub(crate) struct EntityRequestRef<'a> {
+    entity_id: EntityUID,
     access_trie: &'a AccessTrie,
+}
+
+impl<'a> EntityRequestRef<'a> {
+    fn to_request(&self) -> EntityRequest {
+        EntityRequest {
+            entity_id: self.entity_id.clone(),
+            access_trie: self.access_trie.prune_child_entity_dereferences(),
+        }
+    }
 }
 
 /// A request that the ancestors of an entity be loaded.
 /// Optionally, the `ancestors` set may be used to just load ancestors in the set.
 #[derive(Debug)]
-pub struct AncestorsRequest {
+pub(crate) struct AncestorsRequest {
     /// The id of the entity whose ancestors are requested
-    entity_id: EntityUID,
+    pub(crate) entity_id: EntityUID,
     /// The ancestors that are requested, if present
-    ancestors: HashSet<EntityUID>,
+    pub(crate) ancestors: HashSet<EntityUID>,
 }
 
 /// Implement [`EntityLoader`] to easily load entities using their ids
 /// into a Cedar [`Entities`] store.
 /// The most basic implementation loads full entities (including all ancestors) in the `load_entities` method and loads the context in the `load_context` method.
 /// More advanced implementations make use of the [`AccessTrie`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
-pub trait EntityLoader {
-    /// Loads the concrete context based on the request.
-    /// Only context attributes mentioned in the `access_trie` are required.
-    fn load_context(&mut self, access_trie: AccessTrie) -> Context;
-
+pub(crate) trait EntityLoader {
     /// `load_entities` is called multiple times to load entities based on their ids.
     /// For each entity request in the `to_load` vector, expects one loaded entity in the resulting vector.
     /// Each [`EntityRequest`] comes with an [`AccessTrie`], which can optionally be used.
@@ -75,7 +91,10 @@ pub trait EntityLoader {
     /// Note that the same entity may be requested multiple times, with different [`AccessTrie`]s.
     ///
     /// Either `load_entities` must load all the ancestors of each entity, unless `load_ancestors` is implemented.
-    fn load_entities(&mut self, to_load: &[EntityRequest<'_>]) -> Vec<Entity>;
+    fn load_entities(
+        &mut self,
+        to_load: &[EntityRequest],
+    ) -> Result<Vec<EntityAnswer>, EntitySliceError>;
 
     /// Optionally, `load_entities` can forgo loading ancestors in the entity hierarchy.
     /// Instead, `load_ancestors` implements loading them.
@@ -83,25 +102,31 @@ pub trait EntityLoader {
     ///
     /// Each [`AncestorsRequest`] should result in one set of ancestors in the resulting vector.
     /// Only ancestors in the request are required, but it is sound to provide other ancestors as well.
-    fn load_ancestors(&mut self, entities: &Vec<AncestorsRequest>) -> Vec<HashSet<EntityUID>>;
+    fn load_ancestors(
+        &mut self,
+        entities: &[AncestorsRequest],
+    ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError>;
 }
 
 fn initial_entities_to_load<'a>(
     root_access_trie: &'a RootAccessTrie,
     context: &Context,
     request: &Request,
-) -> Result<Vec<EntityRequest<'a>>, EntitySliceError> {
+    required_ancestors: &mut HashSet<EntityUID>,
+) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
     let Context::Value(context_value) = &context else {
         return Err(PartialContextError {}.into());
     };
 
     let mut to_load = match root_access_trie.trie.get(&EntityRoot::Var(Var::Context)) {
-        Some(access_trie) => find_remaining_entities_context(context_value, access_trie)?,
+        Some(access_trie) => {
+            find_remaining_entities_context(context_value, access_trie, required_ancestors)?
+        }
         _ => vec![],
     };
 
     for (key, access_trie) in &root_access_trie.trie {
-        to_load.push(EntityRequest {
+        to_load.push(EntityRequestRef {
             entity_id: match key {
                 EntityRoot::Var(Var::Principal) => request
                     .principal()
@@ -128,14 +153,54 @@ fn initial_entities_to_load<'a>(
     Ok(to_load)
 }
 
+impl AccessTrie {
+    /// Removes any entity dereferences in the children of this trie,
+    /// recursively.
+    /// These can be included in [`EntityRequest`]s, which don't include
+    /// referenced entities.
+    pub(crate) fn prune_child_entity_dereferences(&self) -> AccessTrie {
+        let children = self
+            .children
+            .iter()
+            .map(|(k, v)| (k.clone(), Box::new(v.prune_entity_dereferences())))
+            .collect();
+
+        AccessTrie {
+            children,
+            ancestors_trie: self.ancestors_trie.clone(),
+            is_ancestor: self.is_ancestor,
+            node_type: self.node_type.clone(),
+        }
+    }
+
+    pub(crate) fn prune_entity_dereferences(&self) -> AccessTrie {
+        // PANIC SAFETY: Node types should always be present on entity manifests after creation.
+        #[allow(clippy::unwrap_used)]
+        let children = if self.node_type.as_ref().unwrap().is_entity_type() {
+            HashMap::new()
+        } else {
+            self.children
+                .iter()
+                .map(|(k, v)| (k.clone(), Box::new(v.prune_entity_dereferences())))
+                .collect()
+        };
+
+        AccessTrie {
+            children,
+            ancestors_trie: self.ancestors_trie.clone(),
+            is_ancestor: self.is_ancestor,
+            node_type: self.node_type.clone(),
+        }
+    }
+}
+
 /// Loads entities based on the entity manifest, request, and
 /// the implemented [`EntityLoader`].
-/// Returns both the new entity store and the loaded context.
-pub fn load_entities(
+pub(crate) fn load_entities(
     manifest: &EntityManifest,
     request: &Request,
     loader: &mut dyn EntityLoader,
-) -> Result<(Context, Entities), EntitySliceError> {
+) -> Result<Entities, EntitySliceError> {
     let Some(root_access_trie) = manifest
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
@@ -146,20 +211,17 @@ pub fn load_entities(
             TCComputation::AssumeAlreadyComputed,
             Extensions::all_available(),
         ) {
-            Ok(entities) => return Ok((Context::empty(), entities)),
+            Ok(entities) => return Ok(entities),
             Err(err) => return Err(err.into()),
         };
     };
 
-    let context = match root_access_trie.trie.get(&EntityRoot::Var(Var::Context)) {
-        Some(access_trie) => loader.load_context(access_trie.clone()),
-        _ => Context::empty(),
-    };
+    let context = request.context().ok_or(PartialRequestError {})?;
 
     let mut entities: HashMap<EntityUID, Entity> = Default::default();
     // entity requests in progress
-    let mut to_load: Vec<EntityRequest<'_>> =
-        initial_entities_to_load(&root_access_trie, &context, &request)?;
+    let mut to_load: Vec<EntityRequestRef<'_>> =
+        initial_entities_to_load(root_access_trie, context, request, &mut Default::default())?;
     // later, find the ancestors of these entities using their ancestor tries
     let mut to_find_ancestors = vec![];
 
@@ -173,7 +235,12 @@ pub fn load_entities(
             ));
         }
 
-        let new_entities = loader.load_entities(&to_load);
+        let new_entities = loader.load_entities(
+            &to_load
+                .iter()
+                .map(|entity_ref| entity_ref.to_request())
+                .collect::<Vec<_>>(),
+        )?;
         if new_entities.len() != to_load.len() {
             return Err(WrongNumberOfEntitiesError {
                 expected: to_load.len(),
@@ -183,12 +250,15 @@ pub fn load_entities(
         }
 
         let mut next_to_load = vec![];
-        for (entity_request, loaded) in to_load.drain(..).zip(new_entities) {
-            next_to_load.extend(find_remaining_entities(
-                &loaded,
-                entity_request.access_trie,
-            )?);
-            entities.insert(entity_request.entity_id, loaded);
+        for (entity_request, loaded_maybe) in to_load.drain(..).zip(new_entities) {
+            if let Some(loaded) = loaded_maybe {
+                next_to_load.extend(find_remaining_entities(
+                    &loaded,
+                    entity_request.access_trie,
+                    &mut Default::default(),
+                )?);
+                entities.insert(entity_request.entity_id, loaded);
+            }
         }
 
         to_load = next_to_load;
@@ -202,42 +272,42 @@ pub fn load_entities(
             entity_id,
             ancestors_trie,
             &entities,
-            &context,
+            context,
             request,
         )?);
     }
 
-    let loaded_ancestors = loader.load_ancestors(&ancestors_requests);
+    let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
     for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
-        // PANIC SAFETY: ancestor requests are only created for entities already loaded in the entities map
-        #[allow(clippy::unwrap_used)]
-        entities
-            .get_mut(&request.entity_id)
-            .unwrap()
-            .add_ancestors(ancestors);
+        if let Some(entity) = entities.get_mut(&request.entity_id) {
+            entity.add_ancestors(ancestors);
+        }
     }
 
     // finally, convert the loaded entities into a Cedar Entities store
-
     match Entities::from_entities(
         entities.values().cloned(),
         None::<&NoEntitiesSchema>,
         TCComputation::AssumeAlreadyComputed,
         Extensions::all_available(),
     ) {
-        Ok(entities) => Ok((context, entities)),
+        Ok(entities) => Ok(entities),
         Err(e) => Err(e.into()),
     }
 }
 
+/// Given a context value and an access trie, find all of the remaining
+/// entities in the context.
+/// Also keep track of required ancestors when encountering the `is_ancestor` flag.
 fn find_remaining_entities_context<'a>(
     context_value: &Arc<BTreeMap<SmolStr, Value>>,
     fields: &'a AccessTrie,
-) -> Result<Vec<EntityRequest<'a>>, EntitySliceError> {
+    required_ancestors: &mut HashSet<EntityUID>,
+) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
     let mut remaining = vec![];
     for (field, slice) in &fields.children {
         if let Some(value) = context_value.get(field) {
-            find_remaining_entities_value(&mut remaining, value, slice)?;
+            find_remaining_entities_value(&mut remaining, value, slice, required_ancestors)?;
         }
         // the attribute may not be present, since the schema can define
         // attributes that are optional
@@ -248,17 +318,27 @@ fn find_remaining_entities_context<'a>(
 /// This helper function finds all entity references that need to be
 /// loaded given an already-loaded [`Entity`] and corresponding [`Fields`].
 /// Returns pairs of entity and slices that need to be loaded.
+/// Also, finds ancestors that are required whenever the `is_ancestor`
+/// flag is found on a node.
 fn find_remaining_entities<'a>(
     entity: &Entity,
     fields: &'a AccessTrie,
-) -> Result<Vec<EntityRequest<'a>>, EntitySliceError> {
+    required_ancestors: &mut HashSet<EntityUID>,
+) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
+    // first, check if we need to add to `required_ancestors`
+    // most cases are handled by `find_remaining_entities_value`, but
+    // cedar variables require this logic
+    if fields.is_ancestor {
+        required_ancestors.insert(entity.uid().clone());
+    }
+
     let mut remaining = vec![];
     for (field, slice) in &fields.children {
         if let Some(pvalue) = entity.get(field) {
             let PartialValue::Value(value) = pvalue else {
                 return Err(PartialEntityError {}.into());
             };
-            find_remaining_entities_value(&mut remaining, value, slice)?;
+            find_remaining_entities_value(&mut remaining, value, slice, required_ancestors)?;
         }
         // the attribute may not be present, since the schema can define
         // attributes that are optional
@@ -268,26 +348,74 @@ fn find_remaining_entities<'a>(
 }
 
 fn find_remaining_entities_value<'a>(
-    remaining: &mut Vec<EntityRequest<'a>>,
+    remaining: &mut Vec<EntityRequestRef<'a>>,
     value: &Value,
     trie: &'a AccessTrie,
+    required_ancestors: &mut HashSet<EntityUID>,
 ) -> Result<(), EntitySliceError> {
+    // unless this is an entity id, ancestors should not be required
+    assert!(
+        trie.ancestors_trie == Default::default()
+            || matches!(value.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
+    );
+
+    // unless this is an entity id or set, it should not be an
+    // ancestor
+    assert!(
+        !trie.is_ancestor
+            || matches!(
+                value.value_kind(),
+                ValueKind::Lit(Literal::EntityUID(_)) | ValueKind::Set(_)
+            )
+    );
+
     match value.value_kind() {
         ValueKind::Lit(literal) => {
             if let Literal::EntityUID(entity_id) = literal {
-                remaining.push(EntityRequest {
+                // when ancestors are required, add this to the set
+                if trie.is_ancestor {
+                    required_ancestors.insert((**entity_id).clone());
+                }
+
+                remaining.push(EntityRequestRef {
                     entity_id: (**entity_id).clone(),
                     access_trie: trie,
                 });
             }
         }
-        ValueKind::Set(_) => (),
+        ValueKind::Set(set) => {
+            // when ancestors are required, request all of them
+            // when this is an ancestor, request all of the entities
+            // in this set
+            if trie.is_ancestor {
+                for val in set.iter() {
+                    match val.value_kind() {
+                        ValueKind::Lit(Literal::EntityUID(id)) => {
+                            required_ancestors.insert((**id).clone());
+                        }
+                        // PANIC SAFETY: see above panic- set must contain entities
+                        #[allow(clippy::panic)]
+                        _ => {
+                            panic!(
+                                "Found is_ancestor on set of non-entity-type {}",
+                                val.value_kind()
+                            );
+                        }
+                    }
+                }
+            }
+        }
         ValueKind::ExtensionValue(_) => (),
         ValueKind::Record(record) => {
             for (field, child_slice) in &trie.children {
                 // only need to slice if field is present
                 if let Some(value) = record.get(field) {
-                    find_remaining_entities_value(remaining, value, child_slice)?;
+                    find_remaining_entities_value(
+                        remaining,
+                        value,
+                        child_slice,
+                        required_ancestors,
+                    )?;
                 }
             }
         }
@@ -309,7 +437,7 @@ fn compute_ancestors_request(
     // is_ancestor tags.
     let mut ancestors = HashSet::new();
 
-    let mut to_visit = initial_entities_to_load(ancestors_trie, context, request)?;
+    let mut to_visit = initial_entities_to_load(ancestors_trie, context, request, &mut ancestors)?;
 
     while !to_visit.is_empty() {
         let mut next_to_visit = vec![];
@@ -317,8 +445,13 @@ fn compute_ancestors_request(
             if entity_request.access_trie.is_ancestor {
                 ancestors.insert(entity_request.entity_id.clone());
             }
+
             if let Some(entity) = entities.get(&entity_request.entity_id) {
-                next_to_visit.extend(find_remaining_entities(entity, entity_request.access_trie)?);
+                next_to_visit.extend(find_remaining_entities(
+                    entity,
+                    entity_request.access_trie,
+                    &mut ancestors,
+                )?);
             }
         }
         to_visit = next_to_visit;

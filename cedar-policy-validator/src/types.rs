@@ -640,6 +640,16 @@ impl Type {
             },
         }
     }
+
+    /// Returns `true` when the type is a type of an entity
+    pub(crate) fn is_entity_type(&self) -> bool {
+        match self {
+            Type::EntityOrRecord(EntityRecordKind::Entity(_)) => true,
+            Type::EntityOrRecord(EntityRecordKind::AnyEntity) => true,
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for Type {
