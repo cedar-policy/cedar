@@ -22,6 +22,10 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors raised when entities do not conform to the schema
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum EntitySchemaConformanceError {
@@ -29,6 +33,10 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnexpectedEntityAttr(UnexpectedEntityAttr),
+    /// Encountered tag, but no tags should exist on entities of this type
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnexpectedEntityTag(UnexpectedEntityTag),
     /// Didn't encounter attribute that should exist
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -69,6 +77,13 @@ impl EntitySchemaConformanceError {
         Self::UnexpectedEntityAttr(UnexpectedEntityAttr {
             uid,
             attr: attr.into(),
+        })
+    }
+
+    pub(crate) fn unexpected_entity_tag(uid: EntityUID, tag: impl Into<SmolStr>) -> Self {
+        Self::UnexpectedEntityTag(UnexpectedEntityTag {
+            uid,
+            tag: tag.into(),
         })
     }
 
@@ -122,6 +137,10 @@ impl EntitySchemaConformanceError {
 /// Error looking up an extension function. This error can occur when
 /// checking entity conformance because that may require getting information
 /// about any extension functions referenced in entity attribute values.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("in attribute `{attr}` on `{uid}`, {err}")]
 pub struct ExtensionFunctionLookup {
@@ -136,6 +155,10 @@ pub struct ExtensionFunctionLookup {
 
 /// Encountered an action whose definition doesn't precisely match the
 /// schema's declaration of that action
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("definition of action `{uid}` does not match its schema declaration")]
 #[diagnostic(help(
@@ -147,6 +170,10 @@ pub struct ActionDeclarationMismatch {
 }
 
 /// Encountered an action which was not declared in the schema
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
 pub struct UndeclaredAction {
@@ -155,6 +182,10 @@ pub struct UndeclaredAction {
 }
 
 /// Found an ancestor of a type that's not allowed for that entity
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error(
     "`{uid}` is not allowed to have an ancestor of type `{ancestor_ty}` according to the schema"
@@ -167,6 +198,10 @@ pub struct InvalidAncestorType {
 }
 
 /// Encountered attribute that shouldn't exist on entities of this type
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
 pub struct UnexpectedEntityAttr {
@@ -174,7 +209,25 @@ pub struct UnexpectedEntityAttr {
     attr: SmolStr,
 }
 
+/// Encountered tag, but no tags should exist on entities of this type
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error(
+    "found a tag `{tag}` on `{uid}`, but no tags should exist on `{uid}` according to the schema"
+)]
+pub struct UnexpectedEntityTag {
+    uid: EntityUID,
+    tag: SmolStr,
+}
+
 /// Didn't encounter attribute that should exist
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("expected entity `{uid}` to have attribute `{attr}`, but it does not")]
 pub struct MissingRequiredEntityAttr {
@@ -182,10 +235,14 @@ pub struct MissingRequiredEntityAttr {
     attr: SmolStr,
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
 /// The given attribute on the given entity had a different type than the
 /// schema indicated
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error("in attribute `{attr}` on `{uid}`, {err}")]
 pub struct TypeMismatch {
     uid: EntityUID,
     attr: SmolStr,
@@ -195,6 +252,10 @@ pub struct TypeMismatch {
 
 /// Encountered an entity of a type which is not declared in the schema.
 /// Note that this error is only used for non-Action entity types.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error)]
 #[error("entity `{uid}` has type `{}` which is not declared in the schema", .uid.entity_type())]
 pub struct UnexpectedEntityTypeError {

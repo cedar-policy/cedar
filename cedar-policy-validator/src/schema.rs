@@ -2565,8 +2565,10 @@ pub(crate) mod test {
             view_photo.unwrap(),
             &Entity::new(
                 action_uid,
-                HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
+                [("attr".into(), RestrictedExpr::val("foo"))],
                 HashSet::new(),
+                #[cfg(feature = "entity-tags")]
+                [],
                 Extensions::none(),
             )
             .unwrap(),

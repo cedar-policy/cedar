@@ -65,7 +65,7 @@ use std::str::FromStr;
 pub struct Entity(ast::Entity);
 
 impl Entity {
-    /// Create a new `Entity` with this Uid, attributes, and parents.
+    /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
     ///
     /// Attribute values are specified here as "restricted expressions".
     /// See docs on `RestrictedExpression`
@@ -95,16 +95,15 @@ impl Entity {
         // the `Entities` object is created
         Ok(Self(ast::Entity::new(
             uid.into(),
-            attrs
-                .into_iter()
-                .map(|(k, v)| (SmolStr::from(k), v.0))
-                .collect(),
+            attrs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             parents.into_iter().map(EntityUid::into).collect(),
+            #[cfg(feature = "entity-tags")]
+            [],
             Extensions::all_available(),
         )?))
     }
 
-    /// Create a new `Entity` with this Uid, parents, and no attributes.
+    /// Create a new `Entity` with this Uid, parents, and no attributes or tags.
     /// This is the same as `Self::new` except the attributes are empty, and therefore it can
     /// return `Self` instead of `Result<Self>`
     pub fn new_empty_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
