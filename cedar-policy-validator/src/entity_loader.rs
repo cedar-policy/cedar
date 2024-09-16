@@ -318,20 +318,12 @@ fn find_remaining_entities_context<'a>(
 /// This helper function finds all entity references that need to be
 /// loaded given an already-loaded [`Entity`] and corresponding [`Fields`].
 /// Returns pairs of entity and slices that need to be loaded.
-/// Also, finds ancestors that are required whenever the `is_ancestor`
-/// flag is found on a node.
+/// Also, any sets marked `is_ancestor` are added to the `required_ancestors` set.
 fn find_remaining_entities<'a>(
     entity: &Entity,
     fields: &'a AccessTrie,
     required_ancestors: &mut HashSet<EntityUID>,
 ) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
-    // first, check if we need to add to `required_ancestors`
-    // most cases are handled by `find_remaining_entities_value`, but
-    // cedar variables require this logic
-    if fields.is_ancestor {
-        required_ancestors.insert(entity.uid().clone());
-    }
-
     let mut remaining = vec![];
     for (field, slice) in &fields.children {
         if let Some(pvalue) = entity.get(field) {
@@ -347,6 +339,8 @@ fn find_remaining_entities<'a>(
     Ok(remaining)
 }
 
+/// Like `find_remaining_entities`, but for values.
+/// Any sets that are marked `is_ancestor` are added to the `required_ancestors` set.
 fn find_remaining_entities_value<'a>(
     remaining: &mut Vec<EntityRequestRef<'a>>,
     value: &Value,
@@ -372,10 +366,8 @@ fn find_remaining_entities_value<'a>(
     match value.value_kind() {
         ValueKind::Lit(literal) => {
             if let Literal::EntityUID(entity_id) = literal {
-                // when ancestors are required, add this to the set
-                if trie.is_ancestor {
-                    required_ancestors.insert((**entity_id).clone());
-                }
+                // no need to add to ancestors set here because
+                // we are creating an entity request.
 
                 remaining.push(EntityRequestRef {
                     entity_id: (**entity_id).clone(),
@@ -384,7 +376,6 @@ fn find_remaining_entities_value<'a>(
             }
         }
         ValueKind::Set(set) => {
-            // when ancestors are required, request all of them
             // when this is an ancestor, request all of the entities
             // in this set
             if trie.is_ancestor {
@@ -393,7 +384,7 @@ fn find_remaining_entities_value<'a>(
                         ValueKind::Lit(Literal::EntityUID(id)) => {
                             required_ancestors.insert((**id).clone());
                         }
-                        // PANIC SAFETY: see above panic- set must contain entities
+                        // PANIC SAFETY: see assert above- ancestor annotation is only valid on sets of entities or entities
                         #[allow(clippy::panic)]
                         _ => {
                             panic!(
@@ -442,6 +433,8 @@ fn compute_ancestors_request(
     while !to_visit.is_empty() {
         let mut next_to_visit = vec![];
         for entity_request in to_visit.drain(..) {
+            // check the is_ancestor flag for entities
+            // the is_ancestor flag on sets of entities is handled by find_remaining_entities
             if entity_request.access_trie.is_ancestor {
                 ancestors.insert(entity_request.entity_id.clone());
             }
