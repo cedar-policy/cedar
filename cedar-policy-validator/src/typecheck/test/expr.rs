@@ -61,6 +61,7 @@ fn slot_in_typechecks() {
     let etype = json_schema::EntityType {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
+        tags: None,
     };
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
@@ -90,6 +91,7 @@ fn slot_equals_typechecks() {
     let etype = json_schema::EntityType {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
+        tags: None,
     };
     // These don't typecheck in strict mode because the test_util expression
     // typechecker doesn't have access to a schema, so it can't link

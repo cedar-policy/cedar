@@ -394,6 +394,10 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext<N>,
+    /// Tag type for entities of this [`EntityType`]; `None` means entities of this [`EntityType`] do not have tags.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Type<N>>,
 }
 
 impl EntityType<RawName> {
@@ -409,6 +413,9 @@ impl EntityType<RawName> {
                 .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             shape: self.shape.conditionally_qualify_type_references(ns),
+            tags: self
+                .tags
+                .map(|ty| ty.conditionally_qualify_type_references(ns)),
         }
     }
 }
@@ -431,6 +438,10 @@ impl EntityType<ConditionalName> {
                 .map(|cname| cname.resolve(all_defs))
                 .collect::<std::result::Result<_, _>>()?,
             shape: self.shape.fully_qualify_type_references(all_defs)?,
+            tags: self
+                .tags
+                .map(|ty| ty.fully_qualify_type_references(all_defs))
+                .transpose()?,
         })
     }
 }
@@ -2433,6 +2444,150 @@ mod strengthened_types {
     }
 }
 
+/// Tests involving entity tags (RFC 82)
+#[cfg(test)]
+mod entity_tags {
+    use super::*;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    /// This schema taken directly from the RFC 82 text
+    #[test]
+    fn basic() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
+                        }
+                    },
+                    "tags" : {
+                        "type" : "Set",
+                        "element": { "type": "String" }
+                    }
+                },
+                "Document" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "owner" : {
+                                "type" : "Entity",
+                                "name" : "User"
+                            },
+                        }
+                    },
+                    "tags" : {
+                      "type" : "Set",
+                      "element": { "type": "String" }
+                    }
+                }
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
+            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
+                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            });
+            let doc = frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
+            assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
+                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            });
+        })
+    }
+
+    /// In this schema, the tag type is a common type
+    #[test]
+    fn tag_type_is_common_type() {
+        let json = json!({"": {
+            "commonTypes": {
+                "T": { "type": "String" },
+            },
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
+                        }
+                    },
+                    "tags" : { "type" : "T" },
+                },
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
+            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
+                assert_eq!(&format!("{type_name}"), "T");
+            });
+        })
+    }
+
+    /// In this schema, the tag type is an entity type
+    #[test]
+    fn tag_type_is_entity_type() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
+                        }
+                    },
+                    "tags" : { "type" : "Entity", "name": "User" },
+                },
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
+            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
+                assert_eq!(&format!("{name}"), "User");
+            });
+        })
+    }
+
+    /// This schema has `tags` inside `shape` instead of parallel to it
+    #[test]
+    fn bad_tags() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "jobLevel": {
+                                "type": "Long"
+                            },
+                        },
+                        "tags": { "type": "String" },
+                    }
+                },
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json.clone()), Err(e) => {
+            expect_err(
+                &json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unknown field `tags`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
+                    .build(),
+            );
+        });
+    }
+}
+
 /// Check that (de)serialization works as expected.
 #[cfg(test)]
 mod test_json_roundtrip {
@@ -2485,6 +2640,7 @@ mod test_json_roundtrip {
                             attributes: BTreeMap::new(),
                             additional_attributes: false,
                         }))),
+                        tags: None,
                     },
                 )]),
                 actions: HashMap::from([(
@@ -2526,6 +2682,7 @@ mod test_json_roundtrip {
                                     additional_attributes: false,
                                 },
                             ))),
+                            tags: None,
                         },
                     )]),
                     actions: HashMap::new(),
