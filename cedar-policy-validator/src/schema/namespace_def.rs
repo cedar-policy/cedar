@@ -29,7 +29,7 @@ use cedar_policy_core::{
     extensions::Extensions,
 };
 use itertools::Itertools;
-use nonempty::NonEmpty;
+use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
@@ -436,13 +436,15 @@ impl EntityTypesDef<ConditionalName> {
 /// Holds the attributes and parents information for an entity type definition.
 ///
 /// In this representation, references to common types may not yet have been
-/// fully resolved/inlined, and both `parents` and `attributes` may reference
-/// undeclared entity/common types. Furthermore, entity/common type references
-/// in `attributes` may or may not be fully qualified yet, depending on `N`.
+/// fully resolved/inlined, and `parents`, `attributes`, and `tags` may all
+/// reference undeclared entity/common types. Furthermore, entity/common type
+/// references in `parents`, `attributes`, and `tags` may or may not be fully
+/// qualified yet, depending on `N`.
 #[derive(Debug)]
 pub struct EntityTypeFragment<N> {
-    /// Description of the attribute types for this entity type. This may
-    /// contain references to common types which have not yet been
+    /// Description of the attribute types for this entity type.
+    ///
+    /// This may contain references to common types which have not yet been
     /// resolved/inlined (e.g., because they are not defined in this schema
     /// fragment).
     /// In the extreme case, this may itself be just a common type pointing to a
@@ -451,9 +453,17 @@ pub struct EntityTypeFragment<N> {
     /// Direct parent entity types for this entity type.
     /// These entity types may be declared in a different namespace or schema
     /// fragment.
+    ///
     /// We will check for undeclared parent types when combining fragments into
     /// a [`crate::ValidatorSchema`].
     pub(super) parents: HashSet<N>,
+    /// Tag type for this entity type. `None` means no tags are allowed on this
+    /// entity type.
+    ///
+    /// This may contain references to common types which have not yet been
+    /// resolved/inlined (e.g., because they are not defined in this schema
+    /// fragment).
+    pub(super) tags: Option<json_schema::Type<N>>,
 }
 
 impl EntityTypeFragment<ConditionalName> {
@@ -476,6 +486,9 @@ impl EntityTypeFragment<ConditionalName> {
                     raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
                 })
                 .collect(),
+            tags: schema_file_type
+                .tags
+                .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
         }
     }
 
@@ -497,6 +510,11 @@ impl EntityTypeFragment<ConditionalName> {
             .into_iter()
             .map(|parent| parent.resolve(all_defs))
             .collect::<Result<_, TypeNotDefinedError>>()?;
+        // Fully qualify typenames appearing in `tags`
+        let fully_qual_tags = self
+            .tags
+            .map(|tags| tags.fully_qualify_type_references(all_defs))
+            .transpose();
         // Now is the time to check whether any parents are dangling, i.e.,
         // refer to entity types that are not declared in any fragment (since we
         // now have the set of typenames that are declared in all fragments).
@@ -506,15 +524,24 @@ impl EntityTypeFragment<ConditionalName> {
                 .filter(|ety| !all_defs.is_defined_as_entity(ety))
                 .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
         );
-        match (fully_qual_attributes, undeclared_parents) {
-            (Ok(attributes), None) => Ok(EntityTypeFragment {
+        match (fully_qual_attributes, fully_qual_tags, undeclared_parents) {
+            (Ok(attributes), Ok(tags), None) => Ok(EntityTypeFragment {
                 attributes,
                 parents,
+                tags,
             }),
-            (Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError(undeclared_parents)),
-            (Err(e), None) => Err(e),
-            (Err(e), Some(mut undeclared)) => {
+            (Ok(_), Ok(_), Some(undeclared_parents)) => {
+                Err(TypeNotDefinedError(undeclared_parents))
+            }
+            (Err(e), Ok(_), None) | (Ok(_), Err(e), None) => Err(e),
+            (Err(e1), Err(e2), None) => Err(TypeNotDefinedError::join_nonempty(nonempty![e1, e2])),
+            (Err(e), Ok(_), Some(mut undeclared)) | (Ok(_), Err(e), Some(mut undeclared)) => {
                 undeclared.extend(e.0);
+                Err(TypeNotDefinedError(undeclared))
+            }
+            (Err(e1), Err(e2), Some(mut undeclared)) => {
+                undeclared.extend(e1.0);
+                undeclared.extend(e2.0);
                 Err(TypeNotDefinedError(undeclared))
             }
         }

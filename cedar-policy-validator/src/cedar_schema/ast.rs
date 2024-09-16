@@ -216,6 +216,8 @@ pub struct EntityDecl {
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
     pub attrs: Vec<Node<AttrDecl>>,
+    /// Tag type for this entity (`None` means no tags on this entity)
+    pub tags: Option<Node<Type>>,
 }
 
 /// Type definitions
