@@ -90,8 +90,6 @@ Cedar Language Version: 4.0
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
-- (*) `Entities::from_entities()` will now correctly reject record
-  attributes with superfluous attributes. (#1177, resolving #1176)
 
 ## [3.4.0] - Coming soon
 Cedar Language Version: 3.4
