@@ -13,11 +13,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: TBD
 
 ### Added
+
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
-
 
 ## [4.0.0] - Coming soon
 Cedar Language Version: 4.0
