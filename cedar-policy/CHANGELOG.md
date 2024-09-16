@@ -102,7 +102,6 @@ Cedar Language Version: 3.4
   many policies and templates a policy set has (#1180)
 - `Entity` is now `Hash`. The hash implementation compares the hash of
   the entity UID (#1186)
-- `Entity::new_empty_attrs` utility constructor that can't error (#1186)
 
 ### Fixed
 
