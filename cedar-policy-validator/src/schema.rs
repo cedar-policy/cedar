@@ -1328,26 +1328,67 @@ pub(crate) mod test {
 
     use super::*;
 
-    /// Transform the output of functions like
-    /// `ValidatorSchema::from_cedarschema_str()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
-    /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
-    /// `assert_matches`, `.unwrap_err()`, etc
-    pub fn collect_warnings<A, B, E>(
-        r: std::result::Result<(A, impl Iterator<Item = B>), E>,
-    ) -> std::result::Result<(A, Vec<B>), E> {
-        r.map(|(a, iter)| (a, iter.collect()))
+    pub(crate) mod utils {
+        use super::{CedarSchemaError, SchemaError, ValidatorEntityType, ValidatorSchema};
+        use cedar_policy_core::extensions::Extensions;
+
+        /// Transform the output of functions like
+        /// `ValidatorSchema::from_cedarschema_str()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
+        /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
+        /// `assert_matches`, `.unwrap_err()`, etc
+        pub fn collect_warnings<A, B, E>(
+            r: std::result::Result<(A, impl Iterator<Item = B>), E>,
+        ) -> std::result::Result<(A, Vec<B>), E> {
+            r.map(|(a, iter)| (a, iter.collect()))
+        }
+
+        /// Given an entity type as string, get the `ValidatorEntityType` from the
+        /// schema, panicking if it does not exist (or if `etype` fails to parse as
+        /// an entity type)
+        #[track_caller]
+        pub fn assert_entity_type_exists<'s>(
+            schema: &'s ValidatorSchema,
+            etype: &str,
+        ) -> &'s ValidatorEntityType {
+            schema.get_entity_type(&etype.parse().unwrap()).unwrap()
+        }
+
+        #[track_caller]
+        pub fn assert_valid_cedar_schema(src: &str) -> ValidatorSchema {
+            match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+                Ok((schema, _)) => schema,
+                Err(e) => panic!("{:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_invalid_cedar_schema(src: &str) {
+            match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+                Ok(_) => panic!("{src} should be an invalid schema"),
+                Err(CedarSchemaError::Parsing(_)) => {}
+                Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
+            match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
+                Ok(schema) => schema,
+                Err(e) => panic!("{:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_invalid_json_schema(json: serde_json::Value) {
+            match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
+                Ok(_) => panic!("{json} should be an invalid schema"),
+                Err(SchemaError::JsonDeserialization(_)) => {}
+                Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+            }
+        }
     }
 
-    /// Given an entity type as string, get the `ValidatorEntityType` from the
-    /// schema, panicking if it does not exist (or if `etype` fails to parse as
-    /// an entity type)
-    #[track_caller]
-    pub fn assert_entity_type_exists<'s>(
-        schema: &'s ValidatorSchema,
-        etype: &str,
-    ) -> &'s ValidatorEntityType {
-        schema.get_entity_type(&etype.parse().unwrap()).unwrap()
-    }
+    use utils::*;
 
     // Well-formed schema
     #[test]
@@ -3443,6 +3484,14 @@ pub(crate) mod test {
             );
         });
     }
+
+    #[test]
+    fn attr_named_tags() {
+        let src = r#"
+            entity E { tags: Set<{key: String, value: Set<String>}> };
+        "#;
+        assert_valid_cedar_schema(src);
+    }
 }
 
 #[cfg(test)]
@@ -3450,8 +3499,8 @@ mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
 mod test_rfc70 {
-    use super::test::{assert_entity_type_exists, collect_warnings};
-    use super::{CedarSchemaError, SchemaError, ValidatorSchema};
+    use super::test::utils::*;
+    use super::ValidatorSchema;
     use crate::types::Type;
     use cedar_policy_core::{
         extensions::Extensions,
@@ -3459,40 +3508,6 @@ mod test_rfc70 {
     };
     use cool_asserts::assert_matches;
     use serde_json::json;
-
-    #[track_caller]
-    fn assert_valid_cedar_schema(src: &str) -> ValidatorSchema {
-        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
-            Ok((schema, _)) => schema,
-            Err(e) => panic!("{:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_invalid_cedar_schema(src: &str) {
-        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
-            Ok(_) => panic!("{src} should be an invalid schema"),
-            Err(CedarSchemaError::Parsing(_)) => {}
-            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
-        match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
-            Ok(schema) => schema,
-            Err(e) => panic!("{:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_invalid_json_schema(json: serde_json::Value) {
-        match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
-            Ok(_) => panic!("{json} should be an invalid schema"),
-            Err(SchemaError::JsonDeserialization(_)) => {}
-            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
-        }
-    }
 
     /// Common type shadowing a common type is disallowed in both syntaxes
     #[test]
@@ -4476,10 +4491,7 @@ mod test_rfc70 {
 mod entity_tags {
     use crate::types::Primitive;
 
-    use super::{
-        test::{assert_entity_type_exists, collect_warnings},
-        *,
-    };
+    use super::{test::utils::*, *};
     use cedar_policy_core::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
