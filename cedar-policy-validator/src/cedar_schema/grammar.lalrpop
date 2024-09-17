@@ -61,7 +61,6 @@ match {
     "entity" => ENTITY,
     "in" => IN,
     "type" => TYPE,
-    "tags" => TAGS,
     "Set" => SET,
     "appliesTo" => APPLIESTO,
     "principal" => PRINCIPAL,
@@ -69,6 +68,7 @@ match {
     "resource" => RESOURCE,
     "context" => CONTEXT,
     "attributes" => ATTRIBUTES,
+    "tags" => TAGS,
     "Long" => LONG,
     "String" => STRING,
     "Bool" => BOOL,
@@ -220,6 +220,8 @@ Ident: Node<Id> = {
         => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ATTRIBUTES <r:@R>
         => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TAGS <r:@R>
+        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> BOOL <r:@R>
         => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> LONG <r:@R>

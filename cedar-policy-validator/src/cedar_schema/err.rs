@@ -72,6 +72,7 @@ lazy_static! {
             ("TYPE", "`type`"),
             ("SET", "`Set`"),
             ("IDENTIFIER", "identifier"),
+            ("TAGS", "`tags`"),
         ]),
         impossible_tokens: HashSet::new(),
         special_identifier_tokens: HashSet::from([
@@ -85,6 +86,7 @@ lazy_static! {
             "RESOURCE",
             "CONTEXT",
             "ATTRIBUTES",
+            "TAGS",
             "LONG",
             "STRING",
             "BOOL",
