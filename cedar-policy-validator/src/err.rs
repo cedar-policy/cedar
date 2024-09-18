@@ -616,7 +616,6 @@ pub mod schema_errors {
 
     #[derive(Debug, Diagnostic, Error)]
     pub(crate) enum UnsupportedFeature {
-        #[cfg(not(feature = "partial-validate"))]
         #[error("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")]
         OpenRecordsAndEntities,
         // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
