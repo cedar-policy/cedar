@@ -1016,6 +1016,7 @@ pub mod test {
     pub fn rich_entities() -> Entities {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
+
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
         entity_with_attrs
             .set_attr("spoon".into(), RestrictedExpr::val(787), Extensions::none())
@@ -1050,6 +1051,8 @@ pub mod test {
                 Extensions::none(),
             )
             .unwrap();
+
+        #[cfg(feature = "entity-tags")]
         let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
         #[cfg(feature = "entity-tags")]
         entity_with_tags
@@ -1059,6 +1062,10 @@ pub mod test {
                 Extensions::none(),
             )
             .unwrap();
+
+        #[cfg(not(feature = "entity-tags"))]
+        let entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
+
         let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
         entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
         #[cfg(feature = "entity-tags")]
@@ -1069,6 +1076,7 @@ pub mod test {
                 Extensions::none(),
             )
             .unwrap();
+
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
@@ -1083,6 +1091,7 @@ pub mod test {
         );
         child_diff_type.add_ancestor(parent.uid().clone());
         child_diff_type.add_ancestor(grandparent.uid().clone());
+
         Entities::from_entities(
             vec![
                 entity_no_attrs_no_parents,

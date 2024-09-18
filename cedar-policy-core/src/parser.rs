@@ -614,10 +614,6 @@ mod tests {
     /// Tests parser+evaluator with builtin methods `containsAll()`, `hasTag()`, `getTag()`
     #[test]
     fn interpret_methods() {
-        let request = eval::test::basic_request();
-        let entities = eval::test::basic_entities();
-        let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(request, &entities, exts);
         // The below tests check not only that we get the expected `Value`, but
         // that it has the expected source location.
         // See note on this in the above test.
@@ -628,6 +624,11 @@ mod tests {
         "#;
         #[cfg(feature = "entity-tags")]
         {
+            let request = eval::test::basic_request();
+            let entities = eval::test::basic_entities();
+            let exts = Extensions::none();
+            let evaluator = eval::Evaluator::new(request, &entities, exts);
+
             let expr = parse_expr(src).unwrap();
             assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
                 expect_err(

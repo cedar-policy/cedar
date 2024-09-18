@@ -463,12 +463,16 @@ impl ast::UnreservedId {
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
                 .map(|arg| construct_method_getTag(e, arg, loc.clone())),
             #[cfg(not(feature = "entity-tags"))]
-            "getTag" => Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into()),
+            "getTag" => {
+                Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
+            }
             #[cfg(feature = "entity-tags")]
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
                 .map(|arg| construct_method_hasTag(e, arg, loc.clone())),
             #[cfg(not(feature = "entity-tags"))]
-            "hasTag" => Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into()),
+            "hasTag" => {
+                Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
+            }
             _ => {
                 if EXTENSION_STYLES.methods.contains(self) {
                     let args = NonEmpty {
