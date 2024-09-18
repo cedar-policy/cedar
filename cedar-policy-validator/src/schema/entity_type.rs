@@ -22,7 +22,9 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
-use crate::types::{AttributeType, Attributes, OpenTag, Type};
+use crate::types::{AttributeType, Attributes, OpenTag};
+#[cfg(feature = "entity-tags")]
+use crate::types::Type;
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -50,6 +52,7 @@ pub struct ValidatorEntityType {
 
     /// Tag type for this entity type. `None` indicates that entities of this
     /// type are not allowed to have tags.
+    #[cfg(feature = "entity-tags")]
     pub(crate) tags: Option<Type>,
 }
 
@@ -72,6 +75,7 @@ impl ValidatorEntityType {
 
     /// Get the type of tags on this entity. `None` indicates that entities of
     /// this type are not allowed to have tags.
+    #[cfg(feature = "entity-tags")]
     pub fn tag_type(&self) -> Option<&Type> {
         self.tags.as_ref()
     }

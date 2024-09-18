@@ -616,11 +616,15 @@ pub mod schema_errors {
 
     #[derive(Debug, Diagnostic, Error)]
     pub(crate) enum UnsupportedFeature {
+        #[cfg(not(feature = "partial-validate"))]
         #[error("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")]
         OpenRecordsAndEntities,
         // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
         #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
         ActionAttributes(Vec<String>),
+        #[cfg(not(feature = "entity-tags"))]
+        #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
+        EntityTags,
     }
 
     /// This error is thrown when `serde_json` fails to deserialize the JSON
