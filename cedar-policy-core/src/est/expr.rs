@@ -665,14 +665,20 @@ impl Expr {
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
+            #[cfg(feature = "entity-tags")]
             Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
+            #[cfg(not(feature = "entity-tags"))]
+            Expr::ExprNoExt(ExprNoExt::GetTag { .. }) => Err(FromJsonError::UnsupportedEntityTags),
+            #[cfg(feature = "entity-tags")]
             Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
+            #[cfg(not(feature = "entity-tags"))]
+            Expr::ExprNoExt(ExprNoExt::HasTag { .. }) => Err(FromJsonError::UnsupportedEntityTags),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
                 Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
             }
@@ -808,7 +814,9 @@ impl From<ast::Expr> for Expr {
                     ast::BinaryOp::Contains => Expr::contains(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAll => Expr::contains_all(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAny => Expr::contains_any(Arc::new(arg1), arg2),
+                    #[cfg(feature = "entity-tags")]
                     ast::BinaryOp::GetTag => Expr::get_tag(Arc::new(arg1), arg2),
+                    #[cfg(feature = "entity-tags")]
                     ast::BinaryOp::HasTag => Expr::has_tag(Arc::new(arg1), arg2),
                 }
             }
@@ -1687,10 +1695,10 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
         Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
         Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
-        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
-        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
         Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
         Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |

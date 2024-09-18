@@ -1418,6 +1418,7 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
+            #[cfg(feature = "entity-tags")]
             BinaryOp::GetTag | BinaryOp::HasTag => {
                 unimplemented!("validation for .getTag() and .hasTag() operations")
             }

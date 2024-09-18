@@ -366,8 +366,12 @@ impl<T> Expr<T> {
                     | BinaryOp::Eq
                     | BinaryOp::In
                     | BinaryOp::Less
-                    | BinaryOp::LessEq
-                    | BinaryOp::HasTag,
+                    | BinaryOp::LessEq,
+                ..
+            } => Some(Type::Bool),
+            #[cfg(feature = "entity-tags")]
+            ExprKind::BinaryApp {
+                op: BinaryOp::HasTag,
                 ..
             } => Some(Type::Bool),
             ExprKind::ExtensionFunctionApp { fn_name, .. } => extensions
@@ -381,6 +385,7 @@ impl<T> Expr<T> {
             // attribute.
             ExprKind::GetAttr { .. } => None,
             // similarly to `GetAttr`
+            #[cfg(feature = "entity-tags")]
             ExprKind::BinaryApp {
                 op: BinaryOp::GetTag,
                 ..
@@ -523,12 +528,14 @@ impl Expr {
 
     /// Create a `getTag` expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    #[cfg(feature = "entity-tags")]
     pub fn get_tag(expr: Expr, tag: Expr) -> Self {
         ExprBuilder::new().get_tag(expr, tag)
     }
 
     /// Create a `hasTag` expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    #[cfg(feature = "entity-tags")]
     pub fn has_tag(expr: Expr, tag: Expr) -> Self {
         ExprBuilder::new().has_tag(expr, tag)
     }
@@ -1104,6 +1111,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create a 'getTag' expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    #[cfg(feature = "entity-tags")]
     pub fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::GetTag,
@@ -1114,6 +1122,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create a 'hasTag' expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    #[cfg(feature = "entity-tags")]
     pub fn has_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::HasTag,
