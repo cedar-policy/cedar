@@ -1464,11 +1464,19 @@ pub mod test {
             )),
             Ok(Value::from(false))
         );
-        // hasTag on an entity that has tags, but not that one
+        // hasTag on an entity that has tags, but not that one (and no attrs exist)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_tag(
                 Expr::val(EntityUID::with_eid("entity_with_tags")),
                 Expr::val("doesnotexist"),
+            )),
+            Ok(Value::from(false))
+        );
+        // hasTag on an entity that has tags, but not that one (but does have an attr of that name)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags_and_attrs")),
+                Expr::val("address"),
             )),
             Ok(Value::from(false))
         );
