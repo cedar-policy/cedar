@@ -22,9 +22,9 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
-use crate::types::{AttributeType, Attributes, OpenTag};
 #[cfg(feature = "entity-tags")]
 use crate::types::Type;
+use crate::types::{AttributeType, Attributes, OpenTag};
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
