@@ -308,7 +308,7 @@ pub(crate) mod test_utils {
 
     /// Expect that the given `ParseErrors` contains exactly one error, and that it matches the given `ExpectedErrorMessage`.
     ///
-    /// `src` is the original input text, just for better assertion-failure messages
+    /// `src` is the original input text (which the miette labels index into).
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_exactly_one_error(src: &str, errs: &ParseErrors, msg: &ExpectedErrorMessage<'_>) {
         match errs.len() {
@@ -573,6 +573,7 @@ mod tests {
         );
     }
 
+    /// Tests parser+evaluator with relations `<`, `<=`, `>`, `&&`, `||`, `!=`
     #[test]
     fn interpret_relation() {
         let request = eval::test::basic_request();
@@ -608,6 +609,81 @@ mod tests {
             val.source_loc().unwrap().snippet(),
             Some("7 <= 7 && 4 != 5")
         );
+    }
+
+    /// Tests parser+evaluator with builtin methods `containsAll()`, `hasTag()`, `getTag()`
+    #[test]
+    fn interpret_methods() {
+        // The below tests check not only that we get the expected `Value`, but
+        // that it has the expected source location.
+        // See note on this in the above test.
+
+        let src = r#"
+            [2, 3, "foo"].containsAll([3, "foo"])
+            && principal.hasTag(resource.getTag(context.cur_time))
+        "#;
+        #[cfg(feature = "entity-tags")]
+        {
+            let request = eval::test::basic_request();
+            let entities = eval::test::basic_entities();
+            let exts = Extensions::none();
+            let evaluator = eval::Evaluator::new(request, &entities, exts);
+
+            let expr = parse_expr(src).unwrap();
+            assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
+                expect_err(
+                    src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"test_resource"` does not have the tag `03:22:11`"#)
+                        .help(r#"`test_entity_type::"test_resource"` does not have any tags"#)
+                        .exactly_one_underline("resource.getTag(context.cur_time)")
+                        .build(),
+                );
+            });
+        }
+        #[cfg(not(feature = "entity-tags"))]
+        {
+            assert_matches!(parse_expr(src), Err(e) => {
+                expect_err(
+                    src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")
+                        .exactly_one_underline("resource.getTag(context.cur_time)")
+                        .build(),
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn unquoted_tags() {
+        let src = r#"
+            principal.hasTag(foo)
+        "#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("invalid variable: foo")
+                    .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `foo` in quotes to make a string?")
+                    .exactly_one_underline("foo")
+                    .build(),
+            );
+        });
+
+        let src = r#"
+            principal.getTag(foo)
+        "#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("invalid variable: foo")
+                    .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `foo` in quotes to make a string?")
+                    .exactly_one_underline("foo")
+                    .build(),
+            );
+        });
     }
 
     #[test]

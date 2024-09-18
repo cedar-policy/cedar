@@ -175,7 +175,7 @@ impl Entity {
         HashMap<String, RestrictedExpression>,
         HashSet<EntityUid>,
     ) {
-        let (uid, attrs, ancestors) = self.0.into_inner();
+        let (uid, attrs, ancestors, _) = self.0.into_inner();
 
         let attrs = attrs
             .into_iter()

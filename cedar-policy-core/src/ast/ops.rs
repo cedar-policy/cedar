@@ -89,6 +89,18 @@ pub enum BinaryOp {
     ///
     /// Arguments must have Set type
     ContainsAny,
+
+    /// Get a tag of an entity.
+    ///
+    /// First argument must have Entity type, second argument must have String type.
+    #[cfg(feature = "entity-tags")]
+    GetTag,
+
+    /// Does the given `expr` have the given `tag`?
+    ///
+    /// First argument must have Entity type, second argument must have String type.
+    #[cfg(feature = "entity-tags")]
+    HasTag,
 }
 
 impl std::fmt::Display for UnaryOp {
@@ -113,6 +125,10 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::Contains => write!(f, "contains"),
             BinaryOp::ContainsAll => write!(f, "containsAll"),
             BinaryOp::ContainsAny => write!(f, "containsAny"),
+            #[cfg(feature = "entity-tags")]
+            BinaryOp::GetTag => write!(f, "getTag"),
+            #[cfg(feature = "entity-tags")]
+            BinaryOp::HasTag => write!(f, "hasTag"),
         }
     }
 }
