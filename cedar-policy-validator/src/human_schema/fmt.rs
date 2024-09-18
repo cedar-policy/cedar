@@ -189,7 +189,7 @@ impl Display for ActionType {
 
 #[derive(Debug, Diagnostic, Error)]
 pub enum ToHumanSchemaStrError {
-    #[error("There exist type name collisions: {:?}", .0)]
+    #[error("There are name collisions: [{}]", .0.iter().join(", "))]
     NameCollisions(NonEmpty<SmolStr>),
 }
 
@@ -197,6 +197,20 @@ pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
 ) -> Result<String, ToHumanSchemaStrError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
+
+    let all_empty_ns_types = json_schema
+        .0
+        .get(&None)
+        .iter()
+        .flat_map(|ns| {
+            ns.entity_types
+                .keys()
+                .chain(ns.common_types.keys())
+                .map(|id| id.to_smolstr())
+                .collect::<HashSet<_>>()
+        })
+        .collect::<HashSet<_>>();
+
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
         let entity_types: HashSet<SmolStr> = ns
             .entity_types
@@ -217,12 +231,120 @@ pub fn json_schema_to_custom_schema_str(
             })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
+
+        // Due to implicit qualification, a type in a namespace may collide with
+        // a type in the empty namespace.  See <https://github.com/cedar-policy/cedar/issues/1063>.
+        let unqual_types = ns
+            .entity_types
+            .keys()
+            .chain(ns.common_types.keys())
+            .map(|ty_name| ty_name.to_smolstr())
+            .collect::<HashSet<_>>();
+        name_collisions.extend(unqual_types.intersection(&all_empty_ns_types).cloned())
     }
-    if let Some((head, tail)) = name_collisions.split_first() {
-        return Err(ToHumanSchemaStrError::NameCollisions(NonEmpty {
-            head: head.clone(),
-            tail: tail.to_vec(),
-        }));
+    if let Some(name_collisions) = NonEmpty::from_vec(name_collisions) {
+        return Err(ToHumanSchemaStrError::NameCollisions(name_collisions));
     }
     Ok(json_schema.to_string())
+}
+
+/// Test errors that should be reported when trying to convert a Cedar format
+/// schema to a JSON format schema that do not exist when parsing a JSON format
+/// schema an using it directly.
+#[cfg(test)]
+mod test_to_custom_schema_errors {
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cool_asserts::assert_matches;
+    use miette::Report;
+
+    use crate::{human_schema::json_schema_to_custom_schema_str, SchemaFragment};
+
+    #[test]
+    fn issue_1063_empty_ns_entity_type_collides_with_common_type() {
+        let json = SchemaFragment::from_json_value(serde_json::json!({
+            "": {
+              "entityTypes": {
+                "User": {}
+              },
+              "actions": {}
+            },
+            "NS": {
+              "commonTypes": {
+                "User": { "type": "String" }
+              },
+              "entityTypes": {
+                "Foo": {
+                  "shape": {
+                    "type": "Record",
+                    "attributes": {
+                      "owner": { "type": "Entity", "name": "User" }
+                    }
+                  }
+                }
+              },
+              "actions": {}
+            }
+        }))
+        .unwrap();
+
+        assert_matches!(json_schema_to_custom_schema_str(&json), Err(e) => {
+            expect_err(
+                "",
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("There are name collisions: [User]").build()
+            )
+        });
+    }
+
+    #[test]
+    fn same_namespace_common_type_entity_type_collision() {
+        let json = SchemaFragment::from_json_value(serde_json::json!({
+            "NS": {
+                "commonTypes": {
+                    "User": { "type": "String"}
+                },
+                "entityTypes": {
+                    "User": {}
+                },
+                "actions": {}
+            }
+        }))
+        .unwrap();
+
+        assert_matches!(json_schema_to_custom_schema_str(&json), Err(e) => {
+            expect_err(
+                "",
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("There are name collisions: [NS::User]").build()
+            )
+        });
+    }
+
+    #[test]
+    fn empty_ns_common_type_collides_with_entity_type() {
+        let json = SchemaFragment::from_json_value(serde_json::json!({
+            "": {
+                "commonTypes": {
+                    "User": { "type": "String"}
+                },
+                "entityTypes": {},
+                "actions": {}
+            },
+            "NS": {
+                "entityTypes": {
+                    "User": {}
+                },
+                "actions": {}
+            }
+        }))
+        .unwrap();
+
+        assert_matches!(json_schema_to_custom_schema_str(&json), Err(e) => {
+            expect_err(
+                "",
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("There are name collisions: [User]").build()
+            )
+        });
+    }
 }
