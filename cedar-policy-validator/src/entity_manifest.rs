@@ -524,6 +524,10 @@ fn add_to_root_trie(
                 add_to_root_trie(root_trie, arg2, policy_id, should_load_all)?;
                 Ok(())
             }
+            #[cfg(feature = "entity-tags")]
+            BinaryOp::GetTag | BinaryOp::HasTag => {
+                unimplemented!("interaction between RFCs 74 and 82")
+            }
         },
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions

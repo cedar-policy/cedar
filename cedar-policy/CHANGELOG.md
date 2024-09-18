@@ -14,6 +14,8 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
+  entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, more coming)
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
