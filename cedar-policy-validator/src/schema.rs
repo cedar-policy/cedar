@@ -509,6 +509,10 @@ impl ValidatorSchema {
                     .transpose()?
                     .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                     .transpose()?;
+                #[cfg(not(feature = "entity-tags"))]
+                if tags.is_some() {
+                    return Err(UnsupportedFeatureError(UnsupportedFeature::EntityTags).into());
+                }
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
@@ -516,6 +520,7 @@ impl ValidatorSchema {
                         descendants,
                         attributes,
                         open_attributes,
+                        #[cfg(feature = "entity-tags")]
                         tags,
                     },
                 ))
@@ -1328,26 +1333,67 @@ pub(crate) mod test {
 
     use super::*;
 
-    /// Transform the output of functions like
-    /// `ValidatorSchema::from_cedarschema_str()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
-    /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
-    /// `assert_matches`, `.unwrap_err()`, etc
-    pub fn collect_warnings<A, B, E>(
-        r: std::result::Result<(A, impl Iterator<Item = B>), E>,
-    ) -> std::result::Result<(A, Vec<B>), E> {
-        r.map(|(a, iter)| (a, iter.collect()))
+    pub(crate) mod utils {
+        use super::{CedarSchemaError, SchemaError, ValidatorEntityType, ValidatorSchema};
+        use cedar_policy_core::extensions::Extensions;
+
+        /// Transform the output of functions like
+        /// `ValidatorSchema::from_cedarschema_str()`, which has type `(ValidatorSchema, impl Iterator<...>)`,
+        /// into `(ValidatorSchema, Vec<...>)`, which implements `Debug` and thus can be used with
+        /// `assert_matches`, `.unwrap_err()`, etc
+        pub fn collect_warnings<A, B, E>(
+            r: std::result::Result<(A, impl Iterator<Item = B>), E>,
+        ) -> std::result::Result<(A, Vec<B>), E> {
+            r.map(|(a, iter)| (a, iter.collect()))
+        }
+
+        /// Given an entity type as string, get the `ValidatorEntityType` from the
+        /// schema, panicking if it does not exist (or if `etype` fails to parse as
+        /// an entity type)
+        #[track_caller]
+        pub fn assert_entity_type_exists<'s>(
+            schema: &'s ValidatorSchema,
+            etype: &str,
+        ) -> &'s ValidatorEntityType {
+            schema.get_entity_type(&etype.parse().unwrap()).unwrap()
+        }
+
+        #[track_caller]
+        pub fn assert_valid_cedar_schema(src: &str) -> ValidatorSchema {
+            match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+                Ok((schema, _)) => schema,
+                Err(e) => panic!("{:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_invalid_cedar_schema(src: &str) {
+            match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
+                Ok(_) => panic!("{src} should be an invalid schema"),
+                Err(CedarSchemaError::Parsing(_)) => {}
+                Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
+            match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
+                Ok(schema) => schema,
+                Err(e) => panic!("{:?}", miette::Report::new(e)),
+            }
+        }
+
+        #[track_caller]
+        pub fn assert_invalid_json_schema(json: serde_json::Value) {
+            match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
+                Ok(_) => panic!("{json} should be an invalid schema"),
+                Err(SchemaError::JsonDeserialization(_)) => {}
+                Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
+            }
+        }
     }
 
-    /// Given an entity type as string, get the `ValidatorEntityType` from the
-    /// schema, panicking if it does not exist (or if `etype` fails to parse as
-    /// an entity type)
-    #[track_caller]
-    pub fn assert_entity_type_exists<'s>(
-        schema: &'s ValidatorSchema,
-        etype: &str,
-    ) -> &'s ValidatorEntityType {
-        schema.get_entity_type(&etype.parse().unwrap()).unwrap()
-    }
+    use utils::*;
 
     // Well-formed schema
     #[test]
@@ -3443,6 +3489,14 @@ pub(crate) mod test {
             );
         });
     }
+
+    #[test]
+    fn attr_named_tags() {
+        let src = r#"
+            entity E { tags: Set<{key: String, value: Set<String>}> };
+        "#;
+        assert_valid_cedar_schema(src);
+    }
 }
 
 #[cfg(test)]
@@ -3450,8 +3504,8 @@ mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
 mod test_rfc70 {
-    use super::test::{assert_entity_type_exists, collect_warnings};
-    use super::{CedarSchemaError, SchemaError, ValidatorSchema};
+    use super::test::utils::*;
+    use super::ValidatorSchema;
     use crate::types::Type;
     use cedar_policy_core::{
         extensions::Extensions,
@@ -3459,40 +3513,6 @@ mod test_rfc70 {
     };
     use cool_asserts::assert_matches;
     use serde_json::json;
-
-    #[track_caller]
-    fn assert_valid_cedar_schema(src: &str) -> ValidatorSchema {
-        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
-            Ok((schema, _)) => schema,
-            Err(e) => panic!("{:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_invalid_cedar_schema(src: &str) {
-        match ValidatorSchema::from_cedarschema_str(src, Extensions::all_available()) {
-            Ok(_) => panic!("{src} should be an invalid schema"),
-            Err(CedarSchemaError::Parsing(_)) => {}
-            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_valid_json_schema(json: serde_json::Value) -> ValidatorSchema {
-        match ValidatorSchema::from_json_value(json, Extensions::all_available()) {
-            Ok(schema) => schema,
-            Err(e) => panic!("{:?}", miette::Report::new(e)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_invalid_json_schema(json: serde_json::Value) {
-        match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
-            Ok(_) => panic!("{json} should be an invalid schema"),
-            Err(SchemaError::JsonDeserialization(_)) => {}
-            Err(e) => panic!("unexpected error: {:?}", miette::Report::new(e)),
-        }
-    }
 
     /// Common type shadowing a common type is disallowed in both syntaxes
     #[test]
@@ -4474,18 +4494,16 @@ mod test_rfc70 {
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
 mod entity_tags {
-    use crate::types::Primitive;
-
-    use super::{
-        test::{assert_entity_type_exists, collect_warnings},
-        *,
-    };
+    use super::{test::utils::*, *};
     use cedar_policy_core::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
     use cool_asserts::assert_matches;
     use serde_json::json;
+
+    #[cfg(feature = "entity-tags")]
+    use crate::types::Primitive;
 
     #[test]
     fn cedar_syntax_tags() {
@@ -4498,6 +4516,7 @@ mod entity_tags {
             owner: User,
           } tags Set<String>;
         ";
+        #[cfg(feature = "entity-tags")]
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
             assert!(warnings.is_empty());
             let user = assert_entity_type_exists(&schema, "User");
@@ -4508,6 +4527,16 @@ mod entity_tags {
             assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
                 assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
             });
+        });
+        #[cfg(not(feature = "entity-tags"))]
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")
+                    .build(),
+            );
         });
     }
 
@@ -4548,6 +4577,7 @@ mod entity_tags {
             },
             "actions": {}
         }});
+        #[cfg(feature = "entity-tags")]
         assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Ok(schema) => {
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
@@ -4557,6 +4587,16 @@ mod entity_tags {
             assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
                 assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
             });
+        });
+        #[cfg(not(feature = "entity-tags"))]
+        assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Err(e) => {
+            expect_err(
+                &json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")
+                    .build(),
+            );
         });
     }
 
@@ -4581,6 +4621,7 @@ mod entity_tags {
             entity Foo7 in E tags Set<Set<{a: Blah}>>;
             entity Foo8 in E tags Foo7;
         ";
+        #[cfg(feature = "entity-tags")]
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
             assert!(warnings.is_empty());
             let e = assert_entity_type_exists(&schema, "E");
@@ -4601,6 +4642,16 @@ mod entity_tags {
             assert_matches!(foo7.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })))));
             let foo8 = assert_entity_type_exists(&schema, "Foo8");
             assert_matches!(foo8.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))));
+        });
+        #[cfg(not(feature = "entity-tags"))]
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("unsupported feature used in schema")
+                    .source("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")
+                    .build(),
+            );
         });
     }
 

@@ -682,6 +682,18 @@ mod tests {
     }
 
     #[test]
+    fn attr_named_tags() {
+        let src = r#"
+            permit(principal, action, resource)
+            when {
+                resource.tags.contains({k: "foo", v: "bar"})
+            };
+        "#;
+        parse_policy_to_est_and_ast(None, src)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+    }
+
+    #[test]
     fn test_parse_policyset() {
         use crate::ast::PolicyID;
         let multiple_policies = r#"

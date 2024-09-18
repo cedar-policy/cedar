@@ -35,7 +35,7 @@ mod demo_tests {
             err::{ToJsonSchemaError, NO_PR_HELP_MSG},
         },
         json_schema,
-        schema::test::collect_warnings,
+        schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
     };
 
@@ -1168,7 +1168,7 @@ mod translator_tests {
             to_json_schema::cedar_schema_to_json_schema,
         },
         json_schema,
-        schema::test::collect_warnings,
+        schema::test::utils::collect_warnings,
         types::{EntityLUB, EntityRecordKind, Primitive, Type},
         ValidatorSchema,
     };
@@ -2302,7 +2302,7 @@ mod common_type_references {
 #[cfg(test)]
 mod entity_tags {
     use crate::json_schema;
-    use crate::schema::test::collect_warnings;
+    use crate::schema::test::utils::collect_warnings;
     use cedar_policy_core::extensions::Extensions;
     use cool_asserts::assert_matches;
 
