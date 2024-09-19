@@ -63,6 +63,10 @@ wrap_core_error!(UnexpectedType);
 wrap_core_error!(IncompatibleTypes);
 wrap_core_error!(UnsafeAttributeAccess);
 wrap_core_error!(UnsafeOptionalAttributeAccess);
+#[cfg(feature = "entity-tags")]
+wrap_core_error!(UnsafeTagAccess);
+#[cfg(feature = "entity-tags")]
+wrap_core_error!(NoTagsAllowed);
 wrap_core_error!(UndefinedFunction);
 wrap_core_error!(WrongNumberArguments);
 wrap_core_error!(FunctionArgumentValidation);

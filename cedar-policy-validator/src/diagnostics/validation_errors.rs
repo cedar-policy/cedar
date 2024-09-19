@@ -254,6 +254,9 @@ pub enum LubContext {
     /// In the operand of `containsAny` or `containsAll`
     #[error("elements of both set operands to a `containsAll` or `containsAny` expression")]
     ContainsAnyAll,
+    /// While computing the type of a `.getTag()` operation
+    #[error("tag types for a `.getTag()` operation")]
+    GetTag,
 }
 
 /// Structure containing details about a missing attribute error.
@@ -288,7 +291,7 @@ impl Diagnostic for UnsafeAttributeAccess {
 
 /// Structure containing details about an unsafe optional attribute error.
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
-#[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
+#[error("for policy `{policy_id}`, unable to guarantee safety of access to optional attribute {attribute_access}")]
 pub struct UnsafeOptionalAttributeAccess {
     /// Source location
     pub source_loc: Option<Loc>,
@@ -303,10 +306,69 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
-            "try testing for the attribute with `{} && ..`",
+            "try testing for the attribute's presence with `{} && ..`",
             self.attribute_access.suggested_has_guard()
         )))
     }
+}
+
+/// Structure containing details about an unsafe tag access error.
+#[cfg(feature = "entity-tags")]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error(
+    "for policy `{policy_id}`, unable to guarantee safety of access to tag `{tag}`{}",
+    match .entity_ty.as_ref().and_then(|lub| lub.get_single_entity()) {
+        Some(ety) => format!(" on entity type `{ety}`"),
+        None => "".to_string()
+    }
+)]
+pub struct UnsafeTagAccess {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// `EntityLUB` that we tried to access a tag on (or `None` if not an `EntityLUB`, for example, an `AnyEntity`)
+    pub entity_ty: Option<EntityLUB>,
+    /// Tag name which we tried to access. May be a nonconstant `Expr`.
+    pub tag: Expr<Option<Type>>,
+}
+
+#[cfg(feature = "entity-tags")]
+impl Diagnostic for UnsafeTagAccess {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!(
+            "try testing for the tag's presence with `.hasTag({}) && ..`",
+            &self.tag
+        )))
+    }
+}
+
+/// Structure containing details about a no-tags-allowed error.
+#[cfg(feature = "entity-tags")]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error(
+    "for policy `{policy_id}`, `.getTag()` is not allowed on entities of {} because no `tags` were declared on the entity type in the schema",
+    match .entity_ty.as_ref() {
+        Some(ty) => format!("type `{ty}`"),
+        None => "this type".to_string(),
+    }
+)]
+pub struct NoTagsAllowed {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// Entity type which we tried to call `.getTag()` on but which doesn't have any tags allowed in the schema
+    ///
+    /// `None` indicates some kind of LUB involving multiple entity types, or `AnyEntity`
+    pub entity_ty: Option<EntityType>,
+}
+
+#[cfg(feature = "entity-tags")]
+impl Diagnostic for NoTagsAllowed {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 
 /// Structure containing details about an undefined function error.
@@ -510,10 +572,10 @@ impl Display for AttributeAccess {
         match self {
             AttributeAccess::EntityLUB(lub, _) => write!(
                 f,
-                "`{attrs_str}` for entity type{}",
+                "`{attrs_str}` on entity type{}",
                 match lub.get_single_entity() {
-                    Some(single) => format!(" {}", single),
-                    _ => format!("s {}", lub.iter().join(", ")),
+                    Some(single) => format!(" `{}`", single),
+                    _ => format!("s {}", lub.iter().map(|ety| format!("`{ety}`")).join(", ")),
                 },
             ),
             AttributeAccess::Context(action, _) => {
@@ -604,13 +666,13 @@ mod test_attr_access {
                 .val("User::\"alice\"".parse::<EntityUID>().unwrap()),
             "foo".into(),
         );
-        assert_message_and_help(&e, "`foo` for entity type User", "e has foo");
+        assert_message_and_help(&e, "`foo` on entity type `User`", "e has foo");
         let e = ExprBuilder::new().get_attr(e, "bar".into());
-        assert_message_and_help(&e, "`foo.bar` for entity type User", "e.foo has bar");
+        assert_message_and_help(&e, "`foo.bar` on entity type `User`", "e.foo has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
         assert_message_and_help(
             &e,
-            "`foo.bar.baz` for entity type User",
+            "`foo.bar.baz` on entity type `User`",
             "e.foo.bar has baz",
         );
     }
@@ -623,11 +685,11 @@ mod test_attr_access {
                     .var(Var::Principal),
                 "thing".into(),
             );
-        assert_message_and_help(&e, "`thing` for entity type User", "e has thing");
+        assert_message_and_help(&e, "`thing` on entity type `User`", "e has thing");
         let e = ExprBuilder::new().get_attr(e, "bar".into());
-        assert_message_and_help(&e, "`bar` for entity type Thing", "e has bar");
+        assert_message_and_help(&e, "`bar` on entity type `Thing`", "e has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
-        assert_message_and_help(&e, "`bar.baz` for entity type Thing", "e.bar has baz");
+        assert_message_and_help(&e, "`bar.baz` on entity type `Thing`", "e.bar has baz");
     }
 
     #[test]

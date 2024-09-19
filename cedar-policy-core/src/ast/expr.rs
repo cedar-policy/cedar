@@ -23,6 +23,7 @@ use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
+    borrow::Cow,
     collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
@@ -775,7 +776,7 @@ impl SubstitutionFunction for UntypedSubstitution {
     }
 }
 
-impl std::fmt::Display for Expr {
+impl<T: Clone> std::fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
@@ -1341,24 +1342,31 @@ pub mod expression_construction_errors {
 /// implementations that ignore any source information or other generic data
 /// used to annotate the `Expr`.
 #[derive(Eq, Debug, Clone)]
-pub struct ExprShapeOnly<'a, T = ()>(&'a Expr<T>);
+pub struct ExprShapeOnly<'a, T: Clone = ()>(Cow<'a, Expr<T>>);
 
-impl<'a, T> ExprShapeOnly<'a, T> {
-    /// Construct an `ExprShapeOnly` from an `Expr`. The `Expr` is not modified,
-    /// but any comparisons on the resulting `ExprShapeOnly` will ignore source
-    /// information and generic data.
-    pub fn new(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
-        ExprShapeOnly(e)
+impl<'a, T: Clone> ExprShapeOnly<'a, T> {
+    /// Construct an `ExprShapeOnly` from a borrowed `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_borrowed(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Borrowed(e))
+    }
+
+    /// Construct an `ExprShapeOnly` from an owned `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_owned(e: Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Owned(e))
     }
 }
 
-impl<'a, T> PartialEq for ExprShapeOnly<'a, T> {
+impl<'a, T: Clone> PartialEq for ExprShapeOnly<'a, T> {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq_shape(other.0)
+        self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a, T> Hash for ExprShapeOnly<'a, T> {
+impl<'a, T: Clone> Hash for ExprShapeOnly<'a, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -1977,7 +1985,10 @@ mod test {
     fn expr_shape_only_not_eq() {
         let expr1 = ExprBuilder::with_data(1).val(1);
         let expr2 = ExprBuilder::with_data(1).val(2);
-        assert_ne!(ExprShapeOnly::new(&expr1), ExprShapeOnly::new(&expr2));
+        assert_ne!(
+            ExprShapeOnly::new_from_borrowed(&expr1),
+            ExprShapeOnly::new_from_borrowed(&expr2)
+        );
     }
 
     #[test]

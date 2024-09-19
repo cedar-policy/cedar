@@ -30,5 +30,6 @@ mod optional_attributes;
 mod partial;
 mod policy;
 mod strict;
+mod tags;
 mod type_annotation;
 mod unspecified_entity;

@@ -23,9 +23,13 @@ use thiserror::Error;
 use std::collections::BTreeSet;
 
 use cedar_policy_core::ast::{EntityType, PolicyID};
+#[cfg(feature = "entity-tags")]
+use cedar_policy_core::ast::Expr;
 use cedar_policy_core::parser::Loc;
 
 use crate::types::Type;
+#[cfg(feature = "entity-tags")]
+use crate::types::EntityLUB;
 
 pub mod validation_errors;
 pub mod validation_warnings;
@@ -124,6 +128,16 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    #[cfg(feature = "entity-tags")]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    #[cfg(feature = "entity-tags")]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -264,6 +278,36 @@ impl ValidationError {
             source_loc,
             policy_id,
             attribute_access,
+        }
+        .into()
+    }
+
+    #[cfg(feature = "entity-tags")]
+    pub(crate) fn unsafe_tag_access(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityLUB>,
+        tag: Expr<Option<Type>>,
+    ) -> Self {
+        validation_errors::UnsafeTagAccess {
+            source_loc,
+            policy_id,
+            entity_ty,
+            tag,
+        }
+        .into()
+    }
+
+    #[cfg(feature = "entity-tags")]
+    pub(crate) fn no_tags_allowed(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityType>,
+    ) -> Self {
+        validation_errors::NoTagsAllowed {
+            source_loc,
+            policy_id,
+            entity_ty,
         }
         .into()
     }
