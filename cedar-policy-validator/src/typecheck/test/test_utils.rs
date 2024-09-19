@@ -19,7 +19,8 @@
 // GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
-use std::{collections::HashSet, sync::Arc};
+use itertools::Itertools;
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
 use cedar_policy_core::extensions::Extensions;
@@ -121,26 +122,16 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
 }
 
-/// Assert that every [`ValidationError`] in the expected list of type errors appears
-/// in the expected list of type errors, and that the expected number of
-/// type errors were generated.
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_expected_type_errors(
-    expected: impl IntoIterator<Item = ValidationError>,
-    actual: &HashSet<ValidationError>,
+/// Assert that every `T` in `actual` appears in `expected`, and vice versa.
+#[track_caller]
+pub(crate) fn assert_sets_equal<T: Hash + Eq>(
+    expected: impl IntoIterator<Item = T>,
+    actual: impl IntoIterator<Item = T>,
 ) {
-    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual)
-}
-
-/// Assert that every `ValidationWarning` in the expected list of warnings
-/// appears in the expected list of warnings, and that the expected number of
-/// warnings were generated.
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_expected_warnings(
-    expected: impl IntoIterator<Item = ValidationWarning>,
-    actual: &HashSet<ValidationWarning>,
-) {
-    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual,)
+    assert_eq!(
+        expected.into_iter().collect::<HashSet<_>>(),
+        actual.into_iter().collect::<HashSet<_>>(),
+    );
 }
 
 /// Unifies a bunch of different ways we specify schemas in tests
@@ -223,69 +214,65 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     );
 }
 
+/// Assert that the policy fails to typecheck, and return a `HashSet` of the validation errors encountered
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails(
     schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_policy_typecheck_fails_for_mode(
-        schema,
-        policy,
-        expected_type_errors,
-        ValidationMode::Strict,
-    )
+) -> HashSet<ValidationError> {
+    assert_policy_typecheck_fails_for_mode(schema, policy, ValidationMode::Strict)
 }
 
+/// Assert that the policy typechecks successfully, but returns warnings.
+/// Returns a `HashSet` of the validation warnings encountered (which will not be empty)
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_warns(
     schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
-    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
-) {
-    assert_policy_typecheck_warns_for_mode(
-        schema,
-        policy,
-        expected_warnings,
-        ValidationMode::Strict,
-    )
+) -> HashSet<ValidationWarning> {
+    assert_policy_typecheck_warns_for_mode(schema, policy, ValidationMode::Strict)
 }
 
+/// Assert that the policy fails to typecheck, and return a `HashSet` of the validation errors encountered
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails_for_mode(
     schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
     mode: ValidationMode,
-) {
+) -> HashSet<ValidationError> {
     let policy = policy.into();
     let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_expected_type_errors(expected_type_errors, &type_errors);
     assert!(!typechecked, "Expected that policy would not typecheck.");
+    type_errors
 }
 
+/// Assert that the policy typechecks successfully, but returns warnings.
+/// Returns a `HashSet` of the validation warnings encountered (which will not be empty)
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_warns_for_mode(
     schema: impl SchemaProvider,
     policy: impl Into<Arc<Template>>,
-    expected_warnings: impl IntoIterator<Item = ValidationWarning>,
     mode: ValidationMode,
-) {
+) -> HashSet<ValidationWarning> {
     let policy = policy.into();
     let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_expected_warnings(expected_warnings, &warnings);
     assert!(
         typechecked,
         "Expected that policy would typecheck (with warnings)."
     );
+    assert!(
+        !warnings.is_empty(),
+        "Expected that policy would produce a warning, but found none"
+    );
+    warnings
 }
 
 /// Assert that expr type checks successfully with a particular type, and
@@ -317,34 +304,34 @@ pub(crate) fn assert_typechecks_for_mode(
     );
 }
 
-/// Assert that typechecking fails, generating some `ValidationErrors` for the
-/// expressions. Failed type checking will still return a type that is used
-/// to continue typechecking, so the `expected` type must match the returned
-/// type for this to pass.
+/// Assert that typechecking fails for the given `Expr`, and return a `HashSet`
+/// of the `ValidationErrors` encountered.
+///
+/// Failed typechecking still returns a type that is used to continue
+/// typechecking; this method also checks that this returned type matches
+/// `expected_ty`.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails(
     schema: impl SchemaProvider,
     expr: Expr,
     expected_ty: Option<Type>,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_typecheck_fails_for_mode(
-        schema,
-        expr,
-        expected_ty,
-        expected_type_errors,
-        ValidationMode::Strict,
-    )
+) -> HashSet<ValidationError> {
+    assert_typecheck_fails_for_mode(schema, expr, expected_ty, ValidationMode::Strict)
 }
 
+/// Assert that typechecking fails for the given `Expr`, and return a `HashSet`
+/// of the `ValidationErrors` encountered.
+///
+/// Failed typechecking still returns a type that is used to continue
+/// typechecking; this method also checks that this returned type matches
+/// `expected_ty`.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_for_mode(
     schema: impl SchemaProvider,
     expr: Expr,
     expected_ty: Option<Type>,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
     mode: ValidationMode,
-) {
+) -> HashSet<ValidationError> {
     let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
     let mut type_errors = HashSet::new();
@@ -357,8 +344,8 @@ pub(crate) fn assert_typecheck_fails_for_mode(
             }
             _ => panic!("Expected that actual type would be defined iff expected type is defined."),
         }
-        assert_expected_type_errors(expected_type_errors, &type_errors);
     });
+    type_errors
 }
 
 pub(crate) fn empty_schema_file() -> json_schema::NamespaceDefinition<RawName> {
@@ -384,15 +371,32 @@ pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Ty
 pub(crate) fn assert_typecheck_fails_empty_schema(
     expr: Expr,
     expected: Type,
-    type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_typecheck_fails(empty_schema_file(), expr, Some(expected), type_errors);
+) -> HashSet<ValidationError> {
+    assert_typecheck_fails(empty_schema_file(), expr, Some(expected))
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema_without_type(
     expr: Expr,
-    type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_typecheck_fails(empty_schema_file(), expr, None, type_errors);
+) -> HashSet<ValidationError> {
+    assert_typecheck_fails(empty_schema_file(), expr, None)
+}
+
+/// Assert that the given `HashSet` has exactly one `Diagnostic`. Return it.
+/// If there are more than one, panic and display all the `Diagnostic`s in pretty format.
+#[track_caller]
+pub(crate) fn assert_exactly_one_diagnostic<T: miette::Diagnostic + Send + Sync + 'static>(
+    set: HashSet<T>,
+) -> T {
+    match set.len() {
+        0 => panic!("expected exactly one error, but got no errors"),
+        1 => set.into_iter().next().unwrap(),
+        2.. => panic!(
+            "expected exactly one error, but got {}:\n\n{}",
+            set.len(),
+            set.into_iter()
+                .map(|e| format!("{:?}", &miette::Report::new(e)))
+                .join("\n\n")
+        ),
+    }
 }

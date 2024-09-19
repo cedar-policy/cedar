@@ -30,7 +30,8 @@ use crate::{
 };
 
 use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks, get_loc,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
+    assert_policy_typechecks, assert_sets_equal, get_loc,
 };
 
 fn schema_with_optionals() -> json_schema::NamespaceDefinition<RawName> {
@@ -62,19 +63,6 @@ fn schema_with_optionals() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema.")
 }
 
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_policy_typechecks_optional_schema(p: StaticPolicy) {
-    assert_policy_typechecks(schema_with_optionals(), p);
-}
-
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_policy_typecheck_fails_optional_schema(
-    p: StaticPolicy,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_policy_typecheck_fails(schema_with_optionals(), p, expected_type_errors);
-}
-
 #[test]
 fn simple_and_guard_principal() {
     let policy = parse_policy(
@@ -82,7 +70,7 @@ fn simple_and_guard_principal() {
         r#"permit(principal, action, resource) when { principal has name && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -92,7 +80,7 @@ fn simple_and_guard_resource() {
         r#"permit(principal, action, resource) when { resource has name && resource.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -102,7 +90,7 @@ fn principal_and_resource_in_capability() {
         r#"permit(principal, action, resource) when { resource has name && principal has age && resource.name == "foo" && principal.age == 1};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -112,7 +100,7 @@ fn and_branches_union() {
         r#"permit(principal, action, resource) when { (principal has name && principal has age) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -122,7 +110,7 @@ fn and_rhs_true_has_lhs_capability() {
         r#"permit(principal, action, resource) when { (principal has name && true) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -132,7 +120,7 @@ fn and_lhs_true_has_rhs_capability() {
         r#"permit(principal, action, resource) when { (true && principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -142,7 +130,7 @@ fn and_branches_use_prior_capability() {
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" && principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -152,7 +140,7 @@ fn and_short_circuit_without_error() {
         r#"permit(principal, action, resource) when { principal has age || (false && principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -162,7 +150,7 @@ fn or_branches_intersect() {
         r#"permit(principal, action, resource) when { (principal has name || principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -172,7 +160,7 @@ fn or_lhs_false_has_rhs_capability() {
         r#"permit(principal, action, resource) when { (false || principal has name) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -182,7 +170,7 @@ fn or_rhs_false_has_lhs_capability() {
         r#"permit(principal, action, resource) when { (principal has name || false) && principal.name == "foo" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -192,7 +180,7 @@ fn or_branches_use_prior_capability() {
         r#"permit(principal, action, resource) when { (principal has name) && (principal.name == "foo" || principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -202,7 +190,7 @@ fn then_guarded_access_by_test() {
         r#"permit(principal, action, resource) when { if principal has name then principal.name == "foo" else false };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -212,7 +200,7 @@ fn then_guarded_access_by_prior_capability() {
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then principal.name == "foo" else false) };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -222,7 +210,7 @@ fn else_guarded_access_by_prior_capability() {
         r#"permit(principal, action, resource) when { principal has name && (if principal has age then false else principal.name == "foo") };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -232,7 +220,7 @@ fn if_true_short_circuit_without_error() {
         r#"permit(principal, action, resource) when { principal has name && (if true then principal.name == "foo" else principal.age == 1)};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -242,7 +230,7 @@ fn if_false_short_circuit_without_error() {
         r#"permit(principal, action, resource) when { principal has name && (if false then principal.age == 1 else principal.name == "foo")};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -261,7 +249,7 @@ fn if_then_else_then_else_same() {
         };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -280,7 +268,7 @@ fn if_then_else_can_use_guard_capability() {
         };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -298,7 +286,7 @@ fn if_then_else_guard_union_then_equal_else() {
         };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[test]
@@ -312,7 +300,7 @@ fn guarded_has_true_short_circuits() {
         };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks_optional_schema(policy);
+    assert_policy_typechecks(schema_with_optionals(), policy);
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -320,16 +308,18 @@ fn assert_name_access_fails(policy: StaticPolicy) {
     let id = policy.id().clone();
 
     let loc = get_loc(policy.loc().unwrap().src.clone(), "principal.name");
-    assert_policy_typecheck_fails_optional_schema(
-        policy,
-        [ValidationError::unsafe_optional_attribute_access(
+    let errors = assert_policy_typecheck_fails(schema_with_optionals(), policy);
+    let type_error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::unsafe_optional_attribute_access(
             loc,
             id,
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec!["name".into()],
             ),
-        )],
+        )
     );
 }
 
@@ -583,33 +573,35 @@ fn record_optional_attrs() {
     let src = r#"permit(principal, action, resource) when { principal.record has other && principal.record.name == "foo" };"#;
     let failing_policy =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
-    assert_policy_typecheck_fails(
-        schema.clone(),
-        failing_policy,
-        [ValidationError::unsafe_optional_attribute_access(
+    let errors = assert_policy_typecheck_fails(schema.clone(), failing_policy);
+    let type_error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::unsafe_optional_attribute_access(
             get_loc(src, "principal.record.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec!["name".into(), "record".into()],
             ),
-        )],
+        )
     );
 
     let src = r#"permit(principal, action, resource) when { principal.record has name && principal.name == "foo" };"#;
     let failing_policy2 =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
-    assert_policy_typecheck_fails(
-        schema,
-        failing_policy2,
-        [ValidationError::unsafe_optional_attribute_access(
+    let errors = assert_policy_typecheck_fails(schema, failing_policy2);
+    let type_error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::unsafe_optional_attribute_access(
             get_loc(src, "principal.name"),
             PolicyID::from_string("0"),
             AttributeAccess::EntityLUB(
                 EntityLUB::single_entity("User".parse().unwrap()),
                 vec!["name".into()],
             ),
-        )],
+        )
     );
 }
 
@@ -762,16 +754,17 @@ fn action_attrs_failing() {
     let src = r#"permit(principal, action == Action::"view", resource) when { action.canUndo };"#;
     let failing_policy =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
-    assert_policy_typecheck_fails(
-        schema.clone(),
-        failing_policy,
-        [ValidationError::unsafe_attribute_access(
+    let errors = assert_policy_typecheck_fails(schema.clone(), failing_policy);
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_attribute_access(
             get_loc(src, "action.canUndo"),
             PolicyID::from_string("0"),
             AttributeAccess::Other(vec!["canUndo".into()]),
             Some("isReadOnly".to_string()),
             false,
-        )],
+        )
     );
 
     // No error is returned, but the typechecker identifies that `action has ""`
@@ -781,13 +774,14 @@ fn action_attrs_failing() {
         r#"permit(principal, action == Action::"view", resource) when { action has "" };"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_warns(
-        schema.clone(),
-        failing_policy.clone(),
-        [ValidationWarning::impossible_policy(
+    let warnings = assert_policy_typecheck_warns(schema.clone(), failing_policy.clone());
+    let warning = assert_exactly_one_diagnostic(warnings);
+    assert_eq!(
+        warning,
+        ValidationWarning::impossible_policy(
             failing_policy.loc().cloned(),
             PolicyID::from_string("0"),
-        )],
+        )
     );
 
     // Fails because OtherNamespace::Action::"view" is not defined in the schema.
@@ -806,5 +800,6 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema, failing_policy, []);
+    let errors = assert_policy_typecheck_fails(schema, failing_policy);
+    assert_sets_equal(errors, []);
 }
