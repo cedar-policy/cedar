@@ -14,6 +14,7 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Added `get_entity_literals` API (#1149).
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, more coming)
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
@@ -26,7 +27,6 @@ Cedar Language Version: 4.0
 
 ### Added
 
-- Added `get_entity_literals` API (#1149).
 - Additional functionality to the JSON FFI including parsing utilities (#1079)
   and conversion between the Cedar and JSON formats (#1087)
 - (*) Schema JSON syntax now accepts a type `EntityOrCommon` representing a
