@@ -360,41 +360,36 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                     })?,
                 )),
+                #[cfg(feature = "entity-tags")]
                 EntitySchemaInfo::NonAction(desc) => {
                     // Depending on the expected type, we may parse the contents
                     // of the tag differently.
-                    #[cfg(feature = "entity-tags")]
-                    {
-                        let rexpr = match desc.tag_type() {
-                            // `None` indicates no tags should exist -- see docs on
-                            // the `tag_type()` trait method
-                            None => {
-                                return Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::unexpected_entity_tag(
-                                        uid.clone(),
-                                        k,
-                                    ),
-                                ));
-                            }
-                            Some(expected_ty) => vparser.val_into_restricted_expr(
-                                v.into(),
-                                Some(&expected_ty),
-                                || JsonDeserializationErrorContext::EntityTag {
-                                    uid: uid.clone(),
-                                    tag: k.clone(),
-                                },
-                            )?,
-                        };
-                        Ok((k, rexpr))
-                    }
-                    #[cfg(not(feature = "entity-tags"))]
-                    {
-                        // without the `entity-tags` feature, no schemas specify tags,
-                        // so any tag that appears is necessarily a conformance error
-                        Err(JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
-                        ))
-                    }
+                    let rexpr = match desc.tag_type() {
+                        // `None` indicates no tags should exist -- see docs on
+                        // the `tag_type()` trait method
+                        None => {
+                            return Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
+                            ));
+                        }
+                        Some(expected_ty) => vparser.val_into_restricted_expr(
+                            v.into(),
+                            Some(&expected_ty),
+                            || JsonDeserializationErrorContext::EntityTag {
+                                uid: uid.clone(),
+                                tag: k.clone(),
+                            },
+                        )?,
+                    };
+                    Ok((k, rexpr))
+                }
+                #[cfg(not(feature = "entity-tags"))]
+                EntitySchemaInfo::NonAction(_) => {
+                    // without the `entity-tags` feature, no schemas specify tags,
+                    // so any tag that appears is necessarily a conformance error
+                    Err(JsonDeserializationError::EntitySchemaConformance(
+                        EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
+                    ))
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
