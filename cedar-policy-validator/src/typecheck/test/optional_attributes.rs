@@ -30,8 +30,8 @@ use crate::{
 };
 
 use super::test_utils::{
-    assert_exactly_one_error, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
-    assert_policy_typechecks, get_loc,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
+    assert_policy_typechecks, assert_sets_equal, get_loc,
 };
 
 fn schema_with_optionals() -> json_schema::NamespaceDefinition<RawName> {
@@ -309,7 +309,7 @@ fn assert_name_access_fails(policy: StaticPolicy) {
 
     let loc = get_loc(policy.loc().unwrap().src.clone(), "principal.name");
     let errors = assert_policy_typecheck_fails(schema_with_optionals(), policy);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::unsafe_optional_attribute_access(
@@ -574,7 +574,7 @@ fn record_optional_attrs() {
     let failing_policy =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema.clone(), failing_policy);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::unsafe_optional_attribute_access(
@@ -591,7 +591,7 @@ fn record_optional_attrs() {
     let failing_policy2 =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema, failing_policy2);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::unsafe_optional_attribute_access(
@@ -755,7 +755,7 @@ fn action_attrs_failing() {
     let failing_policy =
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema.clone(), failing_policy);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -775,7 +775,7 @@ fn action_attrs_failing() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(schema.clone(), failing_policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
@@ -801,5 +801,5 @@ fn action_attrs_failing() {
     )
     .expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema, failing_policy);
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
 }

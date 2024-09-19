@@ -22,8 +22,8 @@ use cedar_policy_core::ast::Expr;
 use std::str::FromStr;
 
 use super::test_utils::{
-    assert_exactly_one_error, assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema,
-    expr_id_placeholder, get_loc,
+    assert_exactly_one_diagnostic, assert_typecheck_fails_empty_schema,
+    assert_typechecks_empty_schema, expr_id_placeholder, get_loc,
 };
 
 #[test]
@@ -46,13 +46,13 @@ fn ip_extension_typechecks() {
 fn ip_extension_typecheck_fails() {
     use cedar_policy_core::ast::Name;
 
-    use crate::typecheck::test::test_utils::assert_exactly_one_error;
+    use crate::typecheck::test::test_utils::assert_exactly_one_diagnostic;
 
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let src = "ip(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(ipaddr_name.clone()));
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -66,7 +66,7 @@ fn ip_extension_typecheck_fails() {
     let src = "ip(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(ipaddr_name.clone()));
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::function_argument_validation(
@@ -78,7 +78,7 @@ fn ip_extension_typecheck_fails() {
     let src = "ip(\"127.0.0.1\").isIpv4(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::wrong_number_args(get_loc(src, src), expr_id_placeholder(), 1, 2,)
@@ -86,7 +86,7 @@ fn ip_extension_typecheck_fails() {
     let src = "ip(\"127.0.0.1\").isInRange(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -132,7 +132,7 @@ fn decimal_extension_typecheck_fails() {
     let src = "decimal(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(decimal_name.clone()));
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -147,7 +147,7 @@ fn decimal_extension_typecheck_fails() {
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors =
         assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(decimal_name.clone()));
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::function_argument_validation(
@@ -159,7 +159,7 @@ fn decimal_extension_typecheck_fails() {
     let src = "decimal(\"1.23\").lessThan(3, 4)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::wrong_number_args(get_loc(src, src), expr_id_placeholder(), 2, 3,)
@@ -167,7 +167,7 @@ fn decimal_extension_typecheck_fails() {
     let src = "decimal(\"1.23\").lessThan(4)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(

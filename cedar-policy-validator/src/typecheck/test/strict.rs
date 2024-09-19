@@ -38,7 +38,7 @@ use crate::{
 };
 
 use super::test_utils::{
-    assert_exactly_one_error, assert_policy_typecheck_fails, expr_id_placeholder, get_loc,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, expr_id_placeholder, get_loc,
 };
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -722,7 +722,7 @@ fn qualified_record_attr() {
     let src = "permit(principal, action, resource) when { context == {num_of_things: 1}};";
     let p = parse_policy_or_template(None, src).unwrap();
     let errors = assert_policy_typecheck_fails(schema, p.clone());
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::incompatible_types(

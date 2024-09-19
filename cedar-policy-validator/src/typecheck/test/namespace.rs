@@ -31,9 +31,9 @@ use cedar_policy_core::{
 };
 
 use super::test_utils::{
-    assert_exactly_one_error, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
-    assert_policy_typechecks, assert_typecheck_fails, assert_typechecks, expr_id_placeholder,
-    get_loc,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
+    assert_policy_typechecks, assert_sets_equal, assert_typecheck_fails, assert_typechecks,
+    expr_id_placeholder, get_loc,
 };
 use crate::{
     diagnostics::ValidationError,
@@ -142,7 +142,7 @@ fn namespaced_entity_can_type_error() {
         Expr::from_str(src).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
     );
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -162,37 +162,37 @@ fn namespaced_entity_wrong_namespace() {
         Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
         Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
         Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
         Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
         Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
         Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
         None,
     );
-    assert_eq!(errors.len(), 0);
+    assert_sets_equal(errors, []);
 }
 
 #[test]
@@ -373,7 +373,7 @@ fn multiple_namespaces_attributes() {
     );
     let src = "B::Foo::\"foo\".x";
     let errors = assert_typecheck_fails(schema, Expr::from_str(src).unwrap(), None);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::unsafe_attribute_access(
@@ -509,7 +509,7 @@ fn namespaced_entity_is_wrong_type_and() {
         "#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails_namespace_schema(policy);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -532,7 +532,7 @@ fn namespaced_entity_is_wrong_type_when() {
             "#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails_namespace_schema(policy);
-    let type_error = assert_exactly_one_error(errors);
+    let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
         ValidationError::expected_type(
@@ -587,7 +587,7 @@ fn multi_namespace_action_eq() {
     )
     .unwrap();
     let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
@@ -654,7 +654,7 @@ fn multi_namespace_action_in() {
     )
     .unwrap();
     let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(

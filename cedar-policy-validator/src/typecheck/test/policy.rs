@@ -26,7 +26,7 @@ use cedar_policy_core::{
 };
 
 use super::test_utils::{
-    assert_exactly_one_error, assert_policy_typecheck_fails,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails,
     assert_policy_typecheck_fails_for_mode, assert_policy_typecheck_warns,
     assert_policy_typecheck_warns_for_mode, assert_policy_typechecks,
     assert_policy_typechecks_for_mode, assert_typechecks, get_loc,
@@ -253,7 +253,7 @@ fn policy_invalid_attribute() {
         simple_schema_file(),
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
     );
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -276,7 +276,7 @@ fn policy_invalid_attribute_2() {
         simple_schema_file(),
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
     );
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -300,7 +300,7 @@ fn policy_context_invalid_attribute() {
         simple_schema_file(),
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
     );
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -380,7 +380,7 @@ fn policy_impossible_scope() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -395,7 +395,7 @@ fn policy_impossible_literal_euids() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -410,7 +410,7 @@ fn policy_impossible_not_has() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -433,7 +433,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -445,7 +445,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -457,7 +457,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -469,7 +469,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -481,7 +481,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -493,7 +493,7 @@ fn policy_in_action_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -509,7 +509,7 @@ fn policy_in_action_impossible() {
         p.clone(),
         ValidationMode::Permissive,
     );
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -524,7 +524,7 @@ fn policy_action_in_impossible() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -569,7 +569,7 @@ fn entity_lub_cant_access_attribute_not_shared() {
     let p = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors =
         assert_policy_typecheck_fails_for_mode(simple_schema_file(), p, ValidationMode::Permissive);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -594,7 +594,7 @@ fn entity_attribute_recommendation() {
     let src = r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#;
     let p = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse");
     let errors = assert_policy_typecheck_fails(simple_schema_file(), p);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_attribute_access(
@@ -630,7 +630,7 @@ fn entity_lub_cant_have_undeclared_attribute() {
         p.clone(),
         ValidationMode::Permissive,
     );
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("0"),)
@@ -661,14 +661,14 @@ fn is_typechecks_singleton() {
 fn is_impossible() {
     let p = parse_policy(None, r#"permit(principal is Photo, action, resource);"#).unwrap();
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("policy0"),)
     );
     let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("policy0"),)
@@ -702,7 +702,7 @@ fn is_entity_lub() {
         p.clone(),
         ValidationMode::Permissive,
     );
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("policy0"),)
@@ -729,7 +729,7 @@ fn is_action() {
     )
     .unwrap();
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(p.loc().cloned(), PolicyID::from_string("policy0"),)
@@ -743,7 +743,7 @@ fn entity_record_lub_is_none() {
         simple_schema_file(),
         parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse."),
     );
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::incompatible_types(
@@ -799,7 +799,7 @@ fn optional_attr_fail() {
     let src = r#"permit(principal, action, resource) when { principal.name == "foo" };"#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema, policy);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::unsafe_optional_attribute_access(
@@ -838,7 +838,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
     let src = r#"permit(principal, action, resource) when { 1 > true };"#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema, policy);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::expected_type(
@@ -896,7 +896,7 @@ fn action_groups() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(policy.loc().cloned(), PolicyID::from_string("0"),)
@@ -908,7 +908,7 @@ fn action_groups() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(policy.loc().cloned(), PolicyID::from_string("0"),)
@@ -920,7 +920,7 @@ fn action_groups() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(policy.loc().cloned(), PolicyID::from_string("0"),)
@@ -932,7 +932,7 @@ fn action_groups() {
     )
     .expect("Policy should parse.");
     let warnings = assert_policy_typecheck_warns(schema, policy.clone());
-    let warning = assert_exactly_one_error(warnings);
+    let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(policy.loc().cloned(), PolicyID::from_string("0"),)
@@ -981,7 +981,7 @@ fn record_entity_lub_non_term() {
     let src = r#"permit(principal, action, resource) when {if principal.bar then principal.foo else U::"b"};"#;
     let policy = parse_policy(None, src).expect("Policy should parse.");
     let errors = assert_policy_typecheck_fails(schema, policy);
-    let error = assert_exactly_one_error(errors);
+    let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
         ValidationError::incompatible_types(
@@ -1129,7 +1129,7 @@ mod templates {
             simple_schema_file(),
             parse_policy_or_template(None, src).unwrap(),
         );
-        let error = assert_exactly_one_error(errors);
+        let error = assert_exactly_one_diagnostic(errors);
         assert_eq!(
             error,
             ValidationError::unsafe_attribute_access(
@@ -1164,7 +1164,7 @@ mod templates {
             simple_schema_file(),
             parse_policy_or_template(None, src).unwrap(),
         );
-        let error = assert_exactly_one_error(errors);
+        let error = assert_exactly_one_diagnostic(errors);
         assert_eq!(
             error,
             ValidationError::unsafe_attribute_access(
@@ -1188,7 +1188,7 @@ mod templates {
         )
         .unwrap();
         let warnings = assert_policy_typecheck_warns(simple_schema_file(), template.clone());
-        let warning = assert_exactly_one_error(warnings);
+        let warning = assert_exactly_one_diagnostic(warnings);
         assert_eq!(
             warning,
             ValidationWarning::impossible_policy(

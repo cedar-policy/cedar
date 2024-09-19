@@ -20,7 +20,7 @@
 
 use cool_asserts::assert_matches;
 use itertools::Itertools;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
 use cedar_policy_core::extensions::Extensions;
@@ -120,6 +120,18 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
     assert!(
             Type::is_subtype(schema, actual, expected, ValidationMode::Permissive),
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
+}
+
+/// Assert that every `T` in `actual` appears in `expected`, and vice versa.
+#[track_caller]
+pub(crate) fn assert_sets_equal<T: Hash + Eq>(
+    expected: impl IntoIterator<Item = T>,
+    actual: impl IntoIterator<Item = T>,
+) {
+    assert_eq!(
+        expected.into_iter().collect::<HashSet<_>>(),
+        actual.into_iter().collect::<HashSet<_>>(),
+    );
 }
 
 /// Unifies a bunch of different ways we specify schemas in tests
@@ -370,10 +382,10 @@ pub(crate) fn assert_typecheck_fails_empty_schema_without_type(
     assert_typecheck_fails(empty_schema_file(), expr, None)
 }
 
-/// Assert that the given `HashSet` has exactly one error. Return it.
-/// If there are more than one, panic and display all the errors in pretty format.
+/// Assert that the given `HashSet` has exactly one `Diagnostic`. Return it.
+/// If there are more than one, panic and display all the `Diagnostic`s in pretty format.
 #[track_caller]
-pub(crate) fn assert_exactly_one_error<T: miette::Diagnostic + Send + Sync + 'static>(
+pub(crate) fn assert_exactly_one_diagnostic<T: miette::Diagnostic + Send + Sync + 'static>(
     set: HashSet<T>,
 ) -> T {
     match set.len() {
