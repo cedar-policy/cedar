@@ -33,10 +33,11 @@ use crate::{
 };
 
 use super::test_utils::{
-    assert_typecheck_fails, assert_typecheck_fails_empty_schema,
-    assert_typecheck_fails_empty_schema_without_type, assert_typecheck_fails_for_mode,
-    assert_typechecks, assert_typechecks_empty_schema, assert_typechecks_empty_schema_permissive,
-    assert_typechecks_for_mode, empty_schema_file, expr_id_placeholder, get_loc,
+    assert_exactly_one_diagnostic, assert_sets_equal, assert_typecheck_fails,
+    assert_typecheck_fails_empty_schema, assert_typecheck_fails_empty_schema_without_type,
+    assert_typecheck_fails_for_mode, assert_typechecks, assert_typechecks_empty_schema,
+    assert_typechecks_empty_schema_permissive, assert_typechecks_for_mode, empty_schema_file,
+    expr_id_placeholder, get_loc,
 };
 
 #[test]
@@ -143,15 +144,17 @@ fn set_typechecks() {
 #[test]
 fn heterogeneous_set() {
     let src = "[true, 1]";
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::incompatible_types(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::incompatible_types(
             get_loc(src, src),
             expr_id_placeholder(),
             [Type::singleton_boolean(true), Type::primitive_long()],
             LubHelp::None,
             LubContext::Set,
-        )],
+        )
     );
 }
 
@@ -174,55 +177,63 @@ fn and_typechecks() {
 #[test]
 fn and_typecheck_fails() {
     let src = "1 && true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 
     let src = "(1 > 0) && 2";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "2"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 
     let src = "(1 > false) && true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
-        )],
+        )
     );
 
     let src = "true && (1 > false)";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
-        )],
+        )
     );
 }
 
@@ -253,16 +264,18 @@ fn or_left_true_ignores_right() {
 #[test]
 fn or_right_true_fails_left() {
     let src = "1 || true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }
 
@@ -304,68 +317,78 @@ fn or_false() {
 #[test]
 fn or_typecheck_fails() {
     let src = "1 || true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 
     let src = "(2 > 0) || 1";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 
     let src = "(1 > true) || false";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
-        )],
+        )
     );
 
     let src = "(1 > false) || true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::singleton_boolean(true),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::singleton_boolean(true));
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
-        )],
+        )
     );
 
     let src = "false || (1 > true)";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
-        )],
+        )
     );
 }
 
@@ -615,16 +638,18 @@ fn record_lub_has_typechecks_permissive() {
 #[test]
 fn has_typecheck_fails() {
     let src = "true has attr";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_one_of_types(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
             [Type::any_entity_reference(), Type::any_record()],
             Type::singleton_boolean(true),
             None,
-        )],
+        )
     );
 }
 
@@ -640,42 +665,50 @@ fn record_get_attr_typechecks() {
 #[test]
 fn record_get_attr_incompatible() {
     let src = "(if (1 > 0) then {foo: true} else {foo: 1}).foo";
-    assert_typecheck_fails_for_mode(
+    let errors = assert_typecheck_fails_for_mode(
         empty_schema_file(),
         src.parse().unwrap(),
         None,
-        [ValidationError::unsafe_attribute_access(
+        crate::ValidationMode::Permissive,
+    );
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_attribute_access(
             get_loc(src, src),
             expr_id_placeholder(),
             AttributeAccess::Other(vec!["foo".into()]),
             None,
             true,
-        )],
-        crate::ValidationMode::Permissive,
+        )
     );
 }
 
 #[test]
 fn record_get_attr_typecheck_fails() {
     let src = "2.foo";
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::expected_one_of_types(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_one_of_types(
             get_loc(src, "2"),
             expr_id_placeholder(),
             [Type::any_entity_reference(), Type::any_record()],
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }
 
 #[test]
 fn record_get_attr_lub_typecheck_fails() {
     let src = "(if (0 < 1) then {foo: true} else 1).foo";
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::incompatible_types(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::incompatible_types(
             get_loc(src, "if (0 < 1) then {foo: true} else 1"),
             expr_id_placeholder(),
             [
@@ -687,37 +720,41 @@ fn record_get_attr_lub_typecheck_fails() {
             ],
             LubHelp::None,
             LubContext::Conditional,
-        )],
+        )
     );
 }
 
 #[test]
 fn record_get_attr_does_not_exist() {
     let src = "{}.foo";
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::unsafe_attribute_access(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_attribute_access(
             get_loc(src, src),
             expr_id_placeholder(),
             AttributeAccess::Other(vec!["foo".into()]),
             None,
             false,
-        )],
+        )
     );
 }
 
 #[test]
 fn record_get_attr_lub_does_not_exist() {
     let src = "(if true then {} else {foo: 1}).foo";
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::unsafe_attribute_access(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_attribute_access(
             get_loc(src, src),
             expr_id_placeholder(),
             AttributeAccess::Other(vec!["foo".into()]),
             None,
             false,
-        )],
+        )
     );
 }
 
@@ -762,9 +799,10 @@ fn in_set_typechecks_strict() {
 #[test]
 fn in_typecheck_fails() {
     let src = "0 in true";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
         [
             ValidationError::expected_type(
                 get_loc(src, "0"),
@@ -799,36 +837,42 @@ fn contains_typechecks() {
 fn contains_typecheck_fails() {
     use crate::types::AttributeType;
     let src = r#""foo".contains("bar")"#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::any_set(),
             Type::primitive_string(),
             Some(UnexpectedTypeHelp::TryUsingLike),
-        )],
+        )
     );
 
     let src = r#"1.contains("bar")"#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::any_set(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 
     let src = r#"{foo: 1}.contains("foo")"#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "{foo: 1}"),
             expr_id_placeholder(),
             Type::any_set(),
@@ -837,7 +881,7 @@ fn contains_typecheck_fails() {
                 AttributeType::new(Type::primitive_long(), true),
             )]),
             Some(UnexpectedTypeHelp::TryUsingHas),
-        )],
+        )
     );
 }
 
@@ -881,9 +925,10 @@ fn contains_all_typechecks() {
 #[test]
 fn contains_all_typecheck_fails() {
     let src = "1.containsAll(true)";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
         [
             ValidationError::expected_type(
                 get_loc(src, "1"),
@@ -950,16 +995,18 @@ fn like_typechecks() {
 #[test]
 fn like_typecheck_fails() {
     let src = r#"1 like "bar""#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }
 
@@ -974,9 +1021,10 @@ fn less_than_typechecks() {
 #[test]
 fn less_than_typecheck_fails() {
     let src = "true < false";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
         [
             ValidationError::expected_type(
                 get_loc(src, "true"),
@@ -993,7 +1041,7 @@ fn less_than_typecheck_fails() {
                 None,
             ),
         ],
-    )
+    );
 }
 
 #[test]
@@ -1005,16 +1053,18 @@ fn not_typechecks() {
 #[test]
 fn not_typecheck_fails() {
     let src = "!1";
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::primitive_boolean(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }
 
@@ -1045,23 +1095,26 @@ fn if_false_ignores_then() {
 #[test]
 fn if_no_lub_error() {
     let src = r#"if (1 < 2) then 1 else "test""#;
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
-        [ValidationError::incompatible_types(
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::incompatible_types(
             get_loc(src, src),
             expr_id_placeholder(),
             [Type::primitive_long(), Type::primitive_string()],
             LubHelp::None,
             LubContext::Conditional,
-        )],
+        )
     );
 }
 
 #[test]
 fn if_typecheck_fails() {
     let src = r#"if "fail" then 1 else "test""#;
-    assert_typecheck_fails_empty_schema_without_type(
-        src.parse().unwrap(),
+    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    assert_sets_equal(
+        errors,
         [
             ValidationError::incompatible_types(
                 get_loc(src, src),
@@ -1090,16 +1143,17 @@ fn neg_typechecks() {
 #[test]
 fn neg_typecheck_fails() {
     let src = r#"-"foo""#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_long(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
             None,
-        )],
+        )
     )
 }
 
@@ -1112,16 +1166,17 @@ fn mul_typechecks() {
 #[test]
 fn mul_typecheck_fails() {
     let src = r#""foo" * 2"#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_long(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
             None,
-        )],
+        )
     )
 }
 
@@ -1136,29 +1191,31 @@ fn add_sub_typechecks() {
 #[test]
 fn add_sub_typecheck_fails() {
     let src = r#"1 + "foo""#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_long(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, r#""foo""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
             Some(UnexpectedTypeHelp::ConcatenationNotSupported),
-        )],
+        )
     );
 
     let src = r#""bar" - 2"#;
-    assert_typecheck_fails_empty_schema(
-        src.parse().unwrap(),
-        Type::primitive_long(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, r#""bar""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::primitive_string(),
             None,
-        )],
+        )
     );
 }
 
@@ -1167,17 +1224,21 @@ fn is_typecheck_fails() {
     let schema: json_schema::NamespaceDefinition<RawName> =
         serde_json::from_value(json!({ "entityTypes": { "User": {}, }, "actions": {} })).unwrap();
     let src = r#"1 is User"#;
-    assert_typecheck_fails(
+    let errors = assert_typecheck_fails(
         schema,
         src.parse().unwrap(),
         Some(Type::primitive_boolean()),
-        [ValidationError::expected_type(
+    );
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::expected_type(
             get_loc(src, "1"),
             expr_id_placeholder(),
             Type::any_entity_reference(),
             Type::primitive_long(),
             Some(UnexpectedTypeHelp::TypeTestNotSupported),
-        )],
+        )
     );
 }
 

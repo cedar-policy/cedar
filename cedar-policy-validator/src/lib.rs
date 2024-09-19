@@ -155,8 +155,8 @@ impl Validator {
         }
         .into_iter()
         .flatten();
-        let (type_errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(type_errors), warnings)
+        let (errors, warnings) = self.typecheck_policy(p, mode);
+        (validation_errors.chain(errors), warnings)
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -199,10 +199,10 @@ impl Validator {
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
-        let mut type_errors = HashSet::new();
+        let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
-        typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
-        (type_errors.into_iter(), warnings.into_iter())
+        typecheck.typecheck_policy(t, &mut errors, &mut warnings);
+        (errors.into_iter(), warnings.into_iter())
     }
 }
 
