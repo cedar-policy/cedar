@@ -122,28 +122,6 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
 }
 
-/// Assert that every [`ValidationError`] in the expected list of type errors appears
-/// in the expected list of type errors, and that the expected number of
-/// type errors were generated.
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_expected_type_errors(
-    expected: impl IntoIterator<Item = ValidationError>,
-    actual: &HashSet<ValidationError>,
-) {
-    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual)
-}
-
-/// Assert that every `ValidationWarning` in the expected list of warnings
-/// appears in the expected list of warnings, and that the expected number of
-/// warnings were generated.
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_expected_warnings(
-    expected: impl IntoIterator<Item = ValidationWarning>,
-    actual: &HashSet<ValidationWarning>,
-) {
-    assert_eq!(&expected.into_iter().collect::<HashSet<_>>(), actual,)
-}
-
 /// Unifies a bunch of different ways we specify schemas in tests
 pub(crate) trait SchemaProvider {
     /// Produce the schema, panicking (with a nice error message as appropriate) if it is not a valid schema.
