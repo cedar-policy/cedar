@@ -22,8 +22,8 @@ use cedar_policy_core::ast::Expr;
 use std::str::FromStr;
 
 use super::test_utils::{
-    assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema, expr_id_placeholder,
-    get_loc,
+    assert_exactly_one_error, assert_typecheck_fails_empty_schema, assert_typechecks_empty_schema,
+    expr_id_placeholder, get_loc,
 };
 
 #[test]
@@ -46,55 +46,56 @@ fn ip_extension_typechecks() {
 fn ip_extension_typecheck_fails() {
     use cedar_policy_core::ast::Name;
 
+    use crate::typecheck::test::test_utils::assert_exactly_one_error;
+
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
     let src = "ip(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr,
-        Type::extension(ipaddr_name.clone()),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(ipaddr_name.clone()));
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
     let src = "ip(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr,
-        Type::extension(ipaddr_name.clone()),
-        [ValidationError::function_argument_validation(
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(ipaddr_name.clone()));
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as IP address: `\"foo\"`".into(),
-        )],
+        )
     );
     let src = "ip(\"127.0.0.1\").isIpv4(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr.clone(),
-        Type::primitive_boolean(),
-        [ValidationError::wrong_number_args(
-            get_loc(src, src),
-            expr_id_placeholder(),
-            1,
-            2,
-        )],
+    let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::wrong_number_args(get_loc(src, src), expr_id_placeholder(), 1, 2,)
     );
     let src = "ip(\"127.0.0.1\").isInRange(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr,
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::extension(ipaddr_name),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }
 
@@ -130,51 +131,51 @@ fn decimal_extension_typecheck_fails() {
         Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
     let src = "decimal(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr,
-        Type::extension(decimal_name.clone()),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(decimal_name.clone()));
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, "3"),
             expr_id_placeholder(),
             Type::primitive_string(),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
     let src = "decimal(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr.clone(),
-        Type::extension(decimal_name.clone()),
-        [ValidationError::function_argument_validation(
+    let errors =
+        assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(decimal_name.clone()));
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
             "Failed to parse as a decimal value: `\"foo\"`".into(),
-        )],
+        )
     );
     let src = "decimal(\"1.23\").lessThan(3, 4)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr.clone(),
-        Type::primitive_boolean(),
-        [ValidationError::wrong_number_args(
-            get_loc(src, src),
-            expr_id_placeholder(),
-            2,
-            3,
-        )],
+    let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::wrong_number_args(get_loc(src, src), expr_id_placeholder(), 2, 3,)
     );
     let src = "decimal(\"1.23\").lessThan(4)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    assert_typecheck_fails_empty_schema(
-        expr,
-        Type::primitive_boolean(),
-        [ValidationError::expected_type(
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, "4"),
             expr_id_placeholder(),
             Type::extension(decimal_name),
             Type::primitive_long(),
             None,
-        )],
+        )
     );
 }

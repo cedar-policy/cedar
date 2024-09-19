@@ -20,6 +20,7 @@
 
 use cool_asserts::assert_matches;
 use serde_json::json;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::vec;
 
@@ -30,8 +31,9 @@ use cedar_policy_core::{
 };
 
 use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
-    assert_typecheck_fails, assert_typechecks, expr_id_placeholder, get_loc,
+    assert_exactly_one_error, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
+    assert_policy_typechecks, assert_typecheck_fails, assert_typechecks, expr_id_placeholder,
+    get_loc,
 };
 use crate::{
     diagnostics::ValidationError,
@@ -70,35 +72,25 @@ fn namespaced_entity_type_schema() -> json_schema::Fragment<RawName> {
     .expect("Expected valid schema")
 }
 
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_expr_typechecks_namespace_schema(e: Expr, t: Type) {
-    assert_typechecks(namespaced_entity_type_schema(), e, t)
-}
-
-#[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_expr_typecheck_fails_namespace_schema(
-    e: Expr,
-    t: Option<Type>,
-    errs: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_typecheck_fails(namespaced_entity_type_schema(), e, t, errs)
-}
-
 #[test]
 fn namespaced_entity_eq() {
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"alice""#).expect("Expr should parse."),
         Type::True,
     );
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"bob""#).expect("Expr should parse."),
         Type::False,
     );
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" == N::S::Bar::"bob""#).expect("Expr should parse."),
         Type::False,
     );
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Action::"baz" == N::S::Action::"baz""#)
             .expect("Expr should parse."),
         Type::True,
@@ -107,11 +99,13 @@ fn namespaced_entity_eq() {
 
 #[test]
 fn namespaced_entity_in() {
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" in N::S::Foo::"bob""#).expect("Expr should parse."),
         Type::primitive_boolean(),
     );
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" in N::S::Bar::"bob""#).expect("Expr should parse."),
         Type::False,
     );
@@ -119,11 +113,13 @@ fn namespaced_entity_in() {
 
 #[test]
 fn namespaced_entity_has() {
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" has foo"#).expect("Expr should parse."),
         Type::False,
     );
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice" has name"#).expect("Expr should parse."),
         Type::primitive_boolean(),
     );
@@ -131,7 +127,8 @@ fn namespaced_entity_has() {
 
 #[test]
 fn namespaced_entity_get_attr() {
-    assert_expr_typechecks_namespace_schema(
+    assert_typechecks(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::Foo::"alice".name"#).expect("Expr should parse."),
         Type::primitive_string(),
     );
@@ -140,51 +137,62 @@ fn namespaced_entity_get_attr() {
 #[test]
 fn namespaced_entity_can_type_error() {
     let src = r#"N::S::Foo::"alice" > 1"#;
-    assert_expr_typecheck_fails_namespace_schema(
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(src).expect("Expr should parse."),
         Some(Type::primitive_boolean()),
-        [ValidationError::expected_type(
+    );
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
             Type::primitive_long(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
-        )],
+        )
     );
 }
 
 #[test]
 fn namespaced_entity_wrong_namespace() {
-    assert_expr_typecheck_fails_namespace_schema(
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
         None,
-        [],
     );
-    assert_expr_typecheck_fails_namespace_schema(
+    assert_eq!(errors.len(), 0);
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
         None,
-        [],
     );
-    assert_expr_typecheck_fails_namespace_schema(
+    assert_eq!(errors.len(), 0);
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
         None,
-        [],
     );
-    assert_expr_typecheck_fails_namespace_schema(
+    assert_eq!(errors.len(), 0);
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
         None,
-        [],
     );
-    assert_expr_typecheck_fails_namespace_schema(
+    assert_eq!(errors.len(), 0);
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
         None,
-        [],
     );
-    assert_expr_typecheck_fails_namespace_schema(
+    assert_eq!(errors.len(), 0);
+    let errors = assert_typecheck_fails(
+        namespaced_entity_type_schema(),
         Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
         None,
-        [],
     );
+    assert_eq!(errors.len(), 0);
 }
 
 #[test]
@@ -364,11 +372,11 @@ fn multiple_namespaces_attributes() {
         Type::named_entity_reference_from_str("B::Foo"),
     );
     let src = "B::Foo::\"foo\".x";
-    assert_typecheck_fails(
-        schema,
-        Expr::from_str(src).unwrap(),
-        None,
-        [ValidationError::unsafe_attribute_access(
+    let errors = assert_typecheck_fails(schema, Expr::from_str(src).unwrap(), None);
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::unsafe_attribute_access(
             get_loc(src, src),
             PolicyID::from_string("expr"),
             AttributeAccess::EntityLUB(
@@ -377,7 +385,7 @@ fn multiple_namespaces_attributes() {
             ),
             None,
             false,
-        )],
+        )
     );
 }
 
@@ -487,11 +495,8 @@ fn multiple_namespaces_applies_to() {
 // Test cases added for namespace bug found by DRT.
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-fn assert_policy_typecheck_fails_namespace_schema(
-    p: StaticPolicy,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
-) {
-    assert_policy_typecheck_fails(namespaced_entity_type_schema(), p, expected_type_errors);
+fn assert_policy_typecheck_fails_namespace_schema(p: StaticPolicy) -> HashSet<ValidationError> {
+    assert_policy_typecheck_fails(namespaced_entity_type_schema(), p)
 }
 
 #[test]
@@ -503,15 +508,17 @@ fn namespaced_entity_is_wrong_type_and() {
             };
         "#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
-    assert_policy_typecheck_fails_namespace_schema(
-        policy,
-        [ValidationError::expected_type(
+    let errors = assert_policy_typecheck_fails_namespace_schema(policy);
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
-        )],
+        )
     );
 }
 
@@ -524,15 +531,17 @@ fn namespaced_entity_is_wrong_type_when() {
             };
             "#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).expect("Policy should parse.");
-    assert_policy_typecheck_fails_namespace_schema(
-        policy,
-        [ValidationError::expected_type(
+    let errors = assert_policy_typecheck_fails_namespace_schema(policy);
+    let type_error = assert_exactly_one_error(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::expected_type(
             get_loc(src, r#"N::S::Foo::"alice""#),
             PolicyID::from_string("0"),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
-        )],
+        )
     );
 }
 
@@ -577,13 +586,14 @@ fn multi_namespace_action_eq() {
         r#"permit(principal, action, resource) when { NS1::Action::"B" == NS2::Action::"B" };"#,
     )
     .unwrap();
-    assert_policy_typecheck_warns(
-        schema.clone(),
-        policy.clone(),
-        [ValidationWarning::impossible_policy(
+    let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
+    let warning = assert_exactly_one_error(warnings);
+    assert_eq!(
+        warning,
+        ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
-        )],
+        )
     );
 }
 
@@ -643,13 +653,14 @@ fn multi_namespace_action_in() {
         r#"permit(principal, action in NS4::Action::"Group", resource);"#,
     )
     .unwrap();
-    assert_policy_typecheck_warns(
-        schema.clone(),
-        policy.clone(),
-        [ValidationWarning::impossible_policy(
+    let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
+    let warning = assert_exactly_one_error(warnings);
+    assert_eq!(
+        warning,
+        ValidationWarning::impossible_policy(
             policy.loc().cloned(),
             PolicyID::from_string("policy0"),
-        )],
+        )
     );
 }
 

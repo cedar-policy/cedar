@@ -38,14 +38,14 @@ pub(crate) fn assert_partial_typecheck(
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
-    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
         &Template::link_static_policy(policy.clone()).0,
-        &mut type_errors,
+        &mut errors,
         &mut warnings,
     );
-    assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
+    assert_eq!(errors, HashSet::new(), "Did not expect any errors.");
     assert!(typechecked, "Expected that policy would typecheck.");
 }
 
