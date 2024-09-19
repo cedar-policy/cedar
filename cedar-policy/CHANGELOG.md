@@ -93,6 +93,19 @@ Cedar Language Version: 4.0
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 
+## [3.4.1] - Coming Soon
+
+Cedar Language Version: 3.4
+
+### Fixed
+
+- The schema format conversion method `SchemaFragment::to_cedarschema` will now
+  return a name collision error when trying to convert a schema where any
+  namespaced type name collides with an unqualified type. This avoids a
+  situation where format conversion could change the target of an entity type
+  reference. (#1212, resolving #1063) This _does not_ change what schema are
+  accepted by the parsing functions for either format.
+
 ## [3.4.0] - 2024-09-16
 Cedar Language Version: 3.4
 
@@ -700,6 +713,7 @@ Cedar Language Version: 2.0
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
+[3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
