@@ -15,6 +15,13 @@
   `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
   takes `cedar-to-json` or `json-to-cedar`. (#1114)
 
+## 3.4.1
+
+- The `translate-schema` command will now fail when trying to convert a schema to the
+  Cedar schema format where any namespaced type name collides with an
+  unqualified type. (#1212, resolving #1063) This _does not_ change what schema
+  in either format are accepted by the other commands.
+
 ## 3.4.0
 
 ## 3.3.0
