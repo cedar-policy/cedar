@@ -4373,9 +4373,3 @@ pub fn compute_entity_manifest(
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
 }
-
-/// Functions to make manipulating policies easier.
-pub mod policy_manipulation_functions {
-    use super::EntityUid;
-    use super::Policy;
-}
