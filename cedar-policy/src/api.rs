@@ -51,13 +51,25 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
 use itertools::{Either, Itertools};
+use lazy_static::lazy_static;
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use semver::{BuildMetadata, Prerelease, Version};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
+
+lazy_static! {
+    // Cedar Rust SDK Semantic Versioning version
+    static ref SDK_VERSION: Version = Version::new(4, 1, 0);
+}
+
+/// Get the Cedar SDK Semantic Versioning version
+pub fn get_sdk_version() -> Version {
+    SDK_VERSION.clone()
+}
 
 /// Entity datatype
 #[repr(transparent)]
