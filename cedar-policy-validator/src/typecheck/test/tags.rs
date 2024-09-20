@@ -21,7 +21,7 @@
 #![cfg(feature = "entity-tags")]
 
 use super::test_utils::{
-    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typechecks,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks
 };
 use cedar_policy_core::{
     ast::PolicyID,
@@ -291,6 +291,46 @@ fn mixed_tags_and_attrs() {
     "#;
     let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
     assert_policy_typechecks(schema_with_tags(), policy);
+}
+
+#[test]
+fn tags_on_actions() {
+    // hasTag on an action. This succeeds, although warns that it's always false
+    let src = r#"
+        permit(principal, action == Action::"A1", resource) when {
+            action.hasTag("foo")
+        };
+    "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
+    let warnings = assert_policy_typecheck_warns(schema_with_tags(), policy);
+    let warning = assert_exactly_one_diagnostic(warnings);
+    expect_err(
+        src,
+        &miette::Report::new(warning),
+        &ExpectedErrorMessageBuilder::error("for policy `0`, policy is impossible: the policy expression evaluates to false for all valid requests")
+            .exactly_one_underline(r#"permit(principal, action == Action::"A1", resource) when {
+            action.hasTag("foo")
+        };"#)
+            .build(),
+    );
+
+    // getTag on an action. This fails
+    let src = r#"
+        permit(principal, action == Action::"A4", resource) when {
+            action.getTag("foo") == "bar"
+        };
+    "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema_with_tags(), policy);
+    let error = assert_exactly_one_diagnostic(errors);
+    expect_err(
+        src,
+        &miette::Report::new(error),
+        &ExpectedErrorMessageBuilder::error(r#"for policy `0`, unable to guarantee safety of access to tag `"foo"`"#)
+            .help(r#"try testing for the tag's presence with `.hasTag("foo") && ..`"#)
+            .exactly_one_underline(r#"action.getTag("foo")"#)
+            .build(),
+    );
 }
 
 /// Not a test of tag functionality itself, but just double-checking that
