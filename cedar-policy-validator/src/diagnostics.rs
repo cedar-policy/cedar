@@ -22,14 +22,14 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, PolicyID};
 #[cfg(feature = "entity-tags")]
 use cedar_policy_core::ast::Expr;
+use cedar_policy_core::ast::{EntityType, PolicyID};
 use cedar_policy_core::parser::Loc;
 
-use crate::types::Type;
 #[cfg(feature = "entity-tags")]
 use crate::types::EntityLUB;
+use crate::types::Type;
 
 pub mod validation_errors;
 pub mod validation_warnings;
