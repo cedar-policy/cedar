@@ -63,7 +63,7 @@ pub mod conformance_errors {
     pub use cedar_policy_core::entities::conformance::err::{
         ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
         InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch, UndeclaredAction,
-        UnexpectedEntityAttr, UnexpectedEntityTypeError,
+        UnexpectedEntityAttr, UnexpectedEntityTag, UnexpectedEntityTypeError,
     };
 }
 
@@ -256,14 +256,16 @@ impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
     }
 }
 
-/// Error when evaluating an entity attribute
+/// Error when evaluating an entity attribute or tag
 #[derive(Debug, Diagnostic, Error)]
-#[error("in attribute `{attr}` of `{uid}`: {err}")]
+#[error("in {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
 pub struct EntityAttrEvaluationError {
-    /// Action that had the attribute with the error
+    /// Action that had the attribute or tag with the error
     uid: EntityUid,
-    /// Attribute that had the error
-    attr: SmolStr,
+    /// Attribute or tag that had the error
+    attr_or_tag: SmolStr,
+    /// Is `attr_or_tag` an attribute (`true`) or a tag (`false`)
+    was_attr: bool,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
     err: EvaluationError,
@@ -275,9 +277,11 @@ impl EntityAttrEvaluationError {
         &self.uid
     }
 
-    /// Get the name of the attribute that had the error
+    /// Get the name of the attribute or tag that had the error
+    //
+    // Method is named `.attr()` and not `.attr_or_tag()` for historical / backwards-compatibility reasons
     pub fn attr(&self) -> &SmolStr {
-        &self.attr
+        &self.attr_or_tag
     }
 
     /// Get the underlying evaluation error
@@ -291,7 +295,8 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
             uid: err.uid.into(),
-            attr: err.attr,
+            attr_or_tag: err.attr_or_tag,
+            was_attr: err.was_attr,
             err: err.err,
         }
     }

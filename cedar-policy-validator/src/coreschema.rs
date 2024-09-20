@@ -135,6 +135,22 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
         Some(core_schema_type)
     }
 
+    #[cfg(feature = "entity-tags")]
+    fn tag_type(&self) -> Option<entities::SchemaType> {
+        let tag_type: &crate::types::Type = self.validator_type.tag_type()?;
+        // This converts a type from a schema into the representation of schema
+        // types used by core. `tag_type` is taken from a `ValidatorEntityType`
+        // which was constructed from a schema.
+        // PANIC SAFETY: see above
+        #[allow(clippy::expect_used)]
+        let core_schema_type: entities::SchemaType = tag_type
+            .clone()
+            .try_into()
+            .expect("failed to convert validator type into Core SchemaType");
+        debug_assert!(tag_type.is_consistent_with(&core_schema_type));
+        Some(core_schema_type)
+    }
+
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         Box::new(
             self.validator_type

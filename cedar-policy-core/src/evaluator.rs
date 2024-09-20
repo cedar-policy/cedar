@@ -2421,6 +2421,8 @@ pub mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
+            #[cfg(feature = "entity-tags")]
+            [],
             Extensions::none(),
         )
         .unwrap();
