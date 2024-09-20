@@ -1435,9 +1435,7 @@ impl<'a> Typechecker<'a> {
                     arg1,
                     Type::any_entity_reference(),
                     type_errors,
-                    |actual| match actual {
-                        _ => None,
-                    },
+                    |_| None,
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
                     self.expect_type(
