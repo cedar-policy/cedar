@@ -59,9 +59,9 @@ impl<'a> CapabilitySet<'a> {
 pub struct Capability<'a> {
     /// For this expression
     on_expr: ExprShapeOnly<'a, ()>,
-    /// This attribute is known to exist on that expression
+    /// This attribute or tag is known to exist on that expression
     ///
-    /// This expression represents the attribute name. It should have type string.
+    /// This expression represents the attribute or tag name. It should have type string.
     /// Often this is a string constant, but in the case of tags it can be an expression.
     attribute_or_tag: ExprShapeOnly<'a, ()>,
     /// Is `attribute_or_tag` an attribute name or a tag name
