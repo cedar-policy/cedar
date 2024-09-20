@@ -62,7 +62,7 @@ pub struct Capability<'a> {
     /// This attribute is known to exist on that expression
     ///
     /// This expression represents the attribute name. It should have type string.
-    /// Often, but not necessarily, this is a string constant.
+    /// Often this is a string constant, but in the case of tags it can be an expression.
     attribute_or_tag: ExprShapeOnly<'a, ()>,
     /// Is `attribute_or_tag` an attribute name or a tag name
     kind: CapabilityKind,
