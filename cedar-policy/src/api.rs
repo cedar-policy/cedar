@@ -2920,6 +2920,23 @@ impl Policy {
         get_valid_request_envs(self.ast.template(), s)
     }
 
+    /// Get all entity literals occuring in a `Policy`
+    pub fn entity_literals(&self) -> Vec<EntityUid> {
+        self.ast
+            .condition()
+            .subexpressions()
+            .filter_map(|e| match e.expr_kind() {
+                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
+                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
+                        Some(EntityUid((*euid).as_ref().clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
             ast: est.clone().try_into_ast_policy(id.map(PolicyId::into))?,
@@ -4361,21 +4378,4 @@ pub fn compute_entity_manifest(
 pub mod policy_manipulation_functions {
     use super::EntityUid;
     use super::Policy;
-
-    /// Get all entity literals occuring in a `Policy`
-    pub fn get_entity_literals(p: Policy) -> Vec<EntityUid> {
-        p.ast
-            .condition()
-            .subexpressions()
-            .filter_map(|e| match e.expr_kind() {
-                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
-                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
-                        Some(EntityUid((*euid).as_ref().clone()))
-                    }
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect()
-    }
 }

@@ -5724,10 +5724,7 @@ mod policy_manipulation_functions_tests {
         let policy_str = r###"permit(principal, action, resource);
         "###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
-        assert_eq!(
-            super::policy_manipulation_functions::get_entity_literals(policy),
-            vec![]
-        );
+        assert_eq!(policy.entity_literals(), vec![]);
     }
 
     #[test]
@@ -5737,11 +5734,7 @@ mod policy_manipulation_functions_tests {
         };
         "###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
-        let res = super::policy_manipulation_functions::get_entity_literals(policy);
-        println!("{:?}", res);
-        for e in &res {
-            println!("{e:?}")
-        }
+        let res = policy.entity_literals();
         assert_eq!(res.len(), 3);
         assert!(res.contains(&EntityUid::from_str("User::\"Bob\"").expect("should parse")));
         assert!(res.contains(&EntityUid::from_str("Action::\"view\"").expect("should parse")));
