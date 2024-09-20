@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- The formatter will now consistently add a trailing newline, and checking if a
+  file is formatted with `--check` will require a trailing newline. (resolving #1217)
+
 ## 4.0.0
 
 ### Changed
