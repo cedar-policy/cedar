@@ -56,6 +56,12 @@ pub struct EntityJson {
     attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJson`
     parents: Vec<EntityUidJson>,
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
+    tags: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
 
 /// Struct used to parse entities from JSON.
@@ -341,6 +347,52 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
+        let tags: HashMap<SmolStr, RestrictedExpr> = ejson
+            .tags
+            .into_iter()
+            .map(|(k, v)| match &entity_schema_info {
+                EntitySchemaInfo::NoSchema => Ok((
+                    k.clone(),
+                    vparser.val_into_restricted_expr(v.into(), None, || {
+                        JsonDeserializationErrorContext::EntityTag {
+                            uid: uid.clone(),
+                            tag: k.clone(),
+                        }
+                    })?,
+                )),
+                #[cfg(feature = "entity-tags")]
+                EntitySchemaInfo::NonAction(desc) => {
+                    // Depending on the expected type, we may parse the contents
+                    // of the tag differently.
+                    let rexpr = match desc.tag_type() {
+                        // `None` indicates no tags should exist -- see docs on
+                        // the `tag_type()` trait method
+                        None => {
+                            return Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
+                            ));
+                        }
+                        Some(expected_ty) => vparser.val_into_restricted_expr(
+                            v.into(),
+                            Some(&expected_ty),
+                            || JsonDeserializationErrorContext::EntityTag {
+                                uid: uid.clone(),
+                                tag: k.clone(),
+                            },
+                        )?,
+                    };
+                    Ok((k, rexpr))
+                }
+                #[cfg(not(feature = "entity-tags"))]
+                EntitySchemaInfo::NonAction(_) => {
+                    // without the `entity-tags` feature, no schemas specify tags,
+                    // so any tag that appears is necessarily a conformance error
+                    Err(JsonDeserializationError::EntitySchemaConformance(
+                        EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
+                    ))
+                }
+            })
+            .collect::<Result<_, JsonDeserializationError>>()?;
         let is_parent_allowed = |parent_euid: &EntityUID| {
             // full validation isn't done in this function (see doc comments on
             // this function), but we do need to do the following check which
@@ -373,7 +425,18 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents, self.extensions)?)
+        #[cfg(not(feature = "entity-tags"))]
+        if !tags.is_empty() {
+            return Err(JsonDeserializationError::UnsupportedEntityTags);
+        }
+        Ok(Entity::new(
+            uid,
+            attrs,
+            parents,
+            #[cfg(feature = "entity-tags")]
+            tags,
+            self.extensions,
+        )?)
     }
 }
 
@@ -382,29 +445,39 @@ impl EntityJson {
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
+        let serialize_kpvalue = |(k, pvalue): (&SmolStr, &PartialValue)| -> Result<_, _> {
+            match pvalue {
+                PartialValue::Value(value) => {
+                    let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
+                    Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                }
+                PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+                    Ok(expr) => {
+                        let cedarvaluejson = CedarValueJson::from_expr(expr)?;
+                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                    }
+                    Err(_) => Err(JsonSerializationError::residual(expr.clone())),
+                },
+            }
+        };
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape
             uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, pvalue)| match pvalue {
-                    PartialValue::Value(value) => {
-                        let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
-                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                    }
-                    PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-                        Ok(expr) => {
-                            let cedarvaluejson = CedarValueJson::from_expr(expr)?;
-                            Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                        }
-                        Err(_) => Err(JsonSerializationError::residual(expr.clone())),
-                    },
-                })
+                .map(serialize_kpvalue)
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
+            #[cfg(feature = "entity-tags")]
+            tags: entity
+                .tags()
+                .map(serialize_kpvalue)
+                .collect::<Result<_, JsonSerializationError>>()?,
+            #[cfg(not(feature = "entity-tags"))]
+            tags: HashMap::new(),
         })
     }
 }

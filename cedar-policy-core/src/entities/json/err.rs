@@ -127,6 +127,10 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedName(#[from] ReservedNameError),
+    /// Returned when entities have tags, but the `entity-tags` feature is not enabled
+    #[cfg(not(feature = "entity-tags"))]
+    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
+    UnsupportedEntityTags,
 }
 
 impl JsonDeserializationError {
@@ -460,6 +464,13 @@ pub enum JsonDeserializationErrorContext {
         /// Attribute where the error occurred
         attr: SmolStr,
     },
+    /// The error occurred while deserializing the tag `tag` of an entity.
+    EntityTag {
+        /// Entity where the error occurred
+        uid: EntityUID,
+        /// Tag where the error occurred
+        tag: SmolStr,
+    },
     /// The error occurred while deserializing the `parents` field of an entity.
     EntityParents {
         /// Entity where the error occurred
@@ -558,6 +569,7 @@ impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EntityAttribute { uid, attr } => write!(f, "in attribute `{attr}` on `{uid}`"),
+            Self::EntityTag { uid, tag } => write!(f, "in tag `{tag}` on `{uid}`"),
             Self::EntityParents { uid } => write!(f, "in parents field of `{uid}`"),
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),
