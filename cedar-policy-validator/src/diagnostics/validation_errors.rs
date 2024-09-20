@@ -483,6 +483,27 @@ impl Diagnostic for NonLitExtConstructor {
     }
 }
 
+/// Returned when an internal invariant is violated (should not happen; if
+/// this is ever returned, please file an issue)
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("internal invariant violated")]
+pub struct InternalInvariantViolation {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+}
+
+impl Diagnostic for InternalInvariantViolation {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema and policy for which you observed the issue"
+        ))
+    }
+}
+
 /// Contains more detailed information about an attribute access when it occurs
 /// on an entity type expression or on the `context` variable. Track a `Vec` of
 /// attributes rather than a single attribute so that on `principal.foo.bar` can

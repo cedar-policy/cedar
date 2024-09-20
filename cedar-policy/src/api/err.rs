@@ -416,6 +416,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
 }
 
 impl ValidationError {
@@ -439,6 +444,7 @@ impl ValidationError {
             Self::EmptySetForbidden(e) => e.policy_id(),
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
+            Self::InternalInvariantViolation(e) => e.policy_id(),
         }
     }
 }
@@ -493,6 +499,9 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
                 Self::HierarchyNotRespected(e.into())
+            }
+            cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
+                Self::InternalInvariantViolation(e.into())
             }
         }
     }

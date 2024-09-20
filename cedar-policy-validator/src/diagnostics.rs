@@ -166,6 +166,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
 }
 
 impl ValidationError {
@@ -327,7 +332,6 @@ impl ValidationError {
 
     pub(crate) fn wrong_number_args(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
@@ -372,7 +376,6 @@ impl ValidationError {
 
     pub(crate) fn hierarchy_not_respected(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         in_lhs: Option<EntityType>,
         in_rhs: Option<EntityType>,
@@ -382,6 +385,17 @@ impl ValidationError {
             policy_id,
             in_lhs,
             in_rhs,
+        }
+        .into()
+    }
+
+    pub(crate) fn internal_invariant_violation(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+    ) -> Self {
+        validation_errors::InternalInvariantViolation {
+            source_loc,
+            policy_id,
         }
         .into()
     }

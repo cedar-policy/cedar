@@ -1449,8 +1449,11 @@ impl<'a> Typechecker<'a> {
                     .then_typecheck(|expr_ty_arg2, _| {
                         let Some(Type::EntityOrRecord(kind)) = expr_ty_arg1.data() else {
                             // should be unreachable, as we already typechecked that this matches
-                            // `Type::any_entity_reference()`, but to be safe we can return this
-                            // reasonable failure instead of `unreachable!()`
+                            // `Type::any_entity_reference()`
+                            type_errors.push(ValidationError::internal_invariant_violation(
+                                bin_expr.source_loc().cloned(),
+                                self.policy_id.clone(),
+                            ));
                             return TypecheckAnswer::fail(
                                 ExprBuilder::new()
                                     .with_same_source_loc(bin_expr)
@@ -1464,9 +1467,16 @@ impl<'a> Typechecker<'a> {
                             }
                             Err(()) => {
                                 // Not an entity type; should be unreachable, as we already typechecked
-                                // that this matches `Type::any_entity_reference()`, but to be safe we
-                                // can just treat this like the case above, no tags are possible
-                                Type::singleton_boolean(false)
+                                // that this matches `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
                             }
                             _ => Type::primitive_boolean(),
                         };
@@ -1503,8 +1513,11 @@ impl<'a> Typechecker<'a> {
                     .then_typecheck(|expr_ty_arg2, _| {
                         let Some(Type::EntityOrRecord(kind)) = expr_ty_arg1.data() else {
                             // should be unreachable, as we already typechecked that this matches
-                            // `Type::any_entity_reference()`, but to be safe we can return this
-                            // reasonable failure instead of `unreachable!()`
+                            // `Type::any_entity_reference()`
+                            type_errors.push(ValidationError::internal_invariant_violation(
+                                bin_expr.source_loc().cloned(),
+                                self.policy_id.clone(),
+                            ));
                             return TypecheckAnswer::fail(
                                 ExprBuilder::new()
                                     .with_same_source_loc(bin_expr)
@@ -1518,8 +1531,13 @@ impl<'a> Typechecker<'a> {
                                 Err(()) => {
                                     // `kind` was not an entity type.
                                     // should be unreachable, as we already typechecked that this matches
-                                    // `Type::any_entity_reference()`, but to be safe we can return this
-                                    // reasonable failure instead of `unreachable!()`
+                                    // `Type::any_entity_reference()`
+                                    type_errors.push(
+                                        ValidationError::internal_invariant_violation(
+                                            bin_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                        ),
+                                    );
                                     return TypecheckAnswer::fail(
                                         ExprBuilder::new()
                                             .with_same_source_loc(bin_expr)

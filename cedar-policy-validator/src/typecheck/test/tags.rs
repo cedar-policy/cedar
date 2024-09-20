@@ -21,7 +21,8 @@
 #![cfg(feature = "entity-tags")]
 
 use super::test_utils::{
-    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
+    assert_policy_typechecks,
 };
 use cedar_policy_core::{
     ast::PolicyID,
@@ -326,10 +327,12 @@ fn tags_on_actions() {
     expect_err(
         src,
         &miette::Report::new(error),
-        &ExpectedErrorMessageBuilder::error(r#"for policy `0`, unable to guarantee safety of access to tag `"foo"`"#)
-            .help(r#"try testing for the tag's presence with `.hasTag("foo") && ..`"#)
-            .exactly_one_underline(r#"action.getTag("foo")"#)
-            .build(),
+        &ExpectedErrorMessageBuilder::error(
+            r#"for policy `0`, unable to guarantee safety of access to tag `"foo"`"#,
+        )
+        .help(r#"try testing for the tag's presence with `.hasTag("foo") && ..`"#)
+        .exactly_one_underline(r#"action.getTag("foo")"#)
+        .build(),
     );
 }
 

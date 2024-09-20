@@ -73,3 +73,4 @@ wrap_core_error!(FunctionArgumentValidation);
 wrap_core_error!(HierarchyNotRespected);
 wrap_core_error!(EmptySetForbidden);
 wrap_core_error!(NonLitExtConstructor);
+wrap_core_error!(InternalInvariantViolation);
