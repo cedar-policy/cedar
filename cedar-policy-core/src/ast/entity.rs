@@ -334,36 +334,44 @@ impl std::hash::Hash for Entity {
 }
 
 impl Entity {
-    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
     /// # Errors
-    /// - Will error if any of the [`RestrictedExpr]`s in `attrs` error when evaluated
+    /// - Will error if any of the [`RestrictedExpr]`s in `attrs` or `tags` error when evaluated
     pub fn new(
         uid: EntityUID,
-        attrs: HashMap<SmolStr, RestrictedExpr>,
+        attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         ancestors: HashSet<EntityUID>,
+        #[cfg(feature = "entity-tags")] tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
     ) -> Result<Self, EntityAttrEvaluationError> {
         let evaluator = RestrictedEvaluator::new(extensions);
+        let evaluate_kvs = |(k, v): (SmolStr, RestrictedExpr), was_attr: bool| {
+            let attr_val = evaluator
+                .partial_interpret(v.as_borrowed())
+                .map_err(|err| EntityAttrEvaluationError {
+                    uid: uid.clone(),
+                    attr_or_tag: k.clone(),
+                    was_attr,
+                    err,
+                })?;
+            Ok((k, attr_val.into()))
+        };
         let evaluated_attrs = attrs
             .into_iter()
-            .map(|(k, v)| {
-                let attr_val = evaluator
-                    .partial_interpret(v.as_borrowed())
-                    .map_err(|err| EntityAttrEvaluationError {
-                        uid: uid.clone(),
-                        attr: k.clone(),
-                        err,
-                    })?;
-                Ok((k, attr_val.into()))
-            })
+            .map(|kv| evaluate_kvs(kv, true))
+            .collect::<Result<_, EntityAttrEvaluationError>>()?;
+        #[cfg(feature = "entity-tags")]
+        let evaluated_tags = tags
+            .into_iter()
+            .map(|kv| evaluate_kvs(kv, false))
             .collect::<Result<_, EntityAttrEvaluationError>>()?;
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,
             ancestors,
             #[cfg(feature = "entity-tags")]
-            tags: BTreeMap::new(),
+            tags: evaluated_tags,
         })
     }
 
@@ -672,16 +680,20 @@ impl std::fmt::Display for PartialValueSerializedAsExpr {
     }
 }
 
-/// Error type for evaluation errors when evaluating an entity attribute.
+/// Error type for evaluation errors when evaluating an entity attribute or tag.
 /// Contains some extra contextual information and the underlying
 /// `EvaluationError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error)]
-#[error("failed to evaluate attribute `{attr}` of `{uid}`: {err}")]
+#[error("failed to evaluate {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
 pub struct EntityAttrEvaluationError {
     /// UID of the entity where the error was encountered
     pub uid: EntityUID,
-    /// Attribute of the entity where the error was encountered
-    pub attr: SmolStr,
+    /// Attribute or tag of the entity where the error was encountered
+    pub attr_or_tag: SmolStr,
+    /// If `attr_or_tag` was an attribute (`true`) or tag (`false`)
+    pub was_attr: bool,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
     pub err: EvaluationError,

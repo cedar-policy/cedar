@@ -769,7 +769,8 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .map_err(|err| {
                     ActionAttrEvalError(EntityAttrEvaluationError {
                         uid: action_id.clone(),
-                        attr: k.clone(),
+                        attr_or_tag: k.clone(),
+                        was_attr: true,
                         err,
                     })
                 })?;
