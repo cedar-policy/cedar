@@ -59,7 +59,7 @@ pub struct EntityJson {
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
     tags: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
