@@ -1085,11 +1085,11 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
         // expected for a particular type variant. We instead report that the
         // field so not exist at all, so that the schema author can delete the
         // field without wasting time fixing errors in the value.
-        let mut type_name: Option<std::result::Result<SmolStr, M::Error>> = None;
-        let mut element: Option<std::result::Result<Type<N>, M::Error>> = None;
-        let mut attributes: Option<std::result::Result<AttributesTypeMap, M::Error>> = None;
-        let mut additional_attributes: Option<std::result::Result<bool, M::Error>> = None;
-        let mut name: Option<std::result::Result<SmolStr, M::Error>> = None;
+        let mut type_name: Option<SmolStr> = None;
+        let mut element: Option<Type<N>> = None;
+        let mut attributes: Option<AttributesTypeMap> = None;
+        let mut additional_attributes: Option<bool> = None;
+        let mut name: Option<SmolStr> = None;
 
         // Gather all the fields in the object. Any fields that are not one of
         // the possible fields for some schema type will have been reported by
@@ -1100,19 +1100,19 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
                     if type_name.is_some() {
                         return Err(serde::de::Error::duplicate_field(TypeField.as_str()));
                     }
-                    type_name = Some(map.next_value());
+                    type_name = Some(map.next_value()?);
                 }
                 Element => {
                     if element.is_some() {
                         return Err(serde::de::Error::duplicate_field(Element.as_str()));
                     }
-                    element = Some(map.next_value());
+                    element = Some(map.next_value()?);
                 }
                 Attributes => {
                     if attributes.is_some() {
                         return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
                     }
-                    attributes = Some(map.next_value());
+                    attributes = Some(map.next_value()?);
                 }
                 AdditionalAttributes => {
                     if additional_attributes.is_some() {
@@ -1120,13 +1120,13 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
                             AdditionalAttributes.as_str(),
                         ));
                     }
-                    additional_attributes = Some(map.next_value());
+                    additional_attributes = Some(map.next_value()?);
                 }
                 Name => {
                     if name.is_some() {
                         return Err(serde::de::Error::duplicate_field(Name.as_str()));
                     }
-                    name = Some(map.next_value());
+                    name = Some(map.next_value()?);
                 }
             }
         }
@@ -1141,11 +1141,11 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     /// which is not used for a particular type to be `Some` when building that
     /// type.
     fn build_schema_type<M>(
-        type_name: Option<std::result::Result<SmolStr, M::Error>>,
-        element: Option<std::result::Result<Type<N>, M::Error>>,
-        attributes: Option<std::result::Result<AttributesTypeMap, M::Error>>,
-        additional_attributes: Option<std::result::Result<bool, M::Error>>,
-        name: Option<std::result::Result<SmolStr, M::Error>>,
+        type_name: Option<SmolStr>,
+        element: Option<Type<N>>,
+        attributes: Option<AttributesTypeMap>,
+        additional_attributes: Option<bool>,
+        name: Option<SmolStr>,
     ) -> std::result::Result<Type<N>, M::Error>
     where
         M: MapAccess<'de>,
@@ -1164,7 +1164,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
         .map(|(field, _)| field)
         .collect::<HashSet<_>>();
 
-        match type_name.transpose()?.as_ref() {
+        match type_name.as_ref() {
             Some(s) => {
                 // We've concluded that type exists
                 remaining_fields.remove(&TypeField);
@@ -1204,7 +1204,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
 
                         match element {
                             Some(element) => Ok(Type::Type(TypeVariant::Set {
-                                element: Box::new(element?),
+                                element: Box::new(element),
                             })),
                             None => Err(serde::de::Error::missing_field(Element.as_str())),
                         }
@@ -1220,9 +1220,9 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
 
                         if let Some(attributes) = attributes {
                             let additional_attributes =
-                                additional_attributes.unwrap_or(Ok(partial_schema_default()));
+                                additional_attributes.unwrap_or(partial_schema_default());
                             Ok(Type::Type(TypeVariant::Record(RecordType {
-                                attributes: attributes?
+                                attributes: attributes
                                     .0
                                     .into_iter()
                                     .map(|(k, TypeOfAttribute { ty, required })| {
@@ -1235,7 +1235,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         )
                                     })
                                     .collect(),
-                                additional_attributes: additional_attributes?,
+                                additional_attributes: additional_attributes,
                             })))
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))
@@ -1247,18 +1247,15 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             &[type_field_name!(Name)],
                         )?;
                         match name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(Type::Type(TypeVariant::Entity {
-                                    name: RawName::from_normalized_str(&name)
-                                        .map_err(|err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid entity type `{name}`: {err}"
-                                            ))
-                                        })?
-                                        .into(),
-                                }))
-                            }
+                            Some(name) => Ok(Type::Type(TypeVariant::Entity {
+                                name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -1268,18 +1265,15 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             &[type_field_name!(Name)],
                         )?;
                         match name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(Type::Type(TypeVariant::EntityOrCommon {
-                                    type_name: RawName::from_normalized_str(&name)
-                                        .map_err(|err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid entity or common type `{name}`: {err}"
-                                            ))
-                                        })?
-                                        .into(),
-                                }))
-                            }
+                            Some(name) => Ok(Type::Type(TypeVariant::EntityOrCommon {
+                                type_name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity or common type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -1290,18 +1284,13 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                         )?;
 
                         match name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(Type::Type(TypeVariant::Extension {
-                                    name: UnreservedId::from_normalized_str(&name).map_err(
-                                        |err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid extension type `{name}`: {err}"
-                                            ))
-                                        },
-                                    )?,
-                                }))
-                            }
+                            Some(name) => Ok(Type::Type(TypeVariant::Extension {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid extension type `{name}`: {err}"
+                                    ))
+                                })?,
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -2041,7 +2030,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "unknown field `attributes`")]
+    #[should_panic(expected = "unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")]
     fn schema_file_unexpected_malformed_attribute() {
         let src = serde_json::json!(
         {
