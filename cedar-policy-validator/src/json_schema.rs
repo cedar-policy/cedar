@@ -2030,7 +2030,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")]
     fn schema_file_unexpected_malformed_attribute() {
         let src = serde_json::json!(
         {
@@ -2051,8 +2050,84 @@ mod test {
             },
             "actions": {}
         });
-        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+            );
+        });
+    }
+
+    #[test]
+    fn error_in_nested_attribute_fails_fast_top_level_attr() {
+        let src = serde_json::json!(
+            {
+                "": {
+                  "entityTypes": {
+                    "User": {
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "foo": {
+                            "type": "Record",
+                            // Parsing should fail here when `element` is not expected instead of failing later on `"bar"`
+                            "element": { "type": "Long" }
+                          },
+                          "bar": { "type": "Long" }
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                }
+              }
+        );
+
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `element`, expected `attributes` or `additionalAttributes`"#).build()
+            );
+        });
+    }
+
+    #[test]
+    fn error_in_nested_attribute_fails_fast_nested_attr() {
+        let src = serde_json::json!(
+            { "": {
+                "entityTypes": {
+                    "a": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                 "foo": { "type": "Entity", "name": "b" },
+                                 "bar": { "type": "Set", "element": "Long" },
+                                 "baz": { "type": "Record",
+                                    "attributes": {
+                                        // Parsing should fail here instead of continuing and failing on the `"b"` as in #417
+                                        "z": "Boolean"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "b": {}
+                }
+             } }
+        );
+
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `z`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+            );
+        });
     }
 
     #[test]
