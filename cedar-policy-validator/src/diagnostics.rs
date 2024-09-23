@@ -170,6 +170,7 @@ pub enum ValidationError {
     /// this is ever returned, please file an issue)
     #[error(transparent)]
     #[diagnostic(transparent)]
+    #[cfg(feature = "entity-tags")] // have to write this because, as of this writing, without this feature InternalInvariantViolation is never used, so that causes a warning which fails CI
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
 }
 
