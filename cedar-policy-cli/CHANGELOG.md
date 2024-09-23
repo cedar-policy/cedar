@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+## 4.0.0
+
 ### Changed
 
-- The default `--schema-format` is now `human` for all subcommands that take
+- The default `--schema-format` is now `cedar` for all subcommands that take
   `--schema-format`. (#750)
 - The `--partial-validate` option has been replaced with `--validation-mode`,
   taking the values `strict`, `permissive` (new) and `partial`.
@@ -12,6 +14,15 @@
 - CLI arguments `--policy-format` and `--schema-format` now take options
   `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
   takes `cedar-to-json` or `json-to-cedar`. (#1114)
+
+## 3.4.1
+
+- The `translate-schema` command will now fail when trying to convert a schema to the
+  Cedar schema format where any namespaced type name collides with an
+  unqualified type. (#1212, resolving #1063) This _does not_ change what schema
+  in either format are accepted by the other commands.
+
+## 3.4.0
 
 ## 3.3.0
 
@@ -96,6 +107,8 @@ Now uses Cedar language version 3.0.0.
   long form of the flag is also now accepted across all subcommands.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
 - The `format` subcommand no longer takes a positional file argument.
+
+## 2.5.0
 
 ## 2.4.7
 

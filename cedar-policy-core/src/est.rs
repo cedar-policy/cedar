@@ -2214,6 +2214,141 @@ mod test {
     }
 
     #[test]
+    fn entity_tags() {
+        let policy = r#"
+            permit(principal, action, resource)
+            when {
+                resource.hasTag("writeable")
+                && resource.getTag("writeable").contains(principal.group)
+                && principal.hasTag(context.foo)
+                && principal.getTag(context.foo) == 72
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "&&": {
+                                "left": {
+                                    "&&": {
+                                        "left": {
+                                            "&&": {
+                                                "left": {
+                                                    "hasTag": {
+                                                        "left": {
+                                                            "Var": "resource"
+                                                        },
+                                                        "right": {
+                                                            "Value": "writeable"
+                                                        }
+                                                    }
+                                                },
+                                                "right": {
+                                                    "contains": {
+                                                        "left": {
+                                                            "getTag": {
+                                                                "left": {
+                                                                    "Var": "resource"
+                                                                },
+                                                                "right": {
+                                                                    "Value": "writeable"
+                                                                }
+                                                            }
+                                                        },
+                                                        "right": {
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "group"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "right": {
+                                            "hasTag": {
+                                                "left": {
+                                                    "Var": "principal"
+                                                },
+                                                "right": {
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "context",
+                                                        },
+                                                        "attr": "foo"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    }
+                                },
+                                "right": {
+                                    "==": {
+                                        "left": {
+                                            "getTag": {
+                                                "left": {
+                                                    "Var": "principal"
+                                                },
+                                                "right": {
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "context",
+                                                        },
+                                                        "attr": "foo"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": 72
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        #[cfg(feature = "entity-tags")]
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        #[cfg(feature = "entity-tags")]
+        assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
     fn like_special_patterns() {
         let policy = r#"
         permit(principal, action, resource)

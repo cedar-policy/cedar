@@ -13,13 +13,16 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: TBD
 
 ### Added
+
+- Added `get_entity_literals` API (#1149).
+- Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
+  entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, more coming)
 - Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 
-
-## [4.0.0] - Coming soon
+## [4.0.0] - 2024-09-16
 Cedar Language Version: 4.0
 
 ### Added
@@ -30,10 +33,6 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
-- Add convenience methods to see how many policies and templates a policy set has (#1180)
-- `Entity` is now `Hash`. The hash implementation compares the hash of
-  the entity UID (#1186)
-- `Entity::new_empty_attrs` utility constructor that can't error (#1186)
 
 ### Changed
 
@@ -94,6 +93,32 @@ Cedar Language Version: 4.0
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+
+## [3.4.1] - Coming Soon
+
+Cedar Language Version: 3.4
+
+### Fixed
+
+- The schema format conversion method `SchemaFragment::to_cedarschema` will now
+  return a name collision error when trying to convert a schema where any
+  namespaced type name collides with an unqualified type. This avoids a
+  situation where format conversion could change the target of an entity type
+  reference. (#1212, resolving #1063) This _does not_ change what schema are
+  accepted by the parsing functions for either format.
+
+## [3.4.0] - 2024-09-16
+Cedar Language Version: 3.4
+
+### Added
+
+- Convenience methods `num_of_policies()` and `num_of_templates()` to see how
+  many policies and templates a policy set has (#1180)
+- `Entity` is now `Hash`. The hash implementation compares the hash of
+  the entity UID (#1186)
+
+### Fixed
+
 - (*) `Entities::from_entities()` will now correctly reject record
   attributes with superfluous attributes. (#1177, resolving #1176)
 
@@ -452,6 +477,14 @@ Cedar Language Version: 3.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.5.0] - 2024-09-16
+Cedar Language Version: 2.2
+
+### Added
+
+- Convenience methods `num_of_policies()` and `num_of_templates()` to see how
+  many policies and templates a policy set has (#1180)
+
 ## [2.4.7] - 2024-05-31
 Cedar Language Version: 2.2
 
@@ -680,7 +713,9 @@ Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
-[4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v4.0.0
+[4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
+[3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
+[3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
@@ -691,7 +726,8 @@ Cedar Language Version: 2.0
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.7...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.5.0...v3.0.0
+[2.5.0]: https://github.com/cedar-policy/cedar/compare/v2.4.7...v2.5.0
 [2.4.7]: https://github.com/cedar-policy/cedar/compare/v2.4.6...v2.4.7
 [2.4.6]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v2.4.6
 [2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5

@@ -371,6 +371,10 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
+    /// Returned when a policy uses entity tags, but the `entity-tags` feature is not enabled
+    #[cfg(not(feature = "entity-tags"))]
+    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
+    UnsupportedEntityTags,
 }
 
 impl ToASTErrorKind {

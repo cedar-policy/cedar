@@ -78,6 +78,10 @@ pub enum FromJsonError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
+    /// Returned when a policy uses entity tags, but the `entity-tags` feature is not enabled
+    #[cfg(not(feature = "entity-tags"))]
+    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
+    UnsupportedEntityTags,
 }
 
 /// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST

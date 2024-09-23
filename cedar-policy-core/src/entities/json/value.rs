@@ -21,7 +21,6 @@ use super::{
 use crate::entities::{
     conformance::err::EntitySchemaConformanceError,
     json::err::{EscapeKind, TypeMismatchError},
-    schematype_of_restricted_expr,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -499,21 +498,15 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_ty: match schematype_of_restricted_expr(
-                            actual_val.as_borrowed(),
-                            self.extensions,
-                        ) {
-                            Ok(actual_ty) => Some(Box::new(actual_ty)),
-                            Err(_) => None, // just don't report the type if there was an error computing it
-                        },
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
@@ -574,21 +567,15 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_ty: match schematype_of_restricted_expr(
-                            actual_val.as_borrowed(),
-                            self.extensions,
-                        ) {
-                            Ok(actual_ty) => Some(Box::new(actual_ty)),
-                            Err(_) => None, // just don't report the type if there was an error computing it
-                        },
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),

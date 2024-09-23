@@ -33,9 +33,8 @@ pub mod json;
 use json::err::JsonSerializationError;
 
 pub use json::{
-    schematype_of_restricted_expr, AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson,
-    ContextJsonParser, ContextSchema, EntityJson, EntityJsonParser, EntityTypeDescription,
-    EntityUidJson, FnAndArg, GetSchemaTypeError, HeterogeneousSetError, NoEntitiesSchema,
+    AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson, ContextJsonParser, ContextSchema,
+    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArg, NoEntitiesSchema,
     NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
@@ -467,7 +466,9 @@ mod json_parsing_tests {
         );
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        parser.from_json_value(v).unwrap();
+        parser
+            .from_json_value(v)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
     }
 
     #[test]
@@ -494,7 +495,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -532,7 +535,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -569,7 +574,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -610,7 +617,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -647,7 +656,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -686,7 +697,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -724,7 +737,9 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -749,7 +764,9 @@ mod json_parsing_tests {
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let err = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -768,7 +785,9 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -821,7 +840,9 @@ mod json_parsing_tests {
                 },
             ]
         );
-        parser.from_json_value(json).expect("JSON is correct")
+        parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
     }
 
     /// Ensure the initial conditions of the entities still hold
@@ -882,7 +903,7 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser
             .from_json_value(json)
-            .expect("JSON is correct")
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .partial();
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
@@ -931,13 +952,24 @@ mod json_parsing_tests {
                 },
                 "attrs": {},
                 "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "josephine"
+                },
+                "attrs": {},
+                "parents": [],
+                "tags": {}
             }
             ]
         );
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
         // Double check transitive closure computation
@@ -1167,7 +1199,9 @@ mod json_parsing_tests {
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
         assert_eq!(alice.get("bacon"), Some(&PartialValue::from("eggs")));
@@ -1256,7 +1290,9 @@ mod json_parsing_tests {
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         // check that all five entities exist
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
@@ -1693,15 +1729,26 @@ mod json_parsing_tests {
                         vec![RestrictedExpr::val("222.222.222.222")],
                     ),
                 ),
-            ]
-            .into_iter()
-            .collect(),
+            ],
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
             ]
             .into_iter()
             .collect(),
+            #[cfg(feature = "entity-tags")]
+            [
+                // note that `foo` is also an attribute, with a different type
+                ("foo".into(), RestrictedExpr::val(2345)),
+                // note that `bar` is also an attribute, with the same type
+                ("bar".into(), RestrictedExpr::val(-1)),
+                // note that `pancakes` is not an attribute. Also note that, in
+                // this non-schema world, tags need not all have the same type.
+                (
+                    "pancakes".into(),
+                    RestrictedExpr::val(EntityUID::with_eid("pancakes")),
+                ),
+            ],
             Extensions::all_available(),
         )
         .unwrap();
@@ -1727,15 +1774,15 @@ mod json_parsing_tests {
                 // record literal that happens to look like an escape
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
-            )]
-            .into_iter()
-            .collect(),
+            )],
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
             ]
             .into_iter()
             .collect(),
+            #[cfg(feature = "entity-tags")]
+            [],
             Extensions::all_available(),
         )
         .unwrap();
@@ -1802,7 +1849,9 @@ mod json_parsing_tests {
         );
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        assert_matches!(eparser.from_json_value(json), Ok(_));
+        eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
     }
 
     /// test that duplicate keys in a record is an error
@@ -1936,6 +1985,7 @@ mod entities_tests {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
+    use super::json::NullEntityTypeDescription;
     use super::*;
     use crate::extensions::Extensions;
     use crate::test_utils::*;
@@ -1945,7 +1995,7 @@ mod schema_based_parsing_tests {
     use std::collections::HashSet;
     use std::sync::Arc;
 
-    /// Mock schema impl used for these tests
+    /// Mock schema impl used for most of these tests
     struct MockSchema;
     impl Schema for MockSchema {
         type EntityTypeDescription = MockEmployeeDescription;
@@ -1992,7 +2042,45 @@ mod schema_based_parsing_tests {
         }
     }
 
-    /// Mock schema impl for the `Employee` type used in these tests
+    /// Mock schema impl with an entity type that doesn't have a tags declaration
+    struct MockSchemaNoTags;
+    impl Schema for MockSchemaNoTags {
+        type EntityTypeDescription = NullEntityTypeDescription;
+        type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
+        fn entity_type(&self, entity_type: &EntityType) -> Option<NullEntityTypeDescription> {
+            match entity_type.to_string().as_str() {
+                "Employee" => Some(NullEntityTypeDescription::new("Employee".parse().unwrap())),
+                _ => None,
+            }
+        }
+        fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
+            match action.to_string().as_str() {
+                r#"Action::"view""# => Some(Arc::new(Entity::with_uid(
+                    r#"Action::"view""#.parse().expect("valid uid"),
+                ))),
+                _ => None,
+            }
+        }
+        fn entity_types_with_basename<'a>(
+            &'a self,
+            basename: &'a UnreservedId,
+        ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+            match basename.as_ref() {
+                "Employee" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
+                "Action" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
+                _ => Box::new(std::iter::empty()),
+            }
+        }
+        fn action_entities(&self) -> Self::ActionEntityIterator {
+            std::iter::empty()
+        }
+    }
+
+    /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
         fn entity_type(&self) -> EntityType {
@@ -2057,6 +2145,13 @@ mod schema_based_parsing_tests {
             }
         }
 
+        #[cfg(feature = "entity-tags")]
+        fn tag_type(&self) -> Option<SchemaType> {
+            Some(SchemaType::Set {
+                element_ty: Box::new(SchemaType::String),
+            })
+        }
+
         fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
             Box::new(
                 [
@@ -2088,6 +2183,7 @@ mod schema_based_parsing_tests {
     /// JSON that should parse differently with and without the above schema
     #[test]
     fn with_and_without_schema() {
+        #[cfg(feature = "entity-tags")]
         let entitiesjson = json!(
             [
                 {
@@ -2111,7 +2207,38 @@ mod schema_based_parsing_tests {
                         "trust_score": "5.7",
                         "tricky": { "type": "Employee", "id": "34FB87" }
                     },
-                    "parents": []
+                    "parents": [],
+                    "tags": {
+                        "someTag": ["pancakes"],
+                    },
+                }
+            ]
+        );
+        #[cfg(not(feature = "entity-tags"))]
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": [],
                 }
             ]
         );
@@ -2122,7 +2249,7 @@ mod schema_based_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let parsed = eparser
             .from_json_value(entitiesjson.clone())
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
@@ -2197,7 +2324,7 @@ mod schema_based_parsing_tests {
         );
         let parsed = eparser
             .from_json_value(entitiesjson)
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
@@ -2206,6 +2333,15 @@ mod schema_based_parsing_tests {
             .get("isFullTime")
             .expect("isFullTime attr should exist");
         assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
+        #[cfg(feature = "entity-tags")]
+        let some_tag = parsed
+            .get_tag("someTag")
+            .expect("someTag attr should exist");
+        #[cfg(feature = "entity-tags")]
+        assert_eq!(
+            some_tag,
+            &PartialValue::Value(Value::set(["pancakes".into()], None))
+        );
         let num_direct_reports = parsed
             .get("numDirectReports")
             .expect("numDirectReports attr should exist");
@@ -2316,7 +2452,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                     .build()
             );
         });
@@ -2408,7 +2544,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                     .build()
             );
         });
@@ -2455,7 +2591,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                     .build()
             );
         });
@@ -2503,7 +2639,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                     .build()
             );
         });
@@ -2596,11 +2732,12 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                     .build()
             );
         });
 
+        // this version with explicit __entity and __extn escapes should also pass
         let entitiesjson = json!(
             [
                 {
@@ -2630,7 +2767,64 @@ mod schema_based_parsing_tests {
         );
         let _ = eparser
             .from_json_value(entitiesjson)
-            .expect("this version with explicit __entity and __extn escapes should also pass");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+    }
+
+    /// tag has the wrong type
+    #[test]
+    fn type_mismatch_in_tag() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": [],
+                    "tags": {
+                        "someTag": "pancakes",
+                    }
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        #[cfg(feature = "entity-tags")]
+        let expected_error_msg =
+            ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
+                .source(r#"in tag `someTag` on `Employee::"12UA45"`, type mismatch: value was expected to have type [string], but it actually has type string: `"pancakes"`"#)
+                .build();
+        #[cfg(not(feature = "entity-tags"))]
+        let expected_error_msg =
+            ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
+                .source(r#"found a tag `someTag` on `Employee::"12UA45"`, but no tags should exist on `Employee::"12UA45"` according to the schema"#)
+                .build();
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &expected_error_msg,
+            );
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2775,6 +2969,37 @@ mod schema_based_parsing_tests {
         });
     }
 
+    /// unexpected entity tag
+    #[test]
+    fn unexpected_entity_tag() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {},
+                    "parents": [],
+                    "tags": {
+                        "someTag": 12,
+                    }
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchemaNoTags),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source(r#"found a tag `someTag` on `Employee::"12UA45"`, but no tags should exist on `Employee::"12UA45"` according to the schema"#)
+                    .build()
+            );
+        });
+    }
+
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
     /// Test that involves parents of wrong types
     #[test]
@@ -2903,7 +3128,7 @@ mod schema_based_parsing_tests {
         );
         let entities = eparser
             .from_json_value(entitiesjson)
-            .expect("should parse sucessfully");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(entities.iter().count(), 1);
         let expected_uid = r#"Action::"view""#.parse().expect("valid uid");
         let parsed_entity = match entities.entity(&expected_uid) {
@@ -3161,6 +3386,11 @@ mod schema_based_parsing_tests {
                 }
             }
 
+            #[cfg(feature = "entity-tags")]
+            fn tag_type(&self) -> Option<SchemaType> {
+                None
+            }
+
             fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
                 Box::new(
                     ["isFullTime", "department", "manager"]
@@ -3198,7 +3428,7 @@ mod schema_based_parsing_tests {
         );
         let parsed = eparser
             .from_json_value(entitiesjson)
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"XYZCorp::Employee::"12UA45""#.parse().unwrap())
@@ -3240,7 +3470,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                     .build()
             );
         });

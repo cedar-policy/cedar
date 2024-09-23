@@ -15,8 +15,7 @@
  */
 
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::json::GetSchemaTypeError;
-use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -122,21 +121,33 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 
     fn attr_type(&self, attr: &str) -> Option<entities::SchemaType> {
-        let attr_type: &crate::types::AttributeType = self.validator_type.attr(attr)?;
+        let attr_type: &crate::types::Type = &self.validator_type.attr(attr)?.attr_type;
         // This converts a type from a schema into the representation of schema
         // types used by core. `attr_type` is taken from a `ValidatorEntityType`
         // which was constructed from a schema.
         // PANIC SAFETY: see above
         #[allow(clippy::expect_used)]
         let core_schema_type: entities::SchemaType = attr_type
-            .attr_type
             .clone()
             .try_into()
             .expect("failed to convert validator type into Core SchemaType");
-        debug_assert!(crate::types::Type::is_consistent_with(
-            &attr_type.attr_type,
-            &core_schema_type,
-        ));
+        debug_assert!(attr_type.is_consistent_with(&core_schema_type));
+        Some(core_schema_type)
+    }
+
+    #[cfg(feature = "entity-tags")]
+    fn tag_type(&self) -> Option<entities::SchemaType> {
+        let tag_type: &crate::types::Type = self.validator_type.tag_type()?;
+        // This converts a type from a schema into the representation of schema
+        // types used by core. `tag_type` is taken from a `ValidatorEntityType`
+        // which was constructed from a schema.
+        // PANIC SAFETY: see above
+        #[allow(clippy::expect_used)]
+        let core_schema_type: entities::SchemaType = tag_type
+            .clone()
+            .try_into()
+            .expect("failed to convert validator type into Core SchemaType");
+        debug_assert!(tag_type.is_consistent_with(&core_schema_type));
         Some(core_schema_type)
     }
 
@@ -291,7 +302,7 @@ pub enum RequestValidationError {
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
     #[diagnostic(transparent)]
-    TypeOfContext(GetSchemaTypeError),
+    TypeOfContext(ExtensionFunctionLookupError),
 }
 
 /// Errors related to validation
