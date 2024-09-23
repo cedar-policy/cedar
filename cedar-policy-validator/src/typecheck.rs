@@ -1447,18 +1447,30 @@ impl<'a> Typechecker<'a> {
                         |_| None,
                     )
                     .then_typecheck(|expr_ty_arg2, _| {
-                        let Some(Type::EntityOrRecord(kind)) = expr_ty_arg1.data() else {
-                            // should be unreachable, as we already typechecked that this matches
-                            // `Type::any_entity_reference()`
-                            type_errors.push(ValidationError::internal_invariant_violation(
-                                bin_expr.source_loc().cloned(),
-                                self.policy_id.clone(),
-                            ));
-                            return TypecheckAnswer::fail(
-                                ExprBuilder::new()
-                                    .with_same_source_loc(bin_expr)
-                                    .has_tag(expr_ty_arg1, expr_ty_arg2),
-                            );
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
                         };
                         let type_of_has = match self.tag_types(kind) {
                             Ok(tag_types) if tag_types.is_empty() => {
@@ -1511,18 +1523,30 @@ impl<'a> Typechecker<'a> {
                         |_| None,
                     )
                     .then_typecheck(|expr_ty_arg2, _| {
-                        let Some(Type::EntityOrRecord(kind)) = expr_ty_arg1.data() else {
-                            // should be unreachable, as we already typechecked that this matches
-                            // `Type::any_entity_reference()`
-                            type_errors.push(ValidationError::internal_invariant_violation(
-                                bin_expr.source_loc().cloned(),
-                                self.policy_id.clone(),
-                            ));
-                            return TypecheckAnswer::fail(
-                                ExprBuilder::new()
-                                    .with_same_source_loc(bin_expr)
-                                    .get_tag(expr_ty_arg1, expr_ty_arg2),
-                            );
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
                         };
                         if prior_capability.contains(&Capability::new_borrowed_tag(arg1, &arg2)) {
                             // Determine the set of possible tag types for this access.

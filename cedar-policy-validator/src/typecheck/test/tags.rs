@@ -21,15 +21,18 @@
 #![cfg(feature = "entity-tags")]
 
 use super::test_utils::{
-    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
-    assert_policy_typechecks,
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails,
+    assert_policy_typecheck_fails_for_mode, assert_policy_typecheck_warns,
+    assert_policy_typechecks, assert_policy_typechecks_for_mode,
 };
+use crate::ValidationMode;
 use cedar_policy_core::{
     ast::PolicyID,
     parser::parse_policy,
     test_utils::{expect_err, ExpectedErrorMessageBuilder},
 };
 use cool_asserts::assert_matches;
+use itertools::Itertools;
 
 fn schema_with_tags() -> &'static str {
     r#"
@@ -39,18 +42,22 @@ fn schema_with_tags() -> &'static str {
         action A1 appliesTo {
             principal: [E],
             resource: [F],
+            context: { bool: Bool },
         };
         action A2 appliesTo {
             principal: [F],
             resource: [E],
+            context: { bool: Bool },
         };
         action A3 appliesTo {
             principal: [E, F],
             resource: [E, F],
+            context: { bool: Bool },
         };
         action A4 appliesTo {
             principal: [E],
             resource: [Blank],
+            context: { bool: Bool },
         };
     "#
 }
@@ -333,6 +340,66 @@ fn tags_on_actions() {
         .help(r#"try testing for the tag's presence with `.hasTag("foo") && ..`"#)
         .exactly_one_underline(r#"action.getTag("foo")"#)
         .build(),
+    );
+}
+
+#[test]
+fn permissive_tags() {
+    // LUB with only one valid tag type, this is fine in permissive mode
+    let src = r#"
+        permit(principal, action == Action::"A1", resource) when {
+            (if context.bool then principal else Blank::"").hasTag("foo") &&
+            (if context.bool then principal else Blank::"").getTag("foo") == "bar"
+        };
+    "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
+    assert_policy_typechecks_for_mode(schema_with_tags(), policy, ValidationMode::Permissive);
+
+    // (that policy is an error in strict mode though)
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
+    let errors =
+        assert_policy_typecheck_fails_for_mode(schema_with_tags(), policy, ValidationMode::Strict);
+    // two errors, one for each if-then-else
+    assert_eq!(
+        errors.len(),
+        2,
+        "actual errors were:\n\n{}",
+        errors
+            .into_iter()
+            .map(|e| format!("{:?}", miette::Report::new(e)))
+            .join("\n\n")
+    );
+    // we only check one error, because they're identical other than which if-then-else is underlined
+    expect_err(
+        src,
+        &miette::Report::new(errors.into_iter().next().expect("already checked that len is 2")),
+        &ExpectedErrorMessageBuilder::error("the types Blank and E are not compatible")
+            .help("for policy `0`, both branches of a conditional must have compatible types. Different entity types are never compatible even when their attributes would be compatible")
+            .exactly_one_underline(r#"if context.bool then principal else Blank::"""#)
+            .build(),
+    );
+
+    // LUB with multiple valid tag types, not fine even in permissive mode
+    let src = r#"
+        permit(principal, action == Action::"A1", resource) when {
+            (if context.bool then principal else resource).hasTag("foo") &&
+            (if context.bool then principal else resource).getTag("foo") == "bar"
+        };
+    "#;
+    let policy = parse_policy(Some(PolicyID::from_string("0")), src).unwrap();
+    let errors = assert_policy_typecheck_fails_for_mode(
+        schema_with_tags(),
+        policy,
+        ValidationMode::Permissive,
+    );
+    let error = assert_exactly_one_diagnostic(errors);
+    expect_err(
+        src,
+        &miette::Report::new(error),
+        &ExpectedErrorMessageBuilder::error("the types String and Set<String> are not compatible")
+            .help("for policy `0`, tag types for a `.getTag()` operation must have compatible types. Types must be exactly equal to be compatible")
+            .exactly_one_underline(r#"(if context.bool then principal else resource).getTag("foo")"#)
+            .build(),
     );
 }
 
