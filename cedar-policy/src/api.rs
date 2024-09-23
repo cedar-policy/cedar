@@ -54,7 +54,7 @@ use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use miette::Diagnostic;
 use ref_cast::RefCast;
-use semver::{BuildMetadata, Prerelease, Version};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
