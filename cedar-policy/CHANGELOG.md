@@ -27,6 +27,10 @@ Cedar Language Version: TBD
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 
+### Fixed
+
+- The formatter will now consistently add a trailing newline. (resolving #1217)
+
 ## [4.0.0] - 2024-09-16
 Cedar Language Version: 4.0
 

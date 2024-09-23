@@ -857,7 +857,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<bool> {
                     "failed to write formatted policies to {policies_file}"
                 ))?;
         }
-        _ => println!("{}", formatted_policy),
+        _ => print!("{}", formatted_policy),
     }
     Ok(are_policies_equivalent)
 }
