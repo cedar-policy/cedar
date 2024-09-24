@@ -1012,7 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_annotations() {
+    fn policy_annotations_ok() {
         let policies = assert_parse_succeeds(
             parse_policies,
             r#"
@@ -1032,7 +1032,10 @@ mod tests {
                 .len(),
             4
         );
+    }
 
+    #[test]
+    fn policy_annotations_bad_id() {
         let src = r#"
             @bad-annotation("bad") permit (principal, action, resource);
         "#;
@@ -1041,10 +1044,42 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `-`")
-                .exactly_one_underline_with_label("-", "expected `(`")
+                .exactly_one_underline_with_label("-", "expected `(`, `@`, or identifier")
                 .build(),
         );
 
+        let src = r#"
+            @hi mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
+                .exactly_one_underline_with_label(
+                    "\"this should be invalid\"",
+                    "expected `)` or identifier",
+                )
+                .build(),
+        );
+
+        let src = r#"
+            @hi+mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
+                .exactly_one_underline_with_label("+", "expected `(`, `@`, or identifier")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_annotations_bad_val() {
         let src = r#"
             @bad_annotation("bad","annotation") permit (principal, action, resource);
         "#;
@@ -1054,6 +1089,18 @@ mod tests {
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `,`")
                 .exactly_one_underline_with_label(",", "expected `)`")
+                .build(),
+        );
+
+        let src = r#"
+            @bad_annotation() permit (principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
+                .exactly_one_underline_with_label(")", "expected string literal")
                 .build(),
         );
 
@@ -1068,7 +1115,10 @@ mod tests {
                 .exactly_one_underline_with_label("bad_annotation", "expected string literal")
                 .build(),
         );
+    }
 
+    #[test]
+    fn policy_annotation_bad_position() {
         let src = r#"
             permit (@comment("your name here") principal, action, resource);
         "#;
@@ -1078,32 +1128,6 @@ mod tests {
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `@`")
                 .exactly_one_underline_with_label("@", "expected `)` or identifier")
-                .build(),
-        );
-
-        let src = r#"
-            @hi mom("this should be invalid")
-            permit(principal, action, resource);
-        "#;
-        let errs = assert_parse_fails(parse_policies, src);
-        expect_exactly_one_error(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `mom`")
-                .exactly_one_underline_with_label("mom", "expected `(`")
-                .build(),
-        );
-
-        let src = r#"
-            @hi+mom("this should be invalid")
-            permit(principal, action, resource);
-        "#;
-        let errs = assert_parse_fails(parse_policies, src);
-        expect_exactly_one_error(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
-                .exactly_one_underline_with_label("+", "expected `(`")
                 .build(),
         );
     }

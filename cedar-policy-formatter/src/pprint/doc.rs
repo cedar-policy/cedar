@@ -721,29 +721,32 @@ impl Doc for Node<Option<Annotation>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let annotation = self.as_inner()?;
         let id_doc = annotation.key.to_doc(context);
-        let val_doc = annotation.value.to_doc(context);
         let at_doc = add_comment(
             RcDoc::text("@"),
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
             RcDoc::nil(),
         );
-        let lp_doc = add_comment(
-            RcDoc::text("("),
-            get_comment_after_end(annotation.key.loc.span, &mut context.tokens)?,
-            RcDoc::nil(),
-        );
-        let rp_doc = add_comment(
-            RcDoc::text(")"),
-            get_comment_at_end(self.loc.span, &mut context.tokens)?,
-            RcDoc::hardline(),
-        );
-        Some(
-            at_doc
-                .append(id_doc)
-                .append(lp_doc)
-                .append(val_doc)
-                .append(rp_doc),
-        )
+        let val_doc = match annotation.value.as_ref() {
+            Some(value) => {
+                let lp_doc = add_comment(
+                    RcDoc::text("("),
+                    get_comment_after_end(annotation.key.loc.span, &mut context.tokens)?,
+                    RcDoc::nil(),
+                );
+                let val_doc = value.to_doc(context);
+                let rp_doc = add_comment(
+                    RcDoc::text(")"),
+                    get_comment_at_end(self.loc.span, &mut context.tokens)?,
+                    RcDoc::hardline(),
+                );
+                lp_doc.append(val_doc).append(rp_doc)
+            }
+            // A space is necessary so the annotation id doesn't run into the
+            // policy effect.
+            None => RcDoc::hardline(),
+        };
+
+        Some(at_doc.append(id_doc).append(val_doc))
     }
 }
 

@@ -348,11 +348,19 @@ impl Node<Option<cst::Annotation>> {
         let anno = self.try_as_inner()?;
 
         let maybe_key = anno.key.to_any_ident();
-        let maybe_value = anno.value.as_valid_string().and_then(|s| {
-            to_unescaped_string(s).map_err(|unescape_errs| {
-                ParseErrors::new_from_nonempty(unescape_errs.map(|e| self.to_ast_err(e).into()))
+        let maybe_value = anno
+            .value
+            .as_ref()
+            .map(|a| {
+                a.as_valid_string().and_then(|s| {
+                    to_unescaped_string(s).map_err(|unescape_errs| {
+                        ParseErrors::new_from_nonempty(
+                            unescape_errs.map(|e| self.to_ast_err(e).into()),
+                        )
+                    })
+                })
             })
-        });
+            .unwrap_or(Ok("".to_smolstr()));
 
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
         Ok((
@@ -2244,7 +2252,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_annotations() {
+    fn single_annotation() {
         // common use-case
         let policy = assert_parse_policy_succeeds(
             r#"
@@ -2255,7 +2263,10 @@ mod tests {
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
             Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "good annotation")
         );
+    }
 
+    #[test]
+    fn duplicate_annotations_error() {
         // duplication is error
         let src = r#"
             @anno("good annotation")
@@ -2273,7 +2284,10 @@ mod tests {
                 .exactly_one_underline("@anno(\"oops, duplicate\")")
                 .build(),
         );
+    }
 
+    #[test]
+    fn multiple_policys_and_annotations_ok() {
         // can have multiple annotations
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2341,7 +2355,10 @@ mod tests {
                 .count(),
             2
         );
+    }
 
+    #[test]
+    fn reserved_word_annotations_ok() {
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2402,6 +2419,43 @@ mod tests {
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("principal")),
             Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `principal`")
+        );
+    }
+
+    #[test]
+    fn single_annotation_without_value() {
+        let policy = assert_parse_policy_succeeds(r#"@anno permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "")
+        );
+    }
+
+    #[test]
+    fn duplicate_annotations_without_value() {
+        let src = "@anno @anno permit(principal,action,resource);";
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn multiple_annotation_without_value() {
+        let policy =
+            assert_parse_policy_succeeds(r#"@foo @bar permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("foo")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "")
+        );
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("bar")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "")
         );
     }
 
