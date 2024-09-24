@@ -741,8 +741,6 @@ impl Doc for Node<Option<Annotation>> {
                 );
                 lp_doc.append(val_doc).append(rp_doc)
             }
-            // A space is necessary so the annotation id doesn't run into the
-            // policy effect.
             None => RcDoc::hardline(),
         };
 
