@@ -170,7 +170,7 @@ pub enum ValidationError {
     /// this is ever returned, please file an issue)
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")] // have to write this because, as of this writing, without this feature InternalInvariantViolation is never used, so that causes a warning which fails CI
+    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
 }
 
@@ -390,6 +390,7 @@ impl ValidationError {
         .into()
     }
 
+    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
     pub(crate) fn internal_invariant_violation(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
