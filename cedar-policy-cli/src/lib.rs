@@ -106,6 +106,8 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
+    /// Print Cedar language version
+    LanguageVersion,
 }
 
 #[derive(Args, Debug)]
@@ -1033,6 +1035,15 @@ pub fn new(args: &NewArgs) -> CedarExitCode {
     } else {
         CedarExitCode::Success
     }
+}
+
+pub fn language_version() -> CedarExitCode {
+    let version = get_lang_version();
+    println!(
+        "Cedar language version: {}.{}",
+        version.major, version.minor
+    );
+    CedarExitCode::Success
 }
 
 fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, EntityUid>> {

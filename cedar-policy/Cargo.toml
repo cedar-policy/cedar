@@ -30,6 +30,8 @@ nonempty = "0.10"
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
+semver = "1.0.23"
+lazy_static = "1.5.0"
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
