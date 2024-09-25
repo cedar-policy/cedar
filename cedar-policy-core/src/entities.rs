@@ -2010,9 +2010,7 @@ mod schema_based_parsing_tests {
             match action.to_string().as_str() {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
-                    [(SmolStr::from("foo"), PartialValue::from(34))]
-                        .into_iter()
-                        .collect(),
+                    [(SmolStr::from("foo"), PartialValue::from(34))],
                     [r#"Action::"readOnly""#.parse().expect("valid uid")]
                         .into_iter()
                         .collect(),
