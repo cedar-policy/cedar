@@ -18,7 +18,7 @@ use super::SchemaType;
 use crate::ast::{Entity, EntityType, EntityUID};
 use crate::entities::{Name, UnreservedId};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Trait for `Schema`s that can inform the parsing of Entity JSON data
@@ -95,7 +95,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
     fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
         Some(Arc::new(Entity::new_with_attr_partial_value(
             action.clone(),
-            HashMap::new(),
+            [],
             HashSet::new(),
         )))
     }

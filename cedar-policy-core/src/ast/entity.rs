@@ -379,18 +379,20 @@ impl Entity {
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValue`.
+    ///
+    /// Callers should consider directly using [`Entity::new_with_attr_partial_value_serialized_as_expr`]
+    /// if they would call this method by first building a map, as it will
+    /// deconstruct and re-build the map perhaps unnecessarily.
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
-        attrs: HashMap<SmolStr, PartialValue>,
+        attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
         ancestors: HashSet<EntityUID>,
     ) -> Self {
-        Entity {
+        Self::new_with_attr_partial_value_serialized_as_expr(
             uid,
-            attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO(#540): can we do this without disassembling and reassembling the HashMap
+            attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
             ancestors,
-            #[cfg(feature = "entity-tags")]
-            tags: BTreeMap::new(),
-        }
+        )
     }
 
     /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
