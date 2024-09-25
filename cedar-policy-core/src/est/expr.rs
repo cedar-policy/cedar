@@ -769,8 +769,8 @@ impl Expr {
     }
 }
 
-impl From<ast::Expr> for Expr {
-    fn from(expr: ast::Expr) -> Expr {
+impl<T: Clone> From<ast::Expr<T>> for Expr {
+    fn from(expr: ast::Expr<T>) -> Expr {
         match expr.into_expr_kind() {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),

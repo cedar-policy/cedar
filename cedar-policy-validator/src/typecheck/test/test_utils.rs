@@ -195,22 +195,41 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
-    assert!(typechecked, "Expected that policy would typecheck.");
+    if !type_errors.is_empty() {
+        let mut pretty_type_errors = type_errors
+            .into_iter()
+            .map(|e| format!("{:?}", miette::Report::new(e)));
+        panic!(
+            "typechecking failed with mode {:?}:\n\n{}",
+            typechecker.mode,
+            pretty_type_errors.join("\n\n")
+        );
+    }
+    assert!(
+        typechecked,
+        "Unexpected failure with mode {:?}: no errors, but typechecker reported failure",
+        typechecker.mode
+    );
 
     // Ensure that partial schema validation doesn't cause any policy that
     // should validate with a complete schema to no longer validate with the
     // same complete schema.
     typechecker.mode = ValidationMode::Permissive;
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
-    assert_eq!(
-        type_errors,
-        HashSet::new(),
-        "Did not expect any errors under partial schema validation."
-    );
+    if !type_errors.is_empty() {
+        let mut pretty_type_errors = type_errors
+            .into_iter()
+            .map(|e| format!("{:?}", miette::Report::new(e)));
+        panic!(
+            "typechecking failed with mode {:?}:\n\n{}",
+            typechecker.mode,
+            pretty_type_errors.join("\n\n")
+        );
+    }
     assert!(
         typechecked,
-        "Expected that policy would typecheck under partial schema validation."
+        "Unexpected failure with mode {:?}: no errors, but typechecker reported failure",
+        typechecker.mode
     );
 }
 
