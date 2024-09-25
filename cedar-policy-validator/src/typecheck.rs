@@ -812,7 +812,8 @@ impl<'a> Typechecker<'a> {
                                 // evaluate to `true` when the attribute is
                                 // present).
                                 if ty.is_required
-                                    || prior_capability.contains(&Capability::new(expr, attr))
+                                    || prior_capability
+                                        .contains(&Capability::new_attribute(expr, attr.clone()))
                                 {
                                     TypecheckAnswer::success(annot_expr)
                                 } else {
@@ -904,8 +905,8 @@ impl<'a> Typechecker<'a> {
                                 // However, we can make an exception when the attribute
                                 // access of the expression is already in the prior capability,
                                 // which means the entity must exist.
-                                let in_prior_capability =
-                                    prior_capability.contains(&Capability::new(expr, attr));
+                                let in_prior_capability = prior_capability
+                                    .contains(&Capability::new_attribute(expr, attr.clone()));
                                 let type_of_has = if exists_in_store || in_prior_capability {
                                     Type::singleton_boolean(true)
                                 } else {
@@ -915,7 +916,10 @@ impl<'a> Typechecker<'a> {
                                     ExprBuilder::with_data(Some(type_of_has))
                                         .with_same_source_loc(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
-                                    CapabilitySet::singleton(Capability::new(expr, attr)),
+                                    CapabilitySet::singleton(Capability::new_attribute(
+                                        expr,
+                                        attr.clone(),
+                                    )),
                                 )
                             }
                             // This is where capability information is generated. If
@@ -931,7 +935,9 @@ impl<'a> Typechecker<'a> {
                                     // type `true` if it occurs after the attribute
                                     // access of the expression is already in the
                                     // prior capability.
-                                    if prior_capability.contains(&Capability::new(expr, attr)) {
+                                    if prior_capability
+                                        .contains(&Capability::new_attribute(expr, attr.clone()))
+                                    {
                                         Type::singleton_boolean(true)
                                     } else {
                                         Type::primitive_boolean()
@@ -939,7 +945,10 @@ impl<'a> Typechecker<'a> {
                                 ))
                                 .with_same_source_loc(e)
                                 .has_attr(typ_expr_actual, attr.clone()),
-                                CapabilitySet::singleton(Capability::new(expr, attr)),
+                                CapabilitySet::singleton(Capability::new_attribute(
+                                    expr,
+                                    attr.clone(),
+                                )),
                             ),
                             None => TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(
@@ -1419,8 +1428,218 @@ impl<'a> Typechecker<'a> {
             }
 
             #[cfg(feature = "entity-tags")]
-            BinaryOp::GetTag | BinaryOp::HasTag => {
-                unimplemented!("validation for .getTag() and .hasTag() operations")
+            BinaryOp::HasTag => self
+                .expect_type(
+                    request_env,
+                    prior_capability,
+                    arg1,
+                    Type::any_entity_reference(),
+                    type_errors,
+                    |_| None,
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        request_env,
+                        prior_capability,
+                        arg2,
+                        Type::primitive_string(),
+                        type_errors,
+                        |_| None,
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                        };
+                        let type_of_has = match self.tag_types(kind) {
+                            Ok(tag_types) if tag_types.is_empty() => {
+                                // impossible for the type to have any tags, thus the `has` will always be `False`
+                                Type::singleton_boolean(false)
+                            }
+                            Err(()) => {
+                                // Not an entity type; should be unreachable, as we already typechecked
+                                // that this matches `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => Type::primitive_boolean(),
+                        };
+                        TypecheckAnswer::success_with_capability(
+                            ExprBuilder::with_data(Some(type_of_has))
+                                .with_same_source_loc(bin_expr)
+                                .binary_app(BinaryOp::HasTag, expr_ty_arg1, expr_ty_arg2),
+                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, &arg2)),
+                        )
+                    })
+                }),
+
+            #[cfg(feature = "entity-tags")]
+            BinaryOp::GetTag => {
+                self.expect_type(
+                    request_env,
+                    prior_capability,
+                    arg1,
+                    Type::any_entity_reference(),
+                    type_errors,
+                    |actual| match actual {
+                        _ => None,
+                    },
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        request_env,
+                        prior_capability,
+                        arg2,
+                        Type::primitive_string(),
+                        type_errors,
+                        |_| None,
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                        };
+                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, &arg2)) {
+                            // Determine the set of possible tag types for this access.
+                            let tag_types = match self.tag_types(kind) {
+                                Ok(tag_types) => tag_types,
+                                Err(()) => {
+                                    // `kind` was not an entity type.
+                                    // should be unreachable, as we already typechecked that this matches
+                                    // `Type::any_entity_reference()`
+                                    type_errors.push(
+                                        ValidationError::internal_invariant_violation(
+                                            bin_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                        ),
+                                    );
+                                    return TypecheckAnswer::fail(
+                                        ExprBuilder::new()
+                                            .with_same_source_loc(bin_expr)
+                                            .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                    );
+                                }
+                            };
+                            if tag_types.is_empty() {
+                                // no entities in the LUB are allowed to have tags.
+                                // This is a somewhat weird case where we did do a `has` check (we
+                                // already confirmed farther above that we have the capability for
+                                // this tag), but the entity type(s) we're operating on just can't
+                                // have tags.
+                                let entity_ty = match kind {
+                                    EntityRecordKind::Entity(lub) => lub.get_single_entity(),
+                                    EntityRecordKind::AnyEntity => None,
+                                    EntityRecordKind::ActionEntity { name, .. } => Some(name),
+                                    EntityRecordKind::Record { .. } => None,
+                                };
+                                type_errors.push(ValidationError::no_tags_allowed(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    entity_ty.cloned(),
+                                ));
+                                TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                )
+                            } else {
+                                // one or more entities in the LUB are allowed to have tags.
+                                // compute the LUB of all the relevant tag types, and assign that
+                                // as the type.
+                                let tag_type = match Type::reduce_to_least_upper_bound(
+                                    &self.schema,
+                                    tag_types.clone(),
+                                    self.mode,
+                                ) {
+                                    Ok(ty) => ty,
+                                    Err(e) => {
+                                        type_errors.push(ValidationError::incompatible_types(
+                                            bin_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                            tag_types.into_iter().cloned(),
+                                            e,
+                                            LubContext::GetTag,
+                                        ));
+                                        return TypecheckAnswer::fail(
+                                            ExprBuilder::new()
+                                                .with_same_source_loc(bin_expr)
+                                                .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                        );
+                                    }
+                                };
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(tag_type))
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                )
+                            }
+                        } else {
+                            type_errors.push(ValidationError::unsafe_tag_access(
+                                bin_expr.source_loc().cloned(),
+                                self.policy_id.clone(),
+                                match kind {
+                                    EntityRecordKind::Entity(lub) => Some(lub.clone()),
+                                    _ => None,
+                                },
+                                expr_ty_arg2.clone(),
+                            ));
+                            TypecheckAnswer::fail(
+                                ExprBuilder::new()
+                                    .with_same_source_loc(bin_expr)
+                                    .get_tag(expr_ty_arg1, expr_ty_arg2),
+                            )
+                        }
+                    })
+                })
             }
         }
     }
@@ -1508,6 +1727,37 @@ impl<'a> Typechecker<'a> {
                 // type than boolean.
                 Type::primitive_boolean()
             }
+        }
+    }
+
+    /// Get the set of types that are possible tag types for `kind`.
+    ///
+    /// If `kind` is not an entity type (e.g., a record type), this returns `Err`.
+    /// If `kind` is an entity type without a `tags` declaration, this returns
+    /// `Ok` with the empty set.
+    ///
+    /// If `kind` is a LUB containing some entity types that have tags and some
+    /// that do not, this ignores the entity types that do not; we just assume
+    /// the access is not on one of those entity types.
+    #[cfg(feature = "entity-tags")]
+    fn tag_types<'s>(&'s self, kind: &EntityRecordKind) -> Result<HashSet<&'s Type>, ()> {
+        use crate::schema::ValidatorEntityType;
+        match kind {
+            EntityRecordKind::Entity(lub) => Ok(lub
+                .iter()
+                .filter_map(|ety| {
+                    self.schema
+                        .get_entity_type(ety)
+                        .and_then(ValidatorEntityType::tag_type)
+                })
+                .collect()),
+            EntityRecordKind::AnyEntity => Ok(self
+                .schema
+                .entity_types()
+                .filter_map(|(_, vety)| vety.tag_type())
+                .collect()),
+            EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
+            EntityRecordKind::Record { .. } => Err(()),
         }
     }
 
