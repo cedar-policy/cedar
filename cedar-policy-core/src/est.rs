@@ -26,7 +26,8 @@ mod scope_constraints;
 pub use scope_constraints::*;
 
 use crate::ast;
-use crate::entities::json::EntityUidJson;
+use crate::ast::EntityUID;
+use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
@@ -102,6 +103,25 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        Ok(Policy {
+            effect: self.effect,
+            principal: self.principal.sub_entity_literals(mapping)?,
+            action: self.action.sub_entity_literals(mapping)?,
+            resource: self.resource.sub_entity_literals(mapping)?,
+            conditions: self
+                .conditions
+                .into_iter()
+                .map(|clause| clause.sub_entity_literals(mapping))
+                .collect::<Result<Vec<_>, _>>()?,
+            annotations: self.annotations,
+        })
+    }
 }
 
 impl Clause {
@@ -111,6 +131,14 @@ impl Clause {
     pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in clauses
         Ok(self)
+    }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        Ok(self.clone())
     }
 }
 

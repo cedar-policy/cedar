@@ -51,6 +51,7 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
+use thiserror::Error;
 
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
@@ -2681,6 +2682,33 @@ impl PartialEq for Policy {
 }
 impl Eq for Policy {}
 
+#[derive(Debug, Diagnostic, Error)]
+#[error("error making LossLess")]
+/// Error making LossLess policy representation
+pub struct ErrorMakingLossLess {
+    msg: SmolStr,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("error making JSON")]
+/// Error making JSON
+pub struct ErrorMakingJSON {
+    msg: SmolStr,
+}
+
+/// Errors that can happen when getting the JSON representation of a policy
+#[derive(Debug, Diagnostic, Error)]
+pub enum EntitySubstitutionError {
+    /// Parse error in the policy text
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ErrorMakingLossLess(ErrorMakingLossLess),
+    /// Parse error in the policy text
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ErrorMakingJSON(ErrorMakingJSON),
+}
+
 impl Policy {
     /// Get the `PolicyId` of the `Template` this is linked to.
     /// If this is a static policy, this will return `None`.
@@ -2940,6 +2968,48 @@ impl Policy {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// (as a single, non-sequential substitution).
+    /// The new policy's `lossless` will come from the transformed AST, not from the original policy
+    pub fn sub_entity_literals(
+        &self,
+        mapping: BTreeMap<EntityUid, EntityUid>,
+    ) -> Result<Self, EntitySubstitutionError> {
+        let cloned_est = match self.lossless.est() {
+            Ok(est) => est.clone(),
+            Err(_) => {
+                return Err(EntitySubstitutionError::ErrorMakingLossLess(
+                    ErrorMakingLossLess { msg: "foo".into() },
+                ))
+            }
+        };
+
+        let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
+
+        let est = match cloned_est.sub_entity_literals(&mapping) {
+            Ok(est) => est,
+            Err(e) => {
+                return Err(EntitySubstitutionError::ErrorMakingLossLess(
+                    ErrorMakingLossLess { msg: "foo".into() },
+                ))
+            }
+        };
+
+        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
+            Ok(ast) => ast,
+            Err(_) => {
+                return Err(EntitySubstitutionError::ErrorMakingJSON(ErrorMakingJSON {
+                    msg: "baz".into(),
+                }))
+            }
+        };
+
+        Ok(Policy {
+            ast,
+            lossless: LosslessPolicy::Est(est),
+        })
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
