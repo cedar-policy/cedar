@@ -10,10 +10,12 @@ The "Cedar Language Version" refers to the language version as documented in the
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
 ## [Unreleased]
-Cedar Language Version: TBD
+Cedar Language Version: 4.1
 
 ### Added
 
+- Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
+  short-hand for `@my_annotation("")` (#1231).
 - Added `get_entity_literals` API (#1149).
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
