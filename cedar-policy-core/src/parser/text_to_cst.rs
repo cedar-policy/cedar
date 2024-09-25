@@ -1038,12 +1038,9 @@ mod tests {
     fn policy_annotations_no_value_ok() {
         let policy = assert_parse_succeeds(
             parse_policy,
-            r#"@foo permit (principal, action, resource); "#,
+            r#"@foo permit (principal, action, resource);"#,
         );
         let annotation = policy.annotations.first().unwrap().as_inner().unwrap();
-
-        // The CST distinguishes the between `None` and empty string case, so we
-        // test this in addition to no-value tests on the AST.
         assert_eq!(annotation.value, None);
         assert_eq!(
             annotation.key.as_inner().unwrap().to_string(),

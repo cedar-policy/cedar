@@ -66,7 +66,7 @@ pub struct Policy {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, string>"))]
-    annotations: BTreeMap<ast::AnyId, SmolStr>,
+    annotations: BTreeMap<ast::AnyId, Option<SmolStr>>,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -308,7 +308,11 @@ impl<T: Clone> From<ast::Expr<T>> for Clause {
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{k}(\"{}\") ", v.escape_debug())?;
+            write!(f, "@{k}")?;
+            if let Some(v) = v {
+                write!(f, "(\"{}\")", v.escape_debug())?;
+            }
+            writeln!(f)?;
         }
         write!(
             f,
@@ -566,6 +570,86 @@ mod test {
                     "foo": "bar",
                     "this1is2a3valid_identifier": "any arbitrary ! string \" is @ allowed in 🦀 here_",
                 }
+            }
+        );
+        let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+        let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+    }
+
+    #[test]
+    fn annotated_without_value_policy() {
+        let policy = r#"@foo permit(principal, action, resource);"#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [],
+                "annotations": { "foo": null, }
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        // during the lossy transform to AST, the only difference for this policy is that
+        // a `when { true }` is added
+        let expected_json_after_roundtrip = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": true
+                        }
+                    }
+                ],
+                "annotations": { "foo": null, }
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
