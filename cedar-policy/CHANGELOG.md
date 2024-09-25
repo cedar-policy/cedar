@@ -21,6 +21,7 @@ Cedar Language Version: TBD
   that provides the Entity Manifest: a data
   structure that describes what data is required to satisfy a
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
+- Added public APIs to get language and SDK version numbers (#1219).
 
 ### Fixed
 
