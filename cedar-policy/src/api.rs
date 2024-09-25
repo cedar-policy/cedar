@@ -59,6 +59,29 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
 
+// PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
+#[allow(clippy::unwrap_used)]
+pub(crate) mod version {
+    use lazy_static::lazy_static;
+    use semver::Version;
+
+    lazy_static! {
+        // Cedar Rust SDK Semantic Versioning version
+        static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
+        // Cedar language version
+        // The patch version field may be unnecessary
+        static ref LANG_VERSION: Version = Version::new(4, 0, 0);
+    }
+    /// Get the Cedar SDK Semantic Versioning version
+    pub fn get_sdk_version() -> Version {
+        SDK_VERSION.clone()
+    }
+    /// Get the Cedar language version
+    pub fn get_lang_version() -> Version {
+        LANG_VERSION.clone()
+    }
+}
+
 /// Entity datatype
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
