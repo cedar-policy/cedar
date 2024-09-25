@@ -115,7 +115,7 @@ impl Entity {
         // the `Entities` object is created
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
-            HashMap::new(),
+            [],
             parents.into_iter().map(EntityUid::into).collect(),
         ))
     }

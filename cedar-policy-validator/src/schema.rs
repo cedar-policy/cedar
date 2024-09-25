@@ -2486,7 +2486,7 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(action_uid, HashMap::new(), HashSet::new())
+            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new())
         );
     }
 
@@ -2520,7 +2520,7 @@ pub(crate) mod test {
             view_photo_entity.unwrap(),
             &Entity::new_with_attr_partial_value(
                 view_photo_uid,
-                HashMap::new(),
+                [],
                 HashSet::from([view_uid.clone(), read_uid.clone()])
             )
         );
@@ -2528,17 +2528,13 @@ pub(crate) mod test {
         let view_entity = actions.entity(&view_uid);
         assert_eq!(
             view_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(
-                view_uid,
-                HashMap::new(),
-                HashSet::from([read_uid.clone()])
-            )
+            &Entity::new_with_attr_partial_value(view_uid, [], HashSet::from([read_uid.clone()]))
         );
 
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(read_uid, HashMap::new(), HashSet::new())
+            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new())
         );
     }
 
