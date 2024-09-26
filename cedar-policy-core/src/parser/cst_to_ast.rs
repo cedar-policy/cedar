@@ -365,10 +365,8 @@ impl Node<Option<cst::Annotation>> {
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
         Ok((
             k,
-            ast::Annotation {
-                val: v,
-                loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
-            },
+            // self's loc, not the loc of the value alone; see comments on ast::Annotation
+            ast::Annotation::new(v, Some(self.loc.clone())),
         ))
     }
 }
@@ -2428,7 +2426,7 @@ mod tests {
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
             Some(annotation) => {
-                assert_eq!(annotation.val, None);
+                assert_eq!(annotation.raw_val(), None);
                 assert_eq!(annotation.as_ref(), "");
             }
         );
@@ -2455,14 +2453,14 @@ mod tests {
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("foo")),
             Some(annotation) => {
-                assert_eq!(annotation.val, None);
+                assert_eq!(annotation.raw_val(), None);
                 assert_eq!(annotation.as_ref(), "");
             }
         );
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("bar")),
             Some(annotation) => {
-                assert_eq!(annotation.val, None);
+                assert_eq!(annotation.raw_val(), None);
                 assert_eq!(annotation.as_ref(), "");
             }
         );

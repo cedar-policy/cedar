@@ -68,10 +68,10 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
         }
         let (f_anno, anno) = (
             f_p.annotations()
-                .map(|(k, v)| (k, &v.val))
+                .map(|(k, v)| (k, v.raw_val()))
                 .collect::<std::collections::BTreeMap<_, _>>(),
             p.annotations()
-                .map(|(k, v)| (k, &v.val))
+                .map(|(k, v)| (k, v.raw_val()))
                 .collect::<std::collections::BTreeMap<_, _>>(),
         );
         if f_anno != anno {

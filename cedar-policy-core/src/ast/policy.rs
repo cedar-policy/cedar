@@ -1170,11 +1170,43 @@ pub struct Annotation {
     /// Annotation value. `None` for annotations without a value, i.e., `@foo`.
     /// An annotation without a value should be treated as equivalent to the
     /// value being `""`. This interpretation is implemented by the `AsRef<str>`
-    /// impl below.
-    pub val: Option<SmolStr>,
+    /// impl an `val` method below.
+    val: Option<SmolStr>,
     /// Source location. Note this is the location of _the entire key-value
     /// pair_ for the annotation, not just `val` above
-    pub loc: Option<Loc>,
+    loc: Option<Loc>,
+}
+
+impl Annotation {
+    /// Construct a new annotation.
+    pub fn new(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
+        Self { val, loc }
+    }
+
+    /// Get the annotation value, treating an annotation without a value as
+    /// being equivalent to the value `""`.
+    pub fn val(&self) -> &str {
+        self.as_ref()
+    }
+
+    /// Get the annotation value, returning `None` for annotations without a
+    /// value. We generally want to treat this as equivalent to `""`, but we
+    /// occasionally want a lossless representation.
+    pub fn raw_val(&self) -> Option<&SmolStr> {
+        self.val.as_ref()
+    }
+
+    /// Get the annotation value, returning `None` for annotations without a
+    /// value. We generally want to treat this as equivalent to `""`, but we
+    /// occasionally want a lossless representation.
+    pub fn into_raw_val(self) -> Option<SmolStr> {
+        self.val
+    }
+
+    /// Get the location for the whole annotation (not just the value).
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
+    }
 }
 
 impl AsRef<str> for Annotation {
