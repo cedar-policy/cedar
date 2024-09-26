@@ -1086,7 +1086,7 @@ impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.annotations.iter() {
             write!(f, "@{k}")?;
-            if let Some(v) = &v.val {
+            if let Some(v) = &v.raw_val {
                 write!(f, "(\"{}\")", v.escape_debug())?;
             }
             writeln!(f)?;
@@ -1171,7 +1171,7 @@ pub struct Annotation {
     /// An annotation without a value should be treated as equivalent to the
     /// value being `""`. This interpretation is implemented by the `AsRef<str>`
     /// impl an `val` method below.
-    val: Option<SmolStr>,
+    raw_val: Option<SmolStr>,
     /// Source location. Note this is the location of _the entire key-value
     /// pair_ for the annotation, not just `val` above
     loc: Option<Loc>,
@@ -1180,7 +1180,7 @@ pub struct Annotation {
 impl Annotation {
     /// Construct a new annotation.
     pub fn new(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
-        Self { val, loc }
+        Self { raw_val: val, loc }
     }
 
     /// Get the annotation value, treating an annotation without a value as
@@ -1193,14 +1193,14 @@ impl Annotation {
     /// value. We generally want to treat this as equivalent to `""`, but we
     /// occasionally want a lossless representation.
     pub fn raw_val(&self) -> Option<&SmolStr> {
-        self.val.as_ref()
+        self.raw_val.as_ref()
     }
 
     /// Get the annotation value, returning `None` for annotations without a
     /// value. We generally want to treat this as equivalent to `""`, but we
     /// occasionally want a lossless representation.
     pub fn into_raw_val(self) -> Option<SmolStr> {
-        self.val
+        self.raw_val
     }
 
     /// Get the location for the whole annotation (not just the value).
@@ -1211,7 +1211,7 @@ impl Annotation {
 
 impl AsRef<str> for Annotation {
     fn as_ref(&self) -> &str {
-        self.val.as_ref().map(SmolStr::as_str).unwrap_or("")
+        self.raw_val.as_ref().map(SmolStr::as_str).unwrap_or("")
     }
 }
 
@@ -1744,7 +1744,7 @@ impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
             write!(f, "@{k}")?;
-            if let Some(v) = &v.val {
+            if let Some(v) = &v.raw_val {
                 write!(f, "(\"{}\")", v.escape_debug())?;
             }
             writeln!(f)?;
