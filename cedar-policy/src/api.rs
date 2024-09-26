@@ -51,7 +51,6 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
-use thiserror::Error;
 
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
@@ -2945,7 +2944,6 @@ impl Policy {
 
     /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
-    /// The new policy's `lossless` will come from the transformed AST, not from the original policy
     pub fn sub_entity_literals(&self, mapping: BTreeMap<EntityUid, EntityUid>) -> Self {
         // PANIC SAFETY: This can't fail for a policy that was already constructed
         #[allow(clippy::expect_used)]
