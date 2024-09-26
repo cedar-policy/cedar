@@ -396,7 +396,6 @@ impl CedarValueJson {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         match self.clone() {
-            // TODO: Should we error for this (alegedly impossible) case?
             CedarValueJson::ExprEscape { __expr } => Ok(self.clone()),
             CedarValueJson::EntityEscape { __entity } => {
                 let euid = EntityUID::try_from(__entity);
@@ -407,7 +406,6 @@ impl CedarValueJson {
                         }),
                         None => Ok(self.clone()),
                     },
-                    // TODO: What can cause this to error and how should we handle?
                     Err(_) => Ok(self.clone()),
                 }
             }

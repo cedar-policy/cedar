@@ -2973,43 +2973,28 @@ impl Policy {
     /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
     /// The new policy's `lossless` will come from the transformed AST, not from the original policy
-    pub fn sub_entity_literals(
-        &self,
-        mapping: BTreeMap<EntityUid, EntityUid>,
-    ) -> Result<Self, EntitySubstitutionError> {
-        let cloned_est = match self.lossless.est() {
-            Ok(est) => est.clone(),
-            Err(_) => {
-                return Err(EntitySubstitutionError::ErrorMakingLossLess(
-                    ErrorMakingLossLess { msg: "foo".into() },
-                ))
-            }
-        };
+    pub fn sub_entity_literals(&self, mapping: BTreeMap<EntityUid, EntityUid>) -> Self {
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::unwrap_used)]
+        let cloned_est = self.lossless.est().unwrap().clone();
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
 
-        let est = match cloned_est.sub_entity_literals(&mapping) {
-            Ok(est) => est,
-            Err(e) => {
-                return Err(EntitySubstitutionError::ErrorMakingLossLess(
-                    ErrorMakingLossLess { msg: "foo".into() },
-                ))
-            }
-        };
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::unwrap_used)]
+        let est = cloned_est.sub_entity_literals(&mapping).expect("");
 
-        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
-            Ok(ast) => ast,
-            Err(_) => {
-                return Err(EntitySubstitutionError::ErrorMakingJSON(ErrorMakingJSON {
-                    msg: "baz".into(),
-                }))
-            }
-        };
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::unwrap_used)]
+        let ast = est
+            .clone()
+            .try_into_ast_policy(Some(self.ast.id().clone()))
+            .expect("");
 
-        Ok(Policy {
+        Policy {
             ast,
             lossless: LosslessPolicy::Est(est),
-        })
+        }
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
