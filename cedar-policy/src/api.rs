@@ -2682,33 +2682,6 @@ impl PartialEq for Policy {
 }
 impl Eq for Policy {}
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("error making LossLess")]
-/// Error making LossLess policy representation
-pub struct ErrorMakingLossLess {
-    msg: SmolStr,
-}
-
-#[derive(Debug, Diagnostic, Error)]
-#[error("error making JSON")]
-/// Error making JSON
-pub struct ErrorMakingJSON {
-    msg: SmolStr,
-}
-
-/// Errors that can happen when getting the JSON representation of a policy
-#[derive(Debug, Diagnostic, Error)]
-pub enum EntitySubstitutionError {
-    /// Parse error in the policy text
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ErrorMakingLossLess(ErrorMakingLossLess),
-    /// Parse error in the policy text
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ErrorMakingJSON(ErrorMakingJSON),
-}
-
 impl Policy {
     /// Get the `PolicyId` of the `Template` this is linked to.
     /// If this is a static policy, this will return `None`.
@@ -2975,21 +2948,27 @@ impl Policy {
     /// The new policy's `lossless` will come from the transformed AST, not from the original policy
     pub fn sub_entity_literals(&self, mapping: BTreeMap<EntityUid, EntityUid>) -> Self {
         // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::unwrap_used)]
-        let cloned_est = self.lossless.est().unwrap().clone();
+        #[allow(clippy::expect_used)]
+        let cloned_est = self
+            .lossless
+            .est()
+            .expect("Internal error, failed to construct est.")
+            .clone();
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
 
         // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::unwrap_used)]
-        let est = cloned_est.sub_entity_literals(&mapping).expect("");
+        #[allow(clippy::expect_used)]
+        let est = cloned_est
+            .sub_entity_literals(&mapping)
+            .expect("Internal error, failed to sub entity literals.");
 
         // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::unwrap_used)]
+        #[allow(clippy::expect_used)]
         let ast = est
             .clone()
             .try_into_ast_policy(Some(self.ast.id().clone()))
-            .expect("");
+            .expect("Internal error, failed to create AST.");
 
         Policy {
             ast,
