@@ -10,7 +10,7 @@ The "Cedar Language Version" refers to the language version as documented in the
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
 ## [Unreleased]
-Cedar Language Version: 4.1
+Cedar Language Version: TBD
 
 ### Added
 
