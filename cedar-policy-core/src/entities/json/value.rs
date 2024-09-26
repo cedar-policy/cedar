@@ -389,6 +389,54 @@ impl CedarValueJson {
             },
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            // TODO: Should we error for this (alegedly impossible) case?
+            CedarValueJson::ExprEscape { __expr } => Ok(self.clone()),
+            CedarValueJson::EntityEscape { __entity } => {
+                let euid = EntityUID::try_from(__entity);
+                match euid {
+                    Ok(euid) => match mapping.get(&euid) {
+                        Some(new_euid) => Ok(CedarValueJson::EntityEscape {
+                            __entity: new_euid.into(),
+                        }),
+                        None => Ok(self.clone()),
+                    },
+                    // TODO: What can cause this to error and how should we handle?
+                    Err(_) => Ok(self.clone()),
+                }
+            }
+            CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
+                __extn: FnAndArg {
+                    ext_fn: __extn.ext_fn,
+                    arg: Box::new((*__extn.arg).clone().sub_entity_literals(mapping)?),
+                },
+            }),
+            CedarValueJson::Bool(_) => Ok(self.clone()),
+            CedarValueJson::Long(_) => Ok(self.clone()),
+            CedarValueJson::String(_) => Ok(self.clone()),
+            CedarValueJson::Set(v) => {
+                let mut new_v = vec![];
+                for j in v {
+                    new_v.push(j.sub_entity_literals(mapping)?)
+                }
+                Ok(CedarValueJson::Set(new_v))
+            }
+            CedarValueJson::Record(r) => {
+                let mut new_m = BTreeMap::new();
+                for (k, v) in r.values {
+                    new_m.insert(k, v.sub_entity_literals(mapping)?);
+                }
+                Ok(CedarValueJson::Record(JsonRecord { values: new_m }))
+            }
+            CedarValueJson::Null => Ok(self.clone()),
+        }
+    }
 }
 
 /// helper function to check if the given keys contain any reserved keys,

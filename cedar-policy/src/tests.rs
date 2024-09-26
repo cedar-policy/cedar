@@ -5841,6 +5841,40 @@ mod policy_manipulation_functions_tests {
             .unwrap();
         assert_ne!(policy.to_string(), new_policy.to_string());
     }
+
+    #[test]
+    fn test_entity_sub_body() {
+        let policy_str =
+            r###"permit(principal, action, resource) when { principal == User::"Alice" };"###;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
 }
 
 mod version_tests {
