@@ -18,7 +18,7 @@ use super::SchemaType;
 use crate::ast::{Entity, EntityType, EntityUID};
 use crate::entities::{Name, UnreservedId};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Trait for `Schema`s that can inform the parsing of Entity JSON data
@@ -95,7 +95,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
     fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
         Some(Arc::new(Entity::new_with_attr_partial_value(
             action.clone(),
-            HashMap::new(),
+            [],
             HashSet::new(),
         )))
     }
@@ -122,6 +122,12 @@ pub trait EntityTypeDescription {
     /// Returning `None` indicates that attribute should not exist.
     fn attr_type(&self, attr: &str) -> Option<SchemaType>;
 
+    /// If this entity has tags, what type should the tags be?
+    ///
+    /// Returning `None` indicates that no tags should exist for this entity type.
+    #[cfg(feature = "entity-tags")]
+    fn tag_type(&self) -> Option<SchemaType>;
+
     /// Get the names of all the required attributes for this entity type.
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's>;
 
@@ -134,10 +140,10 @@ pub trait EntityTypeDescription {
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
-/// attributes to exist
+/// attributes, tags, or parents to exist
 #[derive(Debug, Clone)]
 pub struct NullEntityTypeDescription {
-    /// null description for this type
+    /// null description for this entity typename
     ty: EntityType,
 }
 impl EntityTypeDescription for NullEntityTypeDescription {
@@ -145,6 +151,10 @@ impl EntityTypeDescription for NullEntityTypeDescription {
         self.ty.clone()
     }
     fn attr_type(&self, _attr: &str) -> Option<SchemaType> {
+        None
+    }
+    #[cfg(feature = "entity-tags")]
+    fn tag_type(&self) -> Option<SchemaType> {
         None
     }
     fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
@@ -155,5 +165,11 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     }
     fn open_attributes(&self) -> bool {
         false
+    }
+}
+impl NullEntityTypeDescription {
+    /// Create a new [`NullEntityTypeDescription`] for the given entity typename
+    pub fn new(ty: EntityType) -> Self {
+        Self { ty }
     }
 }

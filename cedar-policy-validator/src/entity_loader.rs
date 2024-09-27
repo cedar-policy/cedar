@@ -83,9 +83,9 @@ pub(crate) struct AncestorsRequest {
 /// into a Cedar [`Entities`] store.
 /// The most basic implementation loads full entities (including all ancestors) in the `load_entities` method and loads the context in the `load_context` method.
 /// More advanced implementations make use of the [`AccessTrie`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
-/// 
-/// Warning: `load_entities` is called multiple times. If database 
-/// consistency is required, this API should not be used. Instead, use the entity manifest directly. 
+///
+/// Warning: `load_entities` is called multiple times. If database
+/// consistency is required, this API should not be used. Instead, use the entity manifest directly.
 pub(crate) trait EntityLoader {
     /// `load_entities` is called multiple times to load entities based on their ids.
     /// For each entity request in the `to_load` vector, expects one loaded entity in the resulting vector.

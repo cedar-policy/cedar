@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use smol_str::SmolStr;
 use std::collections::HashSet;
 
 use cedar_policy_core::ast::{Expr, ExprShapeOnly};
@@ -57,18 +58,52 @@ impl<'a> CapabilitySet<'a> {
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub struct Capability<'a> {
     /// For this expression
-    on_expr: ExprShapeOnly<'a>,
-    /// This attribute is known to exist on that expression
-    attribute: &'a str,
+    on_expr: ExprShapeOnly<'a, ()>,
+    /// This attribute or tag is known to exist on that expression
+    ///
+    /// This expression represents the attribute or tag name. It should have type string.
+    /// Often this is a string constant, but in the case of tags it can be an expression.
+    attribute_or_tag: ExprShapeOnly<'a, ()>,
+    /// Is `attribute_or_tag` an attribute name or a tag name
+    kind: CapabilityKind,
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
+enum CapabilityKind {
+    /// This capability is for accessing attributes
+    Attribute,
+    /// This capability is for accessing tags
+    Tag,
 }
 
 impl<'a> Capability<'a> {
     /// Construct a new [`Capability`] stating that the attribute `attribute` is
     /// known to exist for the expression `on_expr`
-    pub fn new(on_expr: &'a Expr, attribute: &'a str) -> Self {
+    pub fn new_attribute(on_expr: &'a Expr<()>, attribute: SmolStr) -> Self {
         Self {
-            on_expr: ExprShapeOnly::new(on_expr),
-            attribute,
+            on_expr: ExprShapeOnly::new_from_borrowed(on_expr),
+            attribute_or_tag: ExprShapeOnly::new_from_owned(Expr::val(attribute)),
+            kind: CapabilityKind::Attribute,
+        }
+    }
+
+    /// Construct a new [`Capability`] stating that the tag `tag` is
+    /// known to exist for the expression `on_expr`
+    pub fn new_borrowed_tag(on_expr: &'a Expr<()>, tag: &'a Expr<()>) -> Self {
+        Self {
+            on_expr: ExprShapeOnly::new_from_borrowed(on_expr),
+            attribute_or_tag: ExprShapeOnly::new_from_borrowed(tag),
+            kind: CapabilityKind::Tag,
+        }
+    }
+
+    /// Construct a new [`Capability`] stating that the tag `tag` is
+    /// known to exist for the expression `on_expr`
+    pub fn new_owned_tag(on_expr: &'a Expr<()>, tag: Expr<()>) -> Self {
+        Self {
+            on_expr: ExprShapeOnly::new_from_borrowed(on_expr),
+            attribute_or_tag: ExprShapeOnly::new_from_owned(tag),
+            kind: CapabilityKind::Tag,
         }
     }
 }

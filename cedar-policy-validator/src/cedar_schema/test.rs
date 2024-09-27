@@ -14,41 +14,10 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
-
-#[cfg(test)]
-pub use test_utils::*;
-
-#[cfg(test)]
-mod test_utils {
-    use crate::json_schema;
-
-    #[allow(dead_code)]
-    #[track_caller]
-    pub fn assert_record_attr_has_type<N: std::fmt::Debug + PartialEq>(
-        e: &json_schema::RecordAttributeType<N>,
-        expected: &json_schema::Type<N>,
-    ) {
-        assert!(e.required);
-        assert_eq!(&e.ty, expected);
-    }
-
-    #[track_caller]
-    pub fn assert_entity_attr_has_type<N: std::fmt::Debug + PartialEq>(
-        e: &json_schema::EntityAttributeType<N>,
-        expected: &json_schema::EntityAttributeTypeInternal<N>,
-    ) {
-        assert!(e.required);
-        assert_eq!(&e.ty, expected);
-    }
-}
-
 // PANIC SAFETY: unit tests
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod demo_tests {
-    use super::*;
-
     use std::{
         collections::HashMap,
         iter::{empty, once},
@@ -66,7 +35,7 @@ mod demo_tests {
             err::{ToJsonSchemaError, NO_PR_HELP_MSG},
         },
         json_schema,
-        schema::test::collect_warnings,
+        schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
     };
 
@@ -466,7 +435,8 @@ namespace Baz {action "Foo" appliesTo {
                 "a".parse().unwrap(),
                 json_schema::EntityType::<RawName> {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )]),
             actions: HashMap::from([(
@@ -476,7 +446,7 @@ namespace Baz {action "Foo" appliesTo {
                     applies_to: Some(json_schema::ApplySpec::<RawName> {
                         resource_types: vec![],
                         principal_types: vec!["a".parse().unwrap()],
-                        context: json_schema::RecordOrContextAttributes::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
                 },
@@ -591,17 +561,16 @@ namespace Baz {action "Foo" appliesTo {
         assert!(repo.member_of_types.is_empty());
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
         for group in groups {
-            assert_matches!(&repo.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+            assert_matches!(&repo.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes,
                 additional_attributes: false,
-            }, .. }) => {
-                let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_entity_attr_has_type(
-                    attribute,
-                    &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+            }))) => {
+                let expected =
+                    json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
-                    })),
-                );
+                    });
+                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                assert_has_type(attribute, expected);
             });
         }
         let issue = github
@@ -609,23 +578,23 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"Issue".parse().unwrap())
             .expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
-        assert_matches!(&issue.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&issue.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
+        }))) => {
             let attribute = attributes.get("repo").expect("No `repo`");
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attribute,
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Repository".parse().unwrap(),
-                })),
+                }),
             );
             let attribute = attributes.get("reporter").expect("No `repo`");
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attribute,
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                })),
+                }),
             );
         });
         let org = github
@@ -635,19 +604,26 @@ namespace Baz {action "Foo" appliesTo {
         assert!(org.member_of_types.is_empty());
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
-            assert_matches!(&org.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+            assert_matches!(&org.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes,
                 additional_attributes: false,
-            }, .. }) => {
+            }))) => {
+                let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                    type_name: "UserGroup".parse().unwrap(),
+                });
                 let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_entity_attr_has_type(
-                    attribute,
-                    &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-                        type_name: "UserGroup".parse().unwrap(),
-                    })),
-                );
+                assert_has_type(attribute, expected);
             });
         }
+    }
+
+    #[track_caller]
+    fn assert_has_type<N: std::fmt::Debug + PartialEq>(
+        e: &json_schema::TypeOfAttribute<N>,
+        expected: json_schema::Type<N>,
+    ) {
+        assert!(e.required);
+        assert_eq!(&e.ty, &expected);
     }
 
     #[track_caller]
@@ -691,23 +667,23 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"User".parse().unwrap())
             .expect("No `User`");
         assert_eq!(&user.member_of_types, &vec!["Group".parse().unwrap()]);
-        assert_matches!(&user.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
-            assert_entity_attr_has_type(
+        }))) => {
+            assert_has_type(
                 attributes.get("personalGroup").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Group".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("blocked").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::Set {
+                json_schema::Type::Type(json_schema::TypeVariant::Set {
                     element: Box::new(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
                     })),
-                })),
+                }),
             );
         });
         let group = doccloud
@@ -718,15 +694,15 @@ namespace Baz {action "Foo" appliesTo {
             &group.member_of_types,
             &vec!["DocumentShare".parse().unwrap()]
         );
-        assert_matches!(&group.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&group.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
-            assert_entity_attr_has_type(
+        }))) => {
+            assert_has_type(
                 attributes.get("owner").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                })),
+                }),
             );
         });
         let document = doccloud
@@ -734,45 +710,45 @@ namespace Baz {action "Foo" appliesTo {
             .get(&"Document".parse().unwrap())
             .expect("No `Group`");
         assert!(document.member_of_types.is_empty());
-        assert_matches!(&document.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&document.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
-            assert_entity_attr_has_type(
+        }))) => {
+            assert_has_type(
                 attributes.get("owner").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("isPrivate").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Bool".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("publicAccess").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "String".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("viewACL").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("modifyACL").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                })),
+                }),
             );
-            assert_entity_attr_has_type(
+            assert_has_type(
                 attributes.get("manageACL").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                })),
+                }),
             );
         });
         let document_share = doccloud
@@ -906,15 +882,15 @@ namespace Baz {action "Foo" appliesTo {
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
-        assert_matches!(&resource.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&resource.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
-            assert_matches!(attributes.get("tag"), Some(json_schema::EntityAttributeType { ty: json_schema::EntityAttributeTypeInternal::Type(ty), required: true }) => {
+        }))) => {
+            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
                 assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
-            })
+            });
         });
     }
 
@@ -941,7 +917,7 @@ namespace Baz {action "Foo" appliesTo {
         assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
         assert_labeled_span(
             "entity User {",
-            "expected `?`, `}`, identifier, or string literal",
+            "expected `}`, identifier, or string literal",
         );
         assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
@@ -1180,8 +1156,6 @@ mod parser_tests {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod translator_tests {
-    use super::*;
-
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
@@ -1194,7 +1168,7 @@ mod translator_tests {
             to_json_schema::cedar_schema_to_json_schema,
         },
         json_schema,
-        schema::test::collect_warnings,
+        schema::test::utils::collect_warnings,
         types::{EntityLUB, EntityRecordKind, Primitive, Type},
         ValidatorSchema,
     };
@@ -1444,22 +1418,22 @@ mod translator_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let demo = frag.0.get(&Some("Demo".parse().unwrap())).unwrap();
         let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
-        assert_matches!(&user.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs: json_schema::RecordType {
+        assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }, .. }) => {
-            assert_entity_attr_has_type(
-                attributes.get("name").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+        }))) => {
+            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+                let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
-                })),
-            );
-            assert_entity_attr_has_type(
-                attributes.get("email").unwrap(),
-                &json_schema::EntityAttributeTypeInternal::Type(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+                });
+                assert_eq!(ty, &expected);
+            });
+            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+                let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "email_address".parse().unwrap(),
-                })),
-            );
+                });
+                assert_eq!(ty, &expected);
+            });
         });
         assert_matches!(ValidatorSchema::try_from(frag), Err(e) => {
             expect_err(
@@ -2324,163 +2298,73 @@ mod common_type_references {
     }
 }
 
-/// Tests involving embedded attribute maps (RFC 68)
+/// Tests involving entity tags (RFC 82)
 #[cfg(test)]
-mod ea_maps {
-    use super::assert_entity_attr_has_type;
+mod entity_tags {
     use crate::json_schema;
-    use crate::schema::test::collect_warnings;
+    use crate::schema::test::utils::collect_warnings;
     use cedar_policy_core::extensions::Extensions;
-    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
 
     #[test]
-    fn entity_attribute() {
-        let src = "entity E { tags: { ?: Set<String> } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Ok((frag, warnings)) => {
+    fn basic_examples() {
+        let src = "entity E;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
-            assert_matches!(&entity_type.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs, .. }) => {
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("tags").unwrap(),
-                    &json_schema::EntityAttributeTypeInternal::EAMap {
-                        value_type: json_schema::Type::Type(json_schema::TypeVariant::Set {
-                            element: Box::new(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name: "String".parse().unwrap() })),
-                        }),
-                    },
-                );
-            });
+            assert_matches!(&entity_type.tags, None);
         });
-    }
 
-    #[test]
-    fn record_attribute_inside_entity_attribute() {
-        let src = "entity E { tags: { foo: { ?: Set<String> } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .exactly_one_underline("?: Set<String>")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn context_attribute() {
-        let src = "entity E; action read appliesTo { principal: [E], resource: [E], context: { operationDetails: { ?: String } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .exactly_one_underline("?: String")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn toplevel_entity() {
-        let src = "entity E { ?: Set<String> };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .help("Embedded attribute maps are not allowed as the top-level descriptor of all attributes of an entity. Try making an entity attribute to hold the embedded attribute map. E.g., `attributes: { ?: someType }`.")
-                    .exactly_one_underline("?: Set<String>")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn toplevel_context() {
-        let src = "entity E; action read appliesTo { principal: [E], resource: [E], context: { ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .exactly_one_underline("?: String")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn common_type() {
-        let src = "type blah = { ?: String }; entity User { blah: blah };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .exactly_one_underline("?: String")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn value_type_is_common_type() {
-        let src = "type blah = { foo: String }; entity User { blah: { ?: blah } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Ok((frag, warnings)) => {
+        let src = "entity E tags String;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.shape, json_schema::EntityAttributes::EntityAttributes(json_schema::EntityAttributesInternal { attrs, .. }) => {
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("blah").unwrap(),
-                    &json_schema::EntityAttributeTypeInternal::EAMap {
-                        value_type: json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name: "blah".parse().unwrap() }),
-                    }
-                );
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "String");
             });
         });
-    }
 
-    #[test]
-    fn nested_ea_map() {
-        let src = "entity E { tags: { ?: { ?: String } } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .exactly_one_underline("?: String")
-                    .build(),
-            );
+        let src = "entity E tags Set<String>;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Set { element })) => {
+                assert_matches!(&**element, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                    assert_eq!(&format!("{type_name}"), "String");
+                });
+            });
         });
-    }
 
-    #[test]
-    fn ea_map_and_attribute() {
-        let src = "entity E { tags: { foo: Long, ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: this type contains both concrete attributes and an embedded attribute map (`?:`), which is not allowed")
-                    .exactly_one_underline("?: String")
-                    .build(),
-            );
+        let src = "entity E { foo: String } tags { foo: String };";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
+                    assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                        assert_eq!(&format!("{type_name}"), "String");
+                    });
+                    assert_eq!(*required, true);
+                });
+            });
         });
-    }
 
-    #[test]
-    fn two_ea_maps() {
-        let src = "entity E { tags: { ?: Long, ?: String } };";
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: this type contains two or more different embedded attribute map declarations (`?:`), which is not allowed")
-                    .help("try separating this into two different attributes")
-                    .exactly_two_underlines("?: Long,", "?: String")
-                    .build(),
-            );
+        let src = "type T = String; entity E tags T;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "T");
+            });
+        });
+
+        let src = "entity E tags E;";
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
+            assert!(warnings.is_empty());
+            let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
+                assert_eq!(&format!("{type_name}"), "E");
+            });
         });
     }
 }

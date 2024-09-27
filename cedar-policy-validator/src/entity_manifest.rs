@@ -571,6 +571,14 @@ fn entity_manifest_from_expr(
                 .union(&arg2_res.full_type_required(ty2))
                 .empty_paths())
         }
+        #[cfg(feature = "entity-tags")]
+        ExprKind::BinaryApp {
+            op: BinaryOp::GetTag | BinaryOp::HasTag,
+            arg1: _,
+            arg2: _,
+        } => {
+            unimplemented!("interaction between RFCs 74 and 82")
+        }
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions
             // all take primitives as inputs and produce

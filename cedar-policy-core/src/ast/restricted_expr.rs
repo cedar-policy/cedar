@@ -15,10 +15,11 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
-    Value, ValueKind,
+    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Type,
+    Unknown, Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
+use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
 use crate::parser::{self, Loc};
 use miette::Diagnostic;
@@ -447,6 +448,16 @@ impl<'a> BorrowedRestrictedExpr<'a> {
             _ => None,
         }
     }
+
+    /// Try to compute the runtime type of this expression. See
+    /// [`Expr::try_type_of`] for exactly what this computes.
+    ///
+    /// On a restricted expression, there are fewer cases where we might fail to
+    /// compute the type, but there are still `unknown`s and extension function
+    /// calls which may cause this function to return `None` .
+    pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
+        self.0.try_type_of(extensions)
+    }
 }
 
 /// Helper function: does the given `Expr` qualify as a "restricted" expression.
@@ -657,9 +668,7 @@ pub mod restricted_expr_errors {
 
 /// Errors possible from `RestrictedExpr::from_str()`
 //
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution when
-// adding public methods.
+// This is NOT a publicly exported error type.
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExpressionParseError {
     /// Failed to parse the expression

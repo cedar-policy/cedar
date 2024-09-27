@@ -349,14 +349,8 @@ mod scope_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::In(euid.clone())
         );
-        let p = link(
-            "permit(principal == ?principal,action,resource);",
-            map.clone(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
+        let p = link("permit(principal == ?principal,action,resource);", map);
+        assert_eq!(p.principal_constraint(), PrincipalConstraint::Eq(euid));
     }
 
     #[test]
@@ -720,8 +714,8 @@ mod policy_set_tests {
         )
         .expect("Link failure");
 
-        assert_eq!(pset.templates().count(), 1);
-        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 2);
         assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
 
         assert_eq!(
@@ -1382,6 +1376,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use cool_asserts::assert_matches;
     use entities::err::EntitiesError;
     use serde_json::json;
 
@@ -1709,6 +1704,460 @@ mod entity_validate_tests {
             }
         }
     }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail1() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    (
+                        "extra".into(),
+                        RestrictedExpression::new_string("bad".into()),
+                    ),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it contains an unexpected attribute `extra`: `{"extra": "bad", "foo": 4567}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_missing_attribute() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([("rec".into(), RestrictedExpression::new_record([]).unwrap())]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it is missing the required attribute `foo`: `{}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    #[cfg(feature = "partial-validate")]
+    fn issue_1176_should_fail2() {
+        let schema = Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "rec": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": {
+                                            "type": "Long"
+                                        },
+                                        "bar": {
+                                            "type": "Boolean",
+                                            "required": false
+                                        }
+                                    },
+                                    "additionalAttributes": true
+                                }
+                            }
+                        },
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {
+                    "pull": {
+                        "appliesTo": {
+                            "principalTypes": [
+                                "User"
+                            ],
+                            "resourceTypes": [
+                                "User"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .expect("should be a valid schema");
+        let entity = Entity::new(
+            EntityUid::from_str(r#"User::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    ("bar".into(), RestrictedExpression::new_string("bad".into())),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `User::"abc"`, type mismatch: value was expected to have type bool, but it actually has type string: `"bad"`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail3() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+
+        assert_matches!(
+            Entity::from_json_str(entity_str, Some(&schema)),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                        .source(r#"in attribute `foo` on `A::"alice"`, expected the record to have an attribute `bar`, but it does not"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_non_constructor_extension() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              foo: { bar: Bool }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity_json = json!({
+            "uid": {
+                "type": "E",
+                "id": ""
+            },
+            "attrs": {
+                "foo": {"bar": { "__extn": { "fn": "isLoopback", "arg": {"__extn": {"fn": "ip", "arg": "127.0.0.1"}}}}}
+            },
+            "parents": []
+        });
+        assert_matches!(Entity::from_json_value(entity_json, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn should_pass_set_set_rec_one_req_one_opt() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn example_app_tags() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+            entity User {
+              allowedTagsForRole: {
+                "Role-A"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+                "Role-B"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+              },
+            };
+
+            action UpdateWorkspace appliesTo {
+              principal: User,
+              resource: User,
+            };
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+                "type": "User",
+                "id": "Alice"
+            },
+            "attrs": {
+                "allowedTagsForRole": {
+                    "Role-B": {
+                        "production_status": [
+                            "production"
+                        ],
+                        "country": [
+                            "ALL"
+                        ],
+                        "stage": [
+                            "valuation"
+                        ]
+                    }
+                }
+            },
+            "parents": []
+        }
+        "###;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn should_pass_set_set_record_one_req_one_opt() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r###"
+            entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
+            action "g" appliesTo {
+              principal: [A],
+              resource: [A],
+              context: {"vlipwwpm0am": Set < Set < {"": __cedar::String, "b"?: __cedar::Bool} > >}
+            };
+        "###,
+        )
+        .unwrap();
+        let entity_str = r###"
+        {
+            "uid": {
+              "type": "A",
+              "id": ""
+            },
+            "attrs": {
+              "qqamncWam": [
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  }
+                ],
+                [
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "###;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
 }
 
 /// The main unit tests for schema-based parsing live here, as they require both
@@ -1743,7 +2192,7 @@ mod schema_based_parsing_tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::cognitive_complexity)]
-    fn signle_attr_types() {
+    fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
             "entityTypes": {
@@ -1928,7 +2377,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -1998,7 +2447,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2034,7 +2483,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2071,7 +2520,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2142,7 +2591,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -2413,7 +2862,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -2487,7 +2936,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2525,7 +2974,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2564,7 +3013,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2638,8 +3087,8 @@ mod schema_based_parsing_tests {
         expect_err(
             "",
             &Report::new(err),
-            &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#)
+            &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -2763,7 +3212,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                 .build()
         );
     }
@@ -3173,7 +3622,7 @@ mod schema_based_parsing_tests {
                         "manager": { "__extn": { "fn": "unknown", "arg": "www" }},
                         "hr_contacts": { "__extn": { "fn": "unknown", "arg": "yyy" }},
                         "sales_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "Employee", "id": "aaaaa" },
                             { "__extn": { "fn": "unknown", "arg": "123" }}
                         ],
                         "json_blob": {
@@ -3511,7 +3960,7 @@ mod template_tests {
                 .help("a template should include slot(s) `?principal` or `?resource`")
                 .exactly_one_underline(src)
                 .build(),
-        )
+        );
     }
 
     #[test]
@@ -4211,7 +4660,7 @@ mod policy_set_est_tests {
         let pset2 = PolicySet::from_json_value(json).unwrap();
 
         // There should be 2 policies, one static and two links
-        assert_eq!(pset2.policies().count(), 3);
+        assert_eq!(pset2.num_of_policies(), 3);
         let static_policy = pset2.policy(&PolicyId::new("policy")).unwrap();
         assert!(static_policy.is_static());
 
@@ -4297,8 +4746,8 @@ mod policy_set_est_tests {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.templates().count(), 0);
-        assert_eq!(policyset.policies().count(), 1);
+        assert_eq!(policyset.num_of_templates(), 0);
+        assert_eq!(policyset.num_of_policies(), 1);
         assert!(policyset.policy(&PolicyId::new("policy1")).is_some());
     }
 
@@ -4370,8 +4819,8 @@ mod policy_set_est_tests {
         });
 
         let policyset = PolicySet::from_json_value(value).unwrap();
-        assert_eq!(policyset.policies().count(), 2);
-        assert_eq!(policyset.templates().count(), 1);
+        assert_eq!(policyset.num_of_policies(), 2);
+        assert_eq!(policyset.num_of_templates(), 1);
         assert!(policyset.template(&PolicyId::new("template")).is_some());
         let link = policyset.policy(&PolicyId::new("link")).unwrap();
         assert_eq!(link.template_id(), Some(&PolicyId::new("template")));
@@ -5264,5 +5713,291 @@ mod context_tests {
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("duplicate key `key2` in context").build(),
         );
+    }
+}
+
+mod policy_manipulation_functions_tests {
+    use super::*;
+
+    #[test]
+    fn empty_policy() {
+        let policy_str = r###"permit(principal, action, resource);
+        "###;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        assert_eq!(policy.entity_literals(), vec![]);
+    }
+
+    #[test]
+    fn non_empty_policy() {
+        let policy_str = r###"permit(principal == User::"Bob", action == Action::"view", resource) when {
+            !resource.private && resource.owner != User::"Alice"
+        };
+        "###;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        let res = policy.entity_literals();
+        assert_eq!(res.len(), 3);
+        assert!(res.contains(&EntityUid::from_str("User::\"Bob\"").expect("should parse")));
+        assert!(res.contains(&EntityUid::from_str("Action::\"view\"").expect("should parse")));
+        assert!(res.contains(&EntityUid::from_str("User::\"Alice\"").expect("should parse")));
+    }
+}
+
+mod version_tests {
+    use crate::{get_lang_version, get_sdk_version};
+
+    #[test]
+    fn test_sdk_version() {
+        assert_eq!(get_sdk_version().to_string(), "4.0.0");
+    }
+
+    #[test]
+    fn test_lang_version() {
+        assert_eq!(get_lang_version().to_string(), "4.0.0");
+    }
+}
+
+mod reserved_keywords_in_policies {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    const RESERVED_IDENTS: [&str; 9] = [
+        "true", "false", "if", "then", "else", "in", "like", "has", "is",
+    ];
+    const RESERVED_NAMESPACE: [&str; 1] = ["__cedar"];
+    const OTHER_SPECIAL_IDENTS: [&str; 8] = [
+        "principal",
+        "action",
+        "resource",
+        "context",
+        "permit",
+        "forbid",
+        "when",
+        "unless",
+    ];
+
+    const RESERVED_IDENT_MSG: fn(&str) -> String =
+        |id| format!("this identifier is reserved and cannot be used: {id}");
+    const RESERVED_NAMESPACE_MSG: fn(&str) -> String =
+        |name| format!("The name `{name}` contains `__cedar`, which is reserved");
+
+    #[track_caller]
+    fn assert_valid_annotation(id: &str) {
+        let res = Policy::from_str(&format!(
+            r#"
+          @{id}("foo")
+          permit(principal, action, resource);
+        "#
+        ));
+        assert_matches!(res, Ok(_))
+    }
+
+    #[track_caller]
+    fn assert_valid_expression(src: String) {
+        assert_matches!(Expression::from_str(&src), Ok(_));
+    }
+
+    #[track_caller]
+    fn assert_invalid_expression(src: String, error: String, underline: String) {
+        let expected_err = ExpectedErrorMessageBuilder::error(&error)
+            .exactly_one_underline(&underline)
+            .build();
+        assert_matches!(Expression::from_str(&src), Err(err) => expect_err(&*src, &Report::new(err), &expected_err));
+    }
+
+    #[track_caller]
+    fn assert_invalid_expression_with_help(
+        src: String,
+        error: String,
+        underline: String,
+        help: String,
+    ) {
+        let expected_err = ExpectedErrorMessageBuilder::error(&error)
+            .exactly_one_underline(&underline)
+            .help(&help)
+            .build();
+        assert_matches!(Expression::from_str(&src), Err(err) => expect_err(&*src, &Report::new(err), &expected_err));
+    }
+
+    #[test]
+    fn test_reserved_annotations() {
+        // Currently, any identifier can be used as an annotation key
+        RESERVED_IDENTS
+            .iter()
+            .chain(RESERVED_NAMESPACE.iter())
+            .chain(OTHER_SPECIAL_IDENTS.iter())
+            .for_each(|id| assert_valid_annotation(id));
+    }
+
+    #[test]
+    fn test_reserved_keys() {
+        // Any ident can be used as a record key if it's wrapped in quotes
+        RESERVED_IDENTS
+            .iter()
+            .chain(RESERVED_NAMESPACE.iter())
+            .chain(OTHER_SPECIAL_IDENTS.iter())
+            .for_each(|id| {
+                assert_valid_expression(format!("{{ \"{id}\": 1 }}"));
+                assert_valid_expression(format!("principal has \"{id}\""));
+                assert_valid_expression(format!("principal[\"{id}\"] == \"foo\""));
+            });
+
+        // No restrictions on OTHER_SPECIAL_IDENTS
+        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+            assert_valid_expression(format!("{{ {id}: 1 }}"));
+            assert_valid_expression(format!("principal has {id}"));
+            assert_valid_expression(format!("principal.{id} == \"foo\""));
+        });
+
+        // RESERVED_IDENTS cannot be used as keys without quotes
+        RESERVED_IDENTS.into_iter().for_each(|id| {
+            // slightly different errors depending on `id`; related to #407
+            match id {
+                "true" | "false" => {
+                    assert_invalid_expression_with_help(
+                        format!("{{ {id}: 1 }}"),
+                        format!("invalid attribute name: {id}"),
+                        id.into(),
+                        "attribute names can either be identifiers or string literals".into(),
+                    );
+                    assert_invalid_expression_with_help(
+                        format!("principal has {id}"),
+                        format!("invalid attribute name: {id}"),
+                        id.into(),
+                        "attribute names can either be identifiers or string literals".into(),
+                    );
+                }
+                "if" => {
+                    assert_invalid_expression(
+                        format!("{{ {id}: 1 }}"),
+                        RESERVED_IDENT_MSG(id),
+                        format!("{id}: 1"),
+                    );
+                    assert_invalid_expression(
+                        format!("principal has {id}"),
+                        RESERVED_IDENT_MSG(id),
+                        format!("principal has {id}"),
+                    );
+                }
+                _ => {
+                    assert_invalid_expression(
+                        format!("{{ {id}: 1 }}"),
+                        RESERVED_IDENT_MSG(id),
+                        id.into(),
+                    );
+                    assert_invalid_expression(
+                        format!("principal has {id}"),
+                        RESERVED_IDENT_MSG(id),
+                        id.into(),
+                    );
+                }
+            }
+            // this case leads to a consistent error for all keywords
+            assert_invalid_expression(
+                format!("principal.{id} == \"foo\""),
+                RESERVED_IDENT_MSG(id),
+                id.into(),
+            );
+        });
+
+        // RESERVED_NAMESPACE cannot be used as keys without quotes
+        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("{{ {id}: 1 }}"),
+                RESERVED_NAMESPACE_MSG(id),
+                id.into(),
+            );
+            assert_invalid_expression(
+                format!("principal has {id}"),
+                RESERVED_NAMESPACE_MSG(id),
+                id.into(),
+            );
+            assert_invalid_expression(
+                format!("principal.{id} == \"foo\""),
+                RESERVED_NAMESPACE_MSG(id),
+                "princip".into(), // TODO(#1221): wrong source is used
+            );
+        });
+    }
+
+    #[test]
+    fn test_reserved_namespace_elements() {
+        // No restrictions on OTHER_SPECIAL_IDENTS
+        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+            assert_valid_expression(format!("foo::{id}::\"bar\""));
+            assert_valid_expression(format!("principal is {id}::foo"));
+        });
+
+        // RESERVED_IDENTS cannot be used in namespaces
+        RESERVED_IDENTS.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("foo::{id}::\"bar\""),
+                RESERVED_IDENT_MSG(id),
+                id.into(),
+            );
+            assert_invalid_expression(
+                format!("principal is {id}::foo"),
+                RESERVED_IDENT_MSG(id),
+                id.into(),
+            );
+        });
+
+        // RESERVED_NAMESPACE cannot be used in namespaces
+        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("foo::{id}::\"bar\""),
+                RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
+                format!("foo::{id}"),
+            );
+            assert_invalid_expression(
+                format!("principal is {id}::foo"),
+                RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
+                format!("{id}::foo"),
+            );
+        });
+    }
+
+    #[test]
+    fn test_reserved_extfun_names() {
+        // No keyword is allowed as an extension function names since we check
+        // against the known extension functions at parse time.
+
+        RESERVED_IDENTS.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("extension::function::{id}(\"foo\")"),
+                RESERVED_IDENT_MSG(id),
+                id.into(),
+            );
+            assert_invalid_expression(
+                format!("context.{id}(1)"),
+                RESERVED_IDENT_MSG(id),
+                id.into(),
+            );
+        });
+
+        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("extension::function::{id}(\"foo\")"),
+                RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
+                format!("extension::function::{id}"),
+            );
+            assert_invalid_expression(
+                format!("context.{id}(1)"),
+                RESERVED_NAMESPACE_MSG(id),
+                "context".into(), // TODO(#1221): wrong source is used
+            );
+        });
+
+        OTHER_SPECIAL_IDENTS.into_iter().for_each(|id| {
+            assert_invalid_expression(
+                format!("extension::function::{id}(\"foo\")"),
+                format!("`extension::function::{id}` is not a valid function"),
+                format!("extension::function::{id}(\"foo\")"),
+            );
+            assert_invalid_expression(
+                format!("context.{id}(1)"),
+                format!("`{id}` is not a valid method"),
+                format!("context.{id}(1)"),
+            );
+        });
     }
 }

@@ -216,6 +216,8 @@ pub struct EntityDecl {
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
     pub attrs: Vec<Node<AttrDecl>>,
+    /// Tag type for this entity (`None` means no tags on this entity)
+    pub tags: Option<Node<Type>>,
 }
 
 /// Type definitions
@@ -251,28 +253,15 @@ impl<N> From<PrimitiveType> for json_schema::TypeVariant<N> {
 }
 
 /// Attribute declarations, used in records and entity types.
-/// One [`AttrDecl`] is one key-value pair, or an embedded attribute map pair `?: value_ty`.
-///
-/// The data structures in this file, and the Cedar schema format parser in
-/// general, permissively allow `EAMap`s to appear anywhere an [`AttrDecl`] is
-/// expected (including inside other `EAMap`s), in order to provide better error
-/// messages when `EAMap`s are encountered in illegal but plausible positions
+/// One [`AttrDecl`] is one key-value pair.
 #[derive(Debug, Clone)]
-pub enum AttrDecl {
-    /// A normal attribute declaration `name: ty` or `name?: ty`
-    Concrete {
-        /// Name of this attribute
-        name: Node<SmolStr>,
-        /// Whether or not it is a required attribute (default `true`)
-        required: bool,
-        /// The type of this attribute
-        ty: Node<Type>,
-    },
-    /// An `EAMap` declaration `?: ty`
-    EAMap {
-        /// Value type of the `EAMap`
-        value_ty: Node<Type>,
-    },
+pub struct AttrDecl {
+    /// Name of this attribute
+    pub name: Node<SmolStr>,
+    /// Whether or not it is a required attribute (default `true`)
+    pub required: bool,
+    /// The type of this attribute
+    pub ty: Node<Type>,
 }
 
 /// The target of a [`PRAppDecl`]

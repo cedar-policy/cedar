@@ -23,7 +23,7 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-// How many attrs will we store in an error before cutting off for performance reason
+// How many attrs or tags will we store in an error before cutting off for performance reason
 const TOO_MANY_ATTRS: usize = 5;
 
 /// Enumeration of the possible errors that can occur during evaluation
@@ -39,8 +39,8 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     EntityDoesNotExist(#[from] evaluation_errors::EntityDoesNotExistError),
 
-    /// Tried to get an attribute, but the specified entity didn't
-    /// have that attribute
+    /// Tried to get an attribute or tag, but the specified entity didn't
+    /// have that attribute or tag
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityAttrDoesNotExist(#[from] evaluation_errors::EntityAttrDoesNotExistError),
@@ -166,22 +166,55 @@ impl EvaluationError {
     }
 
     /// Construct a [`EntityAttrDoesNotExist`] error
+    ///
+    /// `does_attr_exist_as_a_tag`: does `attr` exist on `entity` as a tag (rather than an attribute)
     pub(crate) fn entity_attr_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         attr: SmolStr,
         available_attrs: impl IntoIterator<Item = &'a SmolStr>,
+        does_attr_exist_as_a_tag: bool,
         total_attrs: usize,
         source_loc: Option<Loc>,
     ) -> Self {
         evaluation_errors::EntityAttrDoesNotExistError {
             entity,
-            attr,
-            available_attrs: available_attrs
+            attr_or_tag: attr,
+            was_attr: true,
+            exists_the_other_kind: does_attr_exist_as_a_tag,
+            available_attrs_or_tags: available_attrs
                 .into_iter()
                 .take(TOO_MANY_ATTRS)
                 .cloned()
                 .collect::<Vec<_>>(),
-            total_attrs,
+            total_attrs_or_tags: total_attrs,
+            source_loc,
+        }
+        .into()
+    }
+
+    /// Construct an error for the case where an entity tag does not exist
+    ///
+    /// `does_tag_exist_as_an_attr`: does `tag` exist on `entity` as an attribute (rather than a tag)
+    #[cfg(feature = "entity-tags")]
+    pub(crate) fn entity_tag_does_not_exist<'a>(
+        entity: Arc<EntityUID>,
+        tag: SmolStr,
+        available_tags: impl IntoIterator<Item = &'a SmolStr>,
+        does_tag_exist_as_an_attr: bool,
+        total_tags: usize,
+        source_loc: Option<Loc>,
+    ) -> Self {
+        evaluation_errors::EntityAttrDoesNotExistError {
+            entity,
+            attr_or_tag: tag,
+            was_attr: false,
+            exists_the_other_kind: does_tag_exist_as_an_attr,
+            available_attrs_or_tags: available_tags
+                .into_iter()
+                .take(TOO_MANY_ATTRS)
+                .cloned()
+                .collect::<Vec<_>>(),
+            total_attrs_or_tags: total_tags,
             source_loc,
         }
         .into()
@@ -340,16 +373,21 @@ pub mod evaluation_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("`{entity}` does not have the attribute `{attr}`")]
+    #[error("`{entity}` does not have the {} `{attr_or_tag}`", if *.was_attr { "attribute" } else { "tag" })]
     pub struct EntityAttrDoesNotExistError {
         /// Entity that didn't have the attribute
         pub(crate) entity: Arc<EntityUID>,
-        /// Name of the attribute it didn't have
-        pub(crate) attr: SmolStr,
-        /// (First five) Available attributes on the entity
-        pub(crate) available_attrs: Vec<SmolStr>,
-        /// Total number of attributes on the entity
-        pub(crate) total_attrs: usize,
+        /// Name of the attribute or tag it didn't have
+        pub(crate) attr_or_tag: SmolStr,
+        /// Whether this was an attempted attribute access (`true`) or tag access (`false`)
+        pub(crate) was_attr: bool,
+        /// If `true`, this is a case where we tried accessing an attribute but
+        /// there's a tag of that name, or vice versa
+        pub(crate) exists_the_other_kind: bool,
+        /// (First five) Available attributes/tags on the entity, depending on `was_attr`
+        pub(crate) available_attrs_or_tags: Vec<SmolStr>,
+        /// Total number of attributes/tags on the entity, depending on `was_attr`
+        pub(crate) total_attrs_or_tags: usize,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
@@ -358,20 +396,43 @@ pub mod evaluation_errors {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            if self.available_attrs.is_empty() {
-                Some(Box::new("entity does not have any attributes"))
-            } else if self.available_attrs.len() == self.total_attrs {
-                Some(Box::new(format!(
-                    "Available attributes: {:?}",
-                    self.available_attrs
-                )))
+            let mut help_text = if self.available_attrs_or_tags.is_empty() {
+                format!(
+                    "`{}` does not have any {}",
+                    &self.entity,
+                    if self.was_attr { "attributes" } else { "tags" }
+                )
+            } else if self.available_attrs_or_tags.len() == self.total_attrs_or_tags {
+                format!(
+                    "available {}: [{}]",
+                    if self.was_attr { "attributes" } else { "tags" },
+                    self.available_attrs_or_tags.iter().join(",")
+                )
             } else {
-                Some(Box::new(format!(
-                    "available attributes: [{}, ... ({} more attributes) ]",
-                    self.available_attrs.iter().join(","),
-                    self.total_attrs - self.available_attrs.len()
-                )))
+                format!(
+                    "available {}: [{}, ... ({} more attributes) ]",
+                    if self.was_attr { "attributes" } else { "tags" },
+                    self.available_attrs_or_tags.iter().join(","),
+                    self.total_attrs_or_tags - self.available_attrs_or_tags.len()
+                )
+            };
+            if self.exists_the_other_kind {
+                help_text.push_str(&format!(
+                    "; note that {} (not {}) named `{}` does exist",
+                    if self.was_attr {
+                        "a tag"
+                    } else {
+                        "an attribute"
+                    },
+                    if self.was_attr {
+                        "an attribute"
+                    } else {
+                        "a tag"
+                    },
+                    self.attr_or_tag,
+                ));
             }
+            Some(Box::new(help_text))
         }
     }
 

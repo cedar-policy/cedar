@@ -240,6 +240,22 @@ pub enum ExprNoExt {
         /// Right-hand argument (inside the `()`)
         right: Arc<Expr>,
     },
+    /// `getTag()`
+    #[serde(rename = "getTag")]
+    GetTag {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// `hasTag()`
+    #[serde(rename = "hasTag")]
+    HasTag {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
     /// Get-attribute
     #[serde(rename = ".")]
     GetAttr {
@@ -478,6 +494,22 @@ impl Expr {
         })
     }
 
+    /// `left.getTag(right)`
+    pub fn get_tag(left: Arc<Expr>, right: Expr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::GetTag {
+            left,
+            right: Arc::new(right),
+        })
+    }
+
+    /// `left.hasTag(right)`
+    pub fn has_tag(left: Arc<Expr>, right: Expr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::HasTag {
+            left,
+            right: Arc::new(right),
+        })
+    }
+
     /// `left.attr`
     pub fn get_attr(left: Expr, attr: SmolStr) -> Self {
         Expr::ExprNoExt(ExprNoExt::GetAttr {
@@ -633,6 +665,20 @@ impl Expr {
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
+            #[cfg(feature = "entity-tags")]
+            Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
+            )),
+            #[cfg(not(feature = "entity-tags"))]
+            Expr::ExprNoExt(ExprNoExt::GetTag { .. }) => Err(FromJsonError::UnsupportedEntityTags),
+            #[cfg(feature = "entity-tags")]
+            Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
+            )),
+            #[cfg(not(feature = "entity-tags"))]
+            Expr::ExprNoExt(ExprNoExt::HasTag { .. }) => Err(FromJsonError::UnsupportedEntityTags),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
                 Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
             }
@@ -723,8 +769,8 @@ impl Expr {
     }
 }
 
-impl From<ast::Expr> for Expr {
-    fn from(expr: ast::Expr) -> Expr {
+impl<T: Clone> From<ast::Expr<T>> for Expr {
+    fn from(expr: ast::Expr<T>) -> Expr {
         match expr.into_expr_kind() {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
@@ -768,6 +814,10 @@ impl From<ast::Expr> for Expr {
                     ast::BinaryOp::Contains => Expr::contains(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAll => Expr::contains_all(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAny => Expr::contains_any(Arc::new(arg1), arg2),
+                    #[cfg(feature = "entity-tags")]
+                    ast::BinaryOp::GetTag => Expr::get_tag(Arc::new(arg1), arg2),
+                    #[cfg(feature = "entity-tags")]
+                    ast::BinaryOp::HasTag => Expr::has_tag(Arc::new(arg1), arg2),
                 }
             }
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -1216,6 +1266,14 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     left,
                                     extract_single_argument(args, "containsAny()", &access.loc)?,
                                 )),
+                                "getTag" => Either::Right(Expr::get_tag(
+                                    left,
+                                    extract_single_argument(args, "getTag()", &access.loc)?,
+                                )),
+                                "hasTag" => Either::Right(Expr::has_tag(
+                                    left,
+                                    extract_single_argument(args, "hasTag()", &access.loc)?,
+                                )),
                                 _ => {
                                     // have to add the "receiver" argument as
                                     // first in the list for the method call
@@ -1513,6 +1571,14 @@ impl std::fmt::Display for ExprNoExt {
                 maybe_with_parens(f, left)?;
                 write!(f, ".containsAny({right})")
             }
+            ExprNoExt::GetTag { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, ".getTag({right})")
+            }
+            ExprNoExt::HasTag { left, right } => {
+                maybe_with_parens(f, left)?;
+                write!(f, ".hasTag({right})")
+            }
             ExprNoExt::GetAttr { left, attr } => {
                 maybe_with_parens(f, left)?;
                 write!(f, "[\"{}\"]", attr.escape_debug())
@@ -1631,6 +1697,8 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
         Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
         Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |

@@ -1,14 +1,13 @@
 [package]
 name = "cedar-policy"
-edition = "2021"
-rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
-
-version = "4.0.0"
-license = "Apache-2.0"
-categories = ["compilers", "config"]
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+categories.workspace = true
 description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
-keywords = ["cedar", "authorization", "policy", "security"]
-homepage = "https://cedarpolicy.com"
+keywords.workspace = true
+homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
@@ -18,11 +17,11 @@ cedar-policy-formatter = { version = "=4.0.0", path = "../cedar-policy-formatter
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.20.0", features = ["lexer"] }
+lalrpop-util = { version = "0.21.0", features = ["lexer"] }
 itertools = "0.13"
 miette = "7.1.0"
 thiserror = "1.0"
-smol_str = { version = "0.2", features = ["serde"] }
+smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
 nonempty = "0.10"
@@ -31,6 +30,8 @@ nonempty = "0.10"
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
+semver = "1.0.23"
+lazy_static = "1.5.0"
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
@@ -46,8 +47,9 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "entity-tags"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
+entity-tags = ["cedar-policy-core/entity-tags", "cedar-policy-validator/entity-tags"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
@@ -58,6 +60,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
+miette = { version = "7.1.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"

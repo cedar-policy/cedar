@@ -22,9 +22,13 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
+#[cfg(feature = "entity-tags")]
+use cedar_policy_core::ast::Expr;
 use cedar_policy_core::ast::{EntityType, PolicyID};
 use cedar_policy_core::parser::Loc;
 
+#[cfg(feature = "entity-tags")]
+use crate::types::EntityLUB;
 use crate::types::Type;
 
 pub mod validation_errors;
@@ -87,6 +91,8 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
+//
+// This is NOT a publicly exported error type.
 #[derive(Clone, Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
 pub enum ValidationError {
     /// A policy contains an entity type that is not declared in the schema.
@@ -122,6 +128,16 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    #[cfg(feature = "entity-tags")]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    #[cfg(feature = "entity-tags")]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -150,6 +166,12 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
 }
 
 impl ValidationError {
@@ -266,6 +288,36 @@ impl ValidationError {
         .into()
     }
 
+    #[cfg(feature = "entity-tags")]
+    pub(crate) fn unsafe_tag_access(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityLUB>,
+        tag: Expr<Option<Type>>,
+    ) -> Self {
+        validation_errors::UnsafeTagAccess {
+            source_loc,
+            policy_id,
+            entity_ty,
+            tag,
+        }
+        .into()
+    }
+
+    #[cfg(feature = "entity-tags")]
+    pub(crate) fn no_tags_allowed(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityType>,
+    ) -> Self {
+        validation_errors::NoTagsAllowed {
+            source_loc,
+            policy_id,
+            entity_ty,
+        }
+        .into()
+    }
+
     pub(crate) fn undefined_extension(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -281,7 +333,6 @@ impl ValidationError {
 
     pub(crate) fn wrong_number_args(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
@@ -326,7 +377,6 @@ impl ValidationError {
 
     pub(crate) fn hierarchy_not_respected(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         in_lhs: Option<EntityType>,
         in_rhs: Option<EntityType>,
@@ -336,6 +386,18 @@ impl ValidationError {
             policy_id,
             in_lhs,
             in_rhs,
+        }
+        .into()
+    }
+
+    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
+    pub(crate) fn internal_invariant_violation(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+    ) -> Self {
+        validation_errors::InternalInvariantViolation {
+            source_loc,
+            policy_id,
         }
         .into()
     }

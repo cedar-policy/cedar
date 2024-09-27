@@ -22,6 +22,8 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
+#[cfg(feature = "entity-tags")]
+use crate::types::Type;
 use crate::types::{AttributeType, Attributes, OpenTag};
 
 /// Contains entity type information for use by the validator. The contents of
@@ -47,6 +49,11 @@ pub struct ValidatorEntityType {
     /// their type when they are present. Attempting to access an undeclared
     /// attribute under standard validation is an error regardless of this flag.
     pub(crate) open_attributes: OpenTag,
+
+    /// Tag type for this entity type. `None` indicates that entities of this
+    /// type are not allowed to have tags.
+    #[cfg(feature = "entity-tags")]
+    pub(crate) tags: Option<Type>,
 }
 
 impl ValidatorEntityType {
@@ -64,6 +71,13 @@ impl ValidatorEntityType {
     /// possible descendant in the schema.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         self.descendants.contains(ety)
+    }
+
+    /// Get the type of tags on this entity. `None` indicates that entities of
+    /// this type are not allowed to have tags.
+    #[cfg(feature = "entity-tags")]
+    pub fn tag_type(&self) -> Option<&Type> {
+        self.tags.as_ref()
     }
 }
 

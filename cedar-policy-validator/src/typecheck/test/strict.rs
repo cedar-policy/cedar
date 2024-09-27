@@ -37,7 +37,9 @@ use crate::{
     RawName, ValidationError, ValidationMode,
 };
 
-use super::test_utils::{assert_policy_typecheck_fails, expr_id_placeholder, get_loc};
+use super::test_utils::{
+    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, expr_id_placeholder, get_loc,
+};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
@@ -719,10 +721,11 @@ fn qualified_record_attr() {
 
     let src = "permit(principal, action, resource) when { context == {num_of_things: 1}};";
     let p = parse_policy_or_template(None, src).unwrap();
-    assert_policy_typecheck_fails(
-        schema,
-        p.clone(),
-        [ValidationError::incompatible_types(
+    let errors = assert_policy_typecheck_fails(schema, p.clone());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::incompatible_types(
             get_loc(src, "context == {num_of_things: 1}"),
             PolicyID::from_string("policy0"),
             [
@@ -743,6 +746,6 @@ fn qualified_record_attr() {
             ],
             LubHelp::AttributeQualifier,
             LubContext::Equality,
-        )],
+        )
     );
 }

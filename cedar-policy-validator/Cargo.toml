@@ -1,15 +1,14 @@
 [package]
 name = "cedar-policy-validator"
-edition = "2021"
-rust-version = "1.76.0" # minimum supported Rust version is currently 1.76.0 because `cedar-policy-core` requirement. Check with `cargo install cargo-msrv && cargo msrv --min 1.75.0`
-
-version = "4.0.0"
-license = "Apache-2.0"
-categories = ["compilers", "config"]
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+categories.workspace = true
 description = "Validator for the Cedar Policy language."
-keywords = ["cedar", "authorization", "policy", "security"]
-homepage = "https://cedarpolicy.com"
-repository = "https://github.com/cedar-policy/cedar"
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
@@ -21,10 +20,10 @@ thiserror = "1.0"
 itertools = "0.13"
 ref-cast = "1.0"
 unicode-security = "0.1.0"
-smol_str = { version = "0.2", features = ["serde"] }
+smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
-lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
 
@@ -48,6 +47,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 entity-manifest = []
+entity-tags = []
 
 [dev-dependencies]
 similar-asserts = "1.5.0"
@@ -56,4 +56,4 @@ cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", feature
 miette = { version = "7.1.0", features = ["fancy"] }
 
 [build-dependencies]
-lalrpop = "0.20.0"
+lalrpop = "0.21.0"
