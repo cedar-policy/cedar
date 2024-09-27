@@ -12,15 +12,14 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [4.1.0] - TBD
+Cedar Language Version: 4.0
+
 ### Added
 
 - Added `get_entity_literals` API (#1149).
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
-- Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
-  that provides the Entity Manifest: a data
-  structure that describes what data is required to satisfy a
-  Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 - Added public APIs to get language and SDK version numbers (#1219).
 
 ### Fixed
