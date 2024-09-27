@@ -492,6 +492,13 @@ impl Entity {
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
+
+    /// Add a set of ancestors to this `Entity`.
+    /// TODO why is `add_ancestor` pub(crate) instead of pub, and should this be too?
+    pub fn add_ancestors(&mut self, ancestors: HashSet<EntityUID>) {
+        self.ancestors.extend(ancestors);
+    }
+
     /// Mark the given `UID` as an ancestor of this `Entity`
     #[cfg(fuzzing)]
     pub fn add_ancestor(&mut self, uid: EntityUID) {

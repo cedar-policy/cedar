@@ -640,6 +640,17 @@ impl Type {
             },
         }
     }
+
+    /// Returns `true` when the type is a type of an entity
+    #[cfg(feature = "entity-manifest")]
+    pub(crate) fn is_entity_type(&self) -> bool {
+        matches!(
+            self,
+            Type::EntityOrRecord(EntityRecordKind::Entity(_))
+                | Type::EntityOrRecord(EntityRecordKind::AnyEntity)
+                | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. })
+        )
+    }
 }
 
 impl Display for Type {
