@@ -715,7 +715,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.1.0...main
+[4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
 [3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0
