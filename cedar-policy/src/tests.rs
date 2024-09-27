@@ -5719,6 +5719,8 @@ mod context_tests {
 mod policy_manipulation_functions_tests {
     use std::collections::BTreeMap;
 
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     #[test]
@@ -5748,27 +5750,31 @@ mod policy_manipulation_functions_tests {
         let policy_str = r###"permit(principal == User::"Alice", action, resource);"###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Bob").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_ne!(policy.to_string(), new_policy.to_string());
     }
 
@@ -5777,27 +5783,31 @@ mod policy_manipulation_functions_tests {
         let policy_str = r###"permit(principal, action == Action::"view", resource);"###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("Action").unwrap(),
-                EntityId::from_str("view").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("Action").unwrap(),
-                EntityId::from_str("view").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("Action").unwrap(),
-                EntityId::from_str("view").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("Action").unwrap(),
-                EntityId::from_str("read").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("read").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_ne!(policy.to_string(), new_policy.to_string());
     }
 
@@ -5806,27 +5816,31 @@ mod policy_manipulation_functions_tests {
         let policy_str = r###"permit(principal, action, resource == User::"Alice");"###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Bob").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_ne!(policy.to_string(), new_policy.to_string());
     }
 
@@ -5836,27 +5850,31 @@ mod policy_manipulation_functions_tests {
             r###"permit(principal, action, resource) when { principal == User::"Alice" };"###;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([(
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Alice").unwrap(),
-            ),
-            EntityUid::from_type_name_and_id(
-                EntityTypeName::from_str("User").unwrap(),
-                EntityId::from_str("Bob").unwrap(),
-            ),
-        )]));
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
         assert_ne!(policy.to_string(), new_policy.to_string());
     }
 
@@ -5866,49 +5884,71 @@ mod policy_manipulation_functions_tests {
         let policy = Policy::from_str(policy_str).expect("should succeed");
         let expected_policy_str = r###"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"###;
 
-        let new_policy = policy.sub_entity_literals(BTreeMap::from([
-            (
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("1").unwrap(),
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
                 ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("2").unwrap(),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
                 ),
-            ),
-            (
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("2").unwrap(),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
                 ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("1").unwrap(),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
                 ),
-            ),
-            (
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("1").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("2").unwrap(),
-                ),
-            ),
-            (
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("2").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("1").unwrap(),
-                ),
-            ),
-        ]));
+            ]))
+            .unwrap();
         assert_eq!(new_policy.to_string(), expected_policy_str.to_string());
+    }
+
+    #[test]
+    fn test_err_illegal_substitution() {
+        let policy_str = r###"permit(principal, action == Action::"1", resource);"###;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        assert_matches!(
+            policy.sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("1").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("2").unwrap(),
+                ),
+            )])),
+            Err(cedar_policy_core::est::FromJsonError::InvalidActionType(_))
+        );
     }
 }
 

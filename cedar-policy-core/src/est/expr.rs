@@ -15,8 +15,7 @@
  */
 
 use super::FromJsonError;
-use crate::ast::InputInteger;
-use crate::ast::{self, EntityUID};
+use crate::ast::{self, EntityUID, InputInteger};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -598,11 +597,12 @@ impl Expr {
                 ))),
                 ExprNoExt::Var(_) => Ok(self.clone()),
                 ExprNoExt::Slot(_) => Ok(self.clone()),
-                ExprNoExt::Not { arg } | ExprNoExt::Neg { arg } => {
-                    Ok(Expr::ExprNoExt(ExprNoExt::Not {
-                        arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
-                    }))
-                }
+                ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
+                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
+                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                })),
                 ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
                     left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
                     right: Arc::new((*right).clone().sub_entity_literals(mapping)?),

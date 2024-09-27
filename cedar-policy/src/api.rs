@@ -2944,7 +2944,10 @@ impl Policy {
 
     /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
-    pub fn sub_entity_literals(&self, mapping: BTreeMap<EntityUid, EntityUid>) -> Self {
+    pub fn sub_entity_literals(
+        &self,
+        mapping: BTreeMap<EntityUid, EntityUid>,
+    ) -> Result<Self, est::FromJsonError> {
         // PANIC SAFETY: This can't fail for a policy that was already constructed
         #[allow(clippy::expect_used)]
         let cloned_est = self
@@ -2961,17 +2964,14 @@ impl Policy {
             .sub_entity_literals(&mapping)
             .expect("Internal error, failed to sub entity literals.");
 
-        // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::expect_used)]
         let ast = est
             .clone()
-            .try_into_ast_policy(Some(self.ast.id().clone()))
-            .expect("Internal error, failed to create AST.");
+            .try_into_ast_policy(Some(self.ast.id().clone()))?;
 
-        Policy {
+        Ok(Policy {
             ast,
             lossless: LosslessPolicy::Est(est),
-        }
+        })
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {

@@ -396,7 +396,10 @@ impl CedarValueJson {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         match self.clone() {
-            CedarValueJson::ExprEscape { __expr } => Ok(self.clone()),
+            // Since we are modifying an already legal policy, this should be unreachable.
+            CedarValueJson::ExprEscape { __expr } => Err(JsonDeserializationError::ExprTag(
+                Box::new(JsonDeserializationErrorContext::Unknown),
+            )),
             CedarValueJson::EntityEscape { __entity } => {
                 let euid = EntityUID::try_from(__entity);
                 match euid {
@@ -412,19 +415,17 @@ impl CedarValueJson {
             CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
                 __extn: FnAndArg {
                     ext_fn: __extn.ext_fn,
-                    arg: Box::new((*__extn.arg).clone().sub_entity_literals(mapping)?),
+                    arg: Box::new((*__extn.arg).sub_entity_literals(mapping)?),
                 },
             }),
             CedarValueJson::Bool(_) => Ok(self.clone()),
             CedarValueJson::Long(_) => Ok(self.clone()),
             CedarValueJson::String(_) => Ok(self.clone()),
-            CedarValueJson::Set(v) => {
-                let mut new_v = vec![];
-                for j in v {
-                    new_v.push(j.sub_entity_literals(mapping)?)
-                }
-                Ok(CedarValueJson::Set(new_v))
-            }
+            CedarValueJson::Set(v) => Ok(CedarValueJson::Set(
+                v.into_iter()
+                    .map(|e| e.sub_entity_literals(mapping))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
             CedarValueJson::Record(r) => {
                 let mut new_m = BTreeMap::new();
                 for (k, v) in r.values {
