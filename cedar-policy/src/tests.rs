@@ -5947,7 +5947,9 @@ mod policy_manipulation_functions_tests {
                     EntityId::from_str("2").unwrap(),
                 ),
             )])),
-            Err(cedar_policy_core::est::FromJsonError::InvalidActionType(_))
+            Err(PolicyFromJsonError {
+                inner: cedar_policy_core::est::FromJsonError::InvalidActionType(_)
+            })
         );
     }
 }

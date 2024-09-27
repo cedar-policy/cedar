@@ -2947,7 +2947,7 @@ impl Policy {
     pub fn sub_entity_literals(
         &self,
         mapping: BTreeMap<EntityUid, EntityUid>,
-    ) -> Result<Self, est::FromJsonError> {
+    ) -> Result<Self, PolicyFromJsonError> {
         // PANIC SAFETY: This can't fail for a policy that was already constructed
         #[allow(clippy::expect_used)]
         let cloned_est = self
@@ -2964,9 +2964,10 @@ impl Policy {
             .sub_entity_literals(&mapping)
             .expect("Internal error, failed to sub entity literals.");
 
-        let ast = est
-            .clone()
-            .try_into_ast_policy(Some(self.ast.id().clone()))?;
+        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
+            Ok(ast) => ast,
+            Err(e) => return Err(e.into()),
+        };
 
         Ok(Policy {
             ast,
