@@ -447,7 +447,7 @@ impl Validator {
                         _ => child_level_info,
                     }
                 }
-                // Strict validation passed, so annotating the AST will succeed
+                // PANIC SAFETY: Strict validation passed, so annotating the AST will succeed
                 #[allow(clippy::unreachable)]
                 None => unreachable!("Expected type-annotated AST"),
             },
