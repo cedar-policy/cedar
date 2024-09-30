@@ -369,7 +369,7 @@ impl Node<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::UnreservedId`. Fails for reserved or invalid identifiers
     pub(crate) fn to_unreserved_ident(&self) -> Result<ast::UnreservedId> {
         self.to_valid_ident()
-            .and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+            .and_then(|id| id.try_into().map_err(|err| self.to_ast_err(err).into()))
     }
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self) -> Result<ast::Id> {
