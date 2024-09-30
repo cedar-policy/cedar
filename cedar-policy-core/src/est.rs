@@ -151,7 +151,7 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|v, _| v);
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -172,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
             action: action.into(),
             resource: resource.into(),
             conditions,
-            annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
+            annotations,
         })
     }
 }
@@ -262,7 +262,7 @@ impl Policy {
             None,
             self.annotations
                 .into_iter()
-                .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
+                .map(|(key, val)| (key, ast::Annotation::with_optional_value(val, None)))
                 .collect(),
             self.effect,
             self.principal.try_into()?,
@@ -308,7 +308,10 @@ impl From<ast::Policy> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
+                // When converting from AST to EST, we will always interpret an
+                // empty-string annotation as an explicit `""` rather than
+                // `null` (which is implicitly equivalent to `""`).
+                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
                 .collect(),
         }
     }
@@ -325,7 +328,10 @@ impl From<ast::Template> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
+                // When converting from AST to EST, we will always interpret an
+                // empty-string annotation as an explicit `""` rather than
+                // `null` (which is implicitly equivalent to `""`)
+                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
                 .collect(),
         }
     }
@@ -659,8 +665,7 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
+        // during the lossy transform to AST, the `null` annotation becomes an empty string
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -681,7 +686,7 @@ mod test {
                         }
                     }
                 ],
-                "annotations": { "foo": null, }
+                "annotations": { "foo": "", }
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();

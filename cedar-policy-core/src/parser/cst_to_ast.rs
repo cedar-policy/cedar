@@ -204,7 +204,9 @@ impl Node<Option<cst::Policy>> {
         let maybe_effect = policy.effect.to_effect();
 
         // convert annotations
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
 
         // convert scope
         let maybe_scope = policy.extract_scope();
@@ -232,7 +234,7 @@ impl Node<Option<cst::Policy>> {
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
         Ok(construct_template_policy(
             id,
-            annotations,
+            annotations.into(),
             effect,
             principal,
             action,
@@ -307,11 +309,14 @@ impl cst::Policy {
     }
 
     /// Get annotations from the `cst::Policy`
-    pub fn get_ast_annotations(&self) -> Result<ast::Annotations> {
+    pub fn get_ast_annotations<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<BTreeMap<ast::AnyId, T>> {
         let mut annotations = BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
         for node in self.annotations.iter() {
-            match node.to_kv_pair() {
+            match node.to_kv_pair(&annotation_constructor) {
                 Ok((k, v)) => {
                     use std::collections::btree_map::Entry;
                     match annotations.entry(k) {
@@ -336,7 +341,7 @@ impl cst::Policy {
         }
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(annotations.into()),
+            None => Ok(annotations),
         }
     }
 }
@@ -344,7 +349,10 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self) -> Result<(ast::AnyId, ast::Annotation)> {
+    pub fn to_kv_pair<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<(ast::AnyId, T)> {
         let anno = self.try_as_inner()?;
 
         let maybe_key = anno.key.to_any_ident();
@@ -363,13 +371,7 @@ impl Node<Option<cst::Annotation>> {
             .transpose();
 
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
-        Ok((
-            k,
-            ast::Annotation {
-                val: v,
-                loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
-            },
-        ))
+        Ok((k, annotation_constructor(v, &self.loc)))
     }
 }
 
@@ -2427,10 +2429,7 @@ mod tests {
         let policy = assert_parse_policy_succeeds(r#"@anno permit(principal,action,resource);"#);
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
-            Some(annotation) => {
-                assert_eq!(annotation.val, None);
-                assert_eq!(annotation.as_ref(), "");
-            }
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
     }
 
@@ -2454,17 +2453,11 @@ mod tests {
             assert_parse_policy_succeeds(r#"@foo @bar permit(principal,action,resource);"#);
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("foo")),
-            Some(annotation) => {
-                assert_eq!(annotation.val, None);
-                assert_eq!(annotation.as_ref(), "");
-            }
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("bar")),
-            Some(annotation) => {
-                assert_eq!(annotation.val, None);
-                assert_eq!(annotation.as_ref(), "");
-            }
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
     }
 

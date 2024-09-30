@@ -20,7 +20,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -1085,11 +1085,7 @@ impl From<StaticPolicy> for TemplateBody {
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.annotations.iter() {
-            write!(f, "@{k}")?;
-            if let Some(v) = &v.val {
-                write!(f, "(\"{}\")", v.escape_debug())?;
-            }
-            writeln!(f)?;
+            writeln!(f, "@{k}(\"{}\")", v.val.escape_debug())?;
         }
         write!(
             f,
@@ -1167,19 +1163,29 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 /// Struct which holds the value of a particular annotation
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug, PartialOrd, Ord)]
 pub struct Annotation {
-    /// Annotation value. `None` for annotations without a value, i.e., `@foo`.
-    /// An annotation without a value should be treated as equivalent to the
-    /// value being `""`. This interpretation is implemented by the `AsRef<str>`
-    /// impl below.
-    pub val: Option<SmolStr>,
+    /// Annotation value
+    pub val: SmolStr,
     /// Source location. Note this is the location of _the entire key-value
     /// pair_ for the annotation, not just `val` above
     pub loc: Option<Loc>,
 }
 
+impl Annotation {
+    /// Construct an Annotation with an optional value.  This function is used
+    /// to construct annotations from the CST and EST representation where a
+    /// value is not required, but an absent value is equivalent to `""`.
+    /// Here, a `None` constructs an annotation containing the value `""`.`
+    pub fn with_optional_value(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
+        Self {
+            val: val.unwrap_or_else(|| "".to_smolstr()),
+            loc,
+        }
+    }
+}
+
 impl AsRef<str> for Annotation {
     fn as_ref(&self) -> &str {
-        self.val.as_ref().map(SmolStr::as_str).unwrap_or("")
+        &self.val
     }
 }
 
@@ -1711,11 +1717,7 @@ impl ActionConstraint {
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
-            write!(f, "@{k}")?;
-            if let Some(v) = &v.val {
-                write!(f, "(\"{}\")", v.escape_debug())?;
-            }
-            writeln!(f)?;
+            writeln!(f, "@{k}(\"{}\")", v.val.escape_debug())?;
         }
         write!(
             f,
