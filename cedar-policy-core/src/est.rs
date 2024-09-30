@@ -172,10 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
             action: action.into(),
             resource: resource.into(),
             conditions,
-            annotations: annotations
-                .into_iter()
-                .map(|(k, v)| (k, v.into_raw_val()))
-                .collect(),
+            annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
         })
     }
 }
@@ -265,7 +262,7 @@ impl Policy {
             None,
             self.annotations
                 .into_iter()
-                .map(|(key, val)| (key, ast::Annotation::new(val, None)))
+                .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
                 .collect(),
             self.effect,
             self.principal.try_into()?,
@@ -311,7 +308,7 @@ impl From<ast::Policy> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.raw_val().cloned()))
+                .map(|(k, v)| (k.clone(), v.val.clone()))
                 .collect(),
         }
     }
@@ -328,7 +325,7 @@ impl From<ast::Template> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.raw_val().cloned()))
+                .map(|(k, v)| (k.clone(), v.val.clone()))
                 .collect(),
         }
     }
