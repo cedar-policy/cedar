@@ -12,12 +12,15 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Added `sub_entity_literals` API (#1233).
+
 ## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0
 
 ### Added
 
-- Added `sub_entity_literals` API (#1233).
 - Added `get_entity_literals` API (#1149).
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
