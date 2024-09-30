@@ -66,6 +66,7 @@ In the (rarer) case that your PR is to a `release/X.Y.Z` branch rather than `mai
 ## Review Process
 
 We deeply appreciate everyone who takes the time to make a contribution. We will review all contributions as quickly as possible. As a reminder, [opening an issue](https://github.com/cedar-policy/cedar/issues) discussing your change before you make it is the best way to smooth the PR process. This will prevent a rejection because someone else is already working on the problem, or because the solution is incompatible with the architectural direction.
+Also take a minute to review our [style guide](style_guide.md). Most of this is handled by automated tooling, but there are a few conventions around documentation and error messages you should review before making a larger contribution.
 
 During the PR process, expect that there will be some back-and-forth. Please try to respond to comments in a timely fashion, and if you don't wish to continue with the PR, let us know. If a PR takes too many iterations for its complexity or size, we may reject it. Additionally, if you stop responding we may close the PR as abandoned. In either case, if you feel this was done in error, please add a comment on the PR.
 
