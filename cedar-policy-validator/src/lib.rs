@@ -59,8 +59,8 @@ mod str_checks;
 pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
-use typecheck::Typechecker;
 #[cfg(feature = "level-validate")]
+use typecheck::PolicyCheck;
 use typecheck::Typechecker;
 
 pub mod types;
@@ -136,7 +136,7 @@ impl Validator {
 
     #[cfg(feature = "level-validate")]
     /// Validate all templates, links, and static policies in a policy set.
-    /// Include level validation with level set to `max_deref_level` (see RFC 76).
+    /// Include level validation with `max_deref_level` (see RFC 76).
     /// Return a `ValidationResult`.
     pub fn validate_with_level(
         &self,
@@ -313,7 +313,6 @@ impl Validator {
                 PolicyCheck::Irrelevant(_) => (), //Don't report level violations if typechecking already failed
             }
         }
-        // TODO: maybe only give one err for all typecheck envs?
         errs
     }
 
@@ -331,12 +330,12 @@ impl Validator {
                 }
                 p
             }
-            None => panic!("Should have at least one element"),
+            None => (EntityDerefLevel { level: None }, None),
         }
     }
 
     #[cfg(feature = "level-validate")]
-    ///Walk the type-annotated AST and compute the used level as well as the location where the `allowed_level` is violated by the largest amount
+    ///Walk the type-annotated AST and compute the used level and possible violation
     fn check_entity_deref_level_helper<'a>(
         &'a self,
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
@@ -442,12 +441,15 @@ impl Validator {
                             }
                         }
                         Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
-                            panic!("AnyEntity not supported")
+                            // AnyEntity cannot be dereferenced
+                            (EntityDerefLevel { level: Some(0) }, None)
                         }
                         _ => child_level_info,
                     }
                 }
-                None => panic!("Expected type-annotated AST"),
+                // Strict validation passed, so annotating the AST will succeed
+                #[allow(clippy::unreachable)]
+                None => unreachable!("Expected type-annotated AST"),
             },
             ExprKind::Like { expr, .. } | ExprKind::Is { expr, .. } => {
                 self.check_entity_deref_level_helper(expr, max_allowed_level, policy_id)

@@ -450,7 +450,7 @@ impl Diagnostic for HierarchyNotRespected {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy)]
-/// Represents how many entity dereferences can be applied to a node
+/// Represents how many entity dereferences can be applied to a node.
 /// `None` represents infinity.
 pub struct EntityDerefLevel {
     /// `None` represents infinity.

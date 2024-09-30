@@ -96,9 +96,8 @@ pub Schema: ASchema = {
 Namespace: Node<Namespace> = {
     <l:@L> NAMESPACE <p: Path> "{" <decls: Decl*> "}" <r:@R>
         => Node::with_source_loc(Namespace { name: Some(Node::with_source_loc(p, Loc::new(l..r, Arc::clone(src)))), decls}, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <decl: Decl> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
+     <l:@L> <decl: Decl> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
 }
-
 
 // Decl := Entity | Action | TypeDecl
 Decl: Node<Declaration> = {
