@@ -46,6 +46,7 @@
 /// Rust public API
 mod api;
 
+pub use api::version::{get_lang_version, get_sdk_version};
 pub use api::*;
 
 /// FFI utilities, see comments in the module itself

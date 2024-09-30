@@ -59,6 +59,29 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
 
+// PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
+#[allow(clippy::unwrap_used)]
+pub(crate) mod version {
+    use lazy_static::lazy_static;
+    use semver::Version;
+
+    lazy_static! {
+        // Cedar Rust SDK Semantic Versioning version
+        static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
+        // Cedar language version
+        // The patch version field may be unnecessary
+        static ref LANG_VERSION: Version = Version::new(4, 0, 0);
+    }
+    /// Get the Cedar SDK Semantic Versioning version
+    pub fn get_sdk_version() -> Version {
+        SDK_VERSION.clone()
+    }
+    /// Get the Cedar language version
+    pub fn get_lang_version() -> Version {
+        LANG_VERSION.clone()
+    }
+}
+
 /// Entity datatype
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
@@ -2940,6 +2963,39 @@ impl Policy {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// (as a single, non-sequential substitution).
+    pub fn sub_entity_literals(
+        &self,
+        mapping: BTreeMap<EntityUid, EntityUid>,
+    ) -> Result<Self, PolicyFromJsonError> {
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let cloned_est = self
+            .lossless
+            .est()
+            .expect("Internal error, failed to construct est.")
+            .clone();
+
+        let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
+
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let est = cloned_est
+            .sub_entity_literals(&mapping)
+            .expect("Internal error, failed to sub entity literals.");
+
+        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
+            Ok(ast) => ast,
+            Err(e) => return Err(e.into()),
+        };
+
+        Ok(Policy {
+            ast,
+            lossless: LosslessPolicy::Est(est),
+        })
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {

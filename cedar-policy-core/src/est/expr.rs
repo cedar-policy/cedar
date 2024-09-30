@@ -15,8 +15,7 @@
  */
 
 use super::FromJsonError;
-use crate::ast;
-use crate::ast::InputInteger;
+use crate::ast::{self, EntityUID, InputInteger};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -32,7 +31,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// Serde JSON structure for a Cedar expression in the EST format
@@ -583,6 +582,162 @@ impl Expr {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(s))) => Ok(s),
             _ => Err(self),
+        }
+    }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            Expr::ExprNoExt(e) => match e.clone() {
+                ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
+                    v.sub_entity_literals(mapping)?,
+                ))),
+                ExprNoExt::Var(_) => Ok(self.clone()),
+                ExprNoExt::Slot(_) => Ok(self.clone()),
+                ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
+                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
+                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::NotEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::NotEq {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::In { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::In {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Less { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Less {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::LessEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::LessEq {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Greater { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Greater {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::GreaterEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GreaterEq {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::And { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::And {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Or { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Or {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Add { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Add {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Sub { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Sub {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Mul { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Mul {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Contains { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Contains {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::ContainsAll { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAll {
+                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    }))
+                }
+                ExprNoExt::ContainsAny { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAny {
+                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    }))
+                }
+                ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::HasTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::HasTag {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::GetAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::GetAttr {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    attr,
+                })),
+                ExprNoExt::HasAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::HasAttr {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    attr,
+                })),
+                ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
+                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    pattern,
+                })),
+                ExprNoExt::Is {
+                    left,
+                    entity_type,
+                    in_expr,
+                } => match in_expr {
+                    Some(in_expr) => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        entity_type,
+                        in_expr: Some(Arc::new((*in_expr).clone().sub_entity_literals(mapping)?)),
+                    })),
+                    None => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        entity_type,
+                        in_expr: None,
+                    })),
+                },
+                ExprNoExt::If {
+                    cond_expr,
+                    then_expr,
+                    else_expr,
+                } => Ok(Expr::ExprNoExt(ExprNoExt::If {
+                    cond_expr: Arc::new((*cond_expr).clone().sub_entity_literals(mapping)?),
+                    then_expr: Arc::new((*then_expr).clone().sub_entity_literals(mapping)?),
+                    else_expr: Arc::new((*else_expr).clone().sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Set(v) => {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.sub_entity_literals(mapping)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
+                }
+                ExprNoExt::Record(m) => {
+                    let mut new_m = HashMap::new();
+                    for (k, v) in m {
+                        new_m.insert(k, v.sub_entity_literals(mapping)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
+                }
+            },
+            Expr::ExtFuncCall(e_fn_call) => {
+                let mut new_m = HashMap::new();
+                for (k, v) in e_fn_call.call {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.sub_entity_literals(mapping)?);
+                    }
+                    new_m.insert(k, new_v);
+                }
+                Ok(Expr::ExtFuncCall(ExtFuncCall { call: new_m }))
+            }
         }
     }
 }
