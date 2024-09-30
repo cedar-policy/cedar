@@ -31,9 +31,12 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
-use cedar_policy_core::ast::{BinaryOp, Policy, PolicyID, PolicySet, Template};
+#[cfg(feature = "level-validate")]
+use cedar_policy_core::ast::{BinaryOp, PolicyID};
+use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+#[cfg(feature = "level-validate")]
 use validation_errors::{EntityDerefLevel, EntityDerefLevelViolation};
 
 #[cfg(feature = "entity-manifest")]
@@ -56,7 +59,10 @@ mod str_checks;
 pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
-use typecheck::{PolicyCheck, Typechecker};
+use typecheck::Typechecker;
+#[cfg(feature = "level-validate")]
+use typecheck::Typechecker;
+
 pub mod types;
 
 /// Used to select how a policy will be validated.
