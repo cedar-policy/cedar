@@ -1085,7 +1085,7 @@ impl From<StaticPolicy> for TemplateBody {
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{k}(\"{}\")", v.val.escape_debug())?;
+            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
         }
         write!(
             f,
@@ -1717,7 +1717,7 @@ impl ActionConstraint {
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
-            writeln!(f, "@{k}(\"{}\")", v.val.escape_debug())?;
+            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
         }
         write!(
             f,
