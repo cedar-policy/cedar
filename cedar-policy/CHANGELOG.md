@@ -12,7 +12,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
-## [4.1.0] - TBD
+## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0
 
 ### Added
