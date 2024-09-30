@@ -32,7 +32,7 @@ assert_cmd = "2.0"
 tempfile = "3"
 glob = "0.3.1"
 predicates = "3.1.0"
-rstest = "0.22.0"
+rstest = "0.23.0"
 
 # We override the name of the binary for src/main.rs, which otherwise would be
 # cedar-policy-cli (matching the crate name).
