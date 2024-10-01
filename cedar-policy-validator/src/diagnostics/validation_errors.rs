@@ -454,6 +454,7 @@ impl Diagnostic for HierarchyNotRespected {
 /// `None` represents infinity.
 pub struct EntityDerefLevel {
     /// `None` represents infinity.
+    /// A negative value `-n` represents `n` too many dereferences
     pub level: Option<i64>,
 }
 
@@ -533,7 +534,7 @@ impl EntityDerefLevel {
     }
 }
 
-/// Structure containing details about entity derefernce level violation
+/// Structure containing details about entity dereference level violation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
 pub struct EntityDerefLevelViolation {

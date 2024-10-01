@@ -135,24 +135,24 @@ impl Validator {
     }
 
     #[cfg(feature = "level-validate")]
-    /// Validate all templates, links, and static policies in a policy set.
-    /// Include level validation with `max_deref_level` (see RFC 76).
+    /// Strictly validate all templates, links, and static policies in a policy set.
+    /// If strict validation passes, also run level validation with `max_deref_level`
+    /// (see RFC 76).
     /// Return a `ValidationResult`.
-    pub fn validate_with_level(
+    pub fn strict_validate_with_level(
         &self,
         policies: &PolicySet,
-        mode: ValidationMode,
         max_deref_level: u32,
     ) -> ValidationResult {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
+            .map(|p| self.strict_validate_policy_with_level(p, max_deref_level))
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
         let link_errs = policies
             .policies()
-            .filter_map(|p| self.validate_slots(p, mode))
+            .filter_map(|p| self.validate_slots(p, ValidationMode::Strict))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
@@ -196,49 +196,33 @@ impl Validator {
     }
 
     #[cfg(feature = "level-validate")]
-    /// Run all validations against a single static policy or template (note
+    /// Run `validate_policy` in strict mode against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
-    /// validation errors and warnings in the returned iterators. Includes
-    /// level validation (see RFC 76).
-    fn validate_policy_with_level<'a>(
+    /// validation errors and warnings in the returned iterators.
+    /// If strict validation passes, we will also perform level validation (see RFC 76).
+    fn strict_validate_policy_with_level<'a>(
         &'a self,
         p: &'a Template,
-        mode: ValidationMode,
         max_deref_level: u32,
     ) -> (
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let validation_errors = if mode.is_partial() {
-            // We skip `validate_entity_types`, `validate_action_ids`, and
-            // `validate_action_application` passes for partial schema
-            // validation because there may be arbitrary extra entity types and
-            // actions, so we can never claim that one doesn't exist.
-            None
-        } else {
-            Some(
-                self.validate_entity_types(p)
-                    .chain(self.validate_action_ids(p))
-                    // We could usefully update this pass to apply to partial
-                    // schema if it only failed when there is a known action
-                    // applied to known principal/resource entity types that are
-                    // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
-            )
-        }
-        .into_iter()
-        .flatten();
-        let (type_errors, warnings) = self.typecheck_policy(p, mode);
-        let levels_errors = self.check_entity_deref_level(
-            p,
-            &EntityDerefLevel::from(Some(max_deref_level)),
-            p.id(),
-        );
+        let (errors, warnings) = self.validate_policy(p, ValidationMode::Strict);
 
-        (
-            validation_errors.chain(type_errors).chain(levels_errors),
-            warnings,
-        )
+        let mut peekable_errors = errors.peekable();
+
+        // Only perform level validation if strict validation passed.
+        if peekable_errors.peek().is_none() {
+            let levels_errors = self.check_entity_deref_level(
+                p,
+                &EntityDerefLevel::from(Some(max_deref_level)),
+                p.id(),
+            );
+            (peekable_errors.chain(levels_errors), warnings)
+        } else {
+            (peekable_errors.into_iter().chain(vec![]), warnings)
+        }
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -320,24 +304,18 @@ impl Validator {
 
     #[cfg(feature = "level-validate")]
     fn min(
-        v: Vec<(EntityDerefLevel, Option<EntityDerefLevelViolation>)>,
+        v: impl IntoIterator<Item = (EntityDerefLevel, Option<EntityDerefLevelViolation>)>,
     ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
-        match v.first() {
-            Some(e) => {
-                let mut p = e.clone();
-                for e in v {
-                    if e.0 < p.0 {
-                        p = e.clone();
-                    }
-                }
-                p
-            }
+        let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
+        match p {
+            Some(p) => p.clone(),
             None => (EntityDerefLevel { level: Some(0) }, None),
         }
     }
 
     #[cfg(feature = "level-validate")]
-    ///Walk the type-annotated AST and compute the used level and possible violation
+    /// Walk the type-annotated AST and compute the used level and possible violation
+    /// Returns a tuple of `(actual level used, optional violation information)`
     fn check_entity_deref_level_helper<'a>(
         &'a self,
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,

@@ -3925,7 +3925,7 @@ mod partial_schema {
 
 #[cfg(feature = "level-validate")]
 mod level_validation_tests {
-    use crate::{Policy, PolicySet, ValidationError, ValidationMode, Validator};
+    use crate::{Policy, PolicySet, ValidationError, Validator};
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -3977,7 +3977,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        let result = validator.strict_validate_with_level(&set, 0);
         assert!(result.validation_passed());
     }
 
@@ -3991,7 +3991,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        let result = validator.strict_validate_with_level(&set, 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         assert_matches!(
