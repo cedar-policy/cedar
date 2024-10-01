@@ -37,7 +37,7 @@ For example, `#[non_exhaustive]` should never be used for `EvaluationError` or o
 The enum itself, and also each of the member structs, should implement `miette::Diagnostic` and `thiserror::Error`.
 Both of these should be automatically derived when possible, and the `#[error(...)]` macro should be used to generate `Display` implementations.
 For more complex error it is occasionally easier to manually implement `Display`.
-Manual implementation of `miette::Diagnostic` is less common, but is occasionally necessary to work around limitations in derive macro.
+Manual implementation of `miette::Diagnostic` is less common, but is occasionally necessary to work around limitations in the derive macro.
 We use a [module of internal macros](https://github.com/cedar-policy/cedar/blob/main/cedar-policy-core/src/error_macros.rs) to help in these situations.
 
 By ensuring the internal structs have private fields we are free to change details in the error without making a breaking change to our API.
