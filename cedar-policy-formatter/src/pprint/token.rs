@@ -54,7 +54,7 @@ impl<'src> Comment<'src> {
         }
     }
 
-    pub fn leading_comment(&self) -> &Vec<&'src str> {
+    pub fn leading_comment(&self) -> &[&'src str] {
         &self.leading_comment
     }
 
