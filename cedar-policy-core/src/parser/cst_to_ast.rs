@@ -471,14 +471,14 @@ impl ast::UnreservedId {
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
             #[cfg(feature = "entity-tags")]
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
-                .map(|arg| construct_method_getTag(e, arg, loc.clone())),
+                .map(|arg| construct_method_get_tag(e, arg, loc.clone())),
             #[cfg(not(feature = "entity-tags"))]
             "getTag" => {
                 Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
             }
             #[cfg(feature = "entity-tags")]
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
-                .map(|arg| construct_method_hasTag(e, arg, loc.clone())),
+                .map(|arg| construct_method_has_tag(e, arg, loc.clone())),
             #[cfg(not(feature = "entity-tags"))]
             "hasTag" => {
                 Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
@@ -1825,11 +1825,11 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
         .contains_any(e0, e1)
 }
 #[cfg(feature = "entity-tags")]
-fn construct_method_getTag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
+fn construct_method_get_tag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_tag(e0, e1)
 }
 #[cfg(feature = "entity-tags")]
-fn construct_method_hasTag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
+fn construct_method_has_tag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).has_tag(e0, e1)
 }
 
