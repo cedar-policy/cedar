@@ -2670,6 +2670,22 @@ mod tests {
     }
 
     #[test]
+    fn construct_invalid_get_var() {
+        let src = r#"
+            {"principal":1, "two":"two"}[principal]
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: principal")
+                .exactly_one_underline("principal")
+                .build(),
+        );
+    }
+
+    #[test]
     fn construct_has_1() {
         let expr = assert_parse_expr_succeeds(
             r#"
@@ -2794,6 +2810,42 @@ mod tests {
                 r"string\\\*with\\\*backslashes\\\*and\\\*stars"
             );
         });
+    }
+
+    #[test]
+    fn construct_like_var() {
+        let src = r#"
+            "principal" like principal
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `principal`",
+            )
+            .exactly_one_underline("principal")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn construct_like_name() {
+        let src = r#"
+            "foo::bar::baz" like foo::bar
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `foo::bar`",
+            )
+            .exactly_one_underline("foo::bar")
+            .build(),
+        );
     }
 
     #[test]
@@ -3884,6 +3936,15 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("unexpected token `is`")
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
                     .build(),
+            ),
+            (
+                // TODO #1252: Improve error message and help text for `is <string-lit>`
+                r#"permit(principal, action, resource) when { principal is "User" };"#,
+                ExpectedErrorMessageBuilder::error(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User`"#,
+                ).help(
+                    "try using `==` to test for equality"
+                ).exactly_one_underline("\"User\"").build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
