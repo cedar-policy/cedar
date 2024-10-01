@@ -461,7 +461,7 @@ impl Display for EntityDerefLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         match self.level {
             Some(l) => write!(f, "{l}"),
-            None => write!(f, "INF"),
+            None => write!(f, "infinity"),
         }
     }
 }
@@ -551,9 +551,7 @@ impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!(
-            "Consider increasing the level in the schema"
-        )))
+        Some(Box::new(format!("Consider increasing the level")))
     }
 }
 

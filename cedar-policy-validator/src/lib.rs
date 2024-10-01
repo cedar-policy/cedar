@@ -309,7 +309,9 @@ impl Validator {
                         None => (),
                     }
                 }
-                PolicyCheck::Fail(e) => println!("Typechecking failed: {:?}", e),
+                // PANIC SAFETY: We only validate the level after strict validation passed
+                #[allow(clippy::unreachable)]
+                PolicyCheck::Fail(_) => unreachable!(),
                 PolicyCheck::Irrelevant(_) => (), //Don't report level violations if typechecking already failed
             }
         }
@@ -330,7 +332,7 @@ impl Validator {
                 }
                 p
             }
-            None => (EntityDerefLevel { level: None }, None),
+            None => (EntityDerefLevel { level: Some(0) }, None),
         }
     }
 
@@ -829,7 +831,7 @@ mod levels_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > true};"#;
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
         let p = parser::parse_policy(None, src).unwrap();
         set.add_static(p).unwrap();
 
