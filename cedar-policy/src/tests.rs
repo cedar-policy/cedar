@@ -6126,7 +6126,7 @@ mod reserved_keywords_in_policies {
             assert_invalid_expression(
                 format!("principal.{id} == \"foo\""),
                 RESERVED_NAMESPACE_MSG(id),
-                "princip".into(), // TODO(#1221): wrong source is used
+                id.into(),
             );
         });
     }
@@ -6195,7 +6195,7 @@ mod reserved_keywords_in_policies {
             assert_invalid_expression(
                 format!("context.{id}(1)"),
                 RESERVED_NAMESPACE_MSG(id),
-                "context".into(), // TODO(#1221): wrong source is used
+                id.into(),
             );
         });
 
