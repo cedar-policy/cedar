@@ -53,6 +53,7 @@ pub struct ValidatorEntityType {
     /// Tag type for this entity type. `None` indicates that entities of this
     /// type are not allowed to have tags.
     #[cfg(feature = "entity-tags")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tags: Option<Type>,
 }
 
