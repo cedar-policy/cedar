@@ -28,7 +28,7 @@ console.log(cedar.getCedarVersion());
 Importing the esm version using esm async import:
 
 ```
-import('@cedar-policy/cedar-wasm')
+import('@cedar-policy/cedar-wasm/nodejs')
   .then(cedar => console.log(cedar.getCedarVersion()));
 ```
 
