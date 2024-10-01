@@ -77,19 +77,19 @@ pub struct Fragment<N>(
         feature = "wasm",
         tsify(type = "Record<string, NamespaceDefinition<N>>")
     )]
-    pub HashMap<Option<Name>, NamespaceDefinition<N>>,
+    pub BTreeMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
 fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawName>>(
     deserializer: D,
-) -> std::result::Result<HashMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
+) -> std::result::Result<BTreeMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let raw: HashMap<SmolStr, NamespaceDefinition<N>> =
+    let raw: BTreeMap<SmolStr, NamespaceDefinition<N>> =
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-    Ok(HashMap::from_iter(
+    Ok(BTreeMap::from_iter(
         raw.into_iter()
             .map(|(key, value)| {
                 let key = if key.is_empty() {
@@ -174,7 +174,7 @@ impl<N: Display> Fragment<N> {
 
 /// An [`UnreservedId`] that cannot be reserved JSON schema keywords
 /// like `Set`, `Long`, and etc.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
@@ -291,13 +291,13 @@ pub struct ReservedCommonTypeBasenameError {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition<N> {
     #[serde(default)]
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<CommonTypeId, Type<N>>,
+    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<UnreservedId, EntityType<N>>,
+    pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub actions: HashMap<SmolStr, ActionType<N>>,
+    pub actions: BTreeMap<SmolStr, ActionType<N>>,
 }
 
 impl<N> NamespaceDefinition<N> {
@@ -306,7 +306,7 @@ impl<N> NamespaceDefinition<N> {
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
-            common_types: HashMap::new(),
+            common_types: BTreeMap::new(),
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
         }
@@ -2602,12 +2602,12 @@ mod test_json_roundtrip {
 
     #[test]
     fn empty_namespace() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             None,
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::new(),
-                actions: HashMap::new(),
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::new(),
+                actions: BTreeMap::new(),
             },
         )]));
         roundtrip(fragment);
@@ -2615,12 +2615,12 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_namespace() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             Some("a".parse().unwrap()),
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::new(),
-                actions: HashMap::new(),
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::new(),
+                actions: BTreeMap::new(),
             },
         )]));
         roundtrip(fragment);
@@ -2628,11 +2628,11 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_entity_types() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             None,
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::from([(
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::from([(
                     "a".parse().unwrap(),
                     EntityType {
                         member_of_types: vec!["a".parse().unwrap()],
@@ -2643,7 +2643,7 @@ mod test_json_roundtrip {
                         tags: None,
                     },
                 )]),
-                actions: HashMap::from([(
+                actions: BTreeMap::from([(
                     "action".into(),
                     ActionType {
                         attributes: None,
@@ -2667,12 +2667,12 @@ mod test_json_roundtrip {
 
     #[test]
     fn multiple_namespaces() {
-        let fragment = Fragment(HashMap::from([
+        let fragment = Fragment(BTreeMap::from([
             (
                 Some("foo".parse().unwrap()),
                 NamespaceDefinition {
-                    common_types: HashMap::new(),
-                    entity_types: HashMap::from([(
+                    common_types: BTreeMap::new(),
+                    entity_types: BTreeMap::from([(
                         "a".parse().unwrap(),
                         EntityType {
                             member_of_types: vec!["a".parse().unwrap()],
@@ -2685,15 +2685,15 @@ mod test_json_roundtrip {
                             tags: None,
                         },
                     )]),
-                    actions: HashMap::new(),
+                    actions: BTreeMap::new(),
                 },
             ),
             (
                 None,
                 NamespaceDefinition {
-                    common_types: HashMap::new(),
-                    entity_types: HashMap::new(),
-                    actions: HashMap::from([(
+                    common_types: BTreeMap::new(),
+                    entity_types: BTreeMap::new(),
+                    actions: BTreeMap::from([(
                         "action".into(),
                         ActionType {
                             attributes: None,

@@ -276,7 +276,7 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: HashMap<CommonTypeId, json_schema::Type<RawName>>,
+        schema_file_type_def: BTreeMap<CommonTypeId, json_schema::Type<RawName>>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(schema_file_type_def.len());
@@ -390,7 +390,7 @@ impl EntityTypesDef<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_entity_types(
-        schema_files_types: HashMap<UnreservedId, json_schema::EntityType<RawName>>,
+        schema_files_types: BTreeMap<UnreservedId, json_schema::EntityType<RawName>>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
@@ -580,7 +580,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
-        schema_file_actions: HashMap<SmolStr, json_schema::ActionType<RawName>>,
+        schema_file_actions: BTreeMap<SmolStr, json_schema::ActionType<RawName>>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
