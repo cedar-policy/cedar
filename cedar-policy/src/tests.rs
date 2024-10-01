@@ -3999,6 +3999,86 @@ mod level_validation_tests {
             ValidationError::EntityDerefLevelViolation(_)
         );
     }
+
+    #[test]
+    fn level_validation_fails_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 1);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails_record() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.bar.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_record_increased_level() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.bar.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 1);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_passes_record_other_attr() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(result.validation_passed());
+    }
 }
 
 mod template_tests {
