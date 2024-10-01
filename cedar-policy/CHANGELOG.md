@@ -15,6 +15,8 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `sub_entity_literals` API (#1233).
+- Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
+  short-hand for `@my_annotation("")` (#1231, resolving #1031).
 
 ## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0

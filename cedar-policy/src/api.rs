@@ -2096,7 +2096,10 @@ impl PolicySet {
         self.policies.get(id)
     }
 
-    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
+    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
@@ -2105,6 +2108,9 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get_template(id.as_ref())?
@@ -2423,7 +2429,10 @@ impl Template {
         self.ast.effect()
     }
 
-    /// Get an annotation value of this `Template`
+    /// Get an annotation value of this `Template`.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2431,6 +2440,8 @@ impl Template {
     }
 
     /// Iterate through annotation data of this `Template` as key-value pairs
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
@@ -2721,6 +2732,9 @@ impl Policy {
     }
 
     /// Get an annotation value of this template-linked or static policy
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2728,6 +2742,8 @@ impl Policy {
     }
 
     /// Iterate through annotation data of this template-linked or static policy
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()

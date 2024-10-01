@@ -204,7 +204,9 @@ impl Node<Option<cst::Policy>> {
         let maybe_effect = policy.effect.to_effect();
 
         // convert annotations
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
 
         // convert scope
         let maybe_scope = policy.extract_scope();
@@ -232,7 +234,7 @@ impl Node<Option<cst::Policy>> {
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
         Ok(construct_template_policy(
             id,
-            annotations,
+            annotations.into(),
             effect,
             principal,
             action,
@@ -307,11 +309,14 @@ impl cst::Policy {
     }
 
     /// Get annotations from the `cst::Policy`
-    pub fn get_ast_annotations(&self) -> Result<ast::Annotations> {
+    pub fn get_ast_annotations<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<BTreeMap<ast::AnyId, T>> {
         let mut annotations = BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
         for node in self.annotations.iter() {
-            match node.to_kv_pair() {
+            match node.to_kv_pair(&annotation_constructor) {
                 Ok((k, v)) => {
                     use std::collections::btree_map::Entry;
                     match annotations.entry(k) {
@@ -336,7 +341,7 @@ impl cst::Policy {
         }
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(annotations.into()),
+            None => Ok(annotations),
         }
     }
 }
@@ -344,24 +349,29 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self) -> Result<(ast::AnyId, ast::Annotation)> {
+    pub fn to_kv_pair<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<(ast::AnyId, T)> {
         let anno = self.try_as_inner()?;
 
         let maybe_key = anno.key.to_any_ident();
-        let maybe_value = anno.value.as_valid_string().and_then(|s| {
-            to_unescaped_string(s).map_err(|unescape_errs| {
-                ParseErrors::new_from_nonempty(unescape_errs.map(|e| self.to_ast_err(e).into()))
+        let maybe_value = anno
+            .value
+            .as_ref()
+            .map(|a| {
+                a.as_valid_string().and_then(|s| {
+                    to_unescaped_string(s).map_err(|unescape_errs| {
+                        ParseErrors::new_from_nonempty(
+                            unescape_errs.map(|e| self.to_ast_err(e).into()),
+                        )
+                    })
+                })
             })
-        });
+            .transpose();
 
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
-        Ok((
-            k,
-            ast::Annotation {
-                val: v,
-                loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
-            },
-        ))
+        Ok((k, annotation_constructor(v, &self.loc)))
     }
 }
 
@@ -2244,7 +2254,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_annotations() {
+    fn single_annotation() {
         // common use-case
         let policy = assert_parse_policy_succeeds(
             r#"
@@ -2253,9 +2263,12 @@ mod tests {
         );
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "good annotation")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "good annotation")
         );
+    }
 
+    #[test]
+    fn duplicate_annotations_error() {
         // duplication is error
         let src = r#"
             @anno("good annotation")
@@ -2273,7 +2286,10 @@ mod tests {
                 .exactly_one_underline("@anno(\"oops, duplicate\")")
                 .build(),
         );
+    }
 
+    #[test]
+    fn multiple_policys_and_annotations_ok() {
         // can have multiple annotations
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2303,28 +2319,28 @@ mod tests {
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno1")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "first")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "first")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno2")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "second")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "second")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3a")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "third-a")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-a")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3b")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "third-b")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-b")
         );
         assert_matches!(
             policyset
@@ -2341,7 +2357,10 @@ mod tests {
                 .count(),
             2
         );
+    }
 
+    #[test]
+    fn reserved_word_annotations_ok() {
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2365,43 +2384,80 @@ mod tests {
             .expect("should be the right policy ID");
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("if")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `if`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `if`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("then")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `then`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `then`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("else")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `else`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `else`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("true")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `true`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `true`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("false")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `false`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `false`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("in")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `in`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `in`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("is")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `is`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `is`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("like")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `like`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `like`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("has")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `has`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `has`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("principal")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `principal`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `principal`")
+        );
+    }
+
+    #[test]
+    fn single_annotation_without_value() {
+        let policy = assert_parse_policy_succeeds(r#"@anno permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+    }
+
+    #[test]
+    fn duplicate_annotations_without_value() {
+        let src = "@anno @anno permit(principal,action,resource);";
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn multiple_annotation_without_value() {
+        let policy =
+            assert_parse_policy_succeeds(r#"@foo @bar permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("foo")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("bar")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
     }
 
