@@ -532,7 +532,6 @@ impl<'e> Evaluator<'e> {
                         }
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
-                    #[cfg(feature = "entity-tags")]
                     BinaryOp::GetTag | BinaryOp::HasTag => {
                         let uid = arg1.get_as_entity()?;
                         let tag = arg2.get_as_string()?;
@@ -821,10 +820,7 @@ impl<'e> Evaluator<'e> {
                             uid,
                             attr.clone(),
                             entity.keys(),
-                            #[cfg(feature = "entity-tags")]
                             entity.get_tag(attr).is_some(),
-                            #[cfg(not(feature = "entity-tags"))]
-                            false,
                             entity.attrs_len(),
                             source_loc.cloned(),
                         )
@@ -1052,9 +1048,7 @@ pub mod test {
             )
             .unwrap();
 
-        #[cfg(feature = "entity-tags")]
         let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
-        #[cfg(feature = "entity-tags")]
         entity_with_tags
             .set_tag(
                 "spoon".into(),
@@ -1063,12 +1057,8 @@ pub mod test {
             )
             .unwrap();
 
-        #[cfg(not(feature = "entity-tags"))]
-        let entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
-
         let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
         entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
-        #[cfg(feature = "entity-tags")]
         entity_with_tags_and_attrs
             .set_tag(
                 "spoon".into(),
@@ -1417,15 +1407,9 @@ pub mod test {
                 assert_eq!(&e.attr_or_tag, "spoon");
                 let available_attrs = e.available_attrs_or_tags;
                 assert_eq!(available_attrs.len(), 0);
-                #[cfg(feature = "entity-tags")]
                 let expected_error_message =
                     ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags"` does not have the attribute `spoon`"#)
                         .help(r#"`test_entity_type::"entity_with_tags"` does not have any attributes; note that a tag (not an attribute) named `spoon` does exist"#)
-                        .build();
-                #[cfg(not(feature = "entity-tags"))]
-                let expected_error_message =
-                    ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags"` does not have the attribute `spoon`"#)
-                        .help(r#"`test_entity_type::"entity_with_tags"` does not have any attributes"#)
                         .build();
                 expect_err("", &report, &expected_error_message);
             }
@@ -1471,7 +1455,6 @@ pub mod test {
     }
 
     #[test]
-    #[cfg(feature = "entity-tags")]
     fn interpret_entity_tags() {
         let request = basic_request();
         let entities = rich_entities();
@@ -2421,7 +2404,6 @@ pub mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
-            #[cfg(feature = "entity-tags")]
             [],
             Extensions::none(),
         )

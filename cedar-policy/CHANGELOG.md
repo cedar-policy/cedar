@@ -17,6 +17,9 @@ Cedar Language Version: TBD
 - Added `sub_entity_literals` API (#1233).
 - Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
   short-hand for `@my_annotation("")` (#1231, resolving #1031).
+- Stabilized [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), removing
+  the experimental `entity-tags` feature flag. That functionality is now available
+  without the feature flag.
 
 ## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0

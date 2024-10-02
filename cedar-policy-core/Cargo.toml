@@ -51,7 +51,6 @@ test-util = []
 
 # Experimental features.
 partial-eval = []
-entity-tags = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]

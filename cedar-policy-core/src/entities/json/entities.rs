@@ -360,7 +360,6 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                     })?,
                 )),
-                #[cfg(feature = "entity-tags")]
                 EntitySchemaInfo::NonAction(desc) => {
                     // Depending on the expected type, we may parse the contents
                     // of the tag differently.
@@ -382,14 +381,6 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         )?,
                     };
                     Ok((k, rexpr))
-                }
-                #[cfg(not(feature = "entity-tags"))]
-                EntitySchemaInfo::NonAction(_) => {
-                    // without the `entity-tags` feature, no schemas specify tags,
-                    // so any tag that appears is necessarily a conformance error
-                    Err(JsonDeserializationError::EntitySchemaConformance(
-                        EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
-                    ))
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
@@ -425,18 +416,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        #[cfg(not(feature = "entity-tags"))]
-        if !tags.is_empty() {
-            return Err(JsonDeserializationError::UnsupportedEntityTags);
-        }
-        Ok(Entity::new(
-            uid,
-            attrs,
-            parents,
-            #[cfg(feature = "entity-tags")]
-            tags,
-            self.extensions,
-        )?)
+        Ok(Entity::new(uid, attrs, parents, tags, self.extensions)?)
     }
 }
 
@@ -471,13 +451,10 @@ impl EntityJson {
                 .ancestors()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
-            #[cfg(feature = "entity-tags")]
             tags: entity
                 .tags()
                 .map(serialize_kpvalue)
                 .collect::<Result<_, JsonSerializationError>>()?,
-            #[cfg(not(feature = "entity-tags"))]
-            tags: HashMap::new(),
         })
     }
 }

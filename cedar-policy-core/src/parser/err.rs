@@ -123,6 +123,8 @@ const POLICY_SCOPE_HELP: &str =
     "policy scopes must contain a `principal`, `action`, and `resource` element in that order";
 
 /// Details about a particular kind of `ToASTError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTErrorKind {
@@ -371,10 +373,6 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
-    /// Returned when a policy uses entity tags, but the `entity-tags` feature is not enabled
-    #[cfg(not(feature = "entity-tags"))]
-    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
-    UnsupportedEntityTags,
 }
 
 impl ToASTErrorKind {

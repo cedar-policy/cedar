@@ -622,37 +622,22 @@ mod tests {
             [2, 3, "foo"].containsAll([3, "foo"])
             && principal.hasTag(resource.getTag(context.cur_time))
         "#;
-        #[cfg(feature = "entity-tags")]
-        {
-            let request = eval::test::basic_request();
-            let entities = eval::test::basic_entities();
-            let exts = Extensions::none();
-            let evaluator = eval::Evaluator::new(request, &entities, exts);
+        let request = eval::test::basic_request();
+        let entities = eval::test::basic_entities();
+        let exts = Extensions::none();
+        let evaluator = eval::Evaluator::new(request, &entities, exts);
 
-            let expr = parse_expr(src).unwrap();
-            assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
-                expect_err(
-                    src,
-                    &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"test_resource"` does not have the tag `03:22:11`"#)
-                        .help(r#"`test_entity_type::"test_resource"` does not have any tags"#)
-                        .exactly_one_underline("resource.getTag(context.cur_time)")
-                        .build(),
-                );
-            });
-        }
-        #[cfg(not(feature = "entity-tags"))]
-        {
-            assert_matches!(parse_expr(src), Err(e) => {
-                expect_err(
-                    src,
-                    &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")
-                        .exactly_one_underline("resource.getTag(context.cur_time)")
-                        .build(),
-                );
-            });
-        }
+        let expr = parse_expr(src).unwrap();
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"test_resource"` does not have the tag `03:22:11`"#)
+                    .help(r#"`test_entity_type::"test_resource"` does not have any tags"#)
+                    .exactly_one_underline("resource.getTag(context.cur_time)")
+                    .build(),
+            );
+        });
     }
 
     #[test]

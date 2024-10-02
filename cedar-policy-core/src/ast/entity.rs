@@ -322,7 +322,6 @@ pub struct Entity {
     /// deterministic order.
     /// And like in `attrs`, the values in `tags` appear as `RestrictedExpr` in
     /// the serialized form of `Entity`.
-    #[cfg(feature = "entity-tags")]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
@@ -342,7 +341,7 @@ impl Entity {
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         ancestors: HashSet<EntityUID>,
-        #[cfg(feature = "entity-tags")] tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
     ) -> Result<Self, EntityAttrEvaluationError> {
         let evaluator = RestrictedEvaluator::new(extensions);
@@ -361,7 +360,6 @@ impl Entity {
             .into_iter()
             .map(|kv| evaluate_kvs(kv, true))
             .collect::<Result<_, EntityAttrEvaluationError>>()?;
-        #[cfg(feature = "entity-tags")]
         let evaluated_tags = tags
             .into_iter()
             .map(|kv| evaluate_kvs(kv, false))
@@ -370,7 +368,6 @@ impl Entity {
             uid,
             attrs: evaluated_attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags: evaluated_tags,
         })
     }
@@ -408,7 +405,6 @@ impl Entity {
             uid,
             attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags: BTreeMap::new(),
         }
     }
@@ -424,7 +420,6 @@ impl Entity {
     }
 
     /// Get the value for the given tag, or `None` if not present
-    #[cfg(feature = "entity-tags")]
     pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
         self.tags.get(tag).map(|v| v.as_ref())
     }
@@ -445,7 +440,6 @@ impl Entity {
     }
 
     /// Get the number of tags on this entity
-    #[cfg(feature = "entity-tags")]
     pub fn tags_len(&self) -> usize {
         self.tags.len()
     }
@@ -456,7 +450,6 @@ impl Entity {
     }
 
     /// Iterate over this entity's tag names
-    #[cfg(feature = "entity-tags")]
     pub fn tag_keys(&self) -> impl Iterator<Item = &SmolStr> {
         self.tags.keys()
     }
@@ -467,7 +460,6 @@ impl Entity {
     }
 
     /// Iterate over this entity's tags
-    #[cfg(feature = "entity-tags")]
     pub fn tags(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.tags.iter().map(|(k, v)| (k, v.as_ref()))
     }
@@ -478,7 +470,6 @@ impl Entity {
             uid,
             attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
-            #[cfg(feature = "entity-tags")]
             tags: BTreeMap::new(),
         }
     }
@@ -514,7 +505,6 @@ impl Entity {
     /// Set the given tag to the given value.
     // Only used for convenience in some tests and when fuzzing
     #[cfg(any(test, fuzzing))]
-    #[cfg(feature = "entity-tags")]
     pub fn set_tag(
         &mut self,
         tag: SmolStr,
@@ -551,17 +541,13 @@ impl Entity {
             uid,
             attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
-            #[cfg(not(feature = "entity-tags"))]
-            HashMap::new(),
         )
     }
 

@@ -1736,7 +1736,6 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            #[cfg(feature = "entity-tags")]
             [
                 // note that `foo` is also an attribute, with a different type
                 ("foo".into(), RestrictedExpr::val(2345)),
@@ -1781,7 +1780,6 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            #[cfg(feature = "entity-tags")]
             [],
             Extensions::all_available(),
         )
@@ -2143,7 +2141,6 @@ mod schema_based_parsing_tests {
             }
         }
 
-        #[cfg(feature = "entity-tags")]
         fn tag_type(&self) -> Option<SchemaType> {
             Some(SchemaType::Set {
                 element_ty: Box::new(SchemaType::String),
@@ -2181,7 +2178,6 @@ mod schema_based_parsing_tests {
     /// JSON that should parse differently with and without the above schema
     #[test]
     fn with_and_without_schema() {
-        #[cfg(feature = "entity-tags")]
         let entitiesjson = json!(
             [
                 {
@@ -2209,34 +2205,6 @@ mod schema_based_parsing_tests {
                     "tags": {
                         "someTag": ["pancakes"],
                     },
-                }
-            ]
-        );
-        #[cfg(not(feature = "entity-tags"))]
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": [],
                 }
             ]
         );
@@ -2331,11 +2299,9 @@ mod schema_based_parsing_tests {
             .get("isFullTime")
             .expect("isFullTime attr should exist");
         assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
-        #[cfg(feature = "entity-tags")]
         let some_tag = parsed
             .get_tag("someTag")
             .expect("someTag attr should exist");
-        #[cfg(feature = "entity-tags")]
         assert_eq!(
             some_tag,
             &PartialValue::Value(Value::set(["pancakes".into()], None))
@@ -2806,15 +2772,9 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        #[cfg(feature = "entity-tags")]
         let expected_error_msg =
             ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
                 .source(r#"in tag `someTag` on `Employee::"12UA45"`, type mismatch: value was expected to have type [string], but it actually has type string: `"pancakes"`"#)
-                .build();
-        #[cfg(not(feature = "entity-tags"))]
-        let expected_error_msg =
-            ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
-                .source(r#"found a tag `someTag` on `Employee::"12UA45"`, but no tags should exist on `Employee::"12UA45"` according to the schema"#)
                 .build();
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
             expect_err(
@@ -3384,7 +3344,6 @@ mod schema_based_parsing_tests {
                 }
             }
 
-            #[cfg(feature = "entity-tags")]
             fn tag_type(&self) -> Option<SchemaType> {
                 None
             }

@@ -2463,9 +2463,7 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        #[cfg(feature = "entity-tags")]
         assert_eq!(ast_roundtrip(est.clone()), est);
-        #[cfg(feature = "entity-tags")]
         assert_eq!(circular_roundtrip(est.clone()), est);
     }
 
