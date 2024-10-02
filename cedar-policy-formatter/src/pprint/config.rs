@@ -33,7 +33,7 @@ impl Default for Config {
 }
 
 #[derive(Debug)]
-pub struct Context<'a> {
+pub struct Context<'a, 'src> {
     pub config: &'a Config,
-    pub tokens: Vec<WrappedToken>,
+    pub tokens: Vec<WrappedToken<'src>>,
 }

@@ -16,7 +16,6 @@
 
 // PANIC SAFETY: there's little we can do about Logos.
 #![allow(clippy::indexing_slicing)]
-use itertools::Itertools;
 use logos::{Logos, Span};
 use smol_str::SmolStr;
 use std::fmt::{self, Display};
@@ -31,50 +30,58 @@ pub(crate) mod regex_constants {
     }
 }
 
-pub fn get_comment(text: &str) -> String {
-    let mut comment = regex_constants::COMMENT
+pub fn get_comment(text: &str) -> impl Iterator<Item = &str> + std::fmt::Debug {
+    regex_constants::COMMENT
         .find_iter(text)
-        .map(|c| c.as_str().trim_end())
-        .join("\n");
-    if comment.is_empty() {
-        comment
-    } else {
-        comment.push('\n');
-        comment
-    }
+        .map(|c| c.as_str().trim())
 }
 
 // Represent Cedar comments
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Comment {
-    leading_comment: String,
-    trailing_comment: String,
+pub struct Comment<'src> {
+    leading_comment: Vec<&'src str>,
+    trailing_comment: &'src str,
 }
 
-impl Comment {
-    pub fn new(leading_comment: &str, trailing_comment: &str) -> Self {
+impl<'src> Comment<'src> {
+    pub fn new(leading_comment: &'src str, trailing_comment: &'src str) -> Self {
         Self {
-            leading_comment: get_comment(leading_comment),
-            trailing_comment: get_comment(trailing_comment),
+            leading_comment: get_comment(leading_comment).collect(),
+            // The trailing comments must not have line breaks, so we don't need
+            // to find comments with regex matching. If the trimmed string is
+            // empty, then there was no comment.
+            trailing_comment: trailing_comment.trim(),
         }
     }
 
-    pub fn leading_comment(&self) -> &str {
+    pub fn leading_comment(&self) -> &[&'src str] {
         &self.leading_comment
     }
 
-    pub fn trailing_comment(&self) -> &str {
-        &self.trailing_comment
+    pub fn trailing_comment(&self) -> &'src str {
+        self.trailing_comment
+    }
+
+    fn format_leading_comment(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for comment_line in itertools::Itertools::intersperse(self.leading_comment.iter(), &"\n") {
+            write!(f, "{comment_line}")?;
+        }
+        if !self.leading_comment.is_empty() {
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+
+    fn format_trailing_comment(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.trailing_comment)
     }
 }
 
-impl Display for Comment {
+impl Display for Comment<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.leading_comment.is_empty() {
-            self.trailing_comment.fmt(f)
-        } else {
-            write!(f, "{}\n{}", self.leading_comment, self.trailing_comment)
-        }
+        self.format_leading_comment(f)?;
+        self.format_trailing_comment(f)?;
+        Ok(())
     }
 }
 
@@ -296,14 +303,14 @@ impl fmt::Display for Token {
 // A wrapper for token span (i.e., (Token, Span))
 // We use this wrapper for easier processing of comments
 #[derive(Debug, Clone, PartialEq)]
-pub struct WrappedToken {
+pub struct WrappedToken<'src> {
     pub token: Token,
-    pub comment: Comment,
+    pub comment: Comment<'src>,
     pub span: Span,
 }
 
-impl WrappedToken {
-    pub fn new(token: Token, span: Span, comment: Comment) -> Self {
+impl<'src> WrappedToken<'src> {
+    pub fn new(token: Token, span: Span, comment: Comment<'src>) -> Self {
         Self {
             token,
             comment,
@@ -316,16 +323,16 @@ impl WrappedToken {
     }
 
     fn clear_trailing_comment(&mut self) {
-        self.comment.trailing_comment.clear();
+        self.comment.trailing_comment = "";
     }
 
-    pub fn consume_leading_comment(&mut self) -> String {
+    pub fn consume_leading_comment(&mut self) -> Vec<&'src str> {
         let comment = self.comment.leading_comment.clone();
         self.clear_leading_comment();
         comment
     }
 
-    pub fn consume_comment(&mut self) -> Comment {
+    pub fn consume_comment(&mut self) -> Comment<'src> {
         let comment = self.comment.clone();
         self.clear_leading_comment();
         self.clear_trailing_comment();
@@ -333,12 +340,11 @@ impl WrappedToken {
     }
 }
 
-impl Display for WrappedToken {
+impl Display for WrappedToken<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}{} {}",
-            self.comment.leading_comment, self.token, self.comment.trailing_comment
-        )
+        self.comment.format_leading_comment(f)?;
+        write!(f, "{} ", self.token)?;
+        self.comment.format_trailing_comment(f)?;
+        Ok(())
     }
 }
