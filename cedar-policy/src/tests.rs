@@ -4024,6 +4024,39 @@ mod level_validation_tests {
     }
 
     #[test]
+    fn level_validation_irrelevant_policy_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { false && principal.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_irrelevant_policy_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { principal.is_admin && false };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
     fn level_validation_fails_ite() {
         let schema = get_schema();
         let validator = Validator::new(schema);

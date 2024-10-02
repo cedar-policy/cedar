@@ -285,7 +285,7 @@ impl Validator {
         let mut errs = vec![];
         for (_, policy_check) in type_annotated_asts {
             match policy_check {
-                PolicyCheck::Success(e) => {
+                PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
                     let res =
                         self.check_entity_deref_level_helper(&e, max_allowed_level, policy_id);
                     match res.1 {
@@ -296,7 +296,6 @@ impl Validator {
                 // PANIC SAFETY: We only validate the level after strict validation passed
                 #[allow(clippy::unreachable)]
                 PolicyCheck::Fail(_) => unreachable!(),
-                PolicyCheck::Irrelevant(_) => (), //Don't report level violations if typechecking already failed
             }
         }
         errs
