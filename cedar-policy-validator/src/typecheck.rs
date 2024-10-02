@@ -156,7 +156,7 @@ impl<'a> Typechecker<'a> {
                 (false, true, Some(e)) => PolicyCheck::Success(e),
                 (false, false, _) => PolicyCheck::Fail(type_errors),
                 (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
-                // PANIC SAFETY: `is_false` implies e is `Some(Lit(Bool(false)))`
+                // PANIC SAFETY: `is_false` implies `e` has type `Some(Lit(Bool(false)))`
                 #[allow(clippy::unreachable)]
                 (true, _, None) => unreachable!(),
             }
@@ -224,7 +224,7 @@ impl<'a> Typechecker<'a> {
                         (true, _, Some(e)) => {
                             policy_checks.push(PolicyCheck::Irrelevant(type_errors, e))
                         }
-                        // PANIC SAFETY: `is_false` implies e is `Some(Lit(Bool(false)))`
+                        // PANIC SAFETY: `is_false` implies `e` has type `Some(Lit(Bool(false)))`
                         #[allow(clippy::unreachable)]
                         (true, _, None) => unreachable!(),
                     }
