@@ -449,56 +449,30 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 /// Represents how many entity dereferences can be applied to a node.
-/// `None` represents infinity.
 pub struct EntityDerefLevel {
-    /// `None` represents infinity.
     /// A negative value `-n` represents `n` too many dereferences
-    pub level: Option<i64>,
+    pub level: i64,
 }
 
 impl Display for EntityDerefLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        match self.level {
-            Some(l) => write!(f, "{l}"),
-            None => write!(f, "infinity"),
-        }
+        write!(f, "{}", self.level)
     }
 }
 
-impl From<Option<u32>> for EntityDerefLevel {
-    fn from(value: Option<u32>) -> Self {
-        match value {
-            Some(u) => EntityDerefLevel {
-                level: Some(u as i64),
-            },
-            None => EntityDerefLevel { level: None },
+impl From<u32> for EntityDerefLevel {
+    fn from(value: u32) -> Self {
+        EntityDerefLevel {
+            level: value as i64,
         }
     }
 }
 
 impl Default for EntityDerefLevel {
     fn default() -> Self {
-        Self { level: Some(0) }
-    }
-}
-
-// Ordering where `None` represents Inf
-impl Ord for EntityDerefLevel {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self.level, other.level) {
-            (Some(sl), Some(ol)) => sl.cmp(&ol),
-            (None, None) => std::cmp::Ordering::Equal,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (Some(_), None) => std::cmp::Ordering::Less,
-        }
-    }
-}
-
-impl PartialOrd for EntityDerefLevel {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+        Self { level: 0 }
     }
 }
 
@@ -506,9 +480,8 @@ impl Add for EntityDerefLevel {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        match (self.level, rhs.level) {
-            (Some(l), Some(r)) => EntityDerefLevel { level: Some(l + r) },
-            (_, _) => EntityDerefLevel { level: None },
+        EntityDerefLevel {
+            level: self.level + rhs.level,
         }
     }
 }
@@ -517,19 +490,15 @@ impl Neg for EntityDerefLevel {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        match self.level {
-            Some(l) => EntityDerefLevel { level: Some(-l) },
-            None => EntityDerefLevel { level: None },
-        }
+        EntityDerefLevel { level: -self.level }
     }
 }
 
 impl EntityDerefLevel {
     /// Decrement the entity deref level
     pub fn decrement(&self) -> Self {
-        match self.level {
-            None => self.clone(),
-            Some(l) => EntityDerefLevel { level: Some(l - 1) },
+        EntityDerefLevel {
+            level: self.level - 1,
         }
     }
 }
@@ -836,20 +805,5 @@ mod test_attr_access {
         assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
         assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
-    }
-}
-
-#[cfg(test)]
-mod test_entity_deref_level {
-    use super::EntityDerefLevel;
-
-    #[test]
-    fn entity_deref_level() {
-        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: Some(1) });
-        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(1) });
-        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: Some(0) });
-        assert!(EntityDerefLevel { level: Some(0) } < EntityDerefLevel { level: None });
-        assert!(EntityDerefLevel { level: Some(1) } < EntityDerefLevel { level: None });
-        assert!(EntityDerefLevel { level: Some(-1) } < EntityDerefLevel { level: None });
     }
 }

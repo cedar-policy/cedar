@@ -214,11 +214,8 @@ impl Validator {
 
         // Only perform level validation if strict validation passed.
         if peekable_errors.peek().is_none() {
-            let levels_errors = self.check_entity_deref_level(
-                p,
-                &EntityDerefLevel::from(Some(max_deref_level)),
-                p.id(),
-            );
+            let levels_errors =
+                self.check_entity_deref_level(p, &EntityDerefLevel::from(max_deref_level), p.id());
             (peekable_errors.chain(levels_errors), warnings)
         } else {
             (peekable_errors.into_iter().chain(vec![]), warnings)
@@ -308,7 +305,7 @@ impl Validator {
         let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
         match p {
             Some(p) => p.clone(),
-            None => (EntityDerefLevel { level: Some(0) }, None),
+            None => (EntityDerefLevel { level: 0 }, None),
         }
     }
 
@@ -325,13 +322,13 @@ impl Validator {
         use cedar_policy_core::ast::ExprKind;
         match e.expr_kind() {
             ExprKind::Lit(_) => (
-                EntityDerefLevel { level: Some(0) }, //Literals can't be dereferenced
+                EntityDerefLevel { level: 0 }, //Literals can't be dereferenced
                 None,
             ),
             ExprKind::Var(_) => (max_allowed_level.clone(), None), //Roots start at `max_allowed_level`
-            ExprKind::Slot(_) => (EntityDerefLevel { level: Some(0) }, None), //Slot will be replaced by Entity literal so treat the same
+            ExprKind::Slot(_) => (EntityDerefLevel { level: 0 }, None), //Slot will be replaced by Entity literal so treat the same
             ExprKind::Unknown(_) => (
-                EntityDerefLevel { level: Some(0) }, //Can't dereference an unknown
+                EntityDerefLevel { level: 0 }, //Can't dereference an unknown
                 None,
             ),
             ExprKind::If {
@@ -364,7 +361,7 @@ impl Validator {
                 let rhs = self.check_entity_deref_level_helper(arg2, max_allowed_level, policy_id);
                 lhs = (lhs.0.decrement(), lhs.1);
                 let new_level = Self::min(vec![lhs, rhs]).0;
-                if new_level.level < Some(0) {
+                if new_level.level < 0 {
                     (
                         new_level,
                         Some(EntityDerefLevelViolation {
@@ -423,7 +420,7 @@ impl Validator {
                         | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => {
                             let child_level = child_level_info.0;
                             let new_level = child_level.decrement();
-                            if new_level.level < Some(0) {
+                            if new_level.level < 0 {
                                 (
                                     new_level,
                                     Some(EntityDerefLevelViolation {
@@ -439,7 +436,7 @@ impl Validator {
                         }
                         Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
                             // AnyEntity cannot be dereferenced
-                            (EntityDerefLevel { level: Some(0) }, None)
+                            (EntityDerefLevel { level: 0 }, None)
                         }
                         _ => child_level_info,
                     }
@@ -833,7 +830,7 @@ mod levels_validation_tests {
         let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
             set.get_template(&template_name).unwrap(),
-            &EntityDerefLevel { level: Some(0) },
+            &EntityDerefLevel { level: 0 },
             &template_name,
         );
         assert!(result.is_empty());
@@ -852,7 +849,7 @@ mod levels_validation_tests {
         let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
             set.get_template(&template_name).unwrap(),
-            &EntityDerefLevel { level: Some(0) },
+            &EntityDerefLevel { level: 0 },
             &template_name,
         );
         assert!(result.len() == 1);
