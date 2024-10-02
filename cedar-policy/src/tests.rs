@@ -3937,6 +3937,15 @@ mod level_validation_tests {
             "": {
                 "entityTypes": {
                     "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "is_admin": {
+                                    "type": "Boolean",
+                                    "required": true
+                                }
+                            }
+                        },
                         "memberOfTypes": ["User"]
                     },
                     "Photo": {
@@ -4001,6 +4010,20 @@ mod level_validation_tests {
     }
 
     #[test]
+    fn level_validation_passes_level2() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { resource.foo.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 2);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
     fn level_validation_fails_ite() {
         let schema = get_schema();
         let validator = Validator::new(schema);
@@ -4039,7 +4062,7 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.bar.foo };"#;
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
@@ -4058,11 +4081,11 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.bar.foo };"#;
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 1);
+        let result = validator.strict_validate_with_level(&set, 2);
         assert!(result.validation_passed());
     }
 
@@ -4072,7 +4095,7 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": "boo", "bar": resource }.foo };"#;
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.foo };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 

@@ -394,6 +394,24 @@ impl Validator {
                     .collect();
                 Self::min(v)
             }
+            ExprKind::GetAttr { expr, attr }
+                if matches!(expr.expr_kind(), ExprKind::Record(..)) =>
+            {
+                match expr.expr_kind() {
+                    ExprKind::Record(m) => {
+                        // PANIC SAFETY: Strict validation checked that this access is safe
+                        #[allow(clippy::unwrap_used)]
+                        self.check_entity_deref_level_helper(
+                            m.get(attr).unwrap(),
+                            max_allowed_level,
+                            policy_id,
+                        )
+                    }
+                    // PANIC SAFETY: We just checked that this node is a Record
+                    #[allow(clippy::unreachable)]
+                    _ => unreachable!(),
+                }
+            }
             ExprKind::GetAttr { expr, .. } | ExprKind::HasAttr { expr, .. } => match expr
                 .as_ref()
                 .data()
