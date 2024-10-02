@@ -27,6 +27,8 @@ use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_validator::entity_manifest::compute_entity_manifest;
 use cedar_policy_validator::ValidatorSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -252,6 +254,47 @@ pub fn parse_request_from_test(
     })
 }
 
+/// Asserts that the test response matches the json request,
+/// including errors when the error comparison mode is enabled.
+fn check_matches_json(
+    response: TestResponse,
+    json_request: &JsonRequest,
+    error_comparison_mode: ErrorComparisonMode,
+    test_name: &str,
+) {
+    // check decision
+    assert_eq!(
+        response.response.decision(),
+        json_request.decision,
+        "test {test_name} failed for request \"{}\": unexpected decision",
+        &json_request.description
+    );
+    // check reason
+    let reason: HashSet<PolicyId> = response.response.diagnostics().reason().cloned().collect();
+    assert_eq!(
+        reason,
+        json_request.reason.iter().cloned().collect(),
+        "test {test_name} failed for request \"{}\": unexpected reason",
+        &json_request.description
+    );
+    // check errors, if applicable
+    // for now, the integration tests only support the `PolicyIds` comparison mode
+    if matches!(error_comparison_mode, ErrorComparisonMode::PolicyIds) {
+        let errors: HashSet<PolicyId> = response
+            .response
+            .diagnostics()
+            .errors()
+            .map(|err| err.policy_id.clone())
+            .collect();
+        assert_eq!(
+            errors,
+            json_request.errors.iter().cloned().collect(),
+            "test {test_name} failed for request \"{}\": unexpected errors",
+            &json_request.description
+        );
+    }
+}
+
 /// Run an integration test starting from a pre-parsed `JsonTest`.
 ///
 /// # Panics
@@ -294,38 +337,28 @@ pub fn perform_integration_test(
         let response = test_impl
             .is_authorized(&request, &policies, &entities)
             .expect("Authorization failed");
-        // check decision
-        assert_eq!(
-            response.response.decision(),
-            json_request.decision,
-            "test {test_name} failed for request \"{}\": unexpected decision",
-            &json_request.description
-        );
-        // check reason
-        let reason: HashSet<PolicyId> = response.response.diagnostics().reason().cloned().collect();
-        assert_eq!(
-            reason,
-            json_request.reason.into_iter().collect(),
-            "test {test_name} failed for request \"{}\": unexpected reason",
-            &json_request.description
-        );
-        // check errors, if applicable
-        // for now, the integration tests only support the `PolicyIds` comparison mode
-        if matches!(
+        check_matches_json(
+            response,
+            &json_request,
             test_impl.error_comparison_mode(),
-            ErrorComparisonMode::PolicyIds
-        ) {
-            let errors: HashSet<PolicyId> = response
-                .response
-                .diagnostics()
-                .errors()
-                .map(|err| err.policy_id.clone())
-                .collect();
-            assert_eq!(
-                errors,
-                json_request.errors.into_iter().collect(),
-                "test {test_name} failed for request \"{}\": unexpected errors",
-                &json_request.description
+            test_name,
+        );
+
+        // now check that entity slicing arrives at the same decision
+        #[cfg(feature = "entity-manifest")]
+        if should_validate {
+            let entity_manifest = compute_entity_manifest(&schema, &policies).expect("test failed");
+            let entity_slice = entity_manifest
+                .slice_entities(&entities, &request)
+                .expect("test failed");
+            let slice_response = test_impl
+                .is_authorized(&request, &policies, &entity_slice)
+                .expect("Authorization failed");
+            check_matches_json(
+                slice_response,
+                &json_request,
+                test_impl.error_comparison_mode(),
+                test_name,
             );
         }
     }

@@ -36,7 +36,15 @@ use serde::Serialize;
 use std::collections::HashSet;
 
 #[cfg(feature = "entity-manifest")]
+pub mod entity_loader;
+#[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
+#[cfg(feature = "entity-manifest")]
+mod entity_manifest_analysis;
+#[cfg(feature = "entity-manifest")]
+mod entity_manifest_type_annotations;
+#[cfg(feature = "entity-manifest")]
+pub mod entity_slicing;
 mod err;
 pub use err::*;
 mod coreschema;
