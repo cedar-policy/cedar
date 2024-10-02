@@ -290,7 +290,7 @@ mod test {
             Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
-            Some("Action::\"action\"".to_string()),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative("Action::\"action\"".to_string())),
         );
 
         assert!(!result.validation_passed());

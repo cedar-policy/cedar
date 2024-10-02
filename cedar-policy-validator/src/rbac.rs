@@ -27,8 +27,7 @@ use cedar_policy_core::{
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
-    expr_iterator::{policy_entity_type_names, policy_entity_uids},
-    ValidationError,
+    expr_iterator::{policy_entity_type_names, policy_entity_uids}, validation_errors::unrecognized_action_id_help, ValidationError
 };
 
 use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
@@ -79,7 +78,6 @@ impl Validator {
         let known_action_ids = self
             .schema
             .known_action_ids()
-            .map(ToString::to_string)
             .collect::<Vec<_>>();
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
@@ -88,7 +86,7 @@ impl Validator {
                     euid.loc().cloned(),
                     template.id().clone(),
                     euid.to_string(),
-                    fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
+                    unrecognized_action_id_help(euid, &known_action_ids),
                 ))
             } else {
                 None

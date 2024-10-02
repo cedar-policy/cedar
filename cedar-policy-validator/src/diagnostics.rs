@@ -19,6 +19,7 @@
 
 use miette::Diagnostic;
 use thiserror::Error;
+use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
@@ -195,13 +196,13 @@ impl ValidationError {
 
         policy_id: PolicyID,
         actual_action_id: String,
-        suggested_action_id: Option<String>,
+        unrecognized_action_id_help: Option<UnrecognizedActionIdHelp>,
     ) -> Self {
         validation_errors::UnrecognizedActionId {
             source_loc,
             policy_id,
             actual_action_id,
-            suggested_action_id,
+            unrecognized_action_id_help,
         }
         .into()
     }
