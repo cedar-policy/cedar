@@ -213,6 +213,7 @@ mod test {
 
     use crate::types::Type;
     use crate::Result;
+    use crate::validation_errors::UnrecognizedActionIdHelp;
 
     use super::*;
     use cedar_policy_core::{

@@ -726,6 +726,38 @@ mod test {
     }
 
     #[test]
+    fn validate_action_id_with_action_type() {
+        let schema_file = json_schema::NamespaceDefinition::new(
+            [],
+            [(
+                "Action::view".into(),
+                json_schema::ActionType {
+                    applies_to: None,
+                    member_of: None,
+                    attributes: None,
+                },
+            )],
+        );
+        let singleton_schema = schema_file.try_into().unwrap();
+
+        let src = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+        let validate = Validator::new(singleton_schema);
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"view"`"#,
+            )
+            .exactly_one_underline(r#"Action::"view""#)
+            .help(r#"did you intend to include the type in action `Action::"Action::view"`?"#)
+            .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+    }
+
+    #[test]
     fn validate_namespaced_action_id_in_schema() {
         let descriptors = json_schema::Fragment::from_json_str(
             r#"
