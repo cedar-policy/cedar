@@ -3943,6 +3943,11 @@ mod level_validation_tests {
                                 "is_admin": {
                                     "type": "Boolean",
                                     "required": true
+                                },
+                                "profile_pic": {
+                                    "type": "Entity",
+                                    "name": "Photo",
+                                    "required": true
                                 }
                             }
                         },
@@ -4007,6 +4012,29 @@ mod level_validation_tests {
             result.validation_errors().next().unwrap(),
             ValidationError::EntityDerefLevelViolation(_)
         );
+    }
+
+    #[test]
+    fn level_validation_fails_rhs_in() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal.profile_pic in resource.foo.profile_pic};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.strict_validate_with_level(&set, 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        let err = result.validation_errors().next().unwrap();
+        assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
+        match err {
+            ValidationError::EntityDerefLevelViolation(inner) => {
+                assert!(format!("{}", inner.to_string()).contains("Actual level is 2"));
+            }
+            _ => unreachable!(),
+        };
     }
 
     #[test]
