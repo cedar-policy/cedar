@@ -195,7 +195,6 @@ impl EvaluationError {
     /// Construct an error for the case where an entity tag does not exist
     ///
     /// `does_tag_exist_as_an_attr`: does `tag` exist on `entity` as an attribute (rather than a tag)
-    #[cfg(feature = "entity-tags")]
     pub(crate) fn entity_tag_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         tag: SmolStr,

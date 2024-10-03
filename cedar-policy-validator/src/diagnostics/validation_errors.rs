@@ -314,7 +314,6 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 }
 
 /// Structure containing details about an unsafe tag access error.
-#[cfg(feature = "entity-tags")]
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error(
     "for policy `{policy_id}`, unable to guarantee safety of access to tag `{tag}`{}",
@@ -334,7 +333,6 @@ pub struct UnsafeTagAccess {
     pub tag: Expr<Option<Type>>,
 }
 
-#[cfg(feature = "entity-tags")]
 impl Diagnostic for UnsafeTagAccess {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
@@ -347,7 +345,6 @@ impl Diagnostic for UnsafeTagAccess {
 }
 
 /// Structure containing details about a no-tags-allowed error.
-#[cfg(feature = "entity-tags")]
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error(
     "for policy `{policy_id}`, `.getTag()` is not allowed on entities of {} because no `tags` were declared on the entity type in the schema",
@@ -367,7 +364,6 @@ pub struct NoTagsAllowed {
     pub entity_ty: Option<EntityType>,
 }
 
-#[cfg(feature = "entity-tags")]
 impl Diagnostic for NoTagsAllowed {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }

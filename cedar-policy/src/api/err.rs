@@ -383,12 +383,10 @@ pub enum ValidationError {
     /// The typechecker could not conclude that an access to a tag was safe.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
     /// `.getTag()` on an entity type which cannot have tags according to the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
@@ -438,9 +436,7 @@ impl ValidationError {
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
-            #[cfg(feature = "entity-tags")]
             Self::UnsafeTagAccess(e) => e.policy_id(),
-            #[cfg(feature = "entity-tags")]
             Self::NoTagsAllowed(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
@@ -479,11 +475,9 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
                 Self::UnsafeOptionalAttributeAccess(e.into())
             }
-            #[cfg(feature = "entity-tags")]
             cedar_policy_validator::ValidationError::UnsafeTagAccess(e) => {
                 Self::UnsafeTagAccess(e.into())
             }
-            #[cfg(feature = "entity-tags")]
             cedar_policy_validator::ValidationError::NoTagsAllowed(e) => {
                 Self::NoTagsAllowed(e.into())
             }

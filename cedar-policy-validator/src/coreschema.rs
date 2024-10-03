@@ -135,7 +135,6 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
         Some(core_schema_type)
     }
 
-    #[cfg(feature = "entity-tags")]
     fn tag_type(&self) -> Option<entities::SchemaType> {
         let tag_type: &crate::types::Type = self.validator_type.tag_type()?;
         // This converts a type from a schema into the representation of schema

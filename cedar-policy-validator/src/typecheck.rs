@@ -1435,7 +1435,6 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            #[cfg(feature = "entity-tags")]
             BinaryOp::HasTag => self
                 .expect_type(
                     request_env,
@@ -1509,7 +1508,6 @@ impl<'a> Typechecker<'a> {
                     })
                 }),
 
-            #[cfg(feature = "entity-tags")]
             BinaryOp::GetTag => {
                 self.expect_type(
                     request_env,
@@ -1747,7 +1745,6 @@ impl<'a> Typechecker<'a> {
     /// If `kind` is a LUB containing some entity types that have tags and some
     /// that do not, this ignores the entity types that do not; we just assume
     /// the access is not on one of those entity types.
-    #[cfg(feature = "entity-tags")]
     fn tag_types<'s>(&'s self, kind: &EntityRecordKind) -> Result<HashSet<&'s Type>, ()> {
         use crate::schema::ValidatorEntityType;
         match kind {

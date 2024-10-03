@@ -120,7 +120,6 @@ impl Entity {
             uid.into(),
             attrs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             parents.into_iter().map(EntityUid::into).collect(),
-            #[cfg(feature = "entity-tags")]
             [],
             Extensions::all_available(),
         )?))

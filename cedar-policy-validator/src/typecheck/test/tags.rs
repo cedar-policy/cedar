@@ -18,8 +18,6 @@
 //! access using the ability added by capabilities.
 // GRCOV_STOP_COVERAGE
 
-#![cfg(feature = "entity-tags")]
-
 use super::test_utils::{
     assert_exactly_one_diagnostic, assert_policy_typecheck_fails,
     assert_policy_typecheck_fails_for_mode, assert_policy_typecheck_warns,

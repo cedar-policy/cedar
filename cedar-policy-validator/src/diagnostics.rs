@@ -22,14 +22,10 @@ use thiserror::Error;
 
 use std::collections::BTreeSet;
 
-#[cfg(feature = "entity-tags")]
-use cedar_policy_core::ast::Expr;
-use cedar_policy_core::ast::{EntityType, PolicyID};
+use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
-#[cfg(feature = "entity-tags")]
-use crate::types::EntityLUB;
-use crate::types::Type;
+use crate::types::{EntityLUB, Type};
 
 pub mod validation_errors;
 pub mod validation_warnings;
@@ -131,12 +127,10 @@ pub enum ValidationError {
     /// The typechecker could not conclude that an access to a tag was safe.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
     /// `.getTag()` on an entity type which cannot have tags according to the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
@@ -170,7 +164,6 @@ pub enum ValidationError {
     /// this is ever returned, please file an issue)
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
     #[cfg(feature = "level-validate")]
     /// If a entity dereference level was provided, the policies cannot deref
@@ -294,7 +287,6 @@ impl ValidationError {
         .into()
     }
 
-    #[cfg(feature = "entity-tags")]
     pub(crate) fn unsafe_tag_access(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -310,7 +302,6 @@ impl ValidationError {
         .into()
     }
 
-    #[cfg(feature = "entity-tags")]
     pub(crate) fn no_tags_allowed(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -396,7 +387,6 @@ impl ValidationError {
         .into()
     }
 
-    #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
     pub(crate) fn internal_invariant_violation(
         source_loc: Option<Loc>,
         policy_id: PolicyID,

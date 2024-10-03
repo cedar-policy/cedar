@@ -50,6 +50,7 @@ impl<T> TestResult<T> {
     /// If the `TestResult` is a `Failure`.
     /// PANIC SAFETY only used in testing code
     #[allow(clippy::panic)]
+    #[track_caller]
     pub fn expect(self, msg: &str) -> T {
         match self {
             Self::Success(t) => t,

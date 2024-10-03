@@ -621,9 +621,6 @@ pub mod schema_errors {
         // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
         #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
         ActionAttributes(Vec<String>),
-        #[cfg(not(feature = "entity-tags"))]
-        #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
-        EntityTags,
     }
 
     /// This error is thrown when `serde_json` fails to deserialize the JSON
