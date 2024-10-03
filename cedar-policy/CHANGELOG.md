@@ -23,6 +23,11 @@ Cedar Language Version: TBD
   Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 - Added public APIs to get language and SDK version numbers (#1219).
 
+### Changed
+
+- The validator provides a more specific hint when an action ID cannot be found
+  and the same action ID with `Action::` has been defined.
+
 ### Fixed
 
 - The formatter will now consistently add a trailing newline. (resolving #1217)
