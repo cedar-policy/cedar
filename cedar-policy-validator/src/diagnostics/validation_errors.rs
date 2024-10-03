@@ -81,15 +81,9 @@ impl Diagnostic for UnrecognizedActionId {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match &self.unrecognized_action_id_help {
-            Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(s)) => Some(Box::new(
-                format!("did you intend to include the type in action `{s}`?"),
-            )),
-            Some(UnrecognizedActionIdHelp::SuggestAlternative(s)) => {
-                Some(Box::new(format!("did you mean `{s}`?")))
-            }
-            None => None,
-        }
+        self.unrecognized_action_id_help
+            .as_ref()
+            .map(|help| Box::new(help) as Box<dyn std::fmt::Display>)
     }
 }
 
@@ -97,20 +91,11 @@ impl Diagnostic for UnrecognizedActionId {
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 pub enum UnrecognizedActionIdHelp {
     /// Draw attention to action id including action type (e.g., `Action::"Action::view"`)
+    #[error("did you intend to include the type in action `{0}`?")]
     AvoidActionTypeInActionId(String),
     /// Suggest an alternative action
+    #[error("did you mean `{0}`?")]
     SuggestAlternative(String),
-}
-
-impl std::fmt::Display for UnrecognizedActionIdHelp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AvoidActionTypeInActionId(s) => {
-                write!(f, "the action id {s} is similar but includes the type")
-            }
-            Self::SuggestAlternative(s) => write!(f, "the action id {s} may be an alternative"),
-        }
-    }
 }
 
 /// Determine the help to offer in the presence of an unrecognized action id error.
