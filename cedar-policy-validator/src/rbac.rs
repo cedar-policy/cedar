@@ -27,7 +27,9 @@ use cedar_policy_core::{
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
-    expr_iterator::{policy_entity_type_names, policy_entity_uids}, validation_errors::unrecognized_action_id_help, ValidationError
+    expr_iterator::{policy_entity_type_names, policy_entity_uids},
+    validation_errors::unrecognized_action_id_help,
+    ValidationError,
 };
 
 use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
@@ -75,10 +77,7 @@ impl Validator {
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
-        let known_action_ids = self
-            .schema
-            .known_action_ids()
-            .collect::<Vec<_>>();
+        let known_action_ids = self.schema.known_action_ids().collect::<Vec<_>>();
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !self.schema.is_known_action_id(euid) {

@@ -81,8 +81,12 @@ impl Diagnostic for UnrecognizedActionId {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match &self.unrecognized_action_id_help {
-            Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(s)) => Some(Box::new(format!("did you intend to include the type in action `{s}`?"))),
-            Some(UnrecognizedActionIdHelp::SuggestAlternative(s)) => Some(Box::new(format!("did you mean `{s}`?"))),
+            Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(s)) => Some(Box::new(
+                format!("did you intend to include the type in action `{s}`?"),
+            )),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative(s)) => {
+                Some(Box::new(format!("did you mean `{s}`?")))
+            }
             None => None,
         }
     }
@@ -100,27 +104,38 @@ pub enum UnrecognizedActionIdHelp {
 impl std::fmt::Display for UnrecognizedActionIdHelp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::AvoidActionTypeInActionId(s) => write!(f, "the action id {s} is similar but includes the type"),
+            Self::AvoidActionTypeInActionId(s) => {
+                write!(f, "the action id {s} is similar but includes the type")
+            }
             Self::SuggestAlternative(s) => write!(f, "the action id {s} may be an alternative"),
         }
     }
 }
 
 /// Determine the help to offer in the presence of an unrecognized action id error.
-pub fn unrecognized_action_id_help(euid: &EntityUID, euids: &[&EntityUID]) -> Option<UnrecognizedActionIdHelp> {
+pub fn unrecognized_action_id_help(
+    euid: &EntityUID,
+    euids: &[&EntityUID],
+) -> Option<UnrecognizedActionIdHelp> {
     // Check if the user has included the type (i.e., `Action::`) in the action id
     let eid_with_type = format!("Action::{}", <Eid as AsRef<str>>::as_ref(euid.eid()));
-    let maybe_id_with_type = euids.iter().find(|euid| <Eid as AsRef<str>>::as_ref(euid.eid()).to_string().contains(&eid_with_type));
+    let maybe_id_with_type = euids.iter().find(|euid| {
+        <Eid as AsRef<str>>::as_ref(euid.eid())
+            .to_string()
+            .contains(&eid_with_type)
+    });
     if let Some(id) = maybe_id_with_type {
         // In that case, let the user know about it
-        Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(id.to_string()))
+        Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(
+            id.to_string(),
+        ))
     } else {
         // Otherwise, suggest using another id
         let euids_strs = euids.iter().map(ToString::to_string).collect::<Vec<_>>();
-        fuzzy_search(euid.eid().as_ref(), &euids_strs).map(UnrecognizedActionIdHelp::SuggestAlternative)
+        fuzzy_search(euid.eid().as_ref(), &euids_strs)
+            .map(UnrecognizedActionIdHelp::SuggestAlternative)
     }
 }
-
 
 /// Structure containing details about an invalid action application error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
