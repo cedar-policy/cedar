@@ -3925,6 +3925,7 @@ mod partial_schema {
 
 #[cfg(feature = "level-validate")]
 mod level_validation_tests {
+    use crate::ValidationMode;
     use crate::{Policy, PolicySet, ValidationError, Validator};
     use cool_asserts::assert_matches;
     use serde_json::json;
@@ -3991,7 +3992,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(result.validation_passed());
     }
 
@@ -4005,7 +4006,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         assert_matches!(
@@ -4024,7 +4025,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         let err = result.validation_errors().next().unwrap();
@@ -4047,7 +4048,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 2);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
         assert!(result.validation_passed());
     }
 
@@ -4061,7 +4062,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(result.validation_passed());
     }
 
@@ -4075,7 +4076,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         assert_matches!(
@@ -4094,7 +4095,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         assert_matches!(
@@ -4113,7 +4114,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 1);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
         assert!(result.validation_passed());
     }
 
@@ -4127,7 +4128,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(!result.validation_passed());
         assert_eq!(result.validation_errors().count(), 1);
         assert_matches!(
@@ -4146,7 +4147,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 2);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
         assert!(result.validation_passed());
     }
 
@@ -4160,7 +4161,7 @@ mod level_validation_tests {
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.strict_validate_with_level(&set, 0);
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
         assert!(result.validation_passed());
     }
 }

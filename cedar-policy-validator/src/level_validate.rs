@@ -22,26 +22,31 @@ use typecheck::PolicyCheck;
 use validation_errors::{EntityDerefLevel, EntityDerefLevelViolation};
 
 impl Validator {
-    /// Run `validate_policy` in strict mode against a single static policy or template (note
+    /// Run `validate_policy` against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
     /// validation errors and warnings in the returned iterators.
-    /// If strict validation passes, we will also perform level validation (see RFC 76).
-    pub(crate) fn strict_validate_policy_with_level<'a>(
+    /// If validation passes, we will also perform level validation (see RFC 76).
+    pub(crate) fn validate_policy_with_level<'a>(
         &'a self,
         p: &'a Template,
+        mode: ValidationMode,
         max_deref_level: u32,
     ) -> (
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let (errors, warnings) = self.validate_policy(p, ValidationMode::Strict);
+        let (errors, warnings) = self.validate_policy(p, mode);
 
         let mut peekable_errors = errors.peekable();
 
-        // Only perform level validation if strict validation passed.
+        // Only perform level validation if validation passed.
         if peekable_errors.peek().is_none() {
-            let levels_errors =
-                self.check_entity_deref_level(p, &EntityDerefLevel::from(max_deref_level), p.id());
+            let levels_errors = self.check_entity_deref_level(
+                p,
+                mode,
+                &EntityDerefLevel::from(max_deref_level),
+                p.id(),
+            );
             (peekable_errors.chain(levels_errors), warnings)
         } else {
             (peekable_errors.into_iter().chain(vec![]), warnings)
@@ -53,10 +58,11 @@ impl Validator {
     fn check_entity_deref_level<'a>(
         &'a self,
         t: &'a Template,
+        mode: ValidationMode,
         max_allowed_level: &EntityDerefLevel,
         policy_id: &PolicyID,
     ) -> Vec<ValidationError> {
-        let typechecker = Typechecker::new(&self.schema, ValidationMode::Strict, t.id().clone());
+        let typechecker = Typechecker::new(&self.schema, mode, t.id().clone());
         let type_annotated_asts = typechecker.typecheck_by_request_env(t);
         let mut errs = vec![];
         for (_, policy_check) in type_annotated_asts {
@@ -69,7 +75,7 @@ impl Validator {
                         None => (),
                     }
                 }
-                // PANIC SAFETY: We only validate the level after strict validation passed
+                // PANIC SAFETY: We only validate the level after validation passed
                 #[allow(clippy::unreachable)]
                 PolicyCheck::Fail(_) => unreachable!(),
             }
@@ -171,7 +177,7 @@ impl Validator {
             {
                 match expr.expr_kind() {
                     ExprKind::Record(m) => {
-                        // PANIC SAFETY: Strict validation checked that this access is safe
+                        // PANIC SAFETY: Validation checked that this access is safe
                         #[allow(clippy::unwrap_used)]
                         self.check_entity_deref_level_helper(
                             m.get(attr).unwrap(),
@@ -217,7 +223,7 @@ impl Validator {
                         _ => child_level_info,
                     }
                 }
-                // PANIC SAFETY: Strict validation passed, so annotating the AST will succeed
+                // PANIC SAFETY: Validation passed, so annotating the AST will succeed
                 #[allow(clippy::unreachable)]
                 None => unreachable!("Expected type-annotated AST"),
             },
@@ -301,6 +307,7 @@ mod levels_validation_tests {
         let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
             set.get_template(&template_name).unwrap(),
+            ValidationMode::default(),
             &EntityDerefLevel { level: 0 },
             &template_name,
         );
@@ -320,6 +327,7 @@ mod levels_validation_tests {
         let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
             set.get_template(&template_name).unwrap(),
+            ValidationMode::default(),
             &EntityDerefLevel { level: 0 },
             &template_name,
         );

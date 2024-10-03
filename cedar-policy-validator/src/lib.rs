@@ -131,24 +131,25 @@ impl Validator {
     }
 
     #[cfg(feature = "level-validate")]
-    /// Strictly validate all templates, links, and static policies in a policy set.
-    /// If strict validation passes, also run level validation with `max_deref_level`
+    /// Validate all templates, links, and static policies in a policy set.
+    /// If validation passes, also run level validation with `max_deref_level`
     /// (see RFC 76).
     /// Return a `ValidationResult`.
-    pub fn strict_validate_with_level(
+    pub fn validate_with_level(
         &self,
         policies: &PolicySet,
+        mode: ValidationMode,
         max_deref_level: u32,
     ) -> ValidationResult {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .map(|p| self.strict_validate_policy_with_level(p, max_deref_level))
+            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
         let link_errs = policies
             .policies()
-            .filter_map(|p| self.validate_slots(p, ValidationMode::Strict))
+            .filter_map(|p| self.validate_slots(p, mode))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
