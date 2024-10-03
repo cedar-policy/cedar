@@ -35,7 +35,7 @@ lazy_static = "1.5.0"
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
-default = ["ipaddr", "decimal", "level-validate"]
+default = ["ipaddr", "decimal"]
 
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
