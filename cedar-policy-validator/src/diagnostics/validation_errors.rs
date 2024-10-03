@@ -133,7 +133,10 @@ pub fn unrecognized_action_id_help(
         ))
     } else {
         // Otherwise, suggest using another id
-        let euids_strs = schema.known_action_ids().map(ToString::to_string).collect::<Vec<_>>();
+        let euids_strs = schema
+            .known_action_ids()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
         fuzzy_search(euid.eid().as_ref(), &euids_strs)
             .map(UnrecognizedActionIdHelp::SuggestAlternative)
     }
