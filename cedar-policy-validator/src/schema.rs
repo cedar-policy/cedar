@@ -54,20 +54,6 @@ pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
 
-/// Configurable validator behaviors regarding actions
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
-pub enum ActionBehavior {
-    /// Action entities cannot have attributes. Attempting to declare attributes
-    /// will result in a error when constructing the schema.
-    ///
-    /// Since we do not have a formal model for action attributes, this behavior
-    /// (disabling/prohibiting them) is the default.
-    #[default]
-    ProhibitAttributes,
-    /// Action entities may have attributes.
-    PermitAttributes,
-}
-
 /// A `ValidatorSchemaFragment` consists of any number (even 0) of
 /// `ValidatorNamespaceDef`s.
 #[derive(Debug)]
@@ -79,11 +65,7 @@ impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorSchemaFragment<ConditionalName, ConditionalName>> {
-        ValidatorSchemaFragment::from_schema_fragment(
-            self,
-            ActionBehavior::default(),
-            Extensions::all_available(),
-        )
+        ValidatorSchemaFragment::from_schema_fragment(self)
     }
 }
 
@@ -105,11 +87,7 @@ impl<N, A> ValidatorSchemaFragment<N, A> {
 
 impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     /// Construct a [`ValidatorSchemaFragment`] from a [`json_schema::Fragment`]
-    pub fn from_schema_fragment(
-        fragment: json_schema::Fragment<RawName>,
-        action_behavior: ActionBehavior,
-        extensions: &Extensions<'_>,
-    ) -> Result<Self> {
+    pub fn from_schema_fragment(fragment: json_schema::Fragment<RawName>) -> Result<Self> {
         Ok(Self(
             fragment
                 .0
@@ -118,8 +96,6 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                     ValidatorNamespaceDef::from_namespace_definition(
                         fragment_ns.map(Into::into),
                         ns_def,
-                        action_behavior,
-                        extensions,
                     )
                 })
                 .collect::<Result<Vec<_>>>()?,
@@ -290,7 +266,6 @@ impl ValidatorSchema {
     pub fn from_json_value(json: serde_json::Value, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_value(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -300,7 +275,6 @@ impl ValidatorSchema {
     pub fn from_json_str(json: &str, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_str(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -310,7 +284,6 @@ impl ValidatorSchema {
     pub fn from_json_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_file(file)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -324,8 +297,7 @@ impl ValidatorSchema {
     {
         let (fragment, warnings) = json_schema::Fragment::from_cedarschema_file(r, extensions)?;
         let schema_and_warnings =
-            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
-                .map(|schema| (schema, warnings))?;
+            Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
@@ -338,23 +310,17 @@ impl ValidatorSchema {
     {
         let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(src, extensions)?;
         let schema_and_warnings =
-            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
-                .map(|schema| (schema, warnings))?;
+            Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
     /// Helper function to construct a [`ValidatorSchema`] from a single [`json_schema::Fragment`].
     pub(crate) fn from_schema_frag(
         schema_file: json_schema::Fragment<RawName>,
-        action_behavior: ActionBehavior,
         extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         Self::from_schema_fragments(
-            [ValidatorSchemaFragment::from_schema_fragment(
-                schema_file,
-                action_behavior,
-                extensions,
-            )?],
+            [ValidatorSchemaFragment::from_schema_fragment(schema_file)?],
             extensions,
         )
     }
@@ -560,8 +526,6 @@ impl ValidatorSchema {
                             context.attrs,
                             open_context_attributes,
                         ),
-                        attribute_types: action.attribute_types,
-                        attributes: action.attributes,
                     },
                 ))
             })
@@ -828,10 +792,10 @@ impl ValidatorSchema {
                     .insert(action_euid.clone());
             }
         }
-        self.action_ids.iter().map(move |(action_id, action)| {
-            Entity::new_with_attr_partial_value_serialized_as_expr(
+        self.action_ids.keys().map(move |action_id| {
+            Entity::new_with_attr_partial_value(
                 action_id.clone(),
-                action.attributes.clone(),
+                [],
                 action_ancestors.remove(action_id).unwrap_or_default(),
             )
         })
@@ -865,12 +829,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
     fn try_into(self) -> Result<ValidatorSchema> {
         ValidatorSchema::from_schema_fragments(
             [ValidatorSchemaFragment::from_namespaces([
-                ValidatorNamespaceDef::from_namespace_definition(
-                    None,
-                    self.0,
-                    crate::ActionBehavior::PermitAttributes,
-                    Extensions::all_available(),
-                )?,
+                ValidatorNamespaceDef::from_namespace_definition(None, self.0)?,
             ])],
             Extensions::all_available(),
         )
@@ -1884,11 +1843,7 @@ pub(crate) mod test {
         )
         .unwrap();
 
-        let schema = ValidatorSchemaFragment::from_schema_fragment(
-            schema_json,
-            ActionBehavior::ProhibitAttributes,
-            Extensions::all_available(),
-        );
+        let schema = ValidatorSchemaFragment::from_schema_fragment(schema_json);
         match schema {
             Err(e) => {
                 expect_err(

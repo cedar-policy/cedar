@@ -170,7 +170,6 @@ impl Type {
     pub(crate) fn entity_reference_from_action_id(validator_action_id: &ValidatorActionId) -> Type {
         Type::EntityOrRecord(EntityRecordKind::ActionEntity {
             name: validator_action_id.name.entity_type().clone(),
-            attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
         })
     }
 
@@ -384,10 +383,8 @@ impl Type {
                         .map_or(false, |entity_type| entity_type.attr(attr).is_some())
                 })
             }
-            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
-                attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
-            }
+            // Action entities can never have any attributes
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => false,
             // A record will have an attribute if the attribute is in its
             // attributes map. Records computed as a LUB may have an open
             // attributes record, but that is handled by the first match case.
@@ -491,7 +488,7 @@ impl Type {
                     }
                     EntityRecordKind::AnyEntity => true,
                     EntityRecordKind::Record { .. } => false,
-                    EntityRecordKind::ActionEntity { name, .. } => concrete_name.eq(name),
+                    EntityRecordKind::ActionEntity { name } => concrete_name.eq(name),
                 },
                 _ => false,
             },
@@ -579,7 +576,7 @@ impl Type {
                     None => Ok(false),
                 }
             }
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name }) => {
                 match restricted_expr.as_euid() {
                     Some(euid) if euid.is_action() => Ok(euid.entity_type() == name),
                     _ => Ok(false),
@@ -678,11 +675,7 @@ impl Display for Type {
             Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
                 write!(f, "__cedar::internal::AnyEntity")
             }
-            // Ignoring action attributes for display purposes.
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity {
-                name,
-                attrs: _attrs,
-            }) => write!(f, "{name}"),
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name }) => write!(f, "{name}"),
             Type::EntityOrRecord(EntityRecordKind::Entity(elub)) => {
                 match elub.get_single_entity() {
                     Some(e) => write!(f, "{e}"),
@@ -1105,12 +1098,10 @@ pub enum EntityRecordKind {
     /// the schema, based on the elements of the [`EntityLUB`].
     Entity(EntityLUB),
 
-    /// We special case action entities, which store their attributes directly, like `Record`s do
+    /// We special case action entities, which can never have attributes
     ActionEntity {
         /// Type name of the action entity
         name: EntityType,
-        /// Attributes of the action entity
-        attrs: Attributes,
     },
 }
 
@@ -1174,8 +1165,9 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).get_attr(attr).cloned()
             }
-            EntityRecordKind::ActionEntity { attrs, .. } => {
-                attrs.get_attr(attr).cloned().map(Into::into)
+            EntityRecordKind::ActionEntity { .. } => {
+                // action entities can never have attributes
+                None
             }
             EntityRecordKind::AnyEntity => {
                 // the attribute may exist, but multiple types for it are possible
@@ -1195,7 +1187,7 @@ impl EntityRecordKind {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
-            EntityRecordKind::ActionEntity { attrs, .. } => attrs.attrs.keys().cloned().collect(),
+            EntityRecordKind::ActionEntity { .. } => vec![],
             EntityRecordKind::AnyEntity => vec![],
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).attrs.into_keys().collect()
@@ -1250,31 +1242,11 @@ impl EntityRecordKind {
             //We cannot, in general, have precise upper bounds between action
             //entities because `may_have_attr` assumes the list of attrs is
             //complete.
-            (
-                ActionEntity {
-                    name: action_type1,
-                    attrs: attrs1,
-                },
-                ActionEntity {
-                    name: action_type2,
-                    attrs: attrs2,
-                },
-            ) => {
+            (ActionEntity { name: action_type1 }, ActionEntity { name: action_type2 }) => {
                 if action_type1 == action_type2 {
-                    // Same action type. Ensure that the actions have the same
-                    // attributes. Computing the LUB under strict mode disables
-                    // means that the LUB does not exist if either record has as
-                    // an attribute that does not exist in the other, so we know
-                    // that list of attributes is complete, as is assumed by
-                    // `may_have_attr`. As long as actions have empty an
-                    // attribute records, the LUB no-ops, allowing for LUBs
-                    // between actions with the same action entity type even in
-                    // strict validation mode.
-                    Attributes::least_upper_bound(schema, attrs1, attrs2, ValidationMode::Strict)
-                        .map(|attrs| ActionEntity {
-                            name: action_type1.clone(),
-                            attrs,
-                        })
+                    Ok(ActionEntity {
+                        name: action_type1.clone(),
+                    })
                 } else if mode.is_strict() {
                     Err(LubHelp::EntityType)
                 } else {
@@ -1475,7 +1447,7 @@ pub enum Primitive {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{json_schema, ActionBehavior};
+    use crate::json_schema;
     use cool_asserts::assert_matches;
 
     impl Type {
@@ -1866,7 +1838,6 @@ mod test {
                 "actions": {}
             }}))
             .expect("Expected valid schema"),
-            ActionBehavior::PermitAttributes,
             Extensions::all_available(),
         )
         .expect("Expected valid schema")
@@ -1977,7 +1948,6 @@ mod test {
                 "actions": {}
             }}))
             .expect("Expected valid schema"),
-            ActionBehavior::PermitAttributes,
             Extensions::all_available(),
         )
         .expect("Expected valid schema")
@@ -2103,7 +2073,6 @@ mod test {
                 "actions": {}
             }}))
             .expect("Expected valid schema"),
-            ActionBehavior::PermitAttributes,
             Extensions::all_available(),
         )
         .expect("Expected valid schema");
@@ -2145,7 +2114,6 @@ mod test {
                 }}
             ))
             .expect("Expected valid schema"),
-            ActionBehavior::PermitAttributes,
             Extensions::all_available(),
         )
         .expect("Expected valid schema")
