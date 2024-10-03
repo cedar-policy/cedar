@@ -149,7 +149,7 @@ fn policy_checked_in_multiple_envs() {
     assert!(
         env_checks
             .iter()
-            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_, _)) })
             .count()
             == 1
     );
@@ -171,7 +171,7 @@ fn policy_checked_in_multiple_envs() {
     assert!(
         env_checks
             .iter()
-            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+            .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_, _)) })
             .count()
             == 2
     );

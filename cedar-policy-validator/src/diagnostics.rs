@@ -172,6 +172,12 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[cfg_attr(not(feature = "entity-tags"), allow(dead_code))]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    #[cfg(feature = "level-validate")]
+    /// If a entity dereference level was provided, the policies cannot deref
+    /// more than `level` hops away from PARX
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {

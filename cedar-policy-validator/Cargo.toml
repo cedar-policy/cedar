@@ -45,6 +45,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 
 # Experimental features.
 partial-validate = []
+level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 entity-manifest = []
 entity-tags = []

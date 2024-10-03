@@ -34,6 +34,8 @@
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+#[cfg(feature = "level-validate")]
+mod level_validate;
 
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
@@ -56,6 +58,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
+
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -119,6 +122,33 @@ impl Validator {
         let link_errs = policies
             .policies()
             .filter_map(|p| self.validate_slots(p, mode))
+            .flatten();
+        ValidationResult::new(
+            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
+        )
+    }
+
+    #[cfg(feature = "level-validate")]
+    /// Strictly validate all templates, links, and static policies in a policy set.
+    /// If strict validation passes, also run level validation with `max_deref_level`
+    /// (see RFC 76).
+    /// Return a `ValidationResult`.
+    pub fn strict_validate_with_level(
+        &self,
+        policies: &PolicySet,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
+            .all_templates()
+            .map(|p| self.strict_validate_policy_with_level(p, max_deref_level))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
+        let link_errs = policies
+            .policies()
+            .filter_map(|p| self.validate_slots(p, ValidationMode::Strict))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),

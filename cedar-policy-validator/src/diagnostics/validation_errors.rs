@@ -20,6 +20,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use std::fmt::Display;
+use std::ops::{Add, Neg};
 
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
@@ -445,6 +446,82 @@ impl Diagnostic for HierarchyNotRespected {
             ))),
             _ => None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
+/// Represents how many entity dereferences can be applied to a node.
+pub struct EntityDerefLevel {
+    /// A negative value `-n` represents `n` too many dereferences
+    pub level: i64,
+}
+
+impl Display for EntityDerefLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "{}", self.level)
+    }
+}
+
+impl From<u32> for EntityDerefLevel {
+    fn from(value: u32) -> Self {
+        EntityDerefLevel {
+            level: value as i64,
+        }
+    }
+}
+
+impl Default for EntityDerefLevel {
+    fn default() -> Self {
+        Self { level: 0 }
+    }
+}
+
+impl Add for EntityDerefLevel {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        EntityDerefLevel {
+            level: self.level + rhs.level,
+        }
+    }
+}
+
+impl Neg for EntityDerefLevel {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        EntityDerefLevel { level: -self.level }
+    }
+}
+
+impl EntityDerefLevel {
+    /// Decrement the entity deref level
+    pub fn decrement(&self) -> Self {
+        EntityDerefLevel {
+            level: self.level - 1,
+        }
+    }
+}
+
+/// Structure containing details about entity dereference level violation
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
+pub struct EntityDerefLevelViolation {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// The maximum level allowed by the schema
+    pub allowed_level: EntityDerefLevel,
+    /// The actual level this policy uses
+    pub actual_level: EntityDerefLevel,
+}
+
+impl Diagnostic for EntityDerefLevelViolation {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(format!("Consider increasing the level")))
     }
 }
 
