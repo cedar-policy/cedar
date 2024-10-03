@@ -134,7 +134,10 @@ pub enum JsonDeserializationError {
     /// Never returned as of 4.2.0 (entity tags are now stable), but this error
     /// variant not removed because that would be a breaking change on this
     /// publicly-exported type.
-    #[deprecated(since = "4.2.0", note = "entity-tags is now stable and fully supported, so this error never occurs")]
+    #[deprecated(
+        since = "4.2.0",
+        note = "entity-tags is now stable and fully supported, so this error never occurs"
+    )]
     #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
     UnsupportedEntityTags,
 }
