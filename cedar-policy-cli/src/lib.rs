@@ -168,8 +168,6 @@ pub enum ValidationMode {
     Strict,
     /// Permissive validation
     Permissive,
-    /// Partial validation
-    Partial,
 }
 
 #[derive(Args, Debug)]
@@ -189,7 +187,7 @@ pub struct ValidateArgs {
     /// Validate the policy using this mode.
     /// The options `permissive` and `partial` are experimental
     /// and will cause the CLI to exit if it was not built with the
-    /// experimental feature `permissive-validate` and `partial-validate`, respectively, enabled.
+    /// experimental feature `permissive-validate` and respectively, enabled.
     #[arg(long, value_enum, default_value_t = ValidationMode::Strict)]
     pub validation_mode: ValidationMode,
 }
@@ -710,15 +708,6 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
             }
             #[cfg(feature = "permissive-validate")]
             cedar_policy::ValidationMode::Permissive
-        }
-        ValidationMode::Partial => {
-            #[cfg(not(feature = "partial-validate"))]
-            {
-                eprintln!("Error: arguments include the experimental option `--validation-mode partial`, but this executable was not built with `partial-validate` experimental feature enabled");
-                return CedarExitCode::Failure;
-            }
-            #[cfg(feature = "partial-validate")]
-            cedar_policy::ValidationMode::Partial
         }
     };
 

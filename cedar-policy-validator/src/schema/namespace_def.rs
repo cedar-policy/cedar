@@ -1019,22 +1019,8 @@ pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
-    if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
-        Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
-    } else {
-        Ok(
-            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
-                Type::record_with_attributes(
-                    attrs,
-                    if rty.additional_attributes {
-                        OpenTag::OpenAttributes
-                    } else {
-                        OpenTag::ClosedAttributes
-                    },
-                )
-            }),
-        )
-    }
+    Ok(parse_record_attributes(rty.attributes, extensions)?
+        .map(move |attrs| Type::record_with_attributes(attrs, OpenTag::ClosedAttributes)))
 }
 
 /// Given the attributes for an entity or record type in the schema file format
