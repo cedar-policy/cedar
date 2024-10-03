@@ -245,6 +245,7 @@ mod test {
     use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
+    use crate::validation_errors::UnrecognizedActionIdHelp;
     use crate::Result;
 
     use super::*;
@@ -323,7 +324,9 @@ mod test {
             Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
-            Some("Action::\"action\"".to_string()),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative(
+                "Action::\"action\"".to_string(),
+            )),
         );
 
         assert!(!result.validation_passed());

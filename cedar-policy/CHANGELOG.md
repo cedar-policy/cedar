@@ -32,6 +32,11 @@ Cedar Language Version: 4.0
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
 - Added public APIs to get language and SDK version numbers (#1219).
 
+### Changed
+
+- The validator provides a more specific hint when an action ID cannot be found
+  and the same action ID with `Action::` has been defined (#1258, resolving #166)
+
 ### Fixed
 
 - The formatter will now consistently add a trailing newline. (resolving #1217)
