@@ -756,6 +756,39 @@ mod test {
     }
 
     #[test]
+    fn validate_action_id_with_action_type_namespace() {
+        let schema_src = r#"
+        {
+            "foo::foo::bar::baz": {
+                "entityTypes": {},
+                "actions": {
+                    "Action::view": {}
+                }
+            }
+        }"#;
+
+        let schema_fragment: json_schema::Fragment<RawName> =
+            serde_json::from_str(schema_src).expect("Parse Error");
+        let schema = schema_fragment.try_into().unwrap();
+
+        let src = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+        let validate = Validator::new(schema);
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"view"`"#,
+            )
+            .exactly_one_underline(r#"Action::"view""#)
+            .help(r#"did you intend to include the type in action `foo::foo::bar::baz::Action::"Action::view"`?"#)
+            .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+    }
+
+    #[test]
     fn validate_namespaced_action_id_in_schema() {
         let descriptors = json_schema::Fragment::from_json_str(
             r#"
