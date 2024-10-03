@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `sub_entity_literals` API (#1233).
+- Added level validation [RFC 76](https://github.com/cedar-policy/rfcs/pull/76) as an experimental feature.
 - Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
   short-hand for `@my_annotation("")` (#1231, resolving #1031).
 - Stabilized [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), removing

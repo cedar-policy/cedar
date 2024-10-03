@@ -407,7 +407,7 @@ pub fn compute_entity_manifest(
                     // using static analysis
                     compute_root_trie(&typechecked_expr, policy.id())
                 }
-                PolicyCheck::Irrelevant(_) => {
+                PolicyCheck::Irrelevant(_, _) => {
                     // this policy is irrelevant, so we need no data
                     Ok(RootAccessTrie::new())
                 }
