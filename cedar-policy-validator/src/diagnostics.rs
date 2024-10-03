@@ -196,13 +196,13 @@ impl ValidationError {
 
         policy_id: PolicyID,
         actual_action_id: String,
-        unrecognized_action_id_help: Option<UnrecognizedActionIdHelp>,
+        hint: Option<UnrecognizedActionIdHelp>,
     ) -> Self {
         validation_errors::UnrecognizedActionId {
             source_loc,
             policy_id,
             actual_action_id,
-            unrecognized_action_id_help,
+            hint,
         }
         .into()
     }

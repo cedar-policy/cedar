@@ -70,18 +70,17 @@ pub struct UnrecognizedActionId {
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// Action Id seen in the policy.
+    /// Action Id seen in the policy
     pub actual_action_id: String,
-    /// An action id from the schema that the user might reasonably have
-    /// intended to write.
-    pub unrecognized_action_id_help: Option<UnrecognizedActionIdHelp>,
+    /// Hint for resolving the error
+    pub hint: Option<UnrecognizedActionIdHelp>,
 }
 
 impl Diagnostic for UnrecognizedActionId {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.unrecognized_action_id_help
+        self.hint
             .as_ref()
             .map(|help| Box::new(help) as Box<dyn std::fmt::Display>)
     }
@@ -108,8 +107,8 @@ pub fn unrecognized_action_id_help(
     let eid_with_type = format!("Action::{}", eid_str);
     let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
     let maybe_id_with_type = schema.known_action_ids().find(|euid| {
-        let eid_string = <Eid as AsRef<str>>::as_ref(euid.eid()).to_string();
-        eid_string.contains(&eid_with_type) || eid_string.contains(&eid_with_type_and_quotes)
+        let eid = <Eid as AsRef<str>>::as_ref(euid.eid());
+        eid.contains(&eid_with_type) || eid.contains(&eid_with_type_and_quotes)
     });
     if let Some(id) = maybe_id_with_type {
         // In that case, let the user know about it
