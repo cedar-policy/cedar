@@ -17,19 +17,18 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
+    ast::{self, EntityType, EntityUID},
     transitive_closure::TCNode,
 };
 use itertools::Itertools;
 use nonempty::NonEmpty;
 use serde::Serialize;
-use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 use super::internal_name_to_entity_type;
 use crate::{
     schema::{AllDefs, SchemaError},
-    types::{Attributes, Type},
+    types::Type,
     ConditionalName,
 };
 
@@ -59,17 +58,6 @@ pub struct ValidatorActionId {
 
     /// The type of the context record associated with this action.
     pub(crate) context: Type,
-
-    /// The attribute types for this action, used for typechecking.
-    pub(crate) attribute_types: Attributes,
-
-    /// The actual attribute value for this action, used to construct an
-    /// `Entity` for this action. Could also be used for more precise
-    /// typechecking by partial evaluation.
-    ///
-    /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
-    /// works seamlessly.
-    pub(crate) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 impl ValidatorActionId {
@@ -359,8 +347,6 @@ mod test {
             },
             descendants: HashSet::new(),
             context: Type::any_record(),
-            attribute_types: Attributes::default(),
-            attributes: BTreeMap::default(),
         }
     }
 

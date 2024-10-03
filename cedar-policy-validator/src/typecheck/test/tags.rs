@@ -333,7 +333,7 @@ fn tags_on_actions() {
         src,
         &miette::Report::new(error),
         &ExpectedErrorMessageBuilder::error(
-            r#"for policy `0`, unable to guarantee safety of access to tag `"foo"`"#,
+            r#"for policy `0`, unable to guarantee safety of access to tag `"foo"` on entity type `Action`"#,
         )
         .help(r#"try testing for the tag's presence with `.hasTag("foo") && ..`"#)
         .exactly_one_underline(r#"action.getTag("foo")"#)

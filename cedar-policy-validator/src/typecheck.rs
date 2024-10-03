@@ -999,9 +999,7 @@ impl<'a> Typechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIs),
                         _ => None,
                     },
@@ -1042,25 +1040,6 @@ impl<'a> Typechecker<'a> {
                                 // The actual EntityLUB contains the entity type, so
                                 // the `is` could be `true`, but it may also be `false`
                                 Type::primitive_boolean()
-                            };
-
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(Some(type_of_is))
-                                    .with_same_source_loc(e)
-                                    .is_entity_type(expr_ty, entity_type.clone()),
-                            )
-                        }
-                        Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
-                            name, ..
-                        })) => {
-                            let type_of_is = if name == entity_type {
-                                // The actual action entity type is exactly the entity type we're
-                                // testing for with `is`, so the expression is always `true`
-                                Type::singleton_boolean(true)
-                            } else {
-                                // The actual action entity type is not the entity type
-                                // we're testing for, so the `is` will always be `false`
-                                Type::singleton_boolean(false)
                             };
 
                             TypecheckAnswer::success(
@@ -1328,9 +1307,7 @@ impl<'a> Typechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
                         Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
                             Some(UnexpectedTypeHelp::TryUsingHas)
@@ -1388,9 +1365,7 @@ impl<'a> Typechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
                         Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
                             Some(UnexpectedTypeHelp::TryUsingHas)
@@ -1582,7 +1557,6 @@ impl<'a> Typechecker<'a> {
                                 let entity_ty = match kind {
                                     EntityRecordKind::Entity(lub) => lub.get_single_entity(),
                                     EntityRecordKind::AnyEntity => None,
-                                    EntityRecordKind::ActionEntity { name, .. } => Some(name),
                                     EntityRecordKind::Record { .. } => None,
                                 };
                                 type_errors.push(ValidationError::no_tags_allowed(
@@ -1759,7 +1733,6 @@ impl<'a> Typechecker<'a> {
                 .entity_types()
                 .filter_map(|(_, vety)| vety.tag_type())
                 .collect()),
-            EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
             EntityRecordKind::Record { .. } => Err(()),
         }
     }
@@ -1965,12 +1938,10 @@ impl<'a> Typechecker<'a> {
     fn get_as_single_entity_type(ty: Type) -> Option<EntityType> {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
             Type::Set {
                 element_type: Some(element_type),
             } => match *element_type {
                 Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-                Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
                 _ => None,
             },
             _ => None,
