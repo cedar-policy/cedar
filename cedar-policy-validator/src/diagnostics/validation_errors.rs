@@ -31,6 +31,7 @@ use cedar_policy_core::parser::join_with_conjunction;
 
 use crate::fuzzy_match::fuzzy_search;
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
+use crate::ValidatorSchema;
 use itertools::Itertools;
 use smol_str::SmolStr;
 
@@ -115,14 +116,15 @@ impl std::fmt::Display for UnrecognizedActionIdHelp {
 /// Determine the help to offer in the presence of an unrecognized action id error.
 pub fn unrecognized_action_id_help(
     euid: &EntityUID,
-    euids: &[&EntityUID],
+    schema: &ValidatorSchema,
 ) -> Option<UnrecognizedActionIdHelp> {
     // Check if the user has included the type (i.e., `Action::`) in the action id
-    let eid_with_type = format!("Action::{}", <Eid as AsRef<str>>::as_ref(euid.eid()));
-    let maybe_id_with_type = euids.iter().find(|euid| {
-        <Eid as AsRef<str>>::as_ref(euid.eid())
-            .to_string()
-            .contains(&eid_with_type)
+    let eid_str: &str = euid.eid().as_ref();
+    let eid_with_type = format!("Action::{}", eid_str);
+    let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
+    let maybe_id_with_type = schema.known_action_ids().find(|euid| {
+        let eid_string = <Eid as AsRef<str>>::as_ref(euid.eid()).to_string();
+        eid_string.contains(&eid_with_type) || eid_string.contains(&eid_with_type_and_quotes)
     });
     if let Some(id) = maybe_id_with_type {
         // In that case, let the user know about it
@@ -131,7 +133,7 @@ pub fn unrecognized_action_id_help(
         ))
     } else {
         // Otherwise, suggest using another id
-        let euids_strs = euids.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let euids_strs = schema.known_action_ids().map(ToString::to_string).collect::<Vec<_>>();
         fuzzy_search(euid.eid().as_ref(), &euids_strs)
             .map(UnrecognizedActionIdHelp::SuggestAlternative)
     }

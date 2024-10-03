@@ -77,7 +77,6 @@ impl Validator {
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
-        let known_action_ids = self.schema.known_action_ids().collect::<Vec<_>>();
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
@@ -85,7 +84,7 @@ impl Validator {
                     euid.loc().cloned(),
                     template.id().clone(),
                     euid.to_string(),
-                    unrecognized_action_id_help(euid, &known_action_ids),
+                    unrecognized_action_id_help(euid, &self.schema),
                 ))
             } else {
                 None
