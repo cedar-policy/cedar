@@ -14,19 +14,7 @@
  * limitations under the License.
  */
 
-//! Validator for Cedar policies
-#![forbid(unsafe_code)]
-#![deny(
-    missing_docs,
-    missing_debug_implementations,
-    rustdoc::broken_intra_doc_links,
-    rustdoc::private_intra_doc_links,
-    rustdoc::invalid_codeblock_attributes,
-    rustdoc::invalid_html_tags,
-    rustdoc::invalid_rust_codeblocks,
-    rustdoc::bare_urls,
-    clippy::doc_markdown
-)]
+//! Implementation of level validation (RFC 76)
 
 use super::*;
 use cedar_policy_core::ast::{BinaryOp, PolicyID};
