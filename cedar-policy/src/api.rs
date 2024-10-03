@@ -1215,10 +1215,6 @@ pub enum ValidationMode {
     #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "permissive-validate")]
     Permissive,
-    /// Validate using a partial schema. Policies may contain type errors.
-    #[doc = include_str!("../experimental_warning.md")]
-    #[cfg(feature = "partial-validate")]
-    Partial,
 }
 
 #[doc(hidden)]
@@ -1228,8 +1224,6 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
             ValidationMode::Strict => Self::Strict,
             #[cfg(feature = "permissive-validate")]
             ValidationMode::Permissive => Self::Permissive,
-            #[cfg(feature = "partial-validate")]
-            ValidationMode::Partial => Self::Partial,
         }
     }
 }
@@ -2363,22 +2357,10 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
         .into_iter()
         .filter_map(|(env, pc)| {
             if matches!(pc, PolicyCheck::Success(_)) {
-                Some(match env {
-                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
-                        principal,
-                        action,
-                        resource,
-                        ..
-                    } => RequestEnv {
-                        principal: principal.clone().into(),
-                        resource: resource.clone().into(),
-                        action: action.clone().into(),
-                    },
-                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
-                    #[allow(clippy::unreachable)]
-                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
-                        unreachable!("used unsupported feature")
-                    }
+                Some(RequestEnv {
+                    principal: env.principal.clone().into(),
+                    resource: env.resource.clone().into(),
+                    action: env.action.clone().into(),
                 })
             } else {
                 None

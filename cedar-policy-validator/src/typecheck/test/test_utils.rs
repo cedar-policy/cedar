@@ -89,7 +89,7 @@ impl Typechecker<'_> {
     ) -> TypecheckAnswer<'a> {
         // Using bogus entity type names here for testing. They'll be treated as
         // having empty attribute records, so tests will behave as expected.
-        let request_env = RequestEnv::DeclaredAction {
+        let request_env = RequestEnv {
             principal: &"Principal"
                 .parse()
                 .expect("Placeholder type \"Principal\" failed to parse as valid type name."),

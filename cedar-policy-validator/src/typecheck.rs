@@ -244,30 +244,18 @@ impl<'a> Typechecker<'a> {
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
-        all_actions
-            .flat_map(|action| {
-                action.applies_to_principals().flat_map(|principal| {
-                    action
-                        .applies_to_resources()
-                        .map(|resource| RequestEnv::DeclaredAction {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
+        all_actions.flat_map(|action| {
+            action.applies_to_principals().flat_map(|principal| {
+                action.applies_to_resources().map(|resource| RequestEnv {
+                    principal,
+                    action: &action.name,
+                    resource,
+                    context: &action.context,
+                    principal_slot: None,
+                    resource_slot: None,
                 })
             })
-            .chain(if self.mode.is_partial() {
-                // A partial schema might not list all actions, and may not
-                // include all principal and resource types for the listed ones.
-                // So we typecheck with a fully unknown request to handle these
-                // missing cases.
-                Some(RequestEnv::UndeclaredAction)
-            } else {
-                None
-            })
+        })
     }
 
     /// Given a request environment and a template, return new environments
@@ -277,39 +265,30 @@ impl<'a> Typechecker<'a> {
         env: RequestEnv<'b>,
         t: &'b Template,
     ) -> Box<dyn Iterator<Item = RequestEnv<'_>> + 'b> {
-        match env {
-            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
-            RequestEnv::DeclaredAction {
-                principal,
-                action,
-                resource,
-                context,
-                ..
-            } => Box::new(
+        Box::new(
+            self.possible_slot_links(
+                t,
+                SlotId::principal(),
+                env.principal,
+                t.principal_constraint().as_inner(),
+            )
+            .flat_map(move |p_slot| {
                 self.possible_slot_links(
                     t,
-                    SlotId::principal(),
-                    principal,
-                    t.principal_constraint().as_inner(),
+                    SlotId::resource(),
+                    env.resource,
+                    t.resource_constraint().as_inner(),
                 )
-                .flat_map(move |p_slot| {
-                    self.possible_slot_links(
-                        t,
-                        SlotId::resource(),
-                        resource,
-                        t.resource_constraint().as_inner(),
-                    )
-                    .map(move |r_slot| RequestEnv::DeclaredAction {
-                        principal,
-                        action,
-                        resource,
-                        context,
-                        principal_slot: p_slot.clone(),
-                        resource_slot: r_slot.clone(),
-                    })
-                }),
-            ),
-        }
+                .map(move |r_slot| RequestEnv {
+                    principal: env.principal,
+                    action: env.action,
+                    resource: env.resource,
+                    context: env.context,
+                    principal_slot: p_slot.clone(),
+                    resource_slot: r_slot.clone(),
+                })
+            }),
+        )
     }
 
     /// Get the entity types which could link the slot given in this
@@ -466,17 +445,6 @@ impl<'a> Typechecker<'a> {
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
                 match Type::euid_literal((**euid).clone(), self.schema) {
-                    // The entity type is undeclared, but that's OK for a
-                    // partial schema. The attributes record will be empty if we
-                    // try to access it later, so all attributes will have the
-                    // bottom type.
-                    None if self.mode.is_partial() => TypecheckAnswer::success(
-                        ExprBuilder::with_data(Some(Type::named_entity_reference(
-                            euid.entity_type().clone(),
-                        )))
-                        .with_same_source_loc(e)
-                        .val(euid.clone()),
-                    ),
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
                             .with_same_source_loc(e)
@@ -838,19 +806,6 @@ impl<'a> Typechecker<'a> {
                                     );
                                     TypecheckAnswer::fail(annot_expr)
                                 }
-                            }
-                            // In partial schema validation, if we can't find
-                            // the attribute but there may be additional
-                            // attributes, we do not fail and instead return the
-                            // bottom type (`Never`).
-                            None if self.mode.is_partial()
-                                && Type::may_have_attr(self.schema, typ_actual, attr) =>
-                            {
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(Type::Never))
-                                        .with_same_source_loc(e)
-                                        .get_attr(typ_expr_actual, attr.clone()),
-                                )
                             }
                             None => {
                                 let borrowed =
@@ -1885,12 +1840,8 @@ impl<'a> Typechecker<'a> {
                             rhs_expr,
                         ),
 
-                    // If none of the cases apply, then all we know is that `in` has
-                    // type boolean. Importantly for partial schema
-                    // validation, this case captures an `in` between entity
-                    // literals where the LHS is not an action defined in
-                    // the schema and does not have an entity type defined
-                    // in the schema.
+                    // If none of the cases apply, then all we know is that `in`
+                    // has type boolean.
                     _ => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(in_expr)
@@ -2022,51 +1973,24 @@ impl<'a> Typechecker<'a> {
             } else {
                 request_env.resource_entity_type()
             };
-            match var_etype {
-                None => {
-                    // We failed to get the principal/resource entity type because
-                    // we are typechecking a request for some action which isn't
-                    // declared in the schema.  We don't know if the euid would be
-                    // in the descendants or not, so give it type boolean.
-                    let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_loc(in_expr)
-                        .is_in(lhs_expr, rhs_expr);
-                    if self.mode.is_partial() {
-                        TypecheckAnswer::success(in_expr)
-                    } else {
-                        // This should only happen when doing partial validation
-                        // since we never construct the undeclared action
-                        // request environment otherwise.
-                        TypecheckAnswer::fail(in_expr)
-                    }
-                }
-                Some(var_name) => {
-                    let all_rhs_known = rhs
-                        .iter()
-                        .all(|e| self.schema.euid_has_known_entity_type(e));
-                    if self.schema.is_known_entity_type(var_name) && all_rhs_known {
-                        let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                        Typechecker::entity_in_descendants(
-                            var_name,
-                            descendants,
-                            in_expr,
-                            lhs_expr,
-                            rhs_expr,
-                        )
-                    } else {
-                        let annotated_expr =
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_loc(in_expr)
-                                .is_in(lhs_expr, rhs_expr);
-                        if self.mode.is_partial() {
-                            // In partial schema mode, undeclared entity types are
-                            // expected.
-                            TypecheckAnswer::success(annotated_expr)
-                        } else {
-                            TypecheckAnswer::fail(annotated_expr)
-                        }
-                    }
-                }
+
+            let all_rhs_known = rhs
+                .iter()
+                .all(|e| self.schema.euid_has_known_entity_type(e));
+            if self.schema.is_known_entity_type(var_etype) && all_rhs_known {
+                let descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                Typechecker::entity_in_descendants(
+                    var_etype,
+                    descendants,
+                    in_expr,
+                    lhs_expr,
+                    rhs_expr,
+                )
+            } else {
+                let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                    .with_same_source_loc(in_expr)
+                    .is_in(lhs_expr, rhs_expr);
+                TypecheckAnswer::fail(annotated_expr)
             }
         } else {
             // One or more of the elements on the right is not an entity
@@ -2161,11 +2085,7 @@ impl<'a> Typechecker<'a> {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
                 .is_in(lhs_expr, rhs_expr);
-            if self.mode.is_partial() {
-                TypecheckAnswer::success(annotated_expr)
-            } else {
-                TypecheckAnswer::fail(annotated_expr)
-            }
+            TypecheckAnswer::fail(annotated_expr)
         }
     }
 
@@ -2199,11 +2119,7 @@ impl<'a> Typechecker<'a> {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
                 .is_in(lhs_expr, rhs_expr);
-            if self.mode.is_partial() {
-                TypecheckAnswer::success(annotated_expr)
-            } else {
-                TypecheckAnswer::fail(annotated_expr)
-            }
+            TypecheckAnswer::fail(annotated_expr)
         }
     }
 
@@ -2432,10 +2348,9 @@ impl<'a> Typechecker<'a> {
         maybe_action_var: &'a Expr,
     ) -> Cow<'a, Expr> {
         match maybe_action_var.expr_kind() {
-            ExprKind::Var(Var::Action) => match request_env.action_entity_uid() {
-                Some(action) => Cow::Owned(Expr::val(action.clone())),
-                None => Cow::Borrowed(maybe_action_var),
-            },
+            ExprKind::Var(Var::Action) => {
+                Cow::Owned(Expr::val(request_env.action_entity_uid().clone()))
+            }
             _ => Cow::Borrowed(maybe_action_var),
         }
     }

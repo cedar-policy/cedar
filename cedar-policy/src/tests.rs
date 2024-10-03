@@ -1790,79 +1790,6 @@ mod entity_validate_tests {
 
     /// Record inside entity doesn't conform to schema
     #[test]
-    #[cfg(feature = "partial-validate")]
-    fn issue_1176_should_fail2() {
-        let schema = Schema::from_json_value(json!(
-        {
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "rec": {
-                                    "type": "Record",
-                                    "attributes": {
-                                        "foo": {
-                                            "type": "Long"
-                                        },
-                                        "bar": {
-                                            "type": "Boolean",
-                                            "required": false
-                                        }
-                                    },
-                                    "additionalAttributes": true
-                                }
-                            }
-                        },
-                        "memberOfTypes": []
-                    }
-                },
-                "actions": {
-                    "pull": {
-                        "appliesTo": {
-                            "principalTypes": [
-                                "User"
-                            ],
-                            "resourceTypes": [
-                                "User"
-                            ]
-                        }
-                    }
-                }
-            }
-        }
-        ))
-        .expect("should be a valid schema");
-        let entity = Entity::new(
-            EntityUid::from_str(r#"User::"abc""#).unwrap(),
-            HashMap::from_iter([(
-                "rec".into(),
-                RestrictedExpression::new_record([
-                    ("foo".into(), RestrictedExpression::new_long(4567)),
-                    ("bar".into(), RestrictedExpression::new_string("bad".into())),
-                ])
-                .unwrap(),
-            )]),
-            HashSet::new(),
-        )
-        .unwrap();
-        assert_matches!(
-            Entities::from_entities([entity], Some(&schema)),
-            Err(e @ EntitiesError::InvalidEntity(_)) => {
-                expect_err(
-                    "",
-                    &Report::new(e),
-                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                        .source(r#"in attribute `rec` on `User::"abc"`, type mismatch: value was expected to have type bool, but it actually has type string: `"bad"`"#)
-                        .build()
-                );
-            }
-        );
-    }
-
-    /// Record inside entity doesn't conform to schema
-    #[test]
     fn issue_1176_should_fail3() {
         let (schema, _) = Schema::from_cedarschema_str(
             r#"
@@ -3826,7 +3753,6 @@ mod schema_based_parsing_tests {
     }
 }
 
-#[cfg(not(feature = "partial-validate"))]
 #[test]
 fn partial_schema_unsupported() {
     use cool_asserts::assert_matches;
@@ -3842,85 +3768,6 @@ fn partial_schema_unsupported() {
                     .build(),
             )
     );
-}
-
-#[cfg(feature = "partial-validate")]
-mod partial_schema {
-    use super::*;
-    use serde_json::json;
-
-    fn partial_schema() -> Schema {
-        Schema::from_json_value(json!(
-        {
-            "": {
-                "entityTypes": {
-                    "User" : {},
-                    "Folder" : {},
-                    "Employee": {
-                        "memberOfTypes": [],
-                        "shape": {
-                            "type": "Record",
-                            "attributes": { },
-                            "additionalAttributes": true,
-                        },
-                    }
-                },
-                "actions": {
-                    "Act": {
-                        "appliesTo": {
-                            "principalTypes" : ["User"],
-                            "resourceTypes" : ["Folder"],
-                            "context": {
-                                "type": "Record",
-                                "attributes": {},
-                                "additionalAttributes": true,
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        ))
-        .unwrap()
-    }
-
-    #[test]
-    fn entity_extra_attr() {
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "foobar": 234,
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-
-        let schema = partial_schema();
-        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
-            .expect("Parsing with a partial schema should allow unknown attributes.");
-        let parsed_without_schema = Entities::from_json_value(entitiesjson, None).unwrap();
-
-        let uid = EntityUid::from_strs("Employee", "12UA45");
-        assert_eq!(
-            parsed.get(&uid),
-            parsed_without_schema.get(&uid),
-            "Parsing with a partial schema should give the same result as parsing without a schema"
-        );
-    }
-
-    #[test]
-    fn context_extra_attr() {
-        Context::from_json_value(
-            json!({"foo": true, "bar": 123}),
-            Some((&partial_schema(), &EntityUid::from_strs("Action", "Act"))),
-        )
-        .unwrap();
-    }
 }
 
 #[cfg(feature = "level-validate")]

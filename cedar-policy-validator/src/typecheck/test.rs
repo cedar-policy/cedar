@@ -26,8 +26,6 @@ mod expr;
 mod extensions;
 mod namespace;
 mod optional_attributes;
-#[cfg(feature = "partial-validate")]
-mod partial;
 mod policy;
 mod strict;
 mod tags;

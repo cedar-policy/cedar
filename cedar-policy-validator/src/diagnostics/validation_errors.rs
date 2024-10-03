@@ -644,10 +644,7 @@ impl AttributeAccess {
             if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
             } else if let ExprKind::Var(Var::Context) = expr.expr_kind() {
-                return match req_env.action_entity_uid() {
-                    Some(action) => AttributeAccess::Context(action.clone(), attrs),
-                    None => AttributeAccess::Other(attrs),
-                };
+                return AttributeAccess::Context(req_env.action_entity_uid().clone(), attrs);
             } else if let ExprKind::GetAttr {
                 expr: sub_expr,
                 attr,
@@ -733,7 +730,7 @@ mod test_attr_access {
         msg: impl AsRef<str>,
         help: impl AsRef<str>,
     ) {
-        let env = RequestEnv::DeclaredAction {
+        let env = RequestEnv {
             principal: &"Principal".parse().unwrap(),
             action: &EntityUID::with_eid_and_type(
                 cedar_policy_core::ast::ACTION_ENTITY_TYPE,

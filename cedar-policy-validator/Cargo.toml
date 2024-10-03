@@ -47,7 +47,6 @@ partial-eval = ["cedar-policy-core/partial-eval"]
 arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 
 # Experimental features.
-partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 protobufs = ["dep:prost", "dep:prost-build"]

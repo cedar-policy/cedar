@@ -47,11 +47,10 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest"]
+experimental = ["partial-eval", "permissive-validate", "level-validate", "entity-manifest"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
-partial-validate = ["cedar-policy-validator/partial-validate"]
 protobufs = ["cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]

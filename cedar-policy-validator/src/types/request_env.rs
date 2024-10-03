@@ -23,128 +23,76 @@ use super::Type;
 /// Represents a request type environment. In principle, this contains full
 /// types for the four variables (principal, action, resource, context).
 #[derive(Clone, Debug, PartialEq)]
-pub enum RequestEnv<'a> {
-    /// Contains the four variables bound in the type environment. These together
-    /// represent the full type of (principal, action, resource, context)
-    /// authorization request.
-    DeclaredAction {
-        /// Principal type
-        principal: &'a EntityType,
-        /// Action
-        action: &'a EntityUID,
-        /// Resource type
-        resource: &'a EntityType,
-        /// Context type
-        context: &'a Type,
+pub struct RequestEnv<'a> {
+    /// Principal type
+    pub principal: &'a EntityType,
+    /// Action
+    pub action: &'a EntityUID,
+    /// Resource type
+    pub resource: &'a EntityType,
+    /// Context type
+    pub context: &'a Type,
 
-        /// Binding for the ?principal slot, if any
-        principal_slot: Option<EntityType>,
-        /// Binding for the ?resource slot, if any
-        resource_slot: Option<EntityType>,
-    },
-    /// Only in partial schema validation, the action might not have been
-    /// declared in the schema, so this encodes the environment where we know
-    /// nothing about the environment.
-    UndeclaredAction,
+    /// Binding for the ?principal slot, if any
+    pub principal_slot: Option<EntityType>,
+    /// Binding for the ?resource slot, if any
+    pub resource_slot: Option<EntityType>,
 }
 
 impl<'a> RequestEnv<'a> {
     /// Return the types of each of the elements of this request.
-    /// Returns [`None`] when the request is not fully concrete.
-    pub fn to_request_type(&self) -> Option<RequestType> {
-        match self {
-            RequestEnv::DeclaredAction {
-                principal,
-                action,
-                resource,
-                context: _,
-                principal_slot: _,
-                resource_slot: _,
-            } => Some(RequestType {
-                principal: (*principal).clone(),
-                action: (*action).clone(),
-                resource: (*resource).clone(),
-            }),
-            RequestEnv::UndeclaredAction => None,
+    pub fn to_request_type(&self) -> RequestType {
+        RequestType {
+            principal: self.principal.clone(),
+            action: self.action.clone(),
+            resource: self.resource.clone(),
         }
     }
 
     /// The principal type for this request environment, as an [`EntityType`].
-    /// `None` indicates we don't know (only possible in partial schema validation).
-    pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { principal, .. } => Some(principal),
-        }
+    pub fn principal_entity_type(&self) -> &'a EntityType {
+        self.principal
     }
 
     /// [`Type`] of the `principal` for this request environment
     pub fn principal_type(&self) -> Type {
-        match self.principal_entity_type() {
-            Some(principal) => Type::named_entity_reference(principal.clone()),
-            None => Type::any_entity_reference(),
-        }
+        Type::named_entity_reference(self.principal.clone())
     }
 
     /// The action for this request environment, as an [`EntityUID`].
-    /// `None` indicates we don't know (only possible in partial schema validation).
-    pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { action, .. } => Some(action),
-        }
+    pub fn action_entity_uid(&self) -> &'a EntityUID {
+        self.action
     }
 
     /// [`Type`] of the `action` for this request environment
     pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
-        match self.action_entity_uid() {
-            Some(action) => Type::euid_literal(action.clone(), schema),
-            None => Some(Type::any_entity_reference()),
-        }
+        Type::euid_literal(self.action.clone(), schema)
     }
 
     /// The resource type for this request environment, as an [`EntityType`].
-    /// `None` indicates we don't know (only possible in partial schema validation).
-    pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => None,
-            RequestEnv::DeclaredAction { resource, .. } => Some(resource),
-        }
+    pub fn resource_entity_type(&self) -> &'a EntityType {
+        self.resource
     }
 
     /// [`Type`] of the `resource` for this request environment
     pub fn resource_type(&self) -> Type {
-        match self.resource_entity_type() {
-            Some(resource) => Type::named_entity_reference(resource.clone()),
-            None => Type::any_entity_reference(),
-        }
+        Type::named_entity_reference(self.resource.clone())
     }
 
     /// [`Type`] of the `context` for this request environment
     pub fn context_type(&self) -> Type {
-        match self {
-            RequestEnv::UndeclaredAction => Type::any_record(),
-            RequestEnv::DeclaredAction { context, .. } => (*context).clone(),
-        }
+        self.context.clone()
     }
 
     /// Type of the ?principal slot for this request environment, as an [`EntityType`].
-    /// `None` may indicate we don't know (in partial schema validation) or that
-    /// this slot doesn't exist.
+    /// `None` may indicates  that this slot doesn't exist.
     pub fn principal_slot(&self) -> &Option<EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => &None,
-            RequestEnv::DeclaredAction { principal_slot, .. } => principal_slot,
-        }
+        &self.principal_slot
     }
 
     /// Type of the ?resource slot for this request environment, as an [`EntityType`].
-    /// `None` may indicate we don't know (in partial schema validation) or that
-    /// this slot doesn't exist.
+    /// `None` may indicates  that this slot doesn't exist.
     pub fn resource_slot(&self) -> &Option<EntityType> {
-        match self {
-            RequestEnv::UndeclaredAction => &None,
-            RequestEnv::DeclaredAction { resource_slot, .. } => resource_slot,
-        }
+        &self.resource_slot
     }
 }

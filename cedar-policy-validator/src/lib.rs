@@ -74,30 +74,14 @@ pub enum ValidationMode {
     Strict,
     /// Permissive mode
     Permissive,
-    /// Partial validation, allowing you to use an incomplete schema, but
-    /// providing no formal guarantees
-    #[cfg(feature = "partial-validate")]
-    Partial,
 }
 
 impl ValidationMode {
-    /// Does this mode use partial validation. We could conceivably have a
-    /// strict/partial validation mode.
-    fn is_partial(self) -> bool {
-        match self {
-            ValidationMode::Strict | ValidationMode::Permissive => false,
-            #[cfg(feature = "partial-validate")]
-            ValidationMode::Partial => true,
-        }
-    }
-
     /// Does this mode apply strict validation rules.
     fn is_strict(self) -> bool {
         match self {
             ValidationMode::Strict => true,
             ValidationMode::Permissive => false,
-            #[cfg(feature = "partial-validate")]
-            ValidationMode::Partial => false,
         }
     }
 }
@@ -150,7 +134,7 @@ impl Validator {
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
         let link_errs = policies
             .policies()
-            .filter_map(|p| self.validate_slots(p, mode))
+            .filter_map(|p| self.validate_slots(p))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
@@ -198,25 +182,14 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let validation_errors = if mode.is_partial() {
-            // We skip `validate_entity_types`, `validate_action_ids`, and
-            // `validate_action_application` passes for partial schema
-            // validation because there may be arbitrary extra entity types and
-            // actions, so we can never claim that one doesn't exist.
-            None
-        } else {
-            Some(
-                self.validate_entity_types(p)
-                    .chain(self.validate_action_ids(p))
-                    // We could usefully update this pass to apply to partial
-                    // schema if it only failed when there is a known action
-                    // applied to known principal/resource entity types that are
-                    // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
-            )
-        }
-        .into_iter()
-        .flatten();
+        let validation_errors = self
+            .validate_entity_types(p)
+            .chain(self.validate_action_ids(p))
+            // We could usefully update this pass to apply to partial
+            // schema if it only failed when there is a known action
+            // applied to known principal/resource entity types that are
+            // not in its `appliesTo`.
+            .chain(self.validate_template_action_application(p));
         let (errors, warnings) = self.typecheck_policy(p, mode);
         (validation_errors.chain(errors), warnings)
     }
@@ -226,16 +199,9 @@ impl Validator {
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
-        mode: ValidationMode,
     ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
-            return None;
-        }
-        // In partial validation, there may be arbitrary extra entity types and
-        // actions, so we can never claim that one doesn't exist or that the
-        // action application is invalid.
-        if mode.is_partial() {
             return None;
         }
         // For template-linked policies `Policy::principal_constraint()` and

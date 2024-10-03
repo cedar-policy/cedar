@@ -30,9 +30,7 @@ pub use cedar_policy_core::extensions::{
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest::{
-    self, FailedAnalysisError, PartialExpressionError, PartialRequestError,
-};
+use cedar_policy_validator::entity_manifest::{self, FailedAnalysisError, PartialExpressionError};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -1230,10 +1228,6 @@ pub enum EntityManifestError {
     #[diagnostic(transparent)]
     Entities(#[from] EntitiesError),
 
-    /// The request was partial
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    PartialRequest(#[from] PartialRequestError),
     /// A policy was partial
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -1252,7 +1246,6 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
         match e {
             entity_manifest::EntityManifestError::Validation(e) => Self::Validation(e.into()),
             entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e),
-            entity_manifest::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
             entity_manifest::EntityManifestError::PartialExpression(e) => {
                 Self::PartialExpression(e)
             }
