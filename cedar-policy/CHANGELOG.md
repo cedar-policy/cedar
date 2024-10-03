@@ -26,7 +26,7 @@ Cedar Language Version: TBD
 ### Changed
 
 - The validator provides a more specific hint when an action ID cannot be found
-  and the same action ID with `Action::` has been defined.
+  and the same action ID with `Action::` has been defined (#1258, resolving #166)
 
 ### Fixed
 
