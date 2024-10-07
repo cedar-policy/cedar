@@ -54,7 +54,7 @@ partial-eval = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]
-lalrpop = "0.21.0"
+lalrpop = "0.22.0"
 
 [dev-dependencies]
 cool_asserts = "2.0"
