@@ -12,6 +12,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [4.2.0] - 2024-10-07
+Cedar Language version: 4.1
+
 ### Added
 
 - Added `sub_entity_literals` API (#1233).
@@ -22,6 +25,11 @@ Cedar Language Version: TBD
   the experimental `entity-tags` feature flag. That functionality is now available
   without the feature flag.
 
+### Changed
+
+- The validator provides a more specific hint when an action ID cannot be found
+  and the same action ID with `Action::` has been defined (#1258, resolving #166)
+
 ## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0
 
@@ -31,11 +39,6 @@ Cedar Language Version: 4.0
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
 - Added public APIs to get language and SDK version numbers (#1219).
-
-### Changed
-
-- The validator provides a more specific hint when an action ID cannot be found
-  and the same action ID with `Action::` has been defined (#1258, resolving #166)
 
 ### Fixed
 
@@ -731,6 +734,7 @@ Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.1.0...main
+[4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
 [3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
