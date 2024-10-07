@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 4.2.0
+
+### Fixed
+- Fixed import logic (https://github.com/cedar-policy/cedar/issues/1227
+  and https://github.com/cedar-policy/cedar/issues/1226)
+
 ## 4.0.0
 
 ### Added
