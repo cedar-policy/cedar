@@ -1,13 +1,5 @@
 # Changelog
 
-## Unreleased
-
-## 4.0.0
-
-### Added
-
-Initial release of the Wasm bindings
-
-## 3.2.x
-
-Initial pre-release of the Wasm bindings
+The changelog for all the release branches of `cedar-wasm` is maintained on
+the `main` branch. You can view the most up-to-date changelog
+[here](https://github.com/cedar-policy/cedar/blob/main/cedar-wasm/CHANGELOG.md).
