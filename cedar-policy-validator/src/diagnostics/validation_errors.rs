@@ -485,9 +485,8 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 /// Represents how many entity dereferences can be applied to a node.
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 pub struct EntityDerefLevel {
     /// A negative value `-n` represents `n` too many dereferences
     pub level: i64,
