@@ -12,6 +12,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Fixed
+
+- Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
+
 ## [4.2.0] - 2024-10-07
 Cedar Language version: 4.1
 
