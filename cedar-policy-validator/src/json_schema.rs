@@ -1080,11 +1080,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
     {
         use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
 
-        // We keep field values wrapped in a `Result` initially so that we do
-        // not report errors due the contents of a field when the field is not
-        // expected for a particular type variant. We instead report that the
-        // field so not exist at all, so that the schema author can delete the
-        // field without wasting time fixing errors in the value.
         let mut type_name: Option<SmolStr> = None;
         let mut element: Option<Type<N>> = None;
         let mut attributes: Option<AttributesTypeMap> = None;
