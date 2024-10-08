@@ -1503,7 +1503,7 @@ impl<'a> Typechecker<'a> {
                             ExprBuilder::with_data(Some(type_of_has))
                                 .with_same_source_loc(bin_expr)
                                 .binary_app(BinaryOp::HasTag, expr_ty_arg1, expr_ty_arg2),
-                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, &arg2)),
+                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, arg2)),
                         )
                     })
                 }),
@@ -1515,9 +1515,7 @@ impl<'a> Typechecker<'a> {
                     arg1,
                     Type::any_entity_reference(),
                     type_errors,
-                    |actual| match actual {
-                        _ => None,
-                    },
+                    |_actual| None,
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
                     self.expect_type(
@@ -1554,7 +1552,7 @@ impl<'a> Typechecker<'a> {
                                 );
                             }
                         };
-                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, &arg2)) {
+                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
                             // Determine the set of possible tag types for this access.
                             let tag_types = match self.tag_types(kind) {
                                 Ok(tag_types) => tag_types,
@@ -1602,7 +1600,7 @@ impl<'a> Typechecker<'a> {
                                 // compute the LUB of all the relevant tag types, and assign that
                                 // as the type.
                                 let tag_type = match Type::reduce_to_least_upper_bound(
-                                    &self.schema,
+                                    self.schema,
                                     tag_types.clone(),
                                     self.mode,
                                 ) {
