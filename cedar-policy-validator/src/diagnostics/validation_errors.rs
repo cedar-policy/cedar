@@ -551,7 +551,7 @@ impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new("Consider increasing the level".to_string()))
+        Some(Box::new("Consider increasing the level"))
     }
 }
 
