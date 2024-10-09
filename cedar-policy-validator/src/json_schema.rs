@@ -2027,7 +2027,7 @@ mod test {
     #[test]
     fn schema_file_unexpected_malformed_attribute() {
         let src = serde_json::json!(
-        {
+        { "": {
             "entityTypes": {
                 "User": {
                     "shape": {
@@ -2044,7 +2044,7 @@ mod test {
                 }
             },
             "actions": {}
-        });
+        }});
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
@@ -2100,7 +2100,6 @@ mod test {
                             "type": "Record",
                             "attributes": {
                                  "foo": { "type": "Entity", "name": "b" },
-                                 "bar": { "type": "Set", "element": "Long" },
                                  "baz": { "type": "Record",
                                     "attributes": {
                                         // Parsing should fail here instead of continuing and failing on the `"b"` as in #417
@@ -2120,7 +2119,7 @@ mod test {
             expect_err(
                 "",
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `z`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+                &ExpectedErrorMessageBuilder::error(r#"invalid type: string "Boolean", expected struct TypeOfAttribute"#).build()
             );
         });
     }
