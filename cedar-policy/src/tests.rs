@@ -1288,8 +1288,7 @@ mod schema_tests {
     /// Test that an invalid schema returns the appropriate error
     #[test]
     fn invalid_schema() {
-        assert_matches!(
-            Schema::from_json_str(
+        let src =
                 // Written as a string because duplicate entity types are detected
                 // by the serde-json string parser.
                 r#"{"": {
@@ -1339,13 +1338,15 @@ mod schema_tests {
                         }
                     }
                 }
-            }}"#
-            ),
+            }}"#;
+        assert_matches!(
+            Schema::from_json_str(src),
             Err(e) =>
                 expect_err(
-                    "",
+                    src,
                     &Report::new(e),
                     &ExpectedErrorMessageBuilder::error("invalid entry: found duplicate key at line 39 column 17")
+                        .exactly_one_underline("")
                         .build(),
                 )
         );

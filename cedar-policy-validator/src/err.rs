@@ -316,7 +316,8 @@ pub mod schema_errors {
 
     use cedar_policy_core::{
         ast::{EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name},
-        parser::join_with_conjunction,
+        impl_diagnostic_from_source_loc_opt_field,
+        parser::{join_with_conjunction, Loc},
         transitive_closure,
     };
     use itertools::Itertools;
@@ -633,6 +634,11 @@ pub mod schema_errors {
     pub struct JsonDeserializationError {
         /// Error thrown by the `serde_json` crate
         err: serde_json::Error,
+        /// Source location where this error occurred, if we parsed from a
+        /// string. Location is derived from `line` and `column` methods on
+        /// `err` and the actual source string. Not available if we deserialized
+        /// from a `serde_json::Value`.
+        loc: Option<Loc>,
         /// Possible fix for the error
         advice: Option<JsonDeserializationAdvice>,
     }
@@ -643,6 +649,8 @@ pub mod schema_errors {
                 .as_ref()
                 .map(|h| Box::new(h) as Box<dyn Display>)
         }
+
+        impl_diagnostic_from_source_loc_opt_field!(loc);
     }
 
     #[derive(Debug, Error)]
@@ -658,8 +666,21 @@ pub mod schema_errors {
         ///
         /// `src`: the JSON that we were trying to deserialize (if available in string form)
         pub(crate) fn new(err: serde_json::Error, src: Option<&str>) -> Self {
+            let loc = src.map(|src| {
+                Loc::new(
+                    miette::SourceSpan::new(
+                        miette::SourceOffset::from_location(src, err.line(), err.column()),
+                        0,
+                    ),
+                    src.into(),
+                )
+            });
             match src {
-                None => Self { err, advice: None },
+                None => Self {
+                    err,
+                    advice: None,
+                    loc,
+                },
                 Some(src) => {
                     // let's see what the first non-whitespace character is
                     let advice = match src.trim_start().chars().next() {
@@ -688,7 +709,7 @@ pub mod schema_errors {
                         }
                         Some(_) => Some(JsonDeserializationAdvice::CedarFormat), // any character other than '{', we suspect it might be a Cedar-format schema
                     };
-                    Self { err, advice }
+                    Self { err, advice, loc }
                 }
             }
         }
