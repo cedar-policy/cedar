@@ -1131,6 +1131,14 @@ impl Node<Option<cst::Member>> {
     /// Construct an attribute access or method call on an expression. This also
     /// handles function calls, but a function call of an arbitrary expression
     /// is always an error.
+    ///
+    /// The input `head` is an arbitrary expression, while `next` and `tail` are
+    /// togther a non-empty list of accesses applied to that expression.
+    ///
+    /// Returns a tuple where the first element is the expression built for the
+    /// `next` access applied to `head`, and the second element is the new tail of
+    /// acessors. In most cases, `tail` is returned unmodified, but in the method
+    /// call case we need to pull off the `Call` element containing the arguments.
     fn build_expr_accessor<'a>(
         &self,
         head: ast::Expr,
