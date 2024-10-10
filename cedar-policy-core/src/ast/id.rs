@@ -144,15 +144,6 @@ impl FromNormalizedStr for UnreservedId {
     }
 }
 
-impl UnreservedId {
-    /// Create an [`UnreservedId`] from an empty string
-    pub(crate) fn empty() -> Self {
-        // PANIC SAFETY: "" does not contain `__cedar`
-        #[allow(clippy::unwrap_used)]
-        Id("".into()).try_into().unwrap()
-    }
-}
-
 struct IdVisitor;
 
 impl serde::de::Visitor<'_> for IdVisitor {

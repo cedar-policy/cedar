@@ -51,7 +51,7 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
-use std::mem;
+use std::iter::Peekable;
 use std::sync::Arc;
 
 /// Defines the function `cst::Expr::to_ref_or_refs` and other similar functions
@@ -1305,47 +1305,42 @@ impl Node<Option<cst::Member>> {
     /// handles function calls, but a function call of an arbitrary expression
     /// is always an error.
     ///
-    /// The input `head` is an arbitrary expression, while `next` and `tail` are
-    /// togther a non-empty list of accesses applied to that expression.
+    /// The input `head` is an arbitrary expression, while `next` and `tail`
+    /// together form a non-empty list of accesses applied to that expression.
+    /// In most cases, we just need the `next` element, but if we have a `Field`
+    /// next, then we need to look-ahead at the following accessor to determine
+    /// if it should parse as a field access or a method call. If it's a method
+    /// call, then we pull that element off the list of remaining accessors.
     ///
-    /// Returns a tuple where the first element is the expression built for the
-    /// `next` access applied to `head`, and the second element is the new tail of
-    /// acessors. In most cases, `tail` is returned unmodified, but in the method
-    /// call case we need to pull off the `Call` element containing the arguments.
-    fn build_expr_accessor<'a>(
+    /// Returns a new expression built for the `next` access applied to `head`.
+    fn build_expr_accessor(
         &self,
         head: ast::Expr,
-        next: &mut AstAccessor,
-        tail: &'a mut [AstAccessor],
-    ) -> Result<(ast::Expr, &'a mut [AstAccessor])> {
+        next_access: AstAccessor,
+        accessors: &mut Peekable<impl Iterator<Item = AstAccessor>>,
+    ) -> Result<ast::Expr> {
         use AstAccessor::*;
-        match (next, tail) {
+        match next_access {
             // trying to "call" an expression as a function like `(1 + 1)("foo")`. Always an error.
-            (Call(_), _) => Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
+            Call(_) => Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
 
-            // method call on arbitrary expression like `[].contains(1)`
-            (Field(id), [Call(args), rest @ ..]) => {
-                // move the expr and args out of the slice
-                let args = std::mem::take(args);
-                // move the id out of the slice as well, to avoid cloning the internal string
-                let id = mem::replace(id, ast::UnreservedId::empty());
-                Ok((id.to_meth(head, args, &self.loc)?, rest))
-            }
-
-            // field of arbitrary expr like `(principal.foo).bar`
-            (Field(id), rest) => {
-                let id = mem::replace(id, ast::UnreservedId::empty());
-                Ok((
-                    construct_expr_attr(head, id.to_smolstr(), self.loc.clone()),
-                    rest,
-                ))
+            Field(id) => {
+                if let Some(Call(_)) = accessors.peek() {
+                    // method call on arbitrary expression like `[].contains(1)`
+                    // PANIC SAFETY: We just checked that `peek()` matches `Some(Call(_))`, so `next()` must also match.
+                    #[allow(clippy::unreachable)]
+                    let Some(Call(args)) = accessors.next() else {
+                        unreachable!()
+                    };
+                    id.to_meth(head, args, &self.loc)
+                } else {
+                    // field of arbitrary expr like `(principal.foo).bar`
+                    Ok(construct_expr_attr(head, id.to_smolstr(), self.loc.clone()))
+                }
             }
 
             // index into arbitrary expr like `(principal.foo)["bar"]`
-            (Index(i), rest) => {
-                let i = mem::take(i);
-                Ok((construct_expr_attr(head, i, self.loc.clone()), rest))
-            }
+            Index(i) => Ok(construct_expr_attr(head, i, self.loc.clone())),
         }
     }
 
@@ -1356,23 +1351,24 @@ impl Node<Option<cst::Member>> {
         let maybe_accessors = ParseErrors::transpose(mem.access.iter().map(|a| a.to_access()));
 
         // Return errors in case parsing failed for any element
-        let (prim, mut accessors) = flatten_tuple_2(maybe_prim, maybe_accessors)?;
+        let (prim, accessors) = flatten_tuple_2(maybe_prim, maybe_accessors)?;
+        let mut accessors = accessors.into_iter().peekable();
 
-        let (mut head, mut tail) = {
+        let mut head = {
             use AstAccessor::*;
             use ExprOrSpecial::*;
-            match (prim, accessors.as_mut_slice()) {
+            match (prim, accessors.next()) {
                 // no accessors, return head immediately.
-                (prim, []) => return Ok(prim),
+                (prim, None) => return Ok(prim),
 
                 // Any access on an arbitrary expression. We will handle the
                 // possibility of multiple chained accesses on this expression
                 // in the loop at the end of this function.
-                (Expr { expr, .. }, [next, rest @ ..]) => {
-                    self.build_expr_accessor(expr, next, rest)?
+                (Expr { expr, .. }, Some(next)) => {
+                    self.build_expr_accessor(expr, next, &mut accessors)?
                 }
                 // String literals are handled the same ways as expressions
-                (StrLit { lit, loc }, [next, rest @ ..]) => {
+                (StrLit { lit, loc }, Some(next)) => {
                     let str_lit_expr = match to_unescaped_string(lit) {
                         Ok(s) => construct_expr_string(s, loc),
                         Err(escape_errs) => {
@@ -1382,75 +1378,63 @@ impl Node<Option<cst::Member>> {
                             ))
                         }
                     };
-                    self.build_expr_accessor(str_lit_expr, next, rest)?
+                    self.build_expr_accessor(str_lit_expr, next, &mut accessors)?
                 }
 
                 // function call
-                (Name { name, .. }, [Call(args), rest @ ..]) => {
-                    // move the vec out of the slice, we won't use the slice after
-                    let args = std::mem::take(args);
-                    (name.into_func(args, self.loc.clone())?, rest)
-                }
+                (Name { name, .. }, Some(Call(args))) => name.into_func(args, self.loc.clone())?,
                 // variable function call - error
-                (Var { var, .. }, [Call(_), ..]) => {
+                (Var { var, .. }, Some(Call(_))) => {
                     return Err(self.to_ast_err(ToASTErrorKind::VariableCall(var)).into());
                 }
 
-                // method call on name - error
-                (Name { name, .. }, [Field(f), Call(_), ..]) => {
-                    return Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name, f.clone()))
-                        .into());
-                }
-                // method call on variable
-                (Var { var, loc: var_loc }, [Field(id), Call(args), rest @ ..]) => {
-                    let args = std::mem::take(args);
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(id, ast::UnreservedId::empty());
-                    (
-                        id.to_meth(construct_expr_var(var, var_loc), args, &self.loc)?,
-                        rest,
-                    )
+                (Name { name, .. }, Some(Field(f))) => {
+                    if let Some(Call(_)) = accessors.peek() {
+                        // method call on name - error
+                        return Err(self.to_ast_err(ToASTErrorKind::NoMethods(name, f)).into());
+                    } else {
+                        // attribute access on an arbitrary name - error
+                        return Err(self
+                            .to_ast_err(ToASTErrorKind::InvalidAccess {
+                                lhs: name,
+                                field: f.to_smolstr(),
+                            })
+                            .into());
+                    }
                 }
 
-                // attribute access on a variable
-                (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    (
+                (Var { var, loc: var_loc }, Some(Field(id))) => {
+                    if let Some(Call(_)) = accessors.peek() {
+                        // method call on variable
+                        // PANIC SAFETY: We just checked that `peek()` matches `Some(Call(_))`, so `next()` must also match.
+                        #[allow(clippy::unreachable)]
+                        let Some(Call(args)) = accessors.next() else {
+                            unreachable!()
+                        };
+                        id.to_meth(construct_expr_var(var, var_loc), args, &self.loc)?
+                    } else {
+                        // attribute access on a variable
                         construct_expr_attr(
                             construct_expr_var(var, var_loc),
                             id.to_smolstr(),
                             self.loc.clone(),
-                        ),
-                        rest,
-                    )
+                        )
+                    }
                 }
-                // attribute access on an arbitrary name - error
-                (Name { name, .. }, [Field(f), ..]) => {
-                    return Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidAccess {
-                            lhs: name,
-                            field: f.to_smolstr(),
-                        })
-                        .into());
-                }
+
                 // index style attribute access on an arbitrary name - error
-                (Name { name, .. }, [Index(i), ..]) => {
+                (Name { name, .. }, Some(Index(i))) => {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidIndex {
                             lhs: name,
-                            field: i.clone(),
+                            field: i,
                         })
                         .into());
                 }
 
                 // index style attribute access on a variable
-                (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
-                    let i = mem::take(i);
-                    (
-                        construct_expr_attr(construct_expr_var(var, var_loc), i, self.loc.clone()),
-                        rest,
-                    )
+                (Var { var, loc: var_loc }, Some(Index(i))) => {
+                    construct_expr_attr(construct_expr_var(var, var_loc), i, self.loc.clone())
                 }
             }
         };
@@ -1459,8 +1443,8 @@ impl Node<Option<cst::Member>> {
         // expression, so we repeatedly apply `build_expr_access` on head
         // without need to consider the other cases until we've consumed the
         // list of accesses.
-        while let [next, rest @ ..] = tail {
-            (head, tail) = self.build_expr_accessor(head, next, rest)?;
+        while let Some(next) = accessors.next() {
+            head = self.build_expr_accessor(head, next, &mut accessors)?;
         }
         Ok(ExprOrSpecial::Expr {
             expr: head,
