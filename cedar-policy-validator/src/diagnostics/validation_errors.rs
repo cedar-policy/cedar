@@ -485,8 +485,8 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 /// Represents how many entity dereferences can be applied to a node.
+#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 pub struct EntityDerefLevel {
     /// A negative value `-n` represents `n` too many dereferences
     pub level: i64,
@@ -503,12 +503,6 @@ impl From<u32> for EntityDerefLevel {
         EntityDerefLevel {
             level: value as i64,
         }
-    }
-}
-
-impl Default for EntityDerefLevel {
-    fn default() -> Self {
-        Self { level: 0 }
     }
 }
 
@@ -557,7 +551,7 @@ impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!("Consider increasing the level")))
+        Some(Box::new("Consider increasing the level"))
     }
 }
 

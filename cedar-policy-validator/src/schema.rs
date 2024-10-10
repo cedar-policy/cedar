@@ -4507,7 +4507,7 @@ mod entity_tags {
             owner: User,
           } tags Set<String>;
         ";
-        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Ok((schema, warnings)) => {
             assert!(warnings.is_empty());
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
@@ -4557,7 +4557,7 @@ mod entity_tags {
             },
             "actions": {}
         }});
-        assert_matches!(ValidatorSchema::from_json_value(json.clone(), &Extensions::all_available()), Ok(schema) => {
+        assert_matches!(ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()), Ok(schema) => {
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
                 assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
@@ -4590,7 +4590,7 @@ mod entity_tags {
             entity Foo7 in E tags Set<Set<{a: Blah}>>;
             entity Foo8 in E tags Foo7;
         ";
-        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Ok((schema, warnings)) => {
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Ok((schema, warnings)) => {
             assert!(warnings.is_empty());
             let e = assert_entity_type_exists(&schema, "E");
             assert_matches!(e.tag_type(), None);
@@ -4616,7 +4616,7 @@ mod entity_tags {
     #[test]
     fn invalid_tags() {
         let src = "entity E tags Undef;";
-        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())), Err(e) => {
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),

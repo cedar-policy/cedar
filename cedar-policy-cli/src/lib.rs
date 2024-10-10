@@ -624,7 +624,7 @@ struct RequestJSON {
 #[cfg(feature = "partial-eval")]
 /// This struct is the serde structure expected for --request-json
 #[derive(Deserialize)]
-pub(self) struct PartialRequestJSON {
+struct PartialRequestJSON {
     /// Principal for the request
     pub(self) principal: Option<String>,
     /// Action for the request
@@ -1262,27 +1262,24 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
         args.timing,
     );
     match ans {
-        Ok(ans) => {
-            let status = match ans.decision() {
-                Some(Decision::Allow) => {
-                    println!("ALLOW");
-                    CedarExitCode::Success
+        Ok(ans) => match ans.decision() {
+            Some(Decision::Allow) => {
+                println!("ALLOW");
+                CedarExitCode::Success
+            }
+            Some(Decision::Deny) => {
+                println!("DENY");
+                CedarExitCode::AuthorizeDeny
+            }
+            None => {
+                println!("UNKNOWN");
+                println!("All policy residuals:");
+                for p in ans.nontrivial_residuals() {
+                    println!("{p}");
                 }
-                Some(Decision::Deny) => {
-                    println!("DENY");
-                    CedarExitCode::AuthorizeDeny
-                }
-                None => {
-                    println!("UNKNOWN");
-                    println!("All policy residuals:");
-                    for p in ans.nontrivial_residuals() {
-                        println!("{p}");
-                    }
-                    CedarExitCode::Unknown
-                }
-            };
-            status
-        }
+                CedarExitCode::Unknown
+            }
+        },
         Err(errs) => {
             for err in errs {
                 println!("{err:?}");

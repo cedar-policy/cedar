@@ -49,7 +49,7 @@ impl Validator {
             );
             (peekable_errors.chain(levels_errors), warnings)
         } else {
-            (peekable_errors.into_iter().chain(vec![]), warnings)
+            (peekable_errors.chain(vec![]), warnings)
         }
     }
 
@@ -69,10 +69,9 @@ impl Validator {
             match policy_check {
                 PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
                     let res =
-                        self.check_entity_deref_level_helper(&e, max_allowed_level, policy_id);
-                    match res.1 {
-                        Some(e) => errs.push(ValidationError::EntityDerefLevelViolation(e)),
-                        None => (),
+                        Self::check_entity_deref_level_helper(&e, max_allowed_level, policy_id);
+                    if let Some(e) = res.1 {
+                        errs.push(ValidationError::EntityDerefLevelViolation(e))
                     }
                 }
                 // PANIC SAFETY: We only validate the level after validation passed
@@ -95,8 +94,7 @@ impl Validator {
 
     /// Walk the type-annotated AST and compute the used level and possible violation
     /// Returns a tuple of `(actual level used, optional violation information)`
-    fn check_entity_deref_level_helper<'a>(
-        &'a self,
+    fn check_entity_deref_level_helper(
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
         max_allowed_level: &EntityDerefLevel,
         policy_id: &PolicyID,
@@ -108,7 +106,7 @@ impl Validator {
                 EntityDerefLevel { level: 0 }, //Literals can't be dereferenced
                 None,
             ),
-            ExprKind::Var(_) => (max_allowed_level.clone(), None), //Roots start at `max_allowed_level`
+            ExprKind::Var(_) => (*max_allowed_level, None), //Roots start at `max_allowed_level`
             ExprKind::Slot(_) => (EntityDerefLevel { level: 0 }, None), //Slot will be replaced by Entity literal so treat the same
             ExprKind::Unknown(_) => (
                 EntityDerefLevel { level: 0 }, //Can't dereference an unknown
@@ -122,7 +120,7 @@ impl Validator {
                 let es = [test_expr, then_expr, else_expr];
                 let v: Vec<(EntityDerefLevel, Option<_>)> = es
                     .iter()
-                    .map(|l| self.check_entity_deref_level_helper(l, max_allowed_level, policy_id))
+                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
                     .collect();
                 Self::min(v)
             }
@@ -130,17 +128,17 @@ impl Validator {
                 let es = [left, right];
                 let v: Vec<(EntityDerefLevel, Option<_>)> = es
                     .iter()
-                    .map(|l| self.check_entity_deref_level_helper(l, max_allowed_level, policy_id))
+                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
                     .collect();
                 Self::min(v)
             }
             ExprKind::UnaryApp { arg, .. } => {
-                self.check_entity_deref_level_helper(arg, max_allowed_level, policy_id)
+                Self::check_entity_deref_level_helper(arg, max_allowed_level, policy_id)
             }
             // `In` operator decrements the LHS only
             ExprKind::BinaryApp { op, arg1, arg2 } if op == &BinaryOp::In => {
-                let lhs = self.check_entity_deref_level_helper(arg1, max_allowed_level, policy_id);
-                let rhs = self.check_entity_deref_level_helper(arg2, max_allowed_level, policy_id);
+                let lhs = Self::check_entity_deref_level_helper(arg1, max_allowed_level, policy_id);
+                let rhs = Self::check_entity_deref_level_helper(arg2, max_allowed_level, policy_id);
                 let lhs = (lhs.0.decrement(), lhs.1);
                 let new_level = Self::min(vec![lhs, rhs]).0;
                 if new_level.level < 0 {
@@ -150,7 +148,7 @@ impl Validator {
                             source_loc: e.source_loc().cloned(),
                             policy_id: policy_id.clone(),
                             actual_level: new_level,
-                            allowed_level: max_allowed_level.clone(),
+                            allowed_level: *max_allowed_level,
                         }),
                     )
                 } else {
@@ -161,14 +159,14 @@ impl Validator {
                 let es = [arg1, arg2];
                 let v: Vec<(EntityDerefLevel, Option<_>)> = es
                     .iter()
-                    .map(|l| self.check_entity_deref_level_helper(l, max_allowed_level, policy_id))
+                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
                     .collect();
                 Self::min(v)
             }
             ExprKind::ExtensionFunctionApp { args, .. } => {
                 let v: Vec<(EntityDerefLevel, Option<_>)> = args
                     .iter()
-                    .map(|l| self.check_entity_deref_level_helper(l, max_allowed_level, policy_id))
+                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
                     .collect();
                 Self::min(v)
             }
@@ -179,7 +177,7 @@ impl Validator {
                     ExprKind::Record(m) => {
                         // PANIC SAFETY: Validation checked that this access is safe
                         #[allow(clippy::unwrap_used)]
-                        self.check_entity_deref_level_helper(
+                        Self::check_entity_deref_level_helper(
                             m.get(attr).unwrap(),
                             max_allowed_level,
                             policy_id,
@@ -196,7 +194,7 @@ impl Validator {
             {
                 Some(ty) => {
                     let child_level_info =
-                        self.check_entity_deref_level_helper(expr, max_allowed_level, policy_id);
+                        Self::check_entity_deref_level_helper(expr, max_allowed_level, policy_id);
                     match ty {
                         Type::EntityOrRecord(EntityRecordKind::Entity { .. })
                         | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => {
@@ -209,7 +207,7 @@ impl Validator {
                                         source_loc: e.source_loc().cloned(),
                                         policy_id: policy_id.clone(),
                                         actual_level: new_level,
-                                        allowed_level: max_allowed_level.clone(),
+                                        allowed_level: *max_allowed_level,
                                     }),
                                 )
                             } else {
@@ -228,12 +226,12 @@ impl Validator {
                 None => unreachable!("Expected type-annotated AST"),
             },
             ExprKind::Like { expr, .. } | ExprKind::Is { expr, .. } => {
-                self.check_entity_deref_level_helper(expr, max_allowed_level, policy_id)
+                Self::check_entity_deref_level_helper(expr, max_allowed_level, policy_id)
             }
             ExprKind::Set(elems) => {
                 let v: Vec<(EntityDerefLevel, Option<_>)> = elems
                     .iter()
-                    .map(|l| self.check_entity_deref_level_helper(l, max_allowed_level, policy_id))
+                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
                     .collect();
                 Self::min(v)
             }
@@ -241,7 +239,7 @@ impl Validator {
                 let v: Vec<(EntityDerefLevel, Option<_>)> = fields
                     .iter()
                     .map(|(_, l)| {
-                        self.check_entity_deref_level_helper(l, max_allowed_level, policy_id)
+                        Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id)
                     })
                     .collect();
                 Self::min(v)

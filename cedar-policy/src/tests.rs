@@ -1865,16 +1865,16 @@ mod entity_validate_tests {
     #[test]
     fn issue_1176_should_fail3() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
 entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
 action "g" appliesTo {
   principal: [A],
   resource: [A],
 };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -1916,7 +1916,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
 
         assert_matches!(
             Entity::from_json_str(entity_str, Some(&schema)),
@@ -1962,16 +1962,16 @@ action "g" appliesTo {
     #[test]
     fn should_pass_set_set_rec_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
 entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
 action "g" appliesTo {
   principal: [A],
   resource: [A],
 };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -2014,7 +2014,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
 
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
@@ -2022,7 +2022,7 @@ action "g" appliesTo {
     #[test]
     fn example_app_tags() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
             entity User {
               allowedTagsForRole: {
                 "Role-A"?: {
@@ -2042,10 +2042,10 @@ action "g" appliesTo {
               principal: User,
               resource: User,
             };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
                 "type": "User",
@@ -2068,24 +2068,24 @@ action "g" appliesTo {
             },
             "parents": []
         }
-        "###;
+        "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
 
     #[test]
     fn should_pass_set_set_record_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
             entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
             action "g" appliesTo {
               principal: [A],
               resource: [A],
               context: {"vlipwwpm0am": Set < Set < {"": __cedar::String, "b"?: __cedar::Bool} > >}
             };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -2155,7 +2155,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
 }
@@ -5968,18 +5968,18 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn empty_policy() {
-        let policy_str = r###"permit(principal, action, resource);
-        "###;
+        let policy_str = r"permit(principal, action, resource);
+        ";
         let policy = Policy::from_str(policy_str).expect("should succeed");
         assert_eq!(policy.entity_literals(), vec![]);
     }
 
     #[test]
     fn non_empty_policy() {
-        let policy_str = r###"permit(principal == User::"Bob", action == Action::"view", resource) when {
+        let policy_str = r#"permit(principal == User::"Bob", action == Action::"view", resource) when {
             !resource.private && resource.owner != User::"Alice"
         };
-        "###;
+        "#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
         let res = policy.entity_literals();
         assert_eq!(res.len(), 3);
@@ -5990,7 +5990,7 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn test_entity_sub_principal() {
-        let policy_str = r###"permit(principal == User::"Alice", action, resource);"###;
+        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
         let new_policy = policy
@@ -6023,7 +6023,7 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn test_entity_sub_action() {
-        let policy_str = r###"permit(principal, action == Action::"view", resource);"###;
+        let policy_str = r#"permit(principal, action == Action::"view", resource);"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
         let new_policy = policy
@@ -6056,7 +6056,7 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn test_entity_sub_resource() {
-        let policy_str = r###"permit(principal, action, resource == User::"Alice");"###;
+        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
         let new_policy = policy
@@ -6090,7 +6090,7 @@ mod policy_manipulation_functions_tests {
     #[test]
     fn test_entity_sub_body() {
         let policy_str =
-            r###"permit(principal, action, resource) when { principal == User::"Alice" };"###;
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
         let new_policy = policy
@@ -6123,9 +6123,9 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn test_entity_swap() {
-        let policy_str = r###"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"###;
+        let policy_str = r#"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
-        let expected_policy_str = r###"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"###;
+        let expected_policy_str = r#"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"#;
 
         let new_policy = policy
             .sub_entity_literals(BTreeMap::from([
@@ -6176,7 +6176,7 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn test_err_illegal_substitution() {
-        let policy_str = r###"permit(principal, action == Action::"1", resource);"###;
+        let policy_str = r#"permit(principal, action == Action::"1", resource);"#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
 
         assert_matches!(
@@ -6243,7 +6243,7 @@ mod reserved_keywords_in_policies {
           permit(principal, action, resource);
         "#
         ));
-        assert_matches!(res, Ok(_))
+        assert_matches!(res, Ok(_));
     }
 
     #[track_caller]
@@ -6297,14 +6297,14 @@ mod reserved_keywords_in_policies {
             });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
-        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.iter() {
             assert_valid_expression(format!("{{ {id}: 1 }}"));
             assert_valid_expression(format!("principal has {id}"));
             assert_valid_expression(format!("principal.{id} == \"foo\""));
-        });
+        }
 
         // RESERVED_IDENTS cannot be used as keys without quotes
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
@@ -6352,10 +6352,10 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
         // RESERVED_NAMESPACE cannot be used as keys without quotes
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("{{ {id}: 1 }}"),
                 RESERVED_NAMESPACE_MSG(id),
@@ -6371,19 +6371,19 @@ mod reserved_keywords_in_policies {
                 RESERVED_NAMESPACE_MSG(id),
                 id.into(),
             );
-        });
+        }
     }
 
     #[test]
     fn test_reserved_namespace_elements() {
         // No restrictions on OTHER_SPECIAL_IDENTS
-        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.iter() {
             assert_valid_expression(format!("foo::{id}::\"bar\""));
             assert_valid_expression(format!("principal is {id}::foo"));
-        });
+        }
 
         // RESERVED_IDENTS cannot be used in namespaces
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_IDENT_MSG(id),
@@ -6394,10 +6394,10 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
         // RESERVED_NAMESPACE cannot be used in namespaces
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
@@ -6408,7 +6408,7 @@ mod reserved_keywords_in_policies {
                 RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
                 format!("{id}::foo"),
             );
-        });
+        }
     }
 
     #[test]
@@ -6416,7 +6416,7 @@ mod reserved_keywords_in_policies {
         // No keyword is allowed as an extension function names since we check
         // against the known extension functions at parse time.
 
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_IDENT_MSG(id),
@@ -6427,9 +6427,9 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
@@ -6440,9 +6440,9 @@ mod reserved_keywords_in_policies {
                 RESERVED_NAMESPACE_MSG(id),
                 id.into(),
             );
-        });
+        }
 
-        OTHER_SPECIAL_IDENTS.into_iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 format!("`extension::function::{id}` is not a valid function"),
@@ -6453,6 +6453,6 @@ mod reserved_keywords_in_policies {
                 format!("`{id}` is not a valid method"),
                 format!("context.{id}(1)"),
             );
-        });
+        }
     }
 }

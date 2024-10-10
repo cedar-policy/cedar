@@ -181,11 +181,8 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                 let name_loc = decl.name.loc.clone();
                 let id = UnreservedId::try_from(decl.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
-                let ctid = json_schema::CommonTypeId::new(id).map_err(|e| match e {
-                    json_schema::ReservedCommonTypeBasenameError { id } => {
-                        ToJsonSchemaError::reserved_keyword(id, name_loc)
-                    }
-                })?;
+                let ctid = json_schema::CommonTypeId::new(id)
+                    .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
                 Ok((ctid, cedar_type_to_json_type(decl.def)))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
@@ -348,7 +345,7 @@ fn convert_entity_decl(
     let etype = json_schema::EntityType {
         member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
         shape: convert_attr_decls(e.attrs),
-        tags: e.tags.map(|tag_ty| cedar_type_to_json_type(tag_ty)),
+        tags: e.tags.map(cedar_type_to_json_type),
     };
 
     // Then map over all of the bound names
