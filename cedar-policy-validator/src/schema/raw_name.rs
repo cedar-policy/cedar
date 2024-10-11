@@ -251,7 +251,7 @@ impl ConditionalName {
     /// `all_defs` also internally includes [`InternalName`]s, because some
     /// names containing `__cedar` might be internally defined/valid, even
     /// though it is not valid for _end-users_ to define those names.
-    pub fn resolve<'a>(self, all_defs: &AllDefs) -> Result<InternalName, TypeNotDefinedError> {
+    pub fn resolve(self, all_defs: &AllDefs) -> Result<InternalName, TypeNotDefinedError> {
         for possibility in &self.possibilities {
             // Per RFC 24, we give priority to trying to resolve to a common
             // type, before trying to resolve to an entity type.

@@ -991,7 +991,7 @@ impl PartialResponse {
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&exts);
+        let evaluator = RestrictedEvaluator::new(exts);
         let mapping = mapping
             .into_iter()
             .map(|(name, expr)| {
@@ -2373,7 +2373,9 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
                     },
                     //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
                     #[allow(clippy::unreachable)]
-                    _ => unreachable!("used unsupported feature"),
+                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                        unreachable!("used unsupported feature")
+                    }
                 })
             } else {
                 None
@@ -2973,12 +2975,9 @@ impl Policy {
             .condition()
             .subexpressions()
             .filter_map(|e| match e.expr_kind() {
-                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
-                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
-                        Some(EntityUid((*euid).as_ref().clone()))
-                    }
-                    _ => None,
-                },
+                cedar_policy_core::ast::ExprKind::Lit(
+                    cedar_policy_core::ast::Literal::EntityUID(euid),
+                ) => Some(EntityUid((*euid).as_ref().clone())),
                 _ => None,
             })
             .collect()
@@ -2995,8 +2994,7 @@ impl Policy {
         let cloned_est = self
             .lossless
             .est()
-            .expect("Internal error, failed to construct est.")
-            .clone();
+            .expect("Internal error, failed to construct est.");
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
 
@@ -3011,7 +3009,7 @@ impl Policy {
             Err(e) => return Err(e.into()),
         };
 
-        Ok(Policy {
+        Ok(Self {
             ast,
             lossless: LosslessPolicy::Est(est),
         })
@@ -4451,5 +4449,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(Into::into)
 }
