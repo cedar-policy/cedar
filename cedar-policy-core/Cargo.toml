@@ -40,7 +40,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "protobuffers"]
 ipaddr = []
 decimal = ["dep:regex"]
 
