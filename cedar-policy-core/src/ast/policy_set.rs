@@ -25,10 +25,10 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use super::TemplateBody;
 
 /// Represents a set of `Policy`s
@@ -115,7 +115,7 @@ impl From<PolicySet> for LiteralPolicySet {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
     fn from(v: &proto::LiteralPolicySet) -> Self {
         let templates: HashMap<PolicyID, Template> = v
@@ -142,7 +142,7 @@ impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     fn from(v: &LiteralPolicySet) -> Self {
         let mut templates: HashMap<String, proto::TemplateBody> =
@@ -167,7 +167,7 @@ impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&PolicySet> for proto::LiteralPolicySet {
     fn from(v: &PolicySet) -> Self {
         let mut templates: HashMap<String, proto::TemplateBody> =
@@ -195,7 +195,7 @@ impl From<&PolicySet> for proto::LiteralPolicySet {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl TryFrom<&proto::LiteralPolicySet> for PolicySet {
     type Error = ReificationError;
     fn try_from(pset: &proto::LiteralPolicySet) -> Result<Self, Self::Error> {
@@ -608,13 +608,13 @@ mod test {
 
     use std::collections::HashMap;
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     use crate::{
         ast::{Annotation, AnyId, EntityType, Name, PrincipalOrResourceConstraint},
         from_normalized_str::FromNormalizedStr,
     };
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     use std::str::FromStr;
 
     #[test]
@@ -1016,7 +1016,7 @@ mod test {
         assert_eq!(pset.all_templates().count(), 4);
     }
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     #[test]
     fn protobuf_roundtrip() {
         let annotation1: Annotation = Annotation {

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ pub enum PatternElem {
     Wildcard,
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::expr::like::PatternElem> for PatternElem {
     fn from(v: &proto::expr::like::PatternElem) -> Self {
         match v.data.as_ref().unwrap() {
@@ -48,7 +48,7 @@ impl From<&proto::expr::like::PatternElem> for PatternElem {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&PatternElem> for proto::expr::like::PatternElem {
     fn from(v: &PatternElem) -> Self {
         match v {

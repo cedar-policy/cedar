@@ -33,10 +33,10 @@ use crate::{
     ConditionalName,
 };
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::proto;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use cedar_policy_core::{evaluator::RestrictedEvaluator, extensions::Extensions};
 
 /// Contains information about actions used by the validator.  The contents of
@@ -129,7 +129,7 @@ impl TCNode<EntityUID> for ValidatorActionId {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ValidatorActionId> for proto::ValidatorActionId {
     fn from(v: &ValidatorActionId) -> Self {
         Self {
@@ -157,7 +157,7 @@ impl From<&ValidatorActionId> for proto::ValidatorActionId {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorActionId> for ValidatorActionId {
     fn from(v: &proto::ValidatorActionId) -> Self {
         let extensions_none = Extensions::none();
@@ -204,7 +204,7 @@ pub(crate) struct ValidatorApplySpec<N> {
     resource_apply_spec: HashSet<N>,
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec {
     fn from(v: &ValidatorApplySpec<ast::EntityType>) -> Self {
         Self {
@@ -222,7 +222,7 @@ impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorApplySpec> for ValidatorApplySpec<ast::EntityType> {
     fn from(v: &proto::ValidatorApplySpec) -> Self {
         Self {

@@ -28,7 +28,7 @@ use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
 use super::{PrincipalOrResource, UnreservedId};
@@ -354,7 +354,7 @@ impl std::fmt::Display for SlotId {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::SlotId> for SlotId {
     fn from(v: &proto::SlotId) -> Self {
         match v {
@@ -364,7 +364,7 @@ impl From<&proto::SlotId> for SlotId {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&SlotId> for proto::SlotId {
     fn from(v: &SlotId) -> Self {
         match v {
@@ -551,7 +551,7 @@ impl Name {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Name> for Name {
     fn from(v: &proto::Name) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
@@ -564,7 +564,7 @@ impl From<&proto::Name> for Name {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Name> for proto::Name {
     fn from(v: &Name) -> Self {
         let mut path: Vec<String> = Vec::with_capacity(v.0.path.as_ref().len());
@@ -717,7 +717,7 @@ mod test {
         )
     }
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     #[test]
     fn protobuf_roundtrip() {
         let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();

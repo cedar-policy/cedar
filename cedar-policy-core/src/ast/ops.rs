@@ -17,7 +17,7 @@
 use crate::ast::CallStyle;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
 /// Built-in operators with exactly one argument
@@ -34,7 +34,7 @@ pub enum UnaryOp {
     Neg,
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::expr::unary_app::Op> for UnaryOp {
     fn from(v: &proto::expr::unary_app::Op) -> Self {
         match v {
@@ -44,7 +44,7 @@ impl From<&proto::expr::unary_app::Op> for UnaryOp {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&UnaryOp> for proto::expr::unary_app::Op {
     fn from(v: &UnaryOp) -> Self {
         match v {
@@ -152,7 +152,7 @@ impl std::fmt::Display for BinaryOp {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::expr::binary_app::Op> for BinaryOp {
     fn from(v: &proto::expr::binary_app::Op) -> Self {
         match v {
@@ -172,7 +172,7 @@ impl From<&proto::expr::binary_app::Op> for BinaryOp {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&BinaryOp> for proto::expr::binary_app::Op {
     fn from(v: &BinaryOp) -> Self {
         match v {

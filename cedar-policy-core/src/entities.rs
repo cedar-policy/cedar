@@ -358,7 +358,7 @@ impl std::fmt::Display for Entities {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Entities> for Entities {
     fn from(v: &proto::Entities) -> Self {
         let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
@@ -381,7 +381,7 @@ impl From<&proto::Entities> for Entities {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Entities> for proto::Entities {
     fn from(v: &Entities) -> Self {
         let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
@@ -3505,7 +3505,7 @@ mod schema_based_parsing_tests {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 #[cfg(test)]
 pub mod protobuf_tests {
     use super::*;

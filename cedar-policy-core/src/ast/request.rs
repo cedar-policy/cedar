@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
 use super::{
@@ -115,7 +115,7 @@ impl EntityUIDEntry {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     fn from(v: &proto::EntityUidEntry) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
@@ -123,7 +123,7 @@ impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
@@ -259,7 +259,7 @@ impl std::fmt::Display for Request {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Request> for Request {
     fn from(v: &proto::Request) -> Self {
         Request::new_unchecked(
@@ -271,7 +271,7 @@ impl From<&proto::Request> for Request {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Request> for proto::Request {
     fn from(v: &Request) -> Self {
         Self {
@@ -547,7 +547,7 @@ impl std::fmt::Display for Context {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Context> for Context {
     fn from(v: &proto::Context) -> Self {
         Context::from_expr(
@@ -558,7 +558,7 @@ impl From<&proto::Context> for Context {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Context> for proto::Context {
     fn from(v: &Context) -> Self {
         Self {
@@ -671,7 +671,7 @@ mod test {
         );
     }
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     #[test]
     fn protobuf_roundtrip() {
         let context: Context = Context::from_expr(

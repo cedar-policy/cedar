@@ -43,10 +43,10 @@ use cedar_policy_core::{
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::proto;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use cedar_policy_core::ast;
 
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
@@ -723,7 +723,7 @@ impl Display for Type {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Type> for Type {
     fn from(v: &proto::Type) -> Self {
         match v.data.as_ref().unwrap() {
@@ -757,7 +757,7 @@ impl From<&proto::Type> for Type {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Type> for proto::Type {
     fn from(v: &Type) -> Self {
         match v {
@@ -1139,7 +1139,7 @@ impl IntoIterator for Attributes {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Attributes> for Attributes {
     fn from(v: &proto::Attributes) -> Self {
         Self::with_attributes(
@@ -1150,7 +1150,7 @@ impl From<&proto::Attributes> for Attributes {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Attributes> for proto::Attributes {
     fn from(v: &Attributes) -> Self {
         Self {
@@ -1183,7 +1183,7 @@ impl OpenTag {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::OpenTag> for OpenTag {
     fn from(v: &proto::OpenTag) -> Self {
         match v {
@@ -1193,7 +1193,7 @@ impl From<&proto::OpenTag> for OpenTag {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&OpenTag> for proto::OpenTag {
     fn from(v: &OpenTag) -> Self {
         match v {
@@ -1506,7 +1506,7 @@ impl EntityRecordKind {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::EntityRecordKind> for EntityRecordKind {
     fn from(v: &proto::EntityRecordKind) -> Self {
         match v.data.as_ref().unwrap() {
@@ -1532,7 +1532,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&EntityRecordKind> for proto::EntityRecordKind {
     fn from(v: &EntityRecordKind) -> Self {
         let data = match v {
@@ -1642,7 +1642,7 @@ impl AttributeType {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::AttributeType> for AttributeType {
     fn from(v: &proto::AttributeType) -> Self {
         Self {
@@ -1652,7 +1652,7 @@ impl From<&proto::AttributeType> for AttributeType {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&AttributeType> for proto::AttributeType {
     fn from(v: &AttributeType) -> Self {
         Self {

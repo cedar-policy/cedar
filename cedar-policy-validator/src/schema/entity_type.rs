@@ -24,10 +24,10 @@ use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
 use crate::types::{AttributeType, Attributes, OpenTag, Type};
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::proto;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use cedar_policy_core::ast;
 
 /// Contains entity type information for use by the validator. The contents of
@@ -102,12 +102,12 @@ impl TCNode<EntityType> for ValidatorEntityType {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
         let tags = match &v.tags {
             Some(tags) => Some(proto::Tag {
-                my_optional_type: Some(proto::tag::MyOptionalType::Type(proto::Type::from(tags))),
+                my_optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
             }),
             None => None,
         };
@@ -125,12 +125,12 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     fn from(v: &proto::ValidatorEntityType) -> Self {
         let tags = match &v.tags {
             Some(tags) => match &tags.my_optional_type {
-                Some(proto::tag::MyOptionalType::Type(ty)) => Some(Type::from(ty)),
+                Some(proto::tag::OptionalType::Type(ty)) => Some(Type::from(ty)),
                 _ => None,
             },
             None => None,

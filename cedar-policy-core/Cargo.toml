@@ -40,7 +40,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "protobuffers"]
+default = ["ipaddr", "decimal", "protobufs"]
 ipaddr = []
 decimal = ["dep:regex"]
 
@@ -53,7 +53,7 @@ test-util = []
 # Experimental features.
 partial-eval = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-protobuffers = []
+protobufs = []
 
 [build-dependencies]
 lalrpop = "0.22.0"

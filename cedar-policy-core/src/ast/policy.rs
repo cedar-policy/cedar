@@ -570,7 +570,7 @@ pub struct LiteralPolicy {
     values: SlotEnv,
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::LiteralPolicy> for LiteralPolicy {
     fn from(v: &proto::LiteralPolicy) -> Self {
         let link_id: &str = v.link_id.as_ref();
@@ -604,7 +604,7 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&LiteralPolicy> for proto::LiteralPolicy {
     fn from(v: &LiteralPolicy) -> Self {
         let template_id_str: &str = v.template_id.as_ref();
@@ -634,7 +634,7 @@ impl From<&LiteralPolicy> for proto::LiteralPolicy {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Policy> for proto::LiteralPolicy {
     fn from(v: &Policy) -> Self {
         let template_id_str: &str = v.template.id().as_ref();
@@ -1193,14 +1193,14 @@ impl std::fmt::Display for TemplateBody {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::TemplateBody> for Template {
     fn from(v: &proto::TemplateBody) -> Self {
         Template::from(TemplateBody::from(v))
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::TemplateBody> for TemplateBody {
     fn from(v: &proto::TemplateBody) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
@@ -1226,7 +1226,7 @@ impl From<&proto::TemplateBody> for TemplateBody {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&TemplateBody> for proto::TemplateBody {
     fn from(v: &TemplateBody) -> Self {
         let id_str: &str = v.id.as_ref();
@@ -1254,7 +1254,7 @@ impl From<&TemplateBody> for proto::TemplateBody {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Template> for proto::TemplateBody {
     fn from(v: &Template) -> Self {
         proto::TemplateBody::from(&v.body)
@@ -1351,7 +1351,7 @@ impl AsRef<str> for Annotation {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Annotation> for Annotation {
     fn from(v: &proto::Annotation) -> Self {
         Self {
@@ -1361,7 +1361,7 @@ impl From<&proto::Annotation> for Annotation {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Annotation> for proto::Annotation {
     fn from(v: &Annotation) -> Self {
         Self {
@@ -1478,7 +1478,7 @@ impl std::fmt::Display for PrincipalConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
     fn from(v: &proto::PrincipalConstraint) -> Self {
         Self {
@@ -1487,7 +1487,7 @@ impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&PrincipalConstraint> for proto::PrincipalConstraint {
     fn from(v: &PrincipalConstraint) -> Self {
         Self {
@@ -1603,7 +1603,7 @@ impl std::fmt::Display for ResourceConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ResourceConstraint> for ResourceConstraint {
     fn from(v: &proto::ResourceConstraint) -> Self {
         Self {
@@ -1612,7 +1612,7 @@ impl From<&proto::ResourceConstraint> for ResourceConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ResourceConstraint> for proto::ResourceConstraint {
     fn from(v: &ResourceConstraint) -> Self {
         Self {
@@ -1649,7 +1649,7 @@ impl EntityReference {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::EntityReference> for EntityReference {
     fn from(v: &proto::EntityReference) -> Self {
         match v.data.as_ref().unwrap() {
@@ -1665,7 +1665,7 @@ impl From<&proto::EntityReference> for EntityReference {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&EntityReference> for proto::EntityReference {
     fn from(v: &EntityReference) -> Self {
         match v {
@@ -1865,7 +1865,7 @@ impl PrincipalOrResourceConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
     fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
         match v.data.as_ref().unwrap() {
@@ -1896,7 +1896,7 @@ impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstrai
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstraint {
     fn from(v: &PrincipalOrResourceConstraint) -> Self {
         match v {
@@ -2039,7 +2039,7 @@ impl ActionConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ActionConstraint> for ActionConstraint {
     fn from(v: &proto::ActionConstraint) -> Self {
         match v.data.as_ref().unwrap() {
@@ -2061,7 +2061,7 @@ impl From<&proto::ActionConstraint> for ActionConstraint {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ActionConstraint> for proto::ActionConstraint {
     fn from(v: &ActionConstraint) -> Self {
         match v {
@@ -2170,7 +2170,7 @@ impl std::fmt::Display for Effect {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Effect> for Effect {
     fn from(v: &proto::Effect) -> Self {
         match v {
@@ -2180,7 +2180,7 @@ impl From<&proto::Effect> for Effect {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Effect> for proto::Effect {
     fn from(v: &Effect) -> Self {
         match v {
@@ -2306,7 +2306,7 @@ mod test {
         test_utils::ExpectedErrorMessageBuilder,
     };
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     use crate::from_normalized_str::FromNormalizedStr;
 
     #[test]
@@ -2646,7 +2646,7 @@ mod test {
         });
     }
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     #[test]
     fn protobuf_roundtrip() {
         let annotation1: Annotation = Annotation {

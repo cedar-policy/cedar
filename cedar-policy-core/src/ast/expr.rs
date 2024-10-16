@@ -840,7 +840,7 @@ impl std::fmt::Display for Unknown {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::Expr> for Expr {
     fn from(v: &proto::Expr) -> Self {
         let source_loc: Option<Loc> = v.source_loc.as_ref().map(Loc::from);
@@ -953,7 +953,7 @@ impl From<&proto::Expr> for Expr {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Expr> for proto::Expr {
     fn from(v: &Expr) -> Self {
         let source_loc: Option<proto::Loc> = v.source_loc.as_ref().map(proto::Loc::from);
@@ -1855,7 +1855,7 @@ impl std::fmt::Display for Var {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::expr::Var> for Var {
     fn from(v: &proto::expr::Var) -> Self {
         match v {
@@ -1867,7 +1867,7 @@ impl From<&proto::expr::Var> for Var {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Var> for proto::expr::Var {
     fn from(v: &Var) -> Self {
         match v {
@@ -2332,7 +2332,7 @@ mod test {
         assert_eq!(r, Expr::unknown(u));
     }
 
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     #[test]
     fn protobuf_roundtrip() {
         let e1: Expr = Expr::val(33);

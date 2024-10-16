@@ -35,7 +35,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "protobuffers"]
+default = ["ipaddr", "decimal", "protobufs"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
@@ -48,7 +48,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-protobuffers = []
+protobufs = []
 entity-manifest = []
 
 [dev-dependencies]

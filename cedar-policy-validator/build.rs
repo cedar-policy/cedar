@@ -16,7 +16,7 @@
 
 fn main() {
     generate_parsers();
-    #[cfg(feature = "protobuffers")]
+    #[cfg(feature = "protobufs")]
     generate_schemas();
 }
 
@@ -29,7 +29,7 @@ fn generate_parsers() {
         .expect("parser synth");
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 /// Reads protobuf schema files (.proto) and generates Rust modules
 fn generate_schemas() {
     let mut config = prost_build::Config::new();

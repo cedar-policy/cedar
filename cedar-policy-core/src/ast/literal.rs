@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
 /// First-class values which may appear as literals in `Expr::Lit`.
@@ -128,7 +128,7 @@ impl From<Arc<EntityUID>> for Literal {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::expr::Literal> for Literal {
     fn from(v: &proto::expr::Literal) -> Self {
         match v.lit.as_ref().unwrap() {
@@ -140,7 +140,7 @@ impl From<&proto::expr::Literal> for Literal {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&Literal> for proto::expr::Literal {
     fn from(v: &Literal) -> Self {
         match v {
@@ -172,7 +172,7 @@ impl Literal {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 #[cfg(test)]
 mod test {
     use super::*;

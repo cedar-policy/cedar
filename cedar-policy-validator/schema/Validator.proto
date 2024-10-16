@@ -100,7 +100,7 @@ message AttributeType {
 }
 
 message Tag {
-    oneof my_optional_type {
+    oneof optional_type {
         Type type = 1;
     }
 }

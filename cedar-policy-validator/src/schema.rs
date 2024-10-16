@@ -43,10 +43,10 @@ use crate::{
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use crate::proto;
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 use cedar_policy_core::ast;
 
 mod action;
@@ -851,7 +851,7 @@ impl ValidatorSchema {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&ValidatorSchema> for proto::ValidatorSchema {
     fn from(v: &ValidatorSchema) -> Self {
         Self {
@@ -875,7 +875,7 @@ impl From<&ValidatorSchema> for proto::ValidatorSchema {
     }
 }
 
-#[cfg(feature = "protobuffers")]
+#[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorSchema> for ValidatorSchema {
     fn from(v: &proto::ValidatorSchema) -> Self {
         Self {
