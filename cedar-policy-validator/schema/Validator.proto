@@ -24,6 +24,7 @@ message ValidatorEntityType {
     repeated cedar_policy_core.EntityType descendants = 2;
     Attributes attributes = 3;
     OpenTag open_attributes = 4;
+    Tag tags = 5;
 }
 
 message ValidatorActionId {
@@ -96,6 +97,12 @@ message Attributes {
 message AttributeType {
     Type attr_type = 1;
     bool is_required = 2;
+}
+
+message Tag {
+    oneof my_optional_type {
+        Type type = 1;
+    }
 }
 
 enum ValidationMode {

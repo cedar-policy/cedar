@@ -105,6 +105,12 @@ impl TCNode<EntityType> for ValidatorEntityType {
 #[cfg(feature = "protobuffers")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
+        let tags = match &v.tags {
+            Some(tags) => Some(proto::Tag {
+                my_optional_type: Some(proto::tag::MyOptionalType::Type(proto::Type::from(tags))),
+            }),
+            None => None,
+        };
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
             descendants: v
@@ -114,6 +120,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .collect(),
             attributes: Some(proto::Attributes::from(&v.attributes)),
             open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
+            tags,
         }
     }
 }
@@ -121,11 +128,19 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
 #[cfg(feature = "protobuffers")]
 impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     fn from(v: &proto::ValidatorEntityType) -> Self {
+        let tags = match &v.tags {
+            Some(tags) => match &tags.my_optional_type {
+                Some(proto::tag::MyOptionalType::Type(ty)) => Some(Type::from(ty)),
+                _ => None,
+            },
+            None => None,
+        };
         Self {
             name: ast::EntityType::from(v.name.as_ref().unwrap()),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
             attributes: Attributes::from(v.attributes.as_ref().unwrap()),
             open_attributes: OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap()),
+            tags,
         }
     }
 }

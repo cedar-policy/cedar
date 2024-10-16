@@ -799,7 +799,6 @@ impl From<&Type> for proto::Type {
     }
 }
 
-
 impl TryFrom<Type> for CoreSchemaType {
     type Error = String;
     fn try_from(ty: Type) -> Result<CoreSchemaType, String> {

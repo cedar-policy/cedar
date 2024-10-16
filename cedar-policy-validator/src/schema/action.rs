@@ -33,7 +33,6 @@ use crate::{
     ConditionalName,
 };
 
-
 #[cfg(feature = "protobuffers")]
 use crate::proto;
 
@@ -206,8 +205,7 @@ pub(crate) struct ValidatorApplySpec<N> {
 }
 
 #[cfg(feature = "protobuffers")]
-impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec
- {
+impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec {
     fn from(v: &ValidatorApplySpec<ast::EntityType>) -> Self {
         Self {
             principal_apply_spec: v

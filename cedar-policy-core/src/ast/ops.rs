@@ -166,6 +166,8 @@ impl From<&proto::expr::binary_app::Op> for BinaryOp {
             proto::expr::binary_app::Op::Contains => BinaryOp::Contains,
             proto::expr::binary_app::Op::ContainsAll => BinaryOp::ContainsAll,
             proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny,
+            proto::expr::binary_app::Op::GetTag => BinaryOp::GetTag,
+            proto::expr::binary_app::Op::HasTag => BinaryOp::HasTag,
         }
     }
 }
@@ -184,6 +186,8 @@ impl From<&BinaryOp> for proto::expr::binary_app::Op {
             BinaryOp::Contains => proto::expr::binary_app::Op::Contains,
             BinaryOp::ContainsAll => proto::expr::binary_app::Op::ContainsAll,
             BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny,
+            BinaryOp::GetTag => proto::expr::binary_app::Op::GetTag,
+            BinaryOp::HasTag => proto::expr::binary_app::Op::HasTag,
         }
     }
 }

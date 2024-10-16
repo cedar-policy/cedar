@@ -201,7 +201,7 @@ message Expr {
             EntityUid euid = 4;
         }
     }
-    
+
     enum Var {
         Principal = 0;
         Action = 1;
@@ -251,6 +251,8 @@ message Expr {
             Contains = 7;
             ContainsAll = 8;
             ContainsAny = 9;
+            GetTag = 10;
+            HasTag = 11;
         }
     }
 
@@ -309,6 +311,7 @@ message Entity {
     EntityUid uid = 1;
     map<string, Expr> attrs = 2;
     repeated EntityUid ancestors = 3;
+    map<string, Expr> tags = 4;
 }
 
 // END ENTITITES MESSAGES

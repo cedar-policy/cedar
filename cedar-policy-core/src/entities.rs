@@ -3510,7 +3510,7 @@ mod schema_based_parsing_tests {
 pub mod protobuf_tests {
     use super::*;
     use smol_str::SmolStr;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
     use std::iter;
 
     #[test]
@@ -3530,6 +3530,7 @@ pub mod protobuf_tests {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
+            BTreeMap::new(),
             &Extensions::none(),
         )
         .unwrap();
@@ -3552,6 +3553,7 @@ pub mod protobuf_tests {
             r#"Bar::"foo""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
+            BTreeMap::new(),
             &Extensions::none(),
         )
         .unwrap();

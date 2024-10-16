@@ -495,9 +495,6 @@ impl<'de> Deserialize<'de> for Name {
     }
 }
 
-
-
-
 impl Name {
     /// Create a [`Name`] with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.

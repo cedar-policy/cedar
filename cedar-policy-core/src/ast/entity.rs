@@ -682,10 +682,22 @@ impl From<&proto::Entity> for Entity {
 
         let ancestors: HashSet<EntityUID> = v.ancestors.iter().map(EntityUID::from).collect();
 
+        let tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
+            .tags
+            .iter()
+            .map(|(key, value)| {
+                let pval = eval
+                    .partial_interpret(BorrowedRestrictedExpr::new(&Expr::from(value)).unwrap())
+                    .unwrap();
+                (key.into(), pval.into())
+            })
+            .collect();
+
         Self {
             uid: EntityUID::from(v.uid.as_ref().unwrap()),
             attrs: attrs,
             ancestors: ancestors,
+            tags,
         }
     }
 }
@@ -706,10 +718,19 @@ impl From<&Entity> for proto::Entity {
             ancestors.push(proto::EntityUid::from(ancestor));
         }
 
+        let mut tags: HashMap<String, proto::Expr> = HashMap::with_capacity(v.tags.len());
+        for (key, value) in &v.tags {
+            tags.insert(
+                key.to_string(),
+                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
+            );
+        }
+
         Self {
             uid: Some(proto::EntityUid::from(&v.uid)),
             attrs: attrs,
             ancestors: ancestors,
+            tags,
         }
     }
 }
@@ -850,6 +871,7 @@ mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
+            BTreeMap::new(),
             &Extensions::none(),
         )
         .unwrap();
